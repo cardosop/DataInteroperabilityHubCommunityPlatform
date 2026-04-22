@@ -3,7 +3,7 @@
  * Wraps app with necessary providers (React Query, etc.)
  */
 
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { QueryClient, QueryClientProvider, keepPreviousData } from '@tanstack/react-query';
 import { ReactQueryDevtools } from '@tanstack/react-query-devtools';
 import { useEffect } from 'react';
 import { ToastProvider } from '../../shared/components/Toast';
@@ -25,24 +25,32 @@ function getHttpStatusFromError(error: unknown): number | undefined {
   return undefined;
 }
 
-// Optimized QueryClient with better caching strategy
-const queryClient = new QueryClient({
-  defaultOptions: {
-    queries: {
-      retry: (failureCount, error) => {
-        const status = getHttpStatusFromError(error);
-        if (status === 404) return false; // Don't retry "not found"
-        return failureCount < 1;
+// Exported factory so tests can introspect defaults without re-declaring the config.
+// `placeholderData: keepPreviousData` is load-bearing: it keeps previous data visible
+// on query-key changes so `isLoading` does not flip to true. Without it, list pages
+// with `if (isLoading) return <Skeleton />` unmount the search input per keystroke.
+export function createQueryClient(): QueryClient {
+  return new QueryClient({
+    defaultOptions: {
+      queries: {
+        placeholderData: keepPreviousData,
+        retry: (failureCount, error) => {
+          const status = getHttpStatusFromError(error);
+          if (status === 404) return false;
+          return failureCount < 1;
+        },
+        refetchOnWindowFocus: true,
+        staleTime: 5 * 60 * 1000,
+        gcTime: 10 * 60 * 1000,
       },
-      refetchOnWindowFocus: true,
-      staleTime: 5 * 60 * 1000, // 5 minutes - data considered fresh
-      gcTime: 10 * 60 * 1000, // 10 minutes - cache garbage collection (formerly cacheTime)
+      mutations: {
+        retry: 0,
+      },
     },
-    mutations: {
-      retry: 0, // Don't retry mutations by default
-    },
-  },
-});
+  });
+}
+
+const queryClient = createQueryClient();
 
 interface AppProvidersProps {
   children: React.ReactNode;

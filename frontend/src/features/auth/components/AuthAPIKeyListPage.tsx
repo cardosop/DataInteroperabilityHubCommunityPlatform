@@ -4,7 +4,7 @@
  * Route: /settings/api-keys
  */
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import type { ApiError } from '../../../shared/types/api';
 import { Breadcrumbs } from '../../../shared/components/Breadcrumbs';
 import { ConfirmDialog } from '../../../shared/components/ConfirmDialog';
@@ -106,8 +106,57 @@ export function AuthAPIKeyListPage() {
     }
   };
 
+  // Track B structural inversion: breadcrumbs + header + create button render
+  // unconditionally. Data section is gated; error shows inline below header.
+  let mainContent: ReactNode;
   if (loading && keys.length === 0) {
-    return <ListPageSkeleton />;
+    mainContent = <ListPageSkeleton />;
+  } else if (keys.length === 0 && !error) {
+    mainContent = (
+      <div className="auth-api-key-empty">
+        <p>No API keys yet. Create one for programmatic access.</p>
+      </div>
+    );
+  } else {
+    mainContent = (
+      <div className="auth-api-key-table-wrap">
+        <table className="auth-api-key-table">
+          <thead>
+            <tr>
+              <th>Name</th>
+              <th>Scopes</th>
+              <th>Expires</th>
+              <th>Last used</th>
+              <th>Created</th>
+              <th>Action</th>
+            </tr>
+          </thead>
+          <tbody>
+            {keys.map((key) => (
+              <tr key={key.id}>
+                <td>{key.name}</td>
+                <td>{key.scopes?.length ? key.scopes.join(', ') : '—'}</td>
+                <td>
+                  {key.expires_at ? new Date(key.expires_at).toLocaleDateString() : 'Never'}
+                </td>
+                <td>{key.last_used_at ? new Date(key.last_used_at).toLocaleString() : '—'}</td>
+                <td>{new Date(key.created_at).toLocaleString()}</td>
+                <td>
+                  <Button
+                    variant="danger"
+                    size="sm"
+                    onClick={() => handleDeleteClick(key.id)}
+                    disabled={deletingId === key.id}
+                  >
+                    {deletingId === key.id ? 'Deleting...' : 'Delete'}
+                  </Button>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    );
   }
 
   return (
@@ -135,47 +184,7 @@ export function AuthAPIKeyListPage() {
         <ErrorDisplay error={error} title="Failed to load API keys" onRetry={() => loadKeys()} />
       )}
 
-      {keys.length === 0 && !error ? (
-        <div className="auth-api-key-empty">
-          <p>No API keys yet. Create one for programmatic access.</p>
-        </div>
-      ) : (
-        <div className="auth-api-key-table-wrap">
-          <table className="auth-api-key-table">
-            <thead>
-              <tr>
-                <th>Name</th>
-                <th>Scopes</th>
-                <th>Expires</th>
-                <th>Last used</th>
-                <th>Created</th>
-                <th>Action</th>
-              </tr>
-            </thead>
-            <tbody>
-              {keys.map((key) => (
-                <tr key={key.id}>
-                  <td>{key.name}</td>
-                  <td>{key.scopes?.length ? key.scopes.join(', ') : '—'}</td>
-                  <td>
-                    {key.expires_at ? new Date(key.expires_at).toLocaleDateString() : 'Never'}
-                  </td>
-                  <td>{key.last_used_at ? new Date(key.last_used_at).toLocaleString() : '—'}</td>
-                  <td>{new Date(key.created_at).toLocaleString()}</td>
-                  <td>
-                    <Button
- variant="danger" size="sm"
- onClick={() => handleDeleteClick(key.id)}
- disabled={deletingId === key.id}>
-                      {deletingId === key.id ? 'Deleting...' : 'Delete'}
-                    </Button>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
+      {mainContent}
 
       {totalPages > 1 && (
         <div className="auth-api-key-pagination">
@@ -232,7 +241,7 @@ export function AuthAPIKeyListPage() {
                       id="api-key-name"
                       type="text"
                       value={createForm.name}
-                      onChange={(e) => setCreateForm({ ...createForm, name: e.target.value })}
+                      onChange={(e) => setCreateForm((prev) => ({ ...prev, name: e.target.value }))}
                       required
                       placeholder="e.g. CI pipeline"
                     />
@@ -244,13 +253,13 @@ export function AuthAPIKeyListPage() {
                       type="text"
                       value={Array.isArray(createForm.scopes) ? createForm.scopes.join(', ') : ''}
                       onChange={(e) =>
-                        setCreateForm({
-                          ...createForm,
+                        setCreateForm((prev) => ({
+                          ...prev,
                           scopes: e.target.value
                             .split(',')
                             .map((s) => s.trim())
                             .filter(Boolean),
-                        })
+                        }))
                       }
                       placeholder="e.g. assets:read, assets:write"
                     />
@@ -263,12 +272,12 @@ export function AuthAPIKeyListPage() {
                       min={1}
                       value={createForm.expires_in_days ?? ''}
                       onChange={(e) =>
-                        setCreateForm({
-                          ...createForm,
+                        setCreateForm((prev) => ({
+                          ...prev,
                           expires_in_days: e.target.value
                             ? parseInt(e.target.value, 10)
                             : undefined,
-                        })
+                        }))
                       }
                       placeholder="Leave empty for no expiry"
                     />
@@ -279,9 +288,7 @@ export function AuthAPIKeyListPage() {
                     </p>
                   )}
                   <div className="auth-api-key-modal-actions">
-                    <Button
- variant="secondary"
- onClick={() => setCreateModalOpen(false)}>
+                    <Button variant="secondary" onClick={() => setCreateModalOpen(false)}>
                       Cancel
                     </Button>
                     <Button type="submit" variant="primary" disabled={createSubmitting}>

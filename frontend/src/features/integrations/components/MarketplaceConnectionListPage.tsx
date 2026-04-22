@@ -3,7 +3,7 @@
  * View and manage marketplace connections
  */
 
-import { useState } from 'react';
+import { useState, type ReactNode } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useMarketplaceConnections } from '../hooks/useMarketplaceConnections';
 import { ListPageSkeleton } from '../../../shared/components/skeletons/ListPageSkeleton';
@@ -33,21 +33,80 @@ export function MarketplaceConnectionListPage() {
     navigate('/integrations/connections/create');
   };
 
+  // Track B structural inversion: header renders unconditionally.
+  let mainContent: ReactNode;
   if (isLoading) {
-    return <ListPageSkeleton />;
-  }
-
-  if (error) {
-    return <ErrorDisplay error={error} title="Failed to load connections" onRetry={() => refetch()} />;
-  }
-
-  if (!data || data.results.length === 0) {
-    return (
+    mainContent = <ListPageSkeleton />;
+  } else if (error) {
+    mainContent = (
+      <ErrorDisplay error={error} title="Failed to load connections" onRetry={() => refetch()} />
+    );
+  } else if (!data || data.results.length === 0) {
+    mainContent = (
       <EmptyState
         title="No connections found"
         message="Get started by creating your first marketplace connection."
         action={{ label: 'Create Connection', onClick: handleCreateConnection }}
       />
+    );
+  } else {
+    mainContent = (
+      <>
+        <div className="connection-list-grid">
+          {data.results.map((connection) => (
+            <div
+              key={connection.id}
+              className="connection-card"
+              onClick={() => handleConnectionClick(connection.id)}
+              role="button"
+              tabIndex={0}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                  e.preventDefault();
+                  handleConnectionClick(connection.id);
+                }
+              }}
+            >
+              <div className="connection-card-header">
+                <h3>{connection.name}</h3>
+                <span
+                  className={`connection-status ${connection.is_active ? 'active' : 'inactive'}`}
+                >
+                  {connection.is_active ? 'Active' : 'Inactive'}
+                </span>
+              </div>
+              <p className="connection-type">{connection.marketplace_type}</p>
+              {connection.last_sync_at && (
+                <p className="connection-last-sync">
+                  Last sync: {new Date(connection.last_sync_at).toLocaleDateString()}
+                </p>
+              )}
+            </div>
+          ))}
+        </div>
+
+        {data.count > pageSize && (
+          <div className="connection-list-pagination">
+            <Button
+              variant="secondary"
+              onClick={() => setPage((p) => Math.max(1, p - 1))}
+              disabled={page === 1}
+            >
+              Previous
+            </Button>
+            <span className="pagination-info">
+              Page {page} of {Math.ceil(data.count / pageSize)}
+            </span>
+            <Button
+              variant="secondary"
+              onClick={() => setPage((p) => p + 1)}
+              disabled={page >= Math.ceil(data.count / pageSize)}
+            >
+              Next
+            </Button>
+          </div>
+        )}
+      </>
     );
   }
 
@@ -59,57 +118,7 @@ export function MarketplaceConnectionListPage() {
           Create Connection
         </Button>
       </div>
-
-      <div className="connection-list-grid">
-        {data.results.map((connection) => (
-          <div
-            key={connection.id}
-            className="connection-card"
-            onClick={() => handleConnectionClick(connection.id)}
-            role="button"
-            tabIndex={0}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter' || e.key === ' ') {
-                e.preventDefault();
-                handleConnectionClick(connection.id);
-              }
-            }}
-          >
-            <div className="connection-card-header">
-              <h3>{connection.name}</h3>
-              <span className={`connection-status ${connection.is_active ? 'active' : 'inactive'}`}>
-                {connection.is_active ? 'Active' : 'Inactive'}
-              </span>
-            </div>
-            <p className="connection-type">{connection.marketplace_type}</p>
-            {connection.last_sync_at && (
-              <p className="connection-last-sync">
-                Last sync: {new Date(connection.last_sync_at).toLocaleDateString()}
-              </p>
-            )}
-          </div>
-        ))}
-      </div>
-
-      {data.count > pageSize && (
-        <div className="connection-list-pagination">
-          <Button
- variant="secondary"
- onClick={() => setPage((p) => Math.max(1, p - 1))}
- disabled={page === 1}>
-            Previous
-          </Button>
-          <span className="pagination-info">
-            Page {page} of {Math.ceil(data.count / pageSize)}
-          </span>
-          <Button
- variant="secondary"
- onClick={() => setPage((p) => p + 1)}
- disabled={page>= Math.ceil(data.count / pageSize)}>
-            Next
-          </Button>
-        </div>
-      )}
+      {mainContent}
     </div>
   );
 }

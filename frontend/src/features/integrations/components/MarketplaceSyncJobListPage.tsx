@@ -3,7 +3,7 @@
  * View and manage marketplace sync jobs
  */
 
-import { useState } from 'react';
+import { useState, type ReactNode } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useMarketplaceSyncJobs } from '../hooks/useMarketplaceSyncJobs';
 import { ListPageSkeleton } from '../../../shared/components/skeletons/ListPageSkeleton';
@@ -38,25 +38,104 @@ export function MarketplaceSyncJobListPage() {
     navigate('/integrations/sync-jobs/create');
   };
 
+  const hasActiveFilter = !!(statusFilter || directionFilter);
+
+  // Track B structural inversion: header + filter bar render unconditionally.
+  let mainContent: ReactNode;
   if (isLoading) {
-    return <ListPageSkeleton />;
-  }
-
-  if (error) {
-    return <ErrorDisplay error={error} title="Failed to load sync jobs" onRetry={() => refetch()} />;
-  }
-
-  if (!data || data.results.length === 0) {
-    return (
+    mainContent = <ListPageSkeleton />;
+  } else if (error) {
+    mainContent = (
+      <ErrorDisplay error={error} title="Failed to load sync jobs" onRetry={() => refetch()} />
+    );
+  } else if (!data || data.results.length === 0) {
+    mainContent = (
       <EmptyState
         title="No sync jobs found"
-        message={statusFilter || directionFilter
-          ? "Try adjusting your filters to see more results."
-          : "No sync jobs have been created yet."}
-        action={!statusFilter && !directionFilter
-          ? { label: 'Create Sync Job', onClick: handleCreateSyncJob }
-          : undefined}
+        message={
+          hasActiveFilter
+            ? 'Try adjusting your filters to see more results.'
+            : 'No sync jobs have been created yet.'
+        }
+        action={!hasActiveFilter ? { label: 'Create Sync Job', onClick: handleCreateSyncJob } : undefined}
       />
+    );
+  } else {
+    mainContent = (
+      <>
+        <div className="sync-job-list-table">
+          <table>
+            <thead>
+              <tr>
+                <th>Connection</th>
+                <th>Direction</th>
+                <th>Status</th>
+                <th>Items Synced</th>
+                <th>Created</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {data.results.map((job) => (
+                <tr
+                  key={job.id}
+                  onClick={() => handleSyncJobClick(job.id)}
+                  className="sync-job-row"
+                >
+                  <td>{job.connection.name}</td>
+                  <td>{job.direction}</td>
+                  <td>
+                    <span className={`sync-job-status sync-job-status-${job.status.toLowerCase()}`}>
+                      {job.status}
+                    </span>
+                  </td>
+                  <td>
+                    {job.items_synced !== undefined ? job.items_synced : '-'}
+                    {job.items_failed !== undefined && job.items_failed > 0 && (
+                      <span className="sync-job-failed"> ({job.items_failed} failed)</span>
+                    )}
+                  </td>
+                  <td>{new Date(job.created_at).toLocaleDateString()}</td>
+                  <td>
+                    <button
+                      className="btn-link"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleSyncJobClick(job.id);
+                      }}
+                      type="button"
+                    >
+                      View
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+
+        {data.count > pageSize && (
+          <div className="sync-job-list-pagination">
+            <Button
+              variant="secondary"
+              onClick={() => setPage((p) => Math.max(1, p - 1))}
+              disabled={page === 1}
+            >
+              Previous
+            </Button>
+            <span className="pagination-info">
+              Page {page} of {Math.ceil(data.count / pageSize)}
+            </span>
+            <Button
+              variant="secondary"
+              onClick={() => setPage((p) => p + 1)}
+              disabled={page >= Math.ceil(data.count / pageSize)}
+            >
+              Next
+            </Button>
+          </div>
+        )}
+      </>
     );
   }
 
@@ -77,6 +156,7 @@ export function MarketplaceSyncJobListPage() {
             setPage(1);
           }}
           className="filter-select"
+          aria-label="Filter by status"
         >
           <option value="">All Statuses</option>
           <option value={SyncJobStatus.PENDING}>Pending</option>
@@ -93,6 +173,7 @@ export function MarketplaceSyncJobListPage() {
             setPage(1);
           }}
           className="filter-select"
+          aria-label="Filter by direction"
         >
           <option value="">All Directions</option>
           <option value={SyncDirection.PUSH}>Push</option>
@@ -101,76 +182,7 @@ export function MarketplaceSyncJobListPage() {
         </select>
       </div>
 
-      <div className="sync-job-list-table">
-        <table>
-          <thead>
-            <tr>
-              <th>Connection</th>
-              <th>Direction</th>
-              <th>Status</th>
-              <th>Items Synced</th>
-              <th>Created</th>
-              <th>Actions</th>
-            </tr>
-          </thead>
-          <tbody>
-            {data.results.map((job) => (
-              <tr
-                key={job.id}
-                onClick={() => handleSyncJobClick(job.id)}
-                className="sync-job-row"
-              >
-                <td>{job.connection.name}</td>
-                <td>{job.direction}</td>
-                <td>
-                  <span className={`sync-job-status sync-job-status-${job.status.toLowerCase()}`}>
-                    {job.status}
-                  </span>
-                </td>
-                <td>
-                  {job.items_synced !== undefined ? job.items_synced : '-'}
-                  {job.items_failed !== undefined && job.items_failed > 0 && (
-                    <span className="sync-job-failed"> ({job.items_failed} failed)</span>
-                  )}
-                </td>
-                <td>{new Date(job.created_at).toLocaleDateString()}</td>
-                <td>
-                  <button
-                    className="btn-link"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      handleSyncJobClick(job.id);
-                    }}
-                    type="button"
-                  >
-                    View
-                  </button>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-
-      {data.count > pageSize && (
-        <div className="sync-job-list-pagination">
-          <Button
- variant="secondary"
- onClick={() => setPage((p) => Math.max(1, p - 1))}
- disabled={page === 1}>
-            Previous
-          </Button>
-          <span className="pagination-info">
-            Page {page} of {Math.ceil(data.count / pageSize)}
-          </span>
-          <Button
- variant="secondary"
- onClick={() => setPage((p) => p + 1)}
- disabled={page>= Math.ceil(data.count / pageSize)}>
-            Next
-          </Button>
-        </div>
-      )}
+      {mainContent}
     </div>
   );
 }

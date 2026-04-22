@@ -4,7 +4,7 @@
  * Supports bulk approve/reject for TENANT_ADMIN/PLATFORM_ADMIN (223.3.4).
  */
 
-import { useState } from 'react';
+import { useState, type ReactNode } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { BulkActionBar } from '../../../shared/components/BulkActionBar';
 import { EmptyState } from '../../../shared/components/EmptyState';
@@ -55,8 +55,6 @@ export function AccessRequestListPage() {
   const results = data?.results ?? [];
   const count = data?.count ?? 0;
 
-  // Only PENDING rows are bulk-actionable — approving a REJECTED / APPROVED
-  // request is a business-rule error, and the checkbox would mislead.
   const selection = useBulkSelection({
     allIds: results.map((ar) => ar.id),
     isSelectable: (id) => results.find((r) => r.id === id)?.status === 'PENDING',
@@ -88,17 +86,111 @@ export function AccessRequestListPage() {
     }
   };
 
+  // Track B structural inversion: header + filter bar render unconditionally.
+  let mainContent: ReactNode;
   if (isLoading) {
-    return <ListPageSkeleton />;
-  }
-
-  if (error) {
-    return (
+    mainContent = <ListPageSkeleton />;
+  } else if (error) {
+    mainContent = (
       <ErrorDisplay
         error={error}
         title="Failed to load access requests"
         onRetry={() => refetch()}
       />
+    );
+  } else if (results.length === 0) {
+    mainContent = (
+      <EmptyState
+        title="No access requests"
+        message={
+          statusFilter
+            ? `No access requests with status "${statusFilter}".`
+            : 'No access requests yet. Create one to request access to an asset, dataset, or file.'
+        }
+        action={{
+          label: 'Create access request',
+          onClick: () => navigate('/governance/access-requests/create'),
+        }}
+      />
+    );
+  } else {
+    mainContent = (
+      <>
+        <table className="governance-access-request-table" aria-label="Access requests">
+          <thead>
+            <tr>
+              {isAdmin && (
+                <th style={{ width: '2.5rem' }}>
+                  <input
+                    type="checkbox"
+                    aria-label="Select all pending rows"
+                    checked={selection.isAllSelected}
+                    ref={(el) => {
+                      if (el) el.indeterminate = selection.isIndeterminate;
+                    }}
+                    onChange={() => selection.toggleAll()}
+                    data-testid="access-request-select-all"
+                  />
+                </th>
+              )}
+              <th>Reason</th>
+              <th>Resource</th>
+              <th>Type</th>
+              <th>Status</th>
+              <th>Created</th>
+            </tr>
+          </thead>
+          <tbody>
+            {results.map((ar) => {
+              const canSelect = ar.status === 'PENDING';
+              return (
+                <tr
+                  key={ar.id}
+                  className="row-link"
+                  onClick={(e) => {
+                    if ((e.target as HTMLElement).tagName === 'INPUT') return;
+                    handleRowClick(ar.id);
+                  }}
+                  onKeyDown={(e) => e.key === 'Enter' && handleRowClick(ar.id)}
+                  role="button"
+                  tabIndex={0}
+                >
+                  {isAdmin && (
+                    <td>
+                      <input
+                        type="checkbox"
+                        aria-label={`Select request ${ar.id}`}
+                        checked={selection.isSelected(ar.id)}
+                        disabled={!canSelect}
+                        onChange={() => selection.toggle(ar.id)}
+                        onClick={(e) => e.stopPropagation()}
+                        data-testid={`access-request-select-${ar.id}`}
+                      />
+                    </td>
+                  )}
+                  <td>{ar.reason.length > 60 ? `${ar.reason.slice(0, 60)}…` : ar.reason}</td>
+                  <td>
+                    {ar.asset && <span>Asset</span>}
+                    {ar.dataset && <span>Dataset</span>}
+                    {ar.file && <span>File</span>}
+                    {!ar.asset && !ar.dataset && !ar.file && '—'}
+                  </td>
+                  <td>{ar.requested_access_type}</td>
+                  <td>
+                    <span className={`governance-status-badge ${ar.status}`}>{ar.status}</span>
+                  </td>
+                  <td>{new Date(ar.created_at).toLocaleString()}</td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+        <div className="governance-list-pagination">
+          <span className="pagination-info">
+            {count} result{count !== 1 ? 's' : ''}
+          </span>
+        </div>
+      </>
     );
   }
 
@@ -133,8 +225,9 @@ export function AccessRequestListPage() {
             Export CSV
           </Button>
           <Button
- variant="primary"
- onClick={() => navigate('/governance/access-requests/create')}>
+            variant="primary"
+            onClick={() => navigate('/governance/access-requests/create')}
+          >
             Create access request
           </Button>
         </div>
@@ -156,97 +249,7 @@ export function AccessRequestListPage() {
         </select>
       </div>
 
-      {results.length === 0 ? (
-        <EmptyState
-          title="No access requests"
-          message={
-            statusFilter
-              ? `No access requests with status "${statusFilter}".`
-              : 'No access requests yet. Create one to request access to an asset, dataset, or file.'
-          }
-          action={{
-            label: 'Create access request',
-            onClick: () => navigate('/governance/access-requests/create'),
-          }}
-        />
-      ) : (
-        <>
-          <table className="governance-access-request-table" aria-label="Access requests">
-            <thead>
-              <tr>
-                {isAdmin && (
-                  <th style={{ width: '2.5rem' }}>
-                    <input
-                      type="checkbox"
-                      aria-label="Select all pending rows"
-                      checked={selection.isAllSelected}
-                      ref={(el) => {
-                        if (el) el.indeterminate = selection.isIndeterminate;
-                      }}
-                      onChange={() => selection.toggleAll()}
-                      data-testid="access-request-select-all"
-                    />
-                  </th>
-                )}
-                <th>Reason</th>
-                <th>Resource</th>
-                <th>Type</th>
-                <th>Status</th>
-                <th>Created</th>
-              </tr>
-            </thead>
-            <tbody>
-              {results.map((ar) => {
-                const canSelect = ar.status === 'PENDING';
-                return (
-                  <tr
-                    key={ar.id}
-                    className="row-link"
-                    onClick={(e) => {
-                      if ((e.target as HTMLElement).tagName === 'INPUT') return;
-                      handleRowClick(ar.id);
-                    }}
-                    onKeyDown={(e) => e.key === 'Enter' && handleRowClick(ar.id)}
-                    role="button"
-                    tabIndex={0}
-                  >
-                    {isAdmin && (
-                      <td>
-                        <input
-                          type="checkbox"
-                          aria-label={`Select request ${ar.id}`}
-                          checked={selection.isSelected(ar.id)}
-                          disabled={!canSelect}
-                          onChange={() => selection.toggle(ar.id)}
-                          onClick={(e) => e.stopPropagation()}
-                          data-testid={`access-request-select-${ar.id}`}
-                        />
-                      </td>
-                    )}
-                    <td>{ar.reason.length > 60 ? `${ar.reason.slice(0, 60)}…` : ar.reason}</td>
-                    <td>
-                      {ar.asset && <span>Asset</span>}
-                      {ar.dataset && <span>Dataset</span>}
-                      {ar.file && <span>File</span>}
-                      {!ar.asset && !ar.dataset && !ar.file && '—'}
-                    </td>
-                    <td>{ar.requested_access_type}</td>
-                    <td>
-                      <span className={`governance-status-badge ${ar.status}`}>{ar.status}</span>
-                    </td>
-                    <td>{new Date(ar.created_at).toLocaleString()}</td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-          <div className="governance-list-pagination">
-            <span className="pagination-info">
-              {count} result{count !== 1 ? 's' : ''}
-            </span>
-          </div>
-        </>
-      )}
+      {mainContent}
 
       {isAdmin && (
         <BulkActionBar

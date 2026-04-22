@@ -4,7 +4,7 @@
  * Route: /settings/sessions
  */
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import { Breadcrumbs } from '../../../shared/components/Breadcrumbs';
 import { ConfirmDialog } from '../../../shared/components/ConfirmDialog';
 import { ErrorDisplay } from '../../../shared/components/ErrorDisplay';
@@ -60,13 +60,63 @@ export function SessionListPage() {
     }
   };
 
+  // Track B structural inversion: breadcrumbs + header render unconditionally.
+  let mainContent: ReactNode;
   if (loading) {
-    return <ListPageSkeleton />;
-  }
-
-  if (error) {
-    return (
+    mainContent = <ListPageSkeleton />;
+  } else if (error) {
+    mainContent = (
       <ErrorDisplay error={error} title="Failed to load sessions" onRetry={() => loadSessions()} />
+    );
+  } else if (sessions.length === 0) {
+    mainContent = (
+      <div className="session-list-empty">
+        <p>No active sessions.</p>
+      </div>
+    );
+  } else {
+    mainContent = (
+      <div className="session-list-table-wrap">
+        <table className="session-list-table">
+          <thead>
+            <tr>
+              <th>Created</th>
+              <th>Expires</th>
+              <th>Status</th>
+              <th>Action</th>
+            </tr>
+          </thead>
+          <tbody>
+            {sessions.map((session) => (
+              <tr key={session.id}>
+                <td>{new Date(session.created_at).toLocaleString()}</td>
+                <td>{new Date(session.expires_at).toLocaleString()}</td>
+                <td>
+                  {session.revoked_at ? (
+                    <span className="session-status revoked">Revoked</span>
+                  ) : session.is_current ? (
+                    <span className="session-status current">Current</span>
+                  ) : (
+                    <span className="session-status active">Active</span>
+                  )}
+                </td>
+                <td>
+                  {!session.revoked_at && (
+                    <button
+                      type="button"
+                      className="btn-revoke"
+                      onClick={() => handleRevokeClick(session.id)}
+                      disabled={revokingId === session.id}
+                    >
+                      {revokingId === session.id ? 'Revoking...' : 'Revoke'}
+                    </button>
+                  )}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
     );
   }
 
@@ -86,53 +136,7 @@ export function SessionListPage() {
         </p>
       </div>
 
-      {sessions.length === 0 ? (
-        <div className="session-list-empty">
-          <p>No active sessions.</p>
-        </div>
-      ) : (
-        <div className="session-list-table-wrap">
-          <table className="session-list-table">
-            <thead>
-              <tr>
-                <th>Created</th>
-                <th>Expires</th>
-                <th>Status</th>
-                <th>Action</th>
-              </tr>
-            </thead>
-            <tbody>
-              {sessions.map((session) => (
-                <tr key={session.id}>
-                  <td>{new Date(session.created_at).toLocaleString()}</td>
-                  <td>{new Date(session.expires_at).toLocaleString()}</td>
-                  <td>
-                    {session.revoked_at ? (
-                      <span className="session-status revoked">Revoked</span>
-                    ) : session.is_current ? (
-                      <span className="session-status current">Current</span>
-                    ) : (
-                      <span className="session-status active">Active</span>
-                    )}
-                  </td>
-                  <td>
-                    {!session.revoked_at && (
-                      <button
-                        type="button"
-                        className="btn-revoke"
-                        onClick={() => handleRevokeClick(session.id)}
-                        disabled={revokingId === session.id}
-                      >
-                        {revokingId === session.id ? 'Revoking...' : 'Revoke'}
-                      </button>
-                    )}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
+      {mainContent}
 
       <ConfirmDialog
         isOpen={confirmRevokeId !== null}

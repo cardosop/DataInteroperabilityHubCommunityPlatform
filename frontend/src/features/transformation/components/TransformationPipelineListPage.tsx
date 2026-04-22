@@ -3,11 +3,12 @@
  * Displays list of transformation pipelines with filters and search
  */
 
-import { useState } from 'react';
+import { useState, type ReactNode } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { EmptyState } from '../../../shared/components/EmptyState';
 import { ErrorDisplay } from '../../../shared/components/ErrorDisplay';
 import { ListPageSkeleton } from '../../../shared/components/skeletons/ListPageSkeleton';
+import { useDebouncedValue } from '../../../shared/hooks/useDebouncedValue';
 import { useTransformationPipelines } from '../hooks/useTransformationPipelines';
 import { PipelineStatus } from '../../../shared/types/transformation';
 import type { TransformationListFilters } from '../../../shared/types/transformation';
@@ -26,10 +27,12 @@ export function TransformationPipelineListPage() {
   const navigate = useNavigate();
   const [statusFilter, setStatusFilter] = useState<string>('');
   const [search, setSearch] = useState('');
+  // PR 5.3: debounce the search input.
+  const debouncedSearch = useDebouncedValue(search, 300);
 
   const filters: TransformationListFilters = {};
   if (statusFilter) filters.status = statusFilter as PipelineStatus;
-  if (search.trim()) filters.search = search.trim();
+  if (debouncedSearch.trim()) filters.search = debouncedSearch.trim();
 
   const { data, isLoading, error, refetch } = useTransformationPipelines(filters);
 
@@ -37,36 +40,94 @@ export function TransformationPipelineListPage() {
     navigate('/transformation/create');
   };
 
+  const hasFilters = !!statusFilter || !!debouncedSearch.trim();
+
+  // Track B structural inversion: header + filter bar render unconditionally.
+  let mainContent: ReactNode;
   if (isLoading) {
-    return <ListPageSkeleton />;
-  }
-
-  if (error) {
-    return (
-      <div className="transformation-list-error-wrapper">
-        <ErrorDisplay
-          error={error}
-          title="Failed to load transformation pipelines"
-          onRetry={() => refetch()}
-        />
-        <div className="transformation-list-error-actions">
-          <Button variant="primary" onClick={handleCreatePipeline}>
-            Create Pipeline
-          </Button>
-        </div>
-      </div>
+    mainContent = <ListPageSkeleton />;
+  } else if (error) {
+    mainContent = (
+      <ErrorDisplay
+        error={error}
+        title="Failed to load transformation pipelines"
+        onRetry={() => refetch()}
+      />
     );
-  }
-
-  const hasFilters = !!statusFilter || !!search.trim();
-
-  if (!data || (data.results.length === 0 && !hasFilters)) {
-    return (
+  } else if (!data || data.results.length === 0) {
+    mainContent = hasFilters ? (
+      <div className="transformation-no-results">
+        <p>No pipelines match your filters.</p>
+      </div>
+    ) : (
       <EmptyState
         title="No transformation pipelines"
         message="Get started by creating your first transformation pipeline."
         action={{ label: 'Create Pipeline', onClick: handleCreatePipeline }}
       />
+    );
+  } else {
+    mainContent = (
+      <div className="transformation-list-table">
+        <table role="table" aria-label="Transformation pipelines list">
+          <thead>
+            <tr>
+              <th scope="col">Name</th>
+              <th scope="col">Description</th>
+              <th scope="col">Status</th>
+              <th scope="col">Version</th>
+              <th scope="col">Steps</th>
+              <th scope="col">Created</th>
+            </tr>
+          </thead>
+          <tbody>
+            {data.results.map((pipeline) => {
+              const stepCount = pipeline.pipeline_definition?.steps?.length ?? 0;
+              return (
+                <tr
+                  key={pipeline.id}
+                  data-pipeline-id={pipeline.id}
+                  onClick={() => navigate(`/transformation/pipelines/${pipeline.id}`)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' || e.key === ' ') {
+                      e.preventDefault();
+                      navigate(`/transformation/pipelines/${pipeline.id}`);
+                    }
+                  }}
+                  className="pipeline-row"
+                  role="button"
+                  tabIndex={0}
+                  aria-label={`Pipeline ${pipeline.name}`}
+                >
+                  <td>
+                    <strong>{pipeline.name}</strong>
+                  </td>
+                  <td className="pipeline-description-cell">
+                    {pipeline.description || <span className="text-muted">No description</span>}
+                  </td>
+                  <td>
+                    <span
+                      className={`status-badge status-${(pipeline.status || 'draft').toLowerCase()}`}
+                      aria-label={`Status: ${pipeline.status}`}
+                    >
+                      {pipeline.status}
+                    </span>
+                  </td>
+                  <td>
+                    <code>{pipeline.version || '1.0.0'}</code>
+                  </td>
+                  <td>{stepCount}</td>
+                  <td className="pipeline-date-cell">
+                    {pipeline.created_at
+                      ? new Date(pipeline.created_at).toLocaleDateString()
+                      : '—'}
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
     );
   }
 
@@ -102,72 +163,7 @@ export function TransformationPipelineListPage() {
         </select>
       </div>
 
-      {data.results.length === 0 ? (
-        <div className="transformation-no-results">
-          <p>No pipelines match your filters.</p>
-        </div>
-      ) : (
-        <div className="transformation-list-table">
-          <table role="table" aria-label="Transformation pipelines list">
-            <thead>
-              <tr>
-                <th scope="col">Name</th>
-                <th scope="col">Description</th>
-                <th scope="col">Status</th>
-                <th scope="col">Version</th>
-                <th scope="col">Steps</th>
-                <th scope="col">Created</th>
-              </tr>
-            </thead>
-            <tbody>
-              {data.results.map((pipeline) => {
-                const stepCount = pipeline.pipeline_definition?.steps?.length ?? 0;
-                return (
-                  <tr
-                    key={pipeline.id}
-                    data-pipeline-id={pipeline.id}
-                    onClick={() => navigate(`/transformation/pipelines/${pipeline.id}`)}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter' || e.key === ' ') {
-                        e.preventDefault();
-                        navigate(`/transformation/pipelines/${pipeline.id}`);
-                      }
-                    }}
-                    className="pipeline-row"
-                    role="button"
-                    tabIndex={0}
-                    aria-label={`Pipeline ${pipeline.name}`}
-                  >
-                    <td>
-                      <strong>{pipeline.name}</strong>
-                    </td>
-                    <td className="pipeline-description-cell">
-                      {pipeline.description || <span className="text-muted">No description</span>}
-                    </td>
-                    <td>
-                      <span
-                        className={`status-badge status-${(pipeline.status || 'draft').toLowerCase()}`}
-                        aria-label={`Status: ${pipeline.status}`}
-                      >
-                        {pipeline.status}
-                      </span>
-                    </td>
-                    <td>
-                      <code>{pipeline.version || '1.0.0'}</code>
-                    </td>
-                    <td>{stepCount}</td>
-                    <td className="pipeline-date-cell">
-                      {pipeline.created_at
-                        ? new Date(pipeline.created_at).toLocaleDateString()
-                        : '\u2014'}
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
-      )}
+      {mainContent}
     </div>
   );
 }

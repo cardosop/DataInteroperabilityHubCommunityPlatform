@@ -3,7 +3,7 @@
  * View all orders
  */
 
-import { useState } from 'react';
+import { useState, type ReactNode } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { EmptyState } from '../../../shared/components/EmptyState';
 import { ErrorDisplay } from '../../../shared/components/ErrorDisplay';
@@ -22,8 +22,7 @@ export function OrderListPage() {
 
   // Reverse-link filter: `/marketplace/orders?listing_id=...` (from
   // ListingOrdersCount in 223.2.3) must actually narrow the result set,
-  // not drop silently. Read from the URL so the query survives
-  // navigation and deep-links work.
+  // not drop silently.
   const listingIdFilter = searchParams.get('listing_id') || undefined;
 
   const filters = {
@@ -40,16 +39,16 @@ export function OrderListPage() {
     navigate(`/marketplace/orders/${orderId}`);
   };
 
+  // Track B structural inversion: header + filter bar render unconditionally.
+  let mainContent: ReactNode;
   if (isLoading) {
-    return <ListPageSkeleton />;
-  }
-
-  if (error) {
-    return <ErrorDisplay error={error} title="Failed to load orders" onRetry={() => refetch()} />;
-  }
-
-  if (!data?.results?.length) {
-    return (
+    mainContent = <ListPageSkeleton />;
+  } else if (error) {
+    mainContent = (
+      <ErrorDisplay error={error} title="Failed to load orders" onRetry={() => refetch()} />
+    );
+  } else if (!data?.results?.length) {
+    mainContent = (
       <EmptyState
         title="No orders found"
         message={
@@ -58,6 +57,74 @@ export function OrderListPage() {
             : "You haven't placed any orders yet."
         }
       />
+    );
+  } else {
+    mainContent = (
+      <>
+        <div className="order-list-table">
+          <table>
+            <thead>
+              <tr>
+                <th>Listing</th>
+                <th>Status</th>
+                <th>Created</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {data.results.map((order) => (
+                <tr
+                  key={order.id}
+                  onClick={() => handleOrderClick(order.id)}
+                  className="order-row"
+                >
+                  <td>{order.listing_title || order.listing}</td>
+                  <td>
+                    <span className={`order-status order-status-${order.status.toLowerCase()}`}>
+                      {order.status}
+                    </span>
+                  </td>
+                  <td>{new Date(order.created_at).toLocaleDateString()}</td>
+                  <td>
+                    <button
+                      className="btn-link"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleOrderClick(order.id);
+                      }}
+                      type="button"
+                    >
+                      View
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+
+        {data.count > pageSize && (
+          <div className="order-list-pagination">
+            <Button
+              variant="secondary"
+              onClick={() => setPage((p) => Math.max(1, p - 1))}
+              disabled={page === 1}
+            >
+              Previous
+            </Button>
+            <span className="pagination-info">
+              Page {page} of {Math.ceil(data.count / pageSize)}
+            </span>
+            <Button
+              variant="secondary"
+              onClick={() => setPage((p) => p + 1)}
+              disabled={page >= Math.ceil(data.count / pageSize)}
+            >
+              Next
+            </Button>
+          </div>
+        )}
+      </>
     );
   }
 
@@ -75,6 +142,7 @@ export function OrderListPage() {
             setPage(1);
           }}
           className="filter-select"
+          aria-label="Filter by order status"
         >
           <option value="">All Statuses</option>
           <option value={OrderStatus.REQUESTED}>Requested</option>
@@ -85,63 +153,7 @@ export function OrderListPage() {
         </select>
       </div>
 
-      <div className="order-list-table">
-        <table>
-          <thead>
-            <tr>
-              <th>Listing</th>
-              <th>Status</th>
-              <th>Created</th>
-              <th>Actions</th>
-            </tr>
-          </thead>
-          <tbody>
-            {data.results.map((order) => (
-              <tr key={order.id} onClick={() => handleOrderClick(order.id)} className="order-row">
-                <td>{order.listing_title || order.listing}</td>
-                <td>
-                  <span className={`order-status order-status-${order.status.toLowerCase()}`}>
-                    {order.status}
-                  </span>
-                </td>
-                <td>{new Date(order.created_at).toLocaleDateString()}</td>
-                <td>
-                  <button
-                    className="btn-link"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      handleOrderClick(order.id);
-                    }}
-                    type="button"
-                  >
-                    View
-                  </button>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-
-      {data.count > pageSize && (
-        <div className="order-list-pagination">
-          <Button
- variant="secondary"
- onClick={() => setPage((p) => Math.max(1, p - 1))}
- disabled={page === 1}>
-            Previous
-          </Button>
-          <span className="pagination-info">
-            Page {page} of {Math.ceil(data.count / pageSize)}
-          </span>
-          <Button
- variant="secondary"
- onClick={() => setPage((p) => p + 1)}
- disabled={page>= Math.ceil(data.count / pageSize)}>
-            Next
-          </Button>
-        </div>
-      )}
+      {mainContent}
     </div>
   );
 }

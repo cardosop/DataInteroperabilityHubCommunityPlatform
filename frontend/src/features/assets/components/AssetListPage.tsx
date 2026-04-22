@@ -3,7 +3,7 @@
  * Displays list of assets with filtering and pagination
  */
 
-import { useState } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { BulkActionBar } from '../../../shared/components/BulkActionBar';
 import { EmptyState } from '../../../shared/components/EmptyState';
@@ -11,6 +11,7 @@ import { ErrorDisplay } from '../../../shared/components/ErrorDisplay';
 import { ListPageSkeleton } from '../../../shared/components/skeletons/ListPageSkeleton';
 import { useToast } from '../../../shared/components/Toast';
 import { useBulkSelection } from '../../../shared/hooks/useBulkSelection';
+import { useDebouncedValue } from '../../../shared/hooks/useDebouncedValue';
 import { exportToCSV } from '../../../shared/utils/exportUtils';
 import type { AssetStatus, AssetVisibility } from '../../../shared/types/assets';
 import { assetService } from '../services/assetService';
@@ -29,10 +30,13 @@ function pickParam<T extends string>(value: string | null, allowed: readonly T[]
 
 export function AssetListPage() {
   const navigate = useNavigate();
-  const [searchParams] = useSearchParams();
+  const [searchParams, setSearchParams] = useSearchParams();
   const [page, setPage] = useState(1);
   const [pageSize] = useState(50);
   const [search, setSearch] = useState(() => searchParams.get('search') ?? '');
+  // PR 5.3: debounce search so we fetch only after the user pauses typing.
+  // Input stays controlled by raw `search` for instant visual feedback.
+  const debouncedSearch = useDebouncedValue(search, 300);
   const [domainFilter, setDomainFilter] = useState<string>(() => searchParams.get('domain') ?? '');
   const [statusFilter, setStatusFilter] = useState<AssetStatus | ''>(
     () => pickParam(searchParams.get('status'), ALLOWED_STATUSES),
@@ -50,7 +54,7 @@ export function AssetListPage() {
   const filters = {
     page,
     page_size: pageSize,
-    search: search || undefined,
+    search: debouncedSearch || undefined,
     domain: domainFilter || undefined,
     status: statusFilter || undefined,
     visibility: visibilityFilter || undefined,
@@ -60,6 +64,20 @@ export function AssetListPage() {
   };
 
   const { data, isLoading, error, refetch } = useAssets(filters);
+
+  // Sync debounced search back to URL so `?search=...` reflects the committed
+  // query (not every keystroke). replace:true keeps history length sane.
+  useEffect(() => {
+    setSearchParams(
+      (prev) => {
+        const next = new URLSearchParams(prev);
+        if (debouncedSearch) next.set('search', debouncedSearch);
+        else next.delete('search');
+        return next;
+      },
+      { replace: true },
+    );
+  }, [debouncedSearch, setSearchParams]);
   const toast = useToast();
   const [isBulkDeleting, setIsBulkDeleting] = useState(false);
 
@@ -115,39 +133,161 @@ export function AssetListPage() {
     navigate('/assets/create');
   };
 
+  // Track B structural inversion: filter bar renders unconditionally, above the
+  // isLoading/error/empty guards. Prevents search-input unmount-on-keystroke
+  // when query key changes and isLoading briefly flips true (defense-in-depth
+  // alongside the global placeholderData: keepPreviousData default).
+  const hasActiveFilter = Boolean(search || domainFilter || statusFilter || visibilityFilter);
+
+  let mainContent: ReactNode;
   if (isLoading) {
-    return <ListPageSkeleton />;
-  }
-
-  if (error) {
-    return (
-      <div className="asset-list-error-wrapper">
-        <ErrorDisplay error={error} title="Failed to load assets" onRetry={() => refetch()} />
-        <div className="asset-list-error-actions">
-          <Button variant="primary" onClick={handleCreateAsset}>
-            Create Asset
-          </Button>
-        </div>
-      </div>
+    mainContent = <ListPageSkeleton />;
+  } else if (error) {
+    mainContent = (
+      <ErrorDisplay error={error} title="Failed to load assets" onRetry={() => refetch()} />
     );
-  }
-
-  if (!data || data.results.length === 0) {
-    return (
+  } else if (!data || data.results.length === 0) {
+    mainContent = (
       <EmptyState
         data-testid="asset-list-empty-state"
         title="No assets found"
         message={
-          search || domainFilter || statusFilter || visibilityFilter
+          hasActiveFilter
             ? 'Try adjusting your filters to see more results.'
             : 'Get started by creating your first asset.'
         }
-        action={
-          !search && !domainFilter && !statusFilter && !visibilityFilter
-            ? { label: 'Create Asset', onClick: handleCreateAsset }
-            : undefined
-        }
+        action={!hasActiveFilter ? { label: 'Create Asset', onClick: handleCreateAsset } : undefined}
       />
+    );
+  } else {
+    // Success: table + bulk action bar + pagination. Data is guaranteed non-null here.
+    mainContent = (
+      <>
+        <div className="asset-list-table" data-testid="asset-list-table">
+          <table role="table" aria-label="Assets list">
+            <thead>
+              <tr>
+                <th scope="col" style={{ width: '2.5rem' }}>
+                  <input
+                    type="checkbox"
+                    aria-label="Select all DRAFT assets"
+                    checked={selection.isAllSelected}
+                    ref={(el) => {
+                      if (el) el.indeterminate = selection.isIndeterminate;
+                    }}
+                    onChange={() => selection.toggleAll()}
+                    data-testid="asset-select-all"
+                  />
+                </th>
+                <th scope="col">Name</th>
+                <th scope="col">Key</th>
+                <th scope="col">Domain</th>
+                <th scope="col">Status</th>
+                <th scope="col">Visibility</th>
+                <th scope="col">Created</th>
+              </tr>
+            </thead>
+            <tbody>
+              {data.results.map((asset) => (
+                <tr
+                  key={asset.id}
+                  data-asset-id={asset.id}
+                  onClick={(e) => {
+                    if ((e.target as HTMLElement).tagName === 'INPUT') return;
+                    handleAssetClick(asset.id);
+                  }}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' || e.key === ' ') {
+                      e.preventDefault();
+                      handleAssetClick(asset.id);
+                    }
+                  }}
+                  className="asset-row"
+                  role="row"
+                  tabIndex={0}
+                  aria-label={`Asset ${asset.name}`}
+                >
+                  <td>
+                    <input
+                      type="checkbox"
+                      aria-label={`Select asset ${asset.name}`}
+                      checked={selection.isSelected(asset.id)}
+                      disabled={asset.status !== 'DRAFT'}
+                      onChange={() => selection.toggle(asset.id)}
+                      onClick={(e) => e.stopPropagation()}
+                      data-testid={`asset-select-${asset.id}`}
+                    />
+                  </td>
+                  <td>
+                    <strong>{asset.name}</strong>
+                    {asset.description && (
+                      <div className="asset-description">{asset.description}</div>
+                    )}
+                  </td>
+                  <td>
+                    <code>{asset.key}</code>
+                  </td>
+                  <td>{asset.domain || '-'}</td>
+                  <td>
+                    <span
+                      className={`status-badge status-${asset.status.toLowerCase()}`}
+                      aria-label={`Status: ${asset.status}`}
+                    >
+                      {asset.status}
+                    </span>
+                  </td>
+                  <td>
+                    <span
+                      className={`visibility-badge visibility-${asset.visibility.toLowerCase()}`}
+                      aria-label={`Visibility: ${asset.visibility}`}
+                    >
+                      {asset.visibility}
+                    </span>
+                  </td>
+                  <td>{new Date(asset.created_at).toLocaleDateString()}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+
+        <BulkActionBar
+          selectedCount={selection.selectedCount}
+          onDeselectAll={selection.deselectAll}
+          description="Only DRAFT assets may be bulk-deleted."
+          actions={[
+            {
+              label: `Delete ${selection.selectedCount}`,
+              variant: 'danger',
+              onClick: handleBulkDelete,
+              disabled: isBulkDeleting,
+              'data-testid': 'bulk-delete-assets',
+            },
+          ]}
+        />
+
+        {data.total_pages > 1 && (
+          <div className="asset-list-pagination">
+            <button
+              onClick={() => setPage((p) => Math.max(1, p - 1))}
+              disabled={!data.has_previous}
+              type="button"
+            >
+              Previous
+            </button>
+            <span>
+              Page {data.page} of {data.total_pages} ({data.count} total)
+            </span>
+            <button
+              onClick={() => setPage((p) => Math.min(data.total_pages, p + 1))}
+              disabled={!data.has_next}
+              type="button"
+            >
+              Next
+            </button>
+          </div>
+        )}
+      </>
     );
   }
 
@@ -178,6 +318,7 @@ export function AssetListPage() {
               )
             }
             data-testid="assets-export-csv"
+            disabled={!data || data.results.length === 0}
           >
             Export CSV
           </Button>
@@ -281,130 +422,7 @@ export function AssetListPage() {
         </select>
       </div>
 
-      <div className="asset-list-table" data-testid="asset-list-table">
-        <table role="table" aria-label="Assets list">
-          <thead>
-            <tr>
-              <th scope="col" style={{ width: '2.5rem' }}>
-                <input
-                  type="checkbox"
-                  aria-label="Select all DRAFT assets"
-                  checked={selection.isAllSelected}
-                  ref={(el) => {
-                    if (el) el.indeterminate = selection.isIndeterminate;
-                  }}
-                  onChange={() => selection.toggleAll()}
-                  data-testid="asset-select-all"
-                />
-              </th>
-              <th scope="col">Name</th>
-              <th scope="col">Key</th>
-              <th scope="col">Domain</th>
-              <th scope="col">Status</th>
-              <th scope="col">Visibility</th>
-              <th scope="col">Created</th>
-            </tr>
-          </thead>
-          <tbody>
-            {data.results.map((asset) => (
-              <tr
-                key={asset.id}
-                data-asset-id={asset.id}
-                onClick={(e) => {
-                  if ((e.target as HTMLElement).tagName === 'INPUT') return;
-                  handleAssetClick(asset.id);
-                }}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter' || e.key === ' ') {
-                    e.preventDefault();
-                    handleAssetClick(asset.id);
-                  }
-                }}
-                className="asset-row"
-                role="row"
-                tabIndex={0}
-                aria-label={`Asset ${asset.name}`}
-              >
-                <td>
-                  <input
-                    type="checkbox"
-                    aria-label={`Select asset ${asset.name}`}
-                    checked={selection.isSelected(asset.id)}
-                    disabled={asset.status !== 'DRAFT'}
-                    onChange={() => selection.toggle(asset.id)}
-                    onClick={(e) => e.stopPropagation()}
-                    data-testid={`asset-select-${asset.id}`}
-                  />
-                </td>
-                <td>
-                  <strong>{asset.name}</strong>
-                  {asset.description && (
-                    <div className="asset-description">{asset.description}</div>
-                  )}
-                </td>
-                <td>
-                  <code>{asset.key}</code>
-                </td>
-                <td>{asset.domain || '-'}</td>
-                <td>
-                  <span
-                    className={`status-badge status-${asset.status.toLowerCase()}`}
-                    aria-label={`Status: ${asset.status}`}
-                  >
-                    {asset.status}
-                  </span>
-                </td>
-                <td>
-                  <span
-                    className={`visibility-badge visibility-${asset.visibility.toLowerCase()}`}
-                    aria-label={`Visibility: ${asset.visibility}`}
-                  >
-                    {asset.visibility}
-                  </span>
-                </td>
-                <td>{new Date(asset.created_at).toLocaleDateString()}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-
-      <BulkActionBar
-        selectedCount={selection.selectedCount}
-        onDeselectAll={selection.deselectAll}
-        description="Only DRAFT assets may be bulk-deleted."
-        actions={[
-          {
-            label: `Delete ${selection.selectedCount}`,
-            variant: 'danger',
-            onClick: handleBulkDelete,
-            disabled: isBulkDeleting,
-            'data-testid': 'bulk-delete-assets',
-          },
-        ]}
-      />
-
-      {data.total_pages > 1 && (
-        <div className="asset-list-pagination">
-          <button
-            onClick={() => setPage((p) => Math.max(1, p - 1))}
-            disabled={!data.has_previous}
-            type="button"
-          >
-            Previous
-          </button>
-          <span>
-            Page {data.page} of {data.total_pages} ({data.count} total)
-          </span>
-          <button
-            onClick={() => setPage((p) => Math.min(data.total_pages, p + 1))}
-            disabled={!data.has_next}
-            type="button"
-          >
-            Next
-          </button>
-        </div>
-      )}
+      {mainContent}
     </div>
   );
 }
