@@ -26,6 +26,10 @@ from ._captured_server_errors import (
     format_diagnostic,
     is_strict_mode,
 )
+from ._skip_counter import (
+    pytest_runtest_logreport,
+    record_skip,
+)
 from ._two_tenants import two_tenants
 
 __all__ = [
@@ -35,5 +39,7 @@ __all__ = [
     "detect_offending_records",
     "format_diagnostic",
     "is_strict_mode",
+    "pytest_runtest_logreport",
+    "record_skip",
     "two_tenants",
 ]
