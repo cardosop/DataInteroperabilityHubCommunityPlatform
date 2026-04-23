@@ -181,8 +181,15 @@ if DJANGO_AVAILABLE:
 
             _e2e_sql_flush._patched_delete = True
             _pg_ops.DatabaseOperations.sql_flush = _e2e_sql_flush
-    except Exception:
-        pass
+    except (ImportError, AttributeError) as exc:
+        # Django internals may rename sql_flush between versions; if the
+        # monkey-patch target is missing we skip patching rather than
+        # crashing module import. ImportError covers missing optional
+        # backends; AttributeError covers signature/rename drift.
+        import logging as _logging
+        _logging.getLogger(__name__).warning(
+            "Could not install _e2e_sql_flush patch: %s", exc,
+        )
 
 # Staging port configuration (from docker-compose.staging.yml)
 STAGING_PORTS = {
@@ -278,14 +285,16 @@ def detect_environment() -> str:
         _ENVIRONMENT_CACHE = "default"
         return "default"
 
-    # Auto-detect by checking if staging API port is accessible (only if not in test)
+    # Auto-detect by checking if staging API port is accessible (only if not in test).
+    # Narrow exception types: connection/timeout errors are the only *expected*
+    # failures here — anything else is an actual bug that deserves to surface.
     try:
         response = httpx.get(f"http://localhost:{STAGING_PORTS['API']}/health", timeout=1)
         if response.status_code == 200:
             _ENVIRONMENT_CACHE = "staging"
             return "staging"
-    except Exception:
-        pass
+    except (httpx.TransportError, httpx.TimeoutException):
+        pass  # Staging port not reachable — try default port next.
 
     # Check default API port
     try:
@@ -293,8 +302,8 @@ def detect_environment() -> str:
         if response.status_code == 200:
             _ENVIRONMENT_CACHE = "default"
             return "default"
-    except Exception:
-        pass
+    except (httpx.TransportError, httpx.TimeoutException):
+        pass  # Default port not reachable — fall through to default return below.
 
     # Default to default (not staging) to avoid unnecessary HTTP calls
     _ENVIRONMENT_CACHE = "default"
@@ -392,7 +401,10 @@ def check_service_health(service_url: str, timeout: int = 5) -> bool:
         if response.status_code == 200:
             data = response.json()
             return data.get("status") == "healthy" or data.get("status") == "ok"
-    except Exception:
+    except (httpx.TransportError, httpx.TimeoutException, ValueError):
+        # Transport errors / timeouts → service not up yet; ValueError
+        # catches malformed JSON from a partial response. Real bugs (e.g.
+        # a KeyError on a dict lookup) should NOT be swallowed here.
         pass
     return False
 
@@ -410,7 +422,9 @@ def check_minio_health(timeout: int = 5) -> bool:
         health_url = f"{s3_url.rstrip('/')}/minio/health/live"
         response = httpx.get(health_url, timeout=timeout)
         return response.status_code == 200
-    except Exception:
+    except (httpx.TransportError, httpx.TimeoutException):
+        # Connection errors / timeouts → MinIO not reachable. Real bugs
+        # (e.g. a malformed URL) should not be swallowed as "unhealthy".
         return False
 
 
@@ -1573,12 +1587,20 @@ if DJANGO_AVAILABLE and TestCase:
                         f"S3 file size should be {expected_size}",
                     )
             except ImportError:
-                pass  # S3 client not available in this environment
-            except Exception:
-                pass  # S3 not available — skip verification silently
+                # S3 storage code not installed in this environment — a
+                # legitimate skip condition, not a silent failure.
+                pytest.skip("S3 storage backend not importable")
+            except (ConnectionError, TimeoutError, OSError) as exc:
+                # Network / socket errors — MinIO is unreachable. Visible
+                # as a skip in reports so infra outages are quantifiable
+                # (PR 10's skip-counter gate ties this into CI failure
+                # when skips cross a threshold). Critically, we do NOT
+                # blanket-catch Exception — a bug in S3StorageClient
+                # itself must still surface as a real failure.
+                pytest.skip(f"S3 not reachable: {exc}")
 
         def verify_cross_service_consistency(self, resource_id, resource_type: str):
-            """Verify resource exists in semantic service. Skips if service unavailable."""
+            """Verify resource exists in semantic service. Skips if unavailable."""
             try:
                 from hub.apps.semantic.models import SemanticResource
 
@@ -1590,7 +1612,8 @@ if DJANGO_AVAILABLE and TestCase:
                         resource.status, "Semantic resource should have a status"
                     )
             except ImportError:
-                pass  # Semantic service not available
+                # Semantic service app not installed — visible skip.
+                pytest.skip("Semantic service not importable")
 
         def verify_job_completion(self, job_id, expected_status: str = None, max_wait: int = 180):
             """Verify job completes with expected status"""
