@@ -31,13 +31,24 @@ export function isBenignConsoleError(text: string): boolean {
     // response interception, not console error detection.
     (t.includes('failed to load resource') && t.includes('403')) ||
     (t.includes('[error report]') && (t.includes('status code 403') || t.includes('request failed with status code 403') || t.includes('you do not have permission'))) ||
-    // 500 from statement timeout under parallel E2E load: PostgreSQL kills slow queries,
-    // producing transient 500s that resolve on retry.  Not a code bug.
-    (t.includes('failed to load resource') && t.includes('500') && t.includes('statement timeout')) ||
-    (t.includes('[error report]') && t.includes('statement timeout')) ||
-    // NOTE: other 500 errors are NOT benign — they indicate real backend bugs that should be surfaced.
-    // Postgres connection pool exhausted under parallel E2E load (transient)
-    (t.includes('too many clients') || t.includes('too many connections')) ||
+    //
+    // NOTE — 500-class server errors are NOT benign.
+    //
+    // This allowlist previously contained three clauses that hid real backend bugs:
+    //   * PostgreSQL `statement timeout` (slow queries — often missing indexes)
+    //   * `too many clients` / `too many connections` (connection-pool exhaustion)
+    //   * `atomic` block / `current transaction is aborted` (broken DB transactions)
+    //
+    // They were removed on 2026-04-23 as part of PR 3 of the dual-channel roll-out.
+    // Tests that LEGITIMATELY exercise a 5xx path (failure-scenario specs that
+    // assert on 500 responses) must now opt out per-test with:
+    //
+    //     test.info().annotations.push({ type: 'allow-transient-5xx',
+    //                                    description: 'why this test needs to see 5xx' });
+    //
+    // See frontend/e2e/fixtures/guardedTest.ts for how the annotation is honoured.
+    // Plan: /home/ph/.claude/plans/create-a-comprehensive-and-piped-fiddle.md (PR 3).
+    //
     // Transient network: ERR_NETWORK_CHANGED when API restarts or connection drops
     (t.includes('failed to load resource') && t.includes('err_network_changed')) ||
     // API down/restart during E2E: connection refused, reset, socket hang up
@@ -60,10 +71,7 @@ export function isBenignConsoleError(text: string): boolean {
     (t.includes('[error report]') && t.includes('failed to parse odps document')) ||
     (t.includes('[error report]') && t.includes('invalid json')) ||
     (t.includes('failed to create odps product')) ||
-    // Transient backend 500 during ODPS creation under parallel E2E load (PostgreSQL atomic block error)
-    (t.includes('[error report]') && t.includes('product creation failed')) ||
-    (t.includes('[error report]') && t.includes('atomic') && t.includes('block')) ||
-    (t.includes('[error report]') && t.includes('current transaction')) ||
+    // (ODPS-creation 500 class whitelist removed in PR 3 — see top-of-file note.)
     // Failure-scenario tests: intentional invalid ODPS submission (missing required fields such as
     // product.dataSchema) produces backend 400 validation errors — expected in contract-creation-flow
     // "invalid ODPS (missing schema.fields) shows error" test and similar ODPS validation tests.

@@ -18,6 +18,7 @@ import { test, expect } from '@playwright/test';
 import { evaluateGuard } from './fixtures/guardedTest';
 import type { GuardBuffer } from './fixtures/guardedTest';
 import { matchBody } from './fixtures/verifyViaApi';
+import { isBenignConsoleError } from './fixtures/console-utils';
 
 function emptyBuffer(): GuardBuffer {
   return { pageErrors: [], consoleErrors: [], serverErrors: [] };
@@ -150,6 +151,66 @@ test.describe('matchBody — verifyViaApi pure matcher', () => {
       return b.ready;
     });
     expect(mismatch).toBeNull();
+  });
+});
+
+// --------------------------------------- console allowlist — NOT-benign regression gate
+//
+// PR 3 removed three classes of 500-whitelist entries from isBenignConsoleError
+// because they were hiding real backend bugs (missing indexes causing
+// statement-timeouts, connection-pool exhaustion, aborted DB transactions).
+// If a well-meaning future edit re-adds them, these tests break fast.
+
+test.describe('console allowlist regression gate (PR 3)', () => {
+  const MUST_BE_REPORTED: readonly [string, string][] = [
+    [
+      'statement timeout (500)',
+      'Failed to load resource: the server responded with a status of 500 () — PostgreSQL statement timeout',
+    ],
+    [
+      'statement timeout ([Error Report])',
+      '[Error Report] Request failed: statement timeout',
+    ],
+    [
+      'too many clients',
+      'FATAL: too many clients already',
+    ],
+    [
+      'too many connections',
+      'too many connections for role "hub"',
+    ],
+    [
+      'ODPS atomic block',
+      '[Error Report] atomic block did not commit: current transaction is aborted',
+    ],
+    [
+      'ODPS current transaction aborted',
+      '[Error Report] current transaction is aborted, commands ignored until end of transaction block',
+    ],
+    [
+      'ODPS product creation failed',
+      '[Error Report] product creation failed',
+    ],
+  ];
+
+  for (const [label, text] of MUST_BE_REPORTED) {
+    test(`${label} is NOT benign`, () => {
+      expect(
+        isBenignConsoleError(text),
+        `"${text}" must surface as a real bug, not be allowlisted.`,
+      ).toBe(false);
+    });
+  }
+
+  test('401/403/429 auth noise is still benign (not a regression)', () => {
+    // Sanity check that we only tightened the 500-class entries, not the
+    // legitimately-noisy auth entries that protect unrelated tests.
+    expect(
+      isBenignConsoleError('Failed to load resource: status 401'),
+    ).toBe(true);
+    expect(
+      isBenignConsoleError('Failed to load resource: status 429'),
+    ).toBe(true);
   });
 });
 
