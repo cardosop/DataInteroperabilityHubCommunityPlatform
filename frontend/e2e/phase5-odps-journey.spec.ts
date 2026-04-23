@@ -200,15 +200,24 @@ test.describe('Phase 5 ODPS Journey', () => {
 
     // Guard: if the ODPS upload page doesn't render an upload form, skip gracefully.
     // This can happen when the ODPS feature is disabled or the route doesn't exist.
-    if (page.url().includes('/403') || page.url().includes('/login')) {
-      test.skip(true, `ODPS upload page redirected to ${page.url()} — route may not exist or user lacks permission`);
+    // Condition hoisted into test.skip (PR 5 ESLint rule) + skip reason reaches
+    // PR 10's skip-counter gate so CI fails when ODPS route is broadly unavailable.
+    const redirected = page.url().includes('/403') || page.url().includes('/login');
+    test.skip(
+      redirected,
+      `ODPS upload page redirected to ${page.url()} — route may not exist or user lacks permission`,
+    );
+    if (redirected) {
       return;
     }
     const odpsFormExists = await page.locator(
       '.odps-upload-page, .odps-upload-form, input[type="file"], textarea[id="odps-content"]'
     ).first().waitFor({ state: 'visible', timeout: 10000 }).then(() => true).catch(() => false);
+    test.skip(
+      !odpsFormExists,
+      'ODPS upload form not found on /odps/upload — ODPS feature may not be enabled in this environment',
+    );
     if (!odpsFormExists) {
-      test.skip(true, 'ODPS upload form not found on /odps/upload — ODPS feature may not be enabled in this environment');
       return;
     }
 
@@ -307,8 +316,11 @@ test.describe('Phase 5 ODPS Journey', () => {
     console.log('Step 3: Submitting ODPS creation...');
     const createButton = page.locator('button:has-text("Create ODPS Product")');
     const createButtonFound = await createButton.waitFor({ timeout: 10000 }).then(() => true).catch(() => false);
+    test.skip(
+      !createButtonFound,
+      '"Create ODPS Product" button not found — ODPS submission form may use different UI or not be fully implemented',
+    );
     if (!createButtonFound) {
-      test.skip(true, '"Create ODPS Product" button not found — ODPS submission form may use different UI or not be fully implemented');
       return;
     }
 
@@ -336,9 +348,14 @@ test.describe('Phase 5 ODPS Journey', () => {
         const errorJson = await response.json().catch(() => null);
         const errorMessage = errorJson ? JSON.stringify(errorJson, null, 2) : errorText;
         console.error(`❌ ODPS creation failed: ${response.status()} - ${errorMessage}`);
-        // Workflows disabled is a tenant configuration issue, not a test failure
-        if (errorMessage.includes('Workflows are disabled')) {
-          test.skip(true, `Workflows are disabled for this tenant — skip. Enable workflows in tenant settings to run this test.`);
+        // Workflows disabled is a tenant configuration issue, not a test failure.
+        // Condition hoisted into test.skip (PR 5 ESLint rule).
+        const workflowsDisabled = errorMessage.includes('Workflows are disabled');
+        test.skip(
+          workflowsDisabled,
+          `Workflows are disabled for this tenant — skip. Enable workflows in tenant settings to run this test.`,
+        );
+        if (workflowsDisabled) {
           return;
         }
         throw new Error(`ODPS creation failed: ${response.status()} - ${errorMessage}`);
@@ -347,12 +364,17 @@ test.describe('Phase 5 ODPS Journey', () => {
       // Try to extract from UI
       await page.waitForTimeout(3000);
       const workflowProgress = page.locator('.odps-workflow-progress');
-      if ((await workflowProgress.count()) > 0) {
+      const workflowVisible = (await workflowProgress.count()) > 0;
+      if (workflowVisible) {
         // Workflow progress is shown, extract ID from page if possible
         // For now, we'll poll the API to find the workflow
         console.log('⚠️ No response received, will try to find workflow via polling');
       } else {
-        test.skip(true, 'No response received for ODPS creation — backend may be unavailable or test timed out');
+        // Condition hoisted into test.skip per PR 5 ESLint rule.
+        test.skip(
+          !workflowVisible,
+          'No response received for ODPS creation — backend may be unavailable or test timed out',
+        );
         return;
       }
     }

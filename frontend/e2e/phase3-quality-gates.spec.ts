@@ -483,8 +483,15 @@ test.describe('Phase 3 Quality Gates', () => {
         }
       }
 
+      // Hoist the condition into test.skip so the skip is conditional (not
+      // a hard-coded `true`) and satisfies the no-test-skip-true ESLint rule
+      // from PR 5. The skip reason still reaches the skip-counter gate (PR 10)
+      // so CI can fail when DQ-worker-down skips cross the per-reason threshold.
+      test.skip(
+        !dqRunCompleted,
+        'DQ runner backend did not process run within 60s — skip. DQ worker may not be running.',
+      );
       if (!dqRunCompleted) {
-        test.skip(true, 'DQ runner backend did not process run within 60s — skip. DQ worker may not be running.');
         return;
       }
 
