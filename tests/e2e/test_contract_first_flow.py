@@ -267,30 +267,51 @@ class ContractFirstE2ETest(TestCase):
 
         # Execute RQ jobs inline — transaction.on_commit() callbacks don't
         # fire inside Django TestCase (non-committing transaction wrapper).
+        #
+        # Narrow the exception types so real bugs in process_job surface
+        # as test failures. The previous `except Exception: pass` let
+        # any crash (TypeErrors in the business logic, DB integrity
+        # errors, import bugs) be silently swallowed — the exact
+        # hidden-failure class this PR series exists to kill.
+        from hub.apps.jobs.tasks import process_job
+        from hub.apps.jobs.models import JobType
+
         compliance_run = ComplianceRun.objects.get(id=compliance_run_id)
         if compliance_run.job_id:
             try:
-                from hub.apps.jobs.tasks import process_job
-                from hub.apps.jobs.models import JobType
                 process_job(str(compliance_run.job_id), job_type=JobType.COMPLIANCE_RUN)
-            except Exception:
-                pass  # Job may fail if service unavailable
+            except (ConnectionError, TimeoutError, OSError) as exc:
+                # Compliance service not reachable — skip visibly so
+                # PR 10's skip-counter gate can track infra outages.
+                self.skipTest(f"Compliance service not reachable: {exc}")
         compliance_run.refresh_from_db()
 
         dq_run = DQRun.objects.get(id=dq_run_id)
         if dq_run.job_id:
             try:
-                from hub.apps.jobs.tasks import process_job
-                from hub.apps.jobs.models import JobType
                 process_job(str(dq_run.job_id), job_type=JobType.DQ_RUN)
-            except Exception:
-                pass
+            except (ConnectionError, TimeoutError, OSError) as exc:
+                self.skipTest(f"DQ service not reachable: {exc}")
         dq_run.refresh_from_db()
 
-        if compliance_run.status == ComplianceRunStatus.FAILED:
-            self.skipTest(f"Compliance check failed: {compliance_run.error_message}")
-        if dq_run.status == DQRunStatus.FAILED:
-            self.skipTest(f"DQ check failed: {dq_run.error_message}")
+        # Previously this block did `self.skipTest(...)` when a compliance
+        # or DQ run ended in FAILED state — which turned REAL test
+        # failures (the contract-first flow actually broke) into green
+        # skips. The plan's PR 6a explicitly calls this out as the single
+        # most dangerous case in the pytest suite. Assert loudly instead;
+        # if a contract can't pass its own compliance/DQ run, that's a
+        # defect to surface, not a skip reason.
+        self.assertNotEqual(
+            compliance_run.status, ComplianceRunStatus.FAILED,
+            f"Compliance run FAILED — this indicates a real defect in the "
+            f"contract-first flow, not an environmental skip condition. "
+            f"Error: {compliance_run.error_message!r}",
+        )
+        self.assertNotEqual(
+            dq_run.status, DQRunStatus.FAILED,
+            f"DQ run FAILED — real defect, not an environmental skip. "
+            f"Error: {dq_run.error_message!r}",
+        )
 
         # Step 8: Attach dataset and contract to asset
         self.client.post(

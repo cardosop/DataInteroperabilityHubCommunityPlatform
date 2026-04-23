@@ -93,9 +93,20 @@ class AssetOperationsE2ETest(E2ETestBase):
         response = self.client.get(f"/api/v1/assets/?status={AssetStatus.DRAFT}")
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         data = get_response_data(response) or {}
-        for asset_item in data.get("results", []):
-            self.assertEqual(asset_item.get("status"), AssetStatus.DRAFT,
-                f"Filter should only return DRAFT assets, got {asset_item.get('status')}")
+        # Guard against the silent-pass case where an empty results list
+        # makes the loop assertion trivially succeed. The filter test only
+        # proves anything when at least one DRAFT asset is returned.
+        results = data.get("results", [])
+        self.assertGreaterEqual(
+            len(results), 1,
+            "Status-filter query must return at least one DRAFT asset "
+            "(seeded by asset1 at the top of this test).",
+        )
+        for asset_item in results:
+            self.assertEqual(
+                asset_item.get("status"), AssetStatus.DRAFT,
+                f"Filter should only return DRAFT assets, got {asset_item.get('status')}",
+            )
 
     def test_get_asset_details(self):
         """Test retrieving asset details"""
