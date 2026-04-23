@@ -4,6 +4,11 @@ import reactHooks from 'eslint-plugin-react-hooks'
 import reactRefresh from 'eslint-plugin-react-refresh'
 import tseslint from 'typescript-eslint'
 import { defineConfig, globalIgnores } from 'eslint/config'
+import { createRequire } from 'node:module'
+
+// CommonJS rule file; loaded via createRequire because this config is ES modules.
+const require = createRequire(import.meta.url)
+const noTestSkipTrueRule = require('./e2e/.eslint-rules/no-test-skip-true.cjs')
 
 export default defineConfig([
   globalIgnores(['dist', 'coverage']),
@@ -55,6 +60,21 @@ export default defineConfig([
     files: ['e2e/**/*.ts', 'e2e/**/*.tsx'],
     rules: {
       'no-restricted-syntax': 'off',
+    },
+  },
+  // PR 5 — block `test.skip(true, ...)` regressions in Playwright specs.
+  // See e2e/.eslint-rules/no-test-skip-true.js for the full rationale.
+  {
+    files: ['e2e/**/*.ts', 'e2e/**/*.spec.ts'],
+    plugins: {
+      'e2e-guards': {
+        rules: {
+          'no-test-skip-true': noTestSkipTrueRule,
+        },
+      },
+    },
+    rules: {
+      'e2e-guards/no-test-skip-true': 'error',
     },
   },
 ])
