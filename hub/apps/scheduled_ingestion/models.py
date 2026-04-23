@@ -609,3 +609,17 @@ class IngestionCost(models.Model):
         )
         super().save(*args, **kwargs)
 
+
+# IngestionTemplate lives in templates.py (separate file for code cohesion
+# with the template-management logic) but must be re-exported here so
+# Django's app registry discovers it during models-module loading. Without
+# this import Django's autodetector concludes the model was deleted and
+# `makemigrations` keeps generating a spurious DeleteModel migration for
+# it — the drift PR 1's advisory check surfaced on 2026-04-23.
+#
+# Placed at end-of-file so templates.py's own `from .models import ...`
+# sees all the dependencies it needs fully bound before templates.py
+# itself starts executing (standard circular-import dance; works because
+# templates.py only imports names that are defined above this point).
+from .templates import IngestionTemplate  # noqa: E402, F401
+
