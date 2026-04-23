@@ -1,0 +1,18 @@
+{
+  "schema_version": 1,
+  "generated_at": "2026-04-23T00:00:00+00:00",
+  "pytest": {
+    "files_scanned": 114,
+    "except_exception_pass_count": 40,
+    "orm_query_count": 1405,
+    "status_code_assertion_count": 1320,
+    "test_skip_call_count": 253
+  },
+  "playwright": {
+    "files_scanned": 314,
+    "test_skip_true_count": 410,
+    "page_on_pageerror_count": 28,
+    "page_request_call_count": 33,
+    "verify_via_api_call_count": 12
+  }
+}
