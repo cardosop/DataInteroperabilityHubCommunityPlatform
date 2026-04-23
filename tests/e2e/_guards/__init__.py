@@ -20,10 +20,20 @@ from ._assert_audit_event import (
     assert_audit_event,
     assert_audit_event_eventually,
 )
+from ._captured_server_errors import (
+    captured_server_errors,
+    detect_offending_records,
+    format_diagnostic,
+    is_strict_mode,
+)
 from ._two_tenants import two_tenants
 
 __all__ = [
     "assert_audit_event",
     "assert_audit_event_eventually",
+    "captured_server_errors",
+    "detect_offending_records",
+    "format_diagnostic",
+    "is_strict_mode",
     "two_tenants",
 ]

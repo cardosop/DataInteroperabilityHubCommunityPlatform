@@ -5,6 +5,14 @@ import sys
 import os
 import pathlib
 
+# Register the dual-channel guard fixtures at module scope so pytest picks
+# them up as autouse for every test under tests/e2e/. See
+# tests/e2e/_guards/_captured_server_errors.py for the fixture body and
+# the advisory/strict-mode rationale.
+from tests.e2e._guards._captured_server_errors import (  # noqa: E402, F401
+    captured_server_errors,
+)
+
 # Prevent Python from writing new .pyc bytecode files.
 sys.dont_write_bytecode = True
 os.environ.setdefault("PYTHONDONTWRITEBYTECODE", "1")

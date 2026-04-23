@@ -199,3 +199,145 @@ class TestTwoTenantsFixture:
 
     def test_tenants_have_distinct_slugs(self, two_tenants):
         assert two_tenants.a.tenant.slug != two_tenants.b.tenant.slug
+
+
+# ------------------------------------------------------- captured_server_errors
+
+class TestCapturedServerErrorsLogic:
+    """Pure-function tests for the PR 4 autouse fixture.
+
+    These exercise detect_offending_records, format_diagnostic, and
+    is_strict_mode directly with synthetic LogRecord objects. Testing the
+    autouse fixture's raise/warn behaviour end-to-end is harder (the
+    fixture applies to the test that's testing it, a classic
+    chicken-and-egg) so we cover those via the marker-opt-out test below
+    and otherwise trust the unit tests.
+    """
+
+    @staticmethod
+    def _make_record(name, level, message):
+        import logging
+        return logging.LogRecord(
+            name=name, level=level, pathname="x", lineno=1,
+            msg=message, args=(), exc_info=None,
+        )
+
+    def test_detect_ignores_non_error_levels(self):
+        import logging
+        from tests.e2e._guards import detect_offending_records
+        records = [
+            self._make_record("django", logging.INFO, "info line"),
+            self._make_record("django", logging.WARNING, "warn line"),
+            self._make_record("django", logging.DEBUG, "debug line"),
+        ]
+        assert detect_offending_records(records) == []
+
+    def test_detect_surfaces_django_error(self):
+        import logging
+        from tests.e2e._guards import detect_offending_records
+        rec = self._make_record("django.request", logging.ERROR, "uh oh")
+        assert detect_offending_records([rec]) == [rec]
+
+    def test_detect_surfaces_hub_error(self):
+        import logging
+        from tests.e2e._guards import detect_offending_records
+        rec = self._make_record(
+            "hub.apps.audit.signals", logging.ERROR, "signal blew up"
+        )
+        assert detect_offending_records([rec]) == [rec]
+
+    def test_detect_surfaces_rest_framework_error(self):
+        import logging
+        from tests.e2e._guards import detect_offending_records
+        rec = self._make_record("rest_framework.exceptions", logging.ERROR, "nope")
+        assert detect_offending_records([rec]) == [rec]
+
+    def test_detect_ignores_third_party_logger(self):
+        """Loggers outside the watched prefixes must not trigger the guard."""
+        import logging
+        from tests.e2e._guards import detect_offending_records
+        records = [
+            self._make_record("celery.worker", logging.ERROR, "retry"),
+            self._make_record("urllib3", logging.ERROR, "pool exhausted"),
+            self._make_record("botocore.endpoint", logging.ERROR, "s3 timeout"),
+        ]
+        assert detect_offending_records(records) == []
+
+    def test_detect_surfaces_critical_not_only_error(self):
+        import logging
+        from tests.e2e._guards import detect_offending_records
+        rec = self._make_record("django", logging.CRITICAL, "oom")
+        assert detect_offending_records([rec]) == [rec]
+
+    def test_format_diagnostic_empty(self):
+        from tests.e2e._guards import format_diagnostic
+        assert format_diagnostic([]) == (
+            "Watched Django/DRF loggers emitted 0 ERROR record(s):\n(no records)"
+        )
+
+    def test_format_diagnostic_includes_logger_and_level(self):
+        import logging
+        from tests.e2e._guards import format_diagnostic
+        rec = self._make_record("django.db", logging.ERROR, "bad query")
+        out = format_diagnostic([rec])
+        assert "django.db[ERROR]: bad query" in out
+        assert "emitted 1 ERROR record" in out
+
+    def test_format_diagnostic_truncates_with_tail_count(self):
+        import logging
+        from tests.e2e._guards import format_diagnostic
+        records = [
+            self._make_record("django", logging.ERROR, f"err-{i}")
+            for i in range(15)
+        ]
+        out = format_diagnostic(records, max_records=5)
+        # first 5 shown, remaining 10 counted
+        assert "err-0" in out
+        assert "err-4" in out
+        assert "err-5" not in out
+        assert "... and 10 more" in out
+
+    def test_is_strict_mode_default_is_false(self, monkeypatch):
+        from tests.e2e._guards import is_strict_mode
+        monkeypatch.delenv("CAPTURED_SERVER_ERRORS_STRICT", raising=False)
+        assert is_strict_mode() is False
+
+    @pytest.mark.parametrize(
+        "value", ["1", "true", "yes", "on", "TRUE", "Yes"]
+    )
+    def test_is_strict_mode_truthy(self, monkeypatch, value):
+        from tests.e2e._guards import is_strict_mode
+        monkeypatch.setenv("CAPTURED_SERVER_ERRORS_STRICT", value)
+        assert is_strict_mode() is True
+
+    @pytest.mark.parametrize(
+        "value", ["0", "false", "no", "off", "", "garbage"]
+    )
+    def test_is_strict_mode_falsy(self, monkeypatch, value):
+        from tests.e2e._guards import is_strict_mode
+        monkeypatch.setenv("CAPTURED_SERVER_ERRORS_STRICT", value)
+        assert is_strict_mode() is False
+
+
+class TestCapturedServerErrorsMarkerOptOut:
+    """Proves the @allow_server_errors marker actually lets ERROR logs through.
+
+    This test deliberately triggers a Django ERROR log. Without the marker,
+    the advisory fixture would emit a UserWarning; with it, the fixture
+    silently tolerates the record. In strict mode (CI-controlled) this
+    would be the difference between a failing and passing test — the
+    marker is the contract.
+    """
+
+    @pytest.mark.allow_server_errors
+    def test_marker_tolerates_logged_error(self, caplog):
+        import logging
+        logger = logging.getLogger("hub.apps.audit.signals")
+        logger.error("deliberate error for the allow_server_errors test")
+        # Fixture-teardown assertion is the real test — if it raised or
+        # warned, pytest would fail this test. We reach here only when the
+        # marker correctly bypassed the check.
+        assert any(
+            r.name == "hub.apps.audit.signals" and r.levelno == logging.ERROR
+            for r in caplog.records
+        )
