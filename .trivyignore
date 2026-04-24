@@ -202,6 +202,23 @@ CVE-2026-6100
 # as vulnerable because Trivy doesn't distinguish between headers and
 # running kernel).
 # Review by: 2026-05-23 — expect most to have Debian fixes by then.
+#
+# Added: 2026-04-24 (worker-service trivy gate — run 24867604444)
+# Another 8 kernel CVEs flagged on linux-libc-dev 6.12.74-2. Same class
+# as the 40 immediately below. These fall in the CVE-2026-233xx range
+# (between existing suppressions 23102..23392) — disclosed between the
+# 2026-04-03 and 2026-04-23 vulndb updates and missed by both prior
+# passes. All status=affected, no Debian fix available, kernel headers
+# only (no runtime exposure in container workloads).
+# Review by: 2026-05-24.
+CVE-2026-23315
+CVE-2026-23318
+CVE-2026-23319
+CVE-2026-23325
+CVE-2026-23327
+CVE-2026-23343
+CVE-2026-23427
+CVE-2026-23428
 CVE-2026-31435
 CVE-2026-31436
 CVE-2026-31438
