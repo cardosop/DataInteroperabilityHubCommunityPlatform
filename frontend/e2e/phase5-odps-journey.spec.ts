@@ -15,157 +15,152 @@ import { isBenignConsoleError } from './fixtures/console-utils';
 import { loginAndNavigateToRoute } from './fixtures/helpers';
 import { verifyViaApi } from './fixtures/verifyViaApi';
 
-const getApiBaseUrl = () => process.env.VITE_API_BASE_URL || 'http://localhost:8000/api/v1';
+/**
+ * Pull the bearer token out of the page's localStorage so `page.request`
+ * (which does NOT inherit localStorage, only cookies) can authenticate
+ * against the API.
+ *
+ * Matches the extraction in fixtures/verifyViaApi.ts so every driver in
+ * the suite uses the same authentication path — single source of truth
+ * for "how the test runner talks to the Meshant API".
+ */
+async function bearerHeaders(page: Page): Promise<Record<string, string>> {
+  const token = await page.evaluate<string | null>(
+    () =>
+      (globalThis as unknown as { localStorage?: { getItem: (k: string) => string | null } })
+        .localStorage?.getItem('access_token') ?? null,
+  );
+  return token ? { Authorization: `Bearer ${token}` } : {};
+}
+
+/**
+ * Test-driver helpers MUST use `page.request.*` (Playwright's out-of-band
+ * HTTP client), not `page.evaluate + fetch`. The latter runs inside the
+ * browser context and is subject to the page's Content-Security-Policy —
+ * which on staging blocks any connect-src except 'self'+S3+Stripe. That
+ * caused dozens of "Refused to connect because it violates the
+ * document's CSP" errors when the old helpers tried to hit
+ * http://localhost:8000 (a stale dev default).
+ *
+ * Using `page.request` with a relative path resolves against Playwright's
+ * baseURL (PLAYWRIGHT_BASE_URL), which on staging routes through
+ * https://stagingmeshant-internal.example.com/api/* — proxied to the backend by the
+ * frontend nginx. Same path the app uses, one canonical source of truth.
+ */
 
 // Helper to create a valid ODCS contract via API
 async function createODCSContractViaAPI(page: Page): Promise<string | null> {
-  try {
-    const apiBase = getApiBaseUrl().replace(/\/$/, '');
-    const result = await page.evaluate(async (base: string) => {
-      const token = localStorage.getItem('access_token');
-      if (!token) return { success: false, error: 'No token' };
-
-      // Create a well-formed ODCS contract
-      const contractJson = {
-        id: `test-odcs-${Date.now()}`,
-        name: 'Test ODCS Contract',
-        hub_contract_version: '1.0.0',
-        info: {
-          title: 'Test ODCS Contract',
-          name: 'Test ODCS Contract',
-          version: '1.0.0',
-        },
-        schema: {
-          fields: [
-            { name: 'id', type: 'string', description: 'Unique identifier' },
-            { name: 'name', type: 'string', description: 'Name field' },
-          ],
-        },
-      };
-
-      const contractResponse = await fetch(`${base}/contracts/`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify({
-          original_spec_type: 'ODCS',
-          original_spec_version: '3.0.0',
-          original_format: 'JSON',
-          original_raw: JSON.stringify(contractJson),
-        }),
-      });
-
-      if (!contractResponse.ok) {
-        const error = await contractResponse.text();
-        return {
-          success: false,
-          error: `Contract creation failed: ${contractResponse.status} - ${error}`,
-        };
-      }
-
-      const contract = await contractResponse.json();
-      return { success: true, contractId: contract.id };
-    }, apiBase);
-
-    if (!result.success) {
-      console.log('ODCS contract creation via API failed:', result.error);
-      return null;
-    }
-    return result.contractId;
-  } catch (error) {
-    console.log('ODCS contract creation via API exception:', error);
+  const bearer = await bearerHeaders(page);
+  if (!bearer.Authorization) {
+    console.log('ODCS contract creation skipped: no access_token in localStorage');
     return null;
   }
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+    ...bearer,
+  };
+
+  const contractJson = {
+    id: `test-odcs-${Date.now()}`,
+    name: 'Test ODCS Contract',
+    hub_contract_version: '1.0.0',
+    info: {
+      title: 'Test ODCS Contract',
+      name: 'Test ODCS Contract',
+      version: '1.0.0',
+    },
+    schema: {
+      fields: [
+        { name: 'id', type: 'string', description: 'Unique identifier' },
+        { name: 'name', type: 'string', description: 'Name field' },
+      ],
+    },
+  };
+
+  const response = await page.request.post('/api/v1/contracts/', {
+    headers,
+    data: {
+      original_spec_type: 'ODCS',
+      original_spec_version: '3.0.0',
+      original_format: 'JSON',
+      original_raw: JSON.stringify(contractJson),
+    },
+  });
+
+  if (!response.ok()) {
+    const body = await response.text().catch(() => '');
+    console.log(
+      `ODCS contract creation via API failed: ${response.status()} - ${body.slice(0, 400)}`,
+    );
+    return null;
+  }
+
+  const contract = (await response.json()) as { id: string };
+  return contract.id;
+}
+
+interface WorkflowStatusResult {
+  status: string;
+  progress_percentage?: number;
+  message?: string;
+  odps_contract?: { id: string };
+  odcs_contract?: { id: string };
 }
 
 // Helper to poll workflow status until completion
 async function pollWorkflowStatus(
   page: Page,
   workflowInstanceId: string,
-  timeout: number = 300000
-): Promise<unknown> {
+  timeout: number = 300000,
+): Promise<WorkflowStatusResult> {
   const startTime = Date.now();
-  const pollInterval = 2000; // Poll every 2 seconds
-  const apiBase = getApiBaseUrl().replace(/\/$/, '');
+  const pollInterval = 2000;
 
-  // Give workflow a moment to start before first poll
+  // Give the backend a moment to register the workflow before first poll
   await page.waitForTimeout(1000);
 
+  // Re-extract the bearer on each iteration — long polls can span a
+  // refresh-token rotation (see ApiClient.setRefreshToken in commit
+  // 631f4091 which now persists rotated tokens to localStorage).
   while (Date.now() - startTime < timeout) {
-    const result = await page.evaluate(
-      async ({
-        workflowInstanceId,
-        token,
-        base,
-      }: {
-        workflowInstanceId: string;
-        token: string | null;
-        base: string;
-      }) => {
-        if (!token) return { success: false, error: 'No token' };
-        try {
-          const response = await fetch(
-            `${base}/contracts/products/workflows/${workflowInstanceId}/status/?_t=${Date.now()}`,
-            {
-              headers: {
-                Authorization: `Bearer ${token}`,
-                'Cache-Control': 'no-cache, no-store, must-revalidate',
-                Pragma: 'no-cache',
-                Expires: '0',
-              },
-            }
-          );
+    const headers = await bearerHeaders(page);
+    if (!headers.Authorization) {
+      throw new Error(
+        'pollWorkflowStatus: no access_token in localStorage — session was not established before polling',
+      );
+    }
 
-          if (!response.ok) {
-            const errorText = await response.text().catch(() => '');
-            const errorJson = await response.json().catch(() => null);
-            return {
-              success: false,
-              error: `Status check failed: ${response.status}`,
-              errorDetails: errorJson || errorText,
-            };
-          }
-
-          const data = await response.json();
-          // Log the actual response for debugging
-          console.log(
-            `API Response: status=${data.status}, has_odps=${!!data.odps_contract}, has_odcs=${!!data.odcs_contract}`
-          );
-          return { success: true, data };
-        } catch (error) {
-          return { success: false, error: error instanceof Error ? error.message : String(error) };
-        }
-      },
+    const response = await page.request.get(
+      `/api/v1/contracts/products/workflows/${workflowInstanceId}/status/?_t=${Date.now()}`,
       {
-        workflowInstanceId,
-        token: await page.evaluate(() => localStorage.getItem('access_token')),
-        base: apiBase,
-      }
+        headers: {
+          ...headers,
+          'Cache-Control': 'no-cache, no-store, must-revalidate',
+          Pragma: 'no-cache',
+        },
+      },
     );
 
-    if (!result.success) {
-      // Log the error but don't throw immediately - might be transient
-      console.log(`⚠️ Status check failed: ${result.error}, retrying...`);
+    if (!response.ok()) {
+      const body = await response.text().catch(() => '');
+      console.log(
+        `⚠️ Status check failed: ${response.status()} — ${body.slice(0, 200)}, retrying...`,
+      );
       await page.waitForTimeout(pollInterval);
       continue;
     }
 
-    const status = result.data.status;
-    console.log(`Workflow status: ${status} (${result.data.progress_percentage || 0}%)`);
+    const data = (await response.json()) as WorkflowStatusResult;
+    console.log(
+      `Workflow status: ${data.status} (${data.progress_percentage || 0}%) has_odps=${!!data.odps_contract} has_odcs=${!!data.odcs_contract}`,
+    );
 
-    if (status === 'COMPLETED') {
-      return result.data;
-    } else if (status === 'FAILED') {
-      throw new Error(`Workflow failed: ${result.data.message || 'Unknown error'}`);
-    } else if (status === 'PENDING' || status === 'RUNNING') {
-      // Continue polling
-    } else {
-      console.log(`⚠️ Unknown workflow status: ${status}, continuing to poll...`);
+    if (data.status === 'COMPLETED') return data;
+    if (data.status === 'FAILED') {
+      throw new Error(`Workflow failed: ${data.message || 'Unknown error'}`);
     }
+    // PENDING / RUNNING / any unknown transient state — keep polling
 
-    // Wait before next poll
     await page.waitForTimeout(pollInterval);
   }
 
@@ -418,7 +413,10 @@ test.describe('Phase 5 ODPS Journey', () => {
     // Poll workflow status via API (authoritative for completion state).
     const workflowResult = await pollWorkflowStatus(page, workflowInstanceId);
     const odpsContractId = workflowResult.odps_contract?.id || null;
-    const odcsContractId = workflowResult.odcs_contract?.id || null;
+    // `let` because the step-6 linking flow may discover/create an ODCS
+    // contract and reassign this when the product-first auto-link
+    // short-circuits.
+    let odcsContractId: string | null = workflowResult.odcs_contract?.id || null;
     console.log(`✅ Workflow completed - ODPS: ${odpsContractId}, ODCS: ${odcsContractId}`);
 
     if (!odpsContractId) {
@@ -473,12 +471,7 @@ test.describe('Phase 5 ODPS Journey', () => {
         if (!odcsContractId) {
           const response = await page.request.get(
             `/api/v1/contracts/${odpsContractId}/links/`,
-            {
-              headers: await page.evaluate(() => {
-                const t = localStorage.getItem('access_token');
-                return t ? { Authorization: `Bearer ${t}` } : {};
-              }),
-            },
+            { headers: await bearerHeaders(page) },
           );
           if (response.ok()) {
             const body = (await response.json()) as { odcs_link?: { id?: string } };
@@ -534,15 +527,12 @@ test.describe('Phase 5 ODPS Journey', () => {
       // contract ONCE (on the create-ODPS step) and trusting the API for
       // the link operation itself. Call POST /contracts/<odcs>/link-odps/
       // directly; this is the same endpoint the UI submits to.
-      const token = await page.evaluate(
-        () => localStorage.getItem('access_token'),
-      );
       const linkResponse = await page.request.post(
         `/api/v1/contracts/${odcsContractId}/link-odps/`,
         {
           headers: {
             'Content-Type': 'application/json',
-            ...(token ? { Authorization: `Bearer ${token}` } : {}),
+            ...(await bearerHeaders(page)),
           },
           data: { odps_contract_id: odpsContractId },
         },
