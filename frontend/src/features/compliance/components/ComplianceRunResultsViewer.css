@@ -15,12 +15,27 @@
   background: var(--color-background-secondary);
   border-radius: 8px;
   text-align: center;
+  /*
+   * The parent grid uses `auto-fit, minmax(150px, 1fr)` + default
+   * `align-items: stretch`, so every card in a row takes the same
+   * height. Labels have different word counts ("Overall Status" vs
+   * "Allowed to Store"), so they wrap to different numbers of lines.
+   * Without a vertical layout here, values sat at different Y offsets
+   * across cards and the row looked misaligned even though the card
+   * frames lined up. Flex-column + `justify-content: space-between`
+   * pins labels to the top and values to the bottom of the stretched
+   * card, giving a consistent value baseline across every card in the
+   * row regardless of how many lines the label wraps to.
+   */
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: 0.5rem;
 }
 
 .summary-label {
   font-size: 0.85rem;
   color: var(--color-text-secondary);
-  margin-bottom: 0.5rem;
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.5px;
