@@ -62,14 +62,14 @@ test.describe('Phase 3 Quality Gates', () => {
     await page.waitForLoadState('domcontentloaded');
     await page.waitForTimeout(2000);
 
-    await page.waitForSelector('input[id="key"]', { timeout: 30000 });
+    await page.waitForSelector('input[id="asset-key"]', { timeout: 30000 });
     console.log('Form inputs found');
 
     const assetKey = `test-asset-${Date.now()}`;
-    await page.fill('input[id="key"]', assetKey);
-    await page.fill('input[id="name"]', 'Test Asset for Quality Gates');
-    await page.fill('textarea[id="description"]', 'Test asset for DQ and Compliance');
-    await page.selectOption('select[id="visibility"]', 'INTERNAL');
+    await page.fill('input[id="asset-name"]', 'Test Asset for Quality Gates');
+    await page.fill('input[id="asset-key"]', assetKey);
+    await page.fill('textarea[id="asset-description"]', 'Test asset for DQ and Compliance');
+    await page.selectOption('select[id="asset-visibility"]', 'INTERNAL');
     console.log('Form filled');
 
     const submitButton = page.locator('button:has-text("Create Asset")');
@@ -128,110 +128,73 @@ test.describe('Phase 3 Quality Gates', () => {
     await expect(assetHeading).toContainText('Test Asset for Quality Gates', { timeout: 30000 });
     console.log('Asset heading verified');
 
-    // Step 2: Upload File and Create Dataset
-    // Use client-side nav (like Phase 2) to avoid full-reload auth race; wait for lazy-loaded page
+    // Step 2: Upload File and Create Dataset — pre-linked to the asset
+    // Using DatasetCreatePage "existing asset" linkMode so the dataset is created
+    // pre-linked via POST /datasets/ {file_id, asset_id}. This replaces the older
+    // flow (create unlinked dataset → attach via DatasetPicker) which required several
+    // reloads and often exhausted the 120s test budget on remote staging.
     console.log('Navigating to dataset create page...');
     await navigateToRouteFromApp(page, '/datasets/create', {
       timeout: 30000,
       contentSelector: '.dataset-create-page',
     });
-    await page.waitForLoadState('domcontentloaded');
-    await page.waitForTimeout(2000);
-
     await page.waitForSelector('.dataset-create-page, h1:has-text("Create Dataset")', {
       timeout: 30000,
     });
     console.log('Dataset create page loaded');
 
+    // Switch to "Link to existing asset" linkMode
+    console.log('Selecting "existing asset" linkMode...');
+    await page.locator('[data-testid="flow-existing"]').check();
+
+    // Pick the asset we just created via AssetPicker.
+    // Backend searches name/key/description only (hub/apps/assets/views.py:67),
+    // so we search by the unique assetKey (UUID prefix would not match).
+    console.log('Selecting asset in AssetPicker...');
+    const assetPicker = page.locator('[data-testid="asset-picker"]');
+    await assetPicker.waitFor({ state: 'visible', timeout: 30000 });
+    const assetPickerInput = assetPicker.locator('input[aria-label="Select asset"]');
+    await assetPickerInput.click();
+    await assetPickerInput.fill(assetKey);
+    const assetOption = page.locator(`#asset-picker-option-${assetId}`);
+    await assetOption.waitFor({ state: 'visible', timeout: 30000 });
+    await assetOption.click();
+
+    // Upload the file. `input[type="file"]` is always rendered inside FileUpload
+    // (visually hidden) so setInputFiles works without needing a dropzone click.
     const phase3FileBase = `test-p3-qg-${Date.now()}`;
-    // Find file upload dropzone
-    console.log('Looking for file upload...');
-    const dropzone = page.locator('.file-upload-dropzone');
-    if ((await dropzone.count()) > 0) {
-      console.log('Dropzone found, clicking...');
-      await dropzone.first().click();
-      await page.waitForTimeout(1000);
+    console.log('Uploading file...');
+    const datasetFileInput = page.locator('.dataset-create-page input[type="file"]');
+    await datasetFileInput.waitFor({ state: 'attached', timeout: 30000 });
+    await datasetFileInput.setInputFiles({
+      name: `${phase3FileBase}.csv`,
+      mimeType: 'text/csv',
+      buffer: Buffer.from(
+        'name,email,age\nJohn Doe,john@example.com,30\nJane Smith,jane@example.com,25'
+      ),
+    });
+    console.log('File selected, waiting for upload to complete...');
+    await page.waitForSelector('.file-upload-dropzone.upload-success', { timeout: 45000 });
+    console.log('File upload completed');
 
-      const datasetFileInput = page.locator('input[type="file"]');
-      if ((await datasetFileInput.count()) > 0) {
-        console.log('File input found, uploading file...');
-        await datasetFileInput.setInputFiles({
-          name: `${phase3FileBase}.csv`,
-          mimeType: 'text/csv',
-          buffer: Buffer.from(
-            'name,email,age\nJohn Doe,john@example.com,30\nJane Smith,jane@example.com,25'
-          ),
-        });
-
-        console.log('File selected, waiting for upload...');
-        await page.waitForTimeout(3000);
-
-        // Wait for upload to complete - look for upload success message
-        try {
-          await page.waitForSelector('.upload-success, .upload-complete', { timeout: 30000 });
-          console.log('File upload completed');
-        } catch {
-          // Upload might have completed but message not shown, check if button is enabled
-          console.log('Upload success message not found, checking if button is enabled...');
-        }
-      } else {
-        console.log('File input not found');
-      }
-    } else {
-      console.log('Dropzone not found');
-    }
-
-    // Fill asset ID if available (optional field)
-    const assetIdInput = page.locator('input.asset-id-input, input[placeholder*="Asset ID"]');
-    if ((await assetIdInput.count()) > 0) {
-      await assetIdInput.fill(assetId);
-    }
-
-    // Wait for Create Dataset button to be enabled (requires file upload)
-    console.log('Looking for Create Dataset button...');
-    const createDatasetButton = page.locator('button:has-text("Create Dataset")');
-    await createDatasetButton.waitFor({ state: 'visible', timeout: 30000 });
-
-    // Wait for button to be enabled (file must be uploaded first)
-    console.log('Waiting for button to be enabled...');
-    await page.waitForFunction(
-      (buttonText) => {
-        const buttons = Array.from(document.querySelectorAll('button'));
-        const button = buttons.find((b) => b.textContent?.includes(buttonText));
-        return button && !button.disabled;
-      },
-      'Create Dataset',
-      { timeout: 30000 }
-    );
-
+    // Submit — button enables once both uploadedFile and selectedAssetId are set
     console.log('Clicking Create Dataset button...');
+    const createDatasetButton = page.locator('[data-testid="btn-create-dataset"]');
+    await expect(createDatasetButton).toBeEnabled({ timeout: 30000 });
     await createDatasetButton.click();
 
-    // Wait for redirect to dataset detail or asset detail
-    console.log('Waiting for dataset creation to complete...');
+    // In 'existing' linkMode the app redirects to /datasets/{uuid}
+    console.log('Waiting for redirect to dataset detail...');
     await page.waitForURL(
-      (url) => {
-        const path = url.pathname;
-        return (
-          (path.startsWith('/datasets/') && path !== '/datasets/create') ||
-          (path.startsWith('/assets/') && path !== '/assets/create' && path !== '/assets')
-        );
-      },
+      /\/datasets\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i,
       { timeout: 45000 }
     );
-    const datasetUrl = page.url();
-    console.log('Dataset created, current URL:', datasetUrl);
+    const datasetIdMatch = page.url().match(/\/datasets\/([0-9a-f-]+)$/i);
+    const datasetId: string | null = datasetIdMatch ? datasetIdMatch[1] : null;
+    console.log('Dataset created (pre-linked to asset), ID:', datasetId);
 
-    // Extract dataset ID if we're on dataset detail page
-    let datasetId: string | null = null;
-    if (datasetUrl.includes('/datasets/')) {
-      const datasetPathParts = datasetUrl.split('/').filter((p) => p);
-      datasetId = datasetPathParts[datasetPathParts.length - 1];
-      console.log('Dataset ID:', datasetId);
-    }
-
-    // Step 3: Navigate back to asset detail page and attach dataset if needed
-    // Try navigateToRouteFromApp first (faster; we're on dataset detail, already logged in); fallback to loginAndNavigateToRoute on redirect
+    // Step 3: Navigate back to asset detail page — dataset_id should already be
+    // populated by get_dataset_id() since asset.datasets.first() is the new one.
     console.log('Navigating back to asset detail page...');
     try {
       await navigateToRouteFromApp(page, `/assets/${assetId}`, {
@@ -250,177 +213,21 @@ test.describe('Phase 3 Quality Gates', () => {
         throw err;
       }
     }
-    await page.waitForLoadState('domcontentloaded');
-    await page.waitForTimeout(2000);
-
-    // Wait for asset detail page to load
     await page.waitForSelector('.asset-detail-page, .asset-detail-content, .error-display', {
       timeout: 45000,
     });
     console.log('Asset detail page loaded');
 
-    // If dataset was created but not linked, we need to attach it
-    // But first, check if asset already has a dataset_id
-    const assetDatasetLink = page.locator('a[href*="/datasets/"]');
-    if ((await assetDatasetLink.count()) === 0 && datasetId) {
-      console.log('Dataset not linked to asset, attempting to attach via DatasetPicker...');
-      const datasetSection = page.locator('.linked-section:has-text("Linked Dataset")');
-      if ((await datasetSection.count()) > 0) {
-        const datasetPicker = datasetSection.locator('[data-testid="asset-attach-dataset-picker"]');
-        if ((await datasetPicker.count()) > 0) {
-          const pickerInput = datasetPicker.locator('input[aria-label="Select dataset"]');
-          await pickerInput.click();
-          await page.waitForTimeout(500);
-          await pickerInput.fill(phase3FileBase);
-          await page.waitForTimeout(1200);
-          const option = page.locator(`[id="dataset-picker-option-${datasetId}"]`);
-          await option.waitFor({ state: 'visible', timeout: 30000 });
-          await option.click();
-          await page.waitForTimeout(300);
-          // Find the attach button in the same section
-          const attachButton = datasetSection.locator('button:has-text("Attach")');
-          if ((await attachButton.count()) > 0) {
-            console.log('Clicking attach dataset button...');
-
-            // Wait for the attach API call (may return 200 or 201)
-            const attachPromise = page
-              .waitForResponse(
-                (resp) =>
-                  resp.url().includes(`/assets/${assetId}/datasets/`) &&
-                  (resp.status() === 200 || resp.status() === 201),
-                { timeout: 45000 }
-              )
-              .catch(() => {
-                console.log('Attach response wait timed out, but continuing...');
-                return null;
-              });
-
-            await attachButton.click();
-            await attachPromise;
-            console.log('Dataset attach API call completed (or timed out)');
-
-            // Wait for asset query to be invalidated and refetched
-            await page.waitForTimeout(3000);
-
-            // Reload page to get fresh asset data with dataset_id
-            console.log('Reloading page to get updated asset data...');
-            await page.reload({ waitUntil: 'domcontentloaded' });
-            if (page.url().includes('/login')) {
-              await loginAndNavigateToRoute(page, testUser, `/assets/${assetId}`, {
-                timeout: 45000,
-                contentSelector: '.asset-detail-page, .asset-detail-content, .error-display',
-              });
-            } else {
-              try {
-                await waitForAppMainReady(page, {
-                  timeout: 45000,
-                  contentSelector: '.asset-detail-page, .asset-detail-content, .error-display',
-                });
-              } catch (err) {
-                const msg = err instanceof Error ? err.message : String(err);
-                if (msg.includes('Redirected to login') || msg.includes('Still on login')) {
-                  await loginAndNavigateToRoute(page, testUser, `/assets/${assetId}`, {
-                    timeout: 45000,
-                    contentSelector: '.asset-detail-page, .asset-detail-content, .error-display',
-                  });
-                } else {
-                  throw err;
-                }
-              }
-            }
-            await page.waitForTimeout(2000);
-
-            // Verify dataset is now linked - check both the link and the asset data
-            await page.waitForTimeout(2000);
-            const updatedDatasetLink = page.locator('a[href*="/datasets/"]');
-            if ((await updatedDatasetLink.count()) > 0) {
-              console.log('Dataset successfully attached to asset');
-            } else {
-              // Check if dataset_id is in the asset data by inspecting the page
-              await page
-                .evaluate(() => {
-                  // Try to get asset data from React Query cache or component state
-                  const reactFiber = (window as unknown as Record<string, unknown>).__REACT_QUERY_STATE__;
-                  return reactFiber;
-                })
-                .catch(() => null);
-
-              console.log(
-                'Dataset link still not visible after reload, but attachment API succeeded'
-              );
-              // Continue anyway - the attachment succeeded, UI might just need more time
-            }
-          } else {
-            console.log('Attach button not found');
-          }
-        } else {
-          console.log('DatasetPicker not found in dataset section');
-        }
-      } else {
-        console.log('Dataset section not found');
-      }
-    } else {
-      console.log('Dataset already linked or datasetId not available');
-    }
-
-    await page.waitForTimeout(1000);
-
-    // Step 4: Run DQ Check
+    // Step 4: Run DQ Check — dataset is pre-linked so button renders on first load.
+    // `Run DQ Check` only renders when asset.dataset_id is set (see AssetDetailPage.tsx).
     console.log('Looking for Run DQ Check button...');
-    // Check if Quality Gates section is visible
     await page.waitForSelector('.asset-quality-gates-section, .quality-gate-subsection', {
       timeout: 30000,
     });
-    console.log('Quality Gates section found');
-
-    // Reload page to ensure asset data is fresh (dataset_id should be set after attachment)
-    await page.reload();
-    if (page.url().includes('/login')) {
-      await loginAndNavigateToRoute(page, testUser, `/assets/${assetId}`, {
-        timeout: 30000,
-        contentSelector: '.asset-detail-page, .asset-detail-content, .error-display',
-      });
-    } else {
-      await waitForAppMainReady(page, {
-        timeout: 45000,
-        contentSelector: '.asset-detail-page, .asset-detail-content, .error-display',
-      });
-    }
-    await page.waitForTimeout(3000); // Wait for asset query to complete
-
-    // Check if dataset is linked by looking for the dataset link or Run DQ button
-    // The button appears when dataset_id is set, even if the link isn't visible yet
-    const datasetLinkAfterReload = page.locator('a[href*="/datasets/"]');
-    const hasDatasetLink = (await datasetLinkAfterReload.count()) > 0;
-    console.log('Dataset linked after reload:', hasDatasetLink);
-
-    const runDQButton = page.locator('button:has-text("Run DQ Check")');
-    const dqButtonCount = await runDQButton.count();
-    console.log('Run DQ Check button count:', dqButtonCount);
-
-    // If button not found but we attached dataset, try one more reload with longer wait
-    if (dqButtonCount === 0 && datasetId) {
-      console.log('Button not found after first reload, waiting longer and reloading again...');
-      await page.waitForTimeout(5000);
-      await page.reload();
-      if (page.url().includes('/login')) {
-        await loginAndNavigateToRoute(page, testUser, `/assets/${assetId}`, {
-          timeout: 30000,
-          contentSelector: '.asset-detail-page, .asset-detail-content, .error-display',
-        });
-      } else {
-        await waitForAppMainReady(page, {
-          timeout: 45000,
-          contentSelector: '.asset-detail-page, .asset-detail-content, .error-display',
-        });
-      }
-      await page.waitForTimeout(3000);
-    }
-
     const finalDQButton = page.locator('button:has-text("Run DQ Check")');
-    const finalDQButtonCount = await finalDQButton.count();
+    await finalDQButton.waitFor({ state: 'visible', timeout: 30000 });
 
-    if (finalDQButtonCount > 0) {
+    {
       console.log('Found Run DQ Check button, clicking...');
       await finalDQButton.click();
       await page.waitForTimeout(3000);
@@ -530,12 +337,6 @@ test.describe('Phase 3 Quality Gates', () => {
       await page.waitForLoadState('domcontentloaded');
       await page.waitForSelector('.asset-detail-page, .asset-detail-content', { timeout: 30000 });
       await page.waitForTimeout(2000);
-    } else {
-      console.log(
-        'Run DQ Check button not found - dataset may not be linked to asset or UI needs refresh'
-      );
-      // Even if button not found, we can still verify the DQ list page works
-      // The test requirement is to verify the results viewers are usable at scale
     }
 
     // Step 5: Run Compliance Check

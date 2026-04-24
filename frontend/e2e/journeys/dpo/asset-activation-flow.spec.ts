@@ -72,10 +72,10 @@ test.describe('Asset Activation Flow', () => {
     await waitForLoadingComplete(page);
 
     const assetKey = `test-asset-${randomUUID()}`;
-    await expect(page.locator('input[id="key"]')).toBeVisible({ timeout: 10000 });
-    await page.fill('input[id="key"]', assetKey);
-    await page.fill('input[id="name"]', 'Test Asset');
-    await page.selectOption('select[id="visibility"]', 'INTERNAL');
+    await expect(page.locator('input[id="asset-key"]')).toBeVisible({ timeout: 10000 });
+    await page.fill('input[id="asset-name"]', 'Test Asset');
+    await page.fill('input[id="asset-key"]', assetKey);
+    await page.selectOption('select[id="asset-visibility"]', 'INTERNAL');
 
     const submitButton = page.locator('button:has-text("Create Asset")');
     await expect(submitButton).toBeVisible({ timeout: 10000 });

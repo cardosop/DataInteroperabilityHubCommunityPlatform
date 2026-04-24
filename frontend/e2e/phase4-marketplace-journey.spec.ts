@@ -414,13 +414,13 @@ test.describe('Phase 4 Marketplace Journey', () => {
     await createButton.first().click();
 
     await expect(page).toHaveURL(/\/assets\/create/, { timeout: 10000 });
-    await page.waitForSelector('input[id="key"]', { timeout: 10000 });
+    await page.waitForSelector('input[id="asset-key"]', { timeout: 10000 });
 
     const assetKey = `test-asset-marketplace-${Date.now()}`;
-    await page.fill('input[id="key"]', assetKey);
-    await page.fill('input[id="name"]', 'Test Asset for Marketplace');
-    await page.fill('textarea[id="description"]', 'Test asset for marketplace listing');
-    await page.selectOption('select[id="visibility"]', 'INTERNAL');
+    await page.fill('input[id="asset-name"]', 'Test Asset for Marketplace');
+    await page.fill('input[id="asset-key"]', assetKey);
+    await page.fill('textarea[id="asset-description"]', 'Test asset for marketplace listing');
+    await page.selectOption('select[id="asset-visibility"]', 'INTERNAL');
 
     const submitButton = page.locator('button:has-text("Create Asset")');
     await submitButton.waitFor({ timeout: 10000 });

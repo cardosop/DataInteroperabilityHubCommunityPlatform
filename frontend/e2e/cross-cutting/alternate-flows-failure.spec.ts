@@ -27,9 +27,9 @@ test.describe('Alternate flows — failure (USE_CASES A1–An)', () => {
       }
       throw _err;
     }
-    await page.fill('input[id="key"]', key);
-    await page.fill('input[id="name"]', 'First Asset');
-    await page.fill('textarea[id="description"]', 'Description');
+    await page.fill('input[id="asset-name"]', 'First Asset');
+    await page.fill('input[id="asset-key"]', key);
+    await page.fill('textarea[id="asset-description"]', 'Description');
 
     // Wait for POST response to confirm first asset was actually created
     const firstCreateResp = page.waitForResponse(
@@ -55,9 +55,9 @@ test.describe('Alternate flows — failure (USE_CASES A1–An)', () => {
       }
       throw _err;
     }
-    await page.fill('input[id="key"]', key);
-    await page.fill('input[id="name"]', 'Second Same Key');
-    await page.fill('textarea[id="description"]', 'Description');
+    await page.fill('input[id="asset-name"]', 'Second Same Key');
+    await page.fill('input[id="asset-key"]', key);
+    await page.fill('textarea[id="asset-description"]', 'Description');
     await page.locator('button:has-text("Create Asset")').click();
     await page.waitForTimeout(3000);
 

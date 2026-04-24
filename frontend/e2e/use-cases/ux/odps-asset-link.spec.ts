@@ -125,9 +125,9 @@ test.describe('ODPS Upload with Asset Linking (AssetPicker)', () => {
     await waitForLoadingComplete(page);
 
     const assetKey = `e2e-odps-link-${randomUUID()}`;
-    await page.fill('input[id="key"]', assetKey);
-    await page.fill('input[id="name"]', 'ODPS Asset Link Test');
-    await page.selectOption('select[id="visibility"]', 'INTERNAL');
+    await page.fill('input[id="asset-name"]', 'ODPS Asset Link Test');
+    await page.fill('input[id="asset-key"]', assetKey);
+    await page.selectOption('select[id="asset-visibility"]', 'INTERNAL');
     await page.locator('button:has-text("Create Asset")').click();
 
     await expect(page).toHaveURL(/\/assets\/[^/]+$/, { timeout: 15000 });

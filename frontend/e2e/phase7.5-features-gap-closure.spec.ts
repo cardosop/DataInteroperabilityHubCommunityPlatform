@@ -465,8 +465,8 @@ test.describe('Phase 7.5 — FEATURES Gap Closure', () => {
       if ((await createBtn.count()) > 0) {
         await createBtn.click();
         await page.waitForURL(/\/assets\/create/, { timeout: 5000 });
-        await page.fill('input[id="key"]', `e2e-health-${Date.now()}`);
-        await page.fill('input[id="name"]', 'E2E Health Test Asset');
+        await page.fill('input[id="asset-name"]', 'E2E Health Test Asset');
+        await page.fill('input[id="asset-key"]', `e2e-health-${Date.now()}`);
         await page.getByRole('button', { name: /^Create$/i }).click();
         await page.waitForURL(/\/assets\/[^/]+$/, { timeout: 20000 });
         try {

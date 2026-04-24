@@ -44,9 +44,9 @@ test.describe('Asset Detail: Attach Contract and Dataset (Pickers)', () => {
     await waitForLoadingComplete(page);
 
     const assetKey = `e2e-attach-pickers-${randomUUID()}`;
-    await page.fill('input[id="key"]', assetKey);
-    await page.fill('input[id="name"]', 'Attach Pickers Test');
-    await page.selectOption('select[id="visibility"]', 'INTERNAL');
+    await page.fill('input[id="asset-key"]', assetKey);
+    await page.fill('input[id="asset-name"]', 'Attach Pickers Test');
+    await page.selectOption('select[id="asset-visibility"]', 'INTERNAL');
     await page.locator('button:has-text("Create Asset")').click();
 
     await expect(page).toHaveURL(/\/assets\/[^/]+$/, { timeout: 15000 });
@@ -107,9 +107,9 @@ test.describe('Asset Detail: Attach Contract and Dataset (Pickers)', () => {
       await expect(page).toHaveURL(/\/assets\/create/, { timeout: 10000 });
       await waitForLoadingComplete(page);
       const assetKey = `e2e-contract-picker-${randomUUID()}`;
-      await page.fill('input[id="key"]', assetKey);
-      await page.fill('input[id="name"]', 'Contract Picker Test');
-      await page.selectOption('select[id="visibility"]', 'INTERNAL');
+      await page.fill('input[id="asset-key"]', assetKey);
+      await page.fill('input[id="asset-name"]', 'Contract Picker Test');
+      await page.selectOption('select[id="asset-visibility"]', 'INTERNAL');
       await page.locator('button:has-text("Create Asset")').click();
       await expect(page).toHaveURL(/\/assets\/[^/]+$/, { timeout: 15000 });
       await waitForLoadingComplete(page);
@@ -235,9 +235,9 @@ test.describe('Asset Detail: Attach Contract and Dataset (Pickers)', () => {
       await waitForLoadingComplete(page);
 
       const assetKey = `e2e-ds-attach-${randomUUID()}`;
-      await page.fill('input[id="key"]', assetKey);
-      await page.fill('input[id="name"]', 'Dataset Attach Test');
-      await page.selectOption('select[id="visibility"]', 'INTERNAL');
+      await page.fill('input[id="asset-key"]', assetKey);
+      await page.fill('input[id="asset-name"]', 'Dataset Attach Test');
+      await page.selectOption('select[id="asset-visibility"]', 'INTERNAL');
       await page.locator('button:has-text("Create Asset")').click();
 
       await expect(page).toHaveURL(/\/assets\/[^/]+$/, { timeout: 15000 });

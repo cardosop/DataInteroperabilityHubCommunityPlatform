@@ -31,10 +31,10 @@ test.describe('Onboarding Checklist', () => {
     await waitForLoadingComplete(page);
 
     const assetKey = `e2e-checklist-${randomUUID()}`;
-    await page.fill('input[id="key"]', assetKey);
-    await page.fill('input[id="name"]', 'Checklist Test Asset');
-    await page.fill('textarea[id="description"]', 'E2E onboarding checklist test');
-    await page.selectOption('select[id="visibility"]', 'INTERNAL');
+    await page.fill('input[id="asset-key"]', assetKey);
+    await page.fill('input[id="asset-name"]', 'Checklist Test Asset');
+    await page.fill('textarea[id="asset-description"]', 'E2E onboarding checklist test');
+    await page.selectOption('select[id="asset-visibility"]', 'INTERNAL');
 
     const submitButton = page.locator('button:has-text("Create Asset")');
     await expect(submitButton).toBeVisible({ timeout: 10000 });
@@ -78,9 +78,9 @@ test.describe('Onboarding Checklist', () => {
     await waitForLoadingComplete(page);
 
     const assetKey = `e2e-action-${randomUUID()}`;
-    await page.fill('input[id="key"]', assetKey);
-    await page.fill('input[id="name"]', 'Action Test Asset');
-    await page.selectOption('select[id="visibility"]', 'INTERNAL');
+    await page.fill('input[id="asset-key"]', assetKey);
+    await page.fill('input[id="asset-name"]', 'Action Test Asset');
+    await page.selectOption('select[id="asset-visibility"]', 'INTERNAL');
 
     await page.locator('button:has-text("Create Asset")').click();
     await expect(page).toHaveURL(/\/assets\/[^/]+$/, { timeout: 20000 });
@@ -118,9 +118,9 @@ test.describe('Onboarding Checklist', () => {
     await waitForLoadingComplete(page);
 
     const assetKey = `e2e-blocker-${randomUUID()}`;
-    await page.fill('input[id="key"]', assetKey);
-    await page.fill('input[id="name"]', 'Blocker Test Asset');
-    await page.selectOption('select[id="visibility"]', 'INTERNAL');
+    await page.fill('input[id="asset-key"]', assetKey);
+    await page.fill('input[id="asset-name"]', 'Blocker Test Asset');
+    await page.selectOption('select[id="asset-visibility"]', 'INTERNAL');
 
     await page.locator('button:has-text("Create Asset")').click();
     await expect(page).toHaveURL(/\/assets\/[^/]+$/, { timeout: 20000 });
@@ -158,9 +158,9 @@ test.describe('Onboarding Checklist', () => {
     await waitForLoadingComplete(page);
 
     const assetKey = `e2e-dismiss-${randomUUID()}`;
-    await page.fill('input[id="key"]', assetKey);
-    await page.fill('input[id="name"]', 'Dismiss Test Asset');
-    await page.selectOption('select[id="visibility"]', 'INTERNAL');
+    await page.fill('input[id="asset-key"]', assetKey);
+    await page.fill('input[id="asset-name"]', 'Dismiss Test Asset');
+    await page.selectOption('select[id="asset-visibility"]', 'INTERNAL');
 
     await page.locator('button:has-text("Create Asset")').click();
     await expect(page).toHaveURL(/\/assets\/[^/]+$/, { timeout: 20000 });
@@ -235,9 +235,9 @@ test.describe('Onboarding Checklist', () => {
     await waitForLoadingComplete(page);
 
     const assetKey = `e2e-bar-${randomUUID()}`;
-    await page.fill('input[id="key"]', assetKey);
-    await page.fill('input[id="name"]', 'Bar Test Asset');
-    await page.selectOption('select[id="visibility"]', 'INTERNAL');
+    await page.fill('input[id="asset-key"]', assetKey);
+    await page.fill('input[id="asset-name"]', 'Bar Test Asset');
+    await page.selectOption('select[id="asset-visibility"]', 'INTERNAL');
 
     await page.locator('button:has-text("Create Asset")').click();
     await expect(page).toHaveURL(/\/assets\/[^/]+$/, { timeout: 20000 });
@@ -262,9 +262,9 @@ test.describe('Onboarding Checklist', () => {
     await waitForLoadingComplete(page);
 
     const assetKey = `e2e-upload-${randomUUID()}`;
-    await page.fill('input[id="key"]', assetKey);
-    await page.fill('input[id="name"]', 'Upload Section Test');
-    await page.selectOption('select[id="visibility"]', 'INTERNAL');
+    await page.fill('input[id="asset-key"]', assetKey);
+    await page.fill('input[id="asset-name"]', 'Upload Section Test');
+    await page.selectOption('select[id="asset-visibility"]', 'INTERNAL');
 
     await page.locator('button:has-text("Create Asset")').click();
     await expect(page).toHaveURL(/\/assets\/[^/]+$/, { timeout: 20000 });
