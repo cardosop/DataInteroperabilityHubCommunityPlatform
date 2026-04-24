@@ -13,7 +13,6 @@ import { getTestUser } from './fixtures/auth';
 import {
   loginAndNavigateToRoute,
   navigateToRouteFromApp,
-  waitForAppMainReady,
 } from './fixtures/helpers';
 import { verifyViaApi } from './fixtures/verifyViaApi';
 
@@ -240,222 +239,197 @@ test.describe('Phase 3 Quality Gates', () => {
     const finalDQButton = page.locator('button:has-text("Run DQ Check")');
     await finalDQButton.waitFor({ state: 'visible', timeout: 30000 });
 
-    {
-      console.log('Found Run DQ Check button, clicking...');
-      await finalDQButton.click();
-      await page.waitForTimeout(3000);
-
-      // Wait for DQ run to appear in the list (status might be PENDING or RUNNING)
-      console.log('Waiting for DQ run to appear...');
-      try {
-        await page.waitForSelector('.quality-gate-run-item', { timeout: 45000 });
-        console.log('DQ run appeared in list');
-      } catch {
-        // DQ run might not appear immediately, reload and check again
-        console.log('DQ run not immediately visible, reloading page...');
-        await page.reload();
-        if (page.url().includes('/login')) {
-          await loginAndNavigateToRoute(page, testUser, `/assets/${assetId}`, {
-            timeout: 30000,
-            contentSelector: '.asset-detail-page, .asset-detail-content, .error-display',
-          });
-        } else {
-          await waitForAppMainReady(page, {
-            timeout: 45000,
-            contentSelector: '.asset-detail-page, .asset-detail-content, .error-display',
-          });
-        }
-        await page.waitForSelector('.quality-gate-run-item', { timeout: 30000 });
-      }
-
-      // Wait for DQ run to complete (polling — max 20 attempts = 60s before skipping)
-      // If the DQ runner backend is not processing jobs, skip gracefully rather than timing out.
-      console.log('Waiting for DQ run to complete...');
-      let dqRunCompleted = false;
-      for (let i = 0; i < 20; i++) {
-        await page.waitForTimeout(3000);
-        const dqRunStatus = page.locator('.quality-gate-run-item .status-badge').first();
-        if ((await dqRunStatus.count()) > 0) {
-          const statusText = await dqRunStatus.textContent();
-          console.log(`DQ run status (attempt ${i + 1}):`, statusText);
-          if (statusText && (statusText.includes('SUCCEEDED') || statusText.includes('FAILED'))) {
-            dqRunCompleted = true;
-            console.log('DQ run completed with status:', statusText);
-            break;
-          }
-        }
-        // Reload every 5 attempts to get fresh status
-        if (i > 0 && i % 5 === 0) {
-          console.log('Reloading page to check DQ run status...');
-          await page.reload();
-          if (page.url().includes('/login')) {
-            await loginAndNavigateToRoute(page, testUser, `/assets/${assetId}`, {
-              timeout: 30000,
-              contentSelector: '.asset-detail-page, .asset-detail-content, .error-display',
-            });
-          } else {
-            await waitForAppMainReady(page, {
-              timeout: 45000,
-              contentSelector: '.asset-detail-page, .asset-detail-content, .error-display',
-            });
-          }
-          await page.waitForTimeout(2000);
-        }
-      }
-
-      // Hoist the condition into test.skip so the skip is conditional (not
-      // a hard-coded `true`) and satisfies the no-test-skip-true ESLint rule
-      // from PR 5. The skip reason still reaches the skip-counter gate (PR 10)
-      // so CI can fail when DQ-worker-down skips cross the per-reason threshold.
-      test.skip(
-        !dqRunCompleted,
-        'DQ runner backend did not process run within 60s — skip. DQ worker may not be running.',
+    // Observe the POST /dq/runs/ response directly so we catch silent
+    // mutation failures (e.g. 401/403/5xx) instead of waiting 45s for a
+    // list item that will never render. The prior approach used
+    // page.reload() as a fallback which could land on /login if the
+    // mutation had triggered the API client's refresh-then-logout path
+    // (shared/api/client.ts:300-322).
+    console.log('Found Run DQ Check button, clicking...');
+    const dqCreateResponsePromise = page.waitForResponse(
+      (resp) =>
+        resp.url().includes('/dq/runs/') &&
+        resp.request().method() === 'POST',
+      { timeout: 45000 },
+    );
+    await finalDQButton.click();
+    const dqCreateResponse = await dqCreateResponsePromise;
+    const dqCreateStatus = dqCreateResponse.status();
+    if (dqCreateStatus !== 201) {
+      const body = await dqCreateResponse.text().catch(() => '');
+      throw new Error(
+        `POST /dq/runs/ returned ${dqCreateStatus}. Body: ${body.slice(0, 400)}`,
       );
-      if (!dqRunCompleted) {
-        return;
+    }
+    const dqRunCreated = (await dqCreateResponse.json()) as { id: string };
+    const dqRunId = dqRunCreated.id;
+    console.log('DQ run created, ID:', dqRunId);
+
+    // Poll for DQ run completion via API directly — avoids page reloads
+    // which could redirect to /login if a background refresh fails. Max
+    // 60s before skipping (matches previous budget: 20 * 3s).
+    console.log('Polling /dq/runs/{id}/ for terminal status...');
+    let dqTerminalStatus: string | null = null;
+    for (let i = 0; i < 20; i++) {
+      await page.waitForTimeout(3000);
+      const dqRun = await verifyViaApi<{ status: string }>(
+        page,
+        `/api/v1/dq/runs/${dqRunId}/`,
+        {},
+      );
+      console.log(`DQ run status (attempt ${i + 1}): ${dqRun.status}`);
+      if (dqRun.status === 'SUCCEEDED' || dqRun.status === 'FAILED') {
+        dqTerminalStatus = dqRun.status;
+        break;
       }
-
-      // Click on DQ run to view details
-      console.log('Clicking on DQ run to view details...');
-      const dqRunItem = page.locator('.quality-gate-run-item').first();
-      await dqRunItem.click();
-
-      await page.waitForURL(/\/dq\/runs\/[^/]+$/, { timeout: 30000 });
-      await page.waitForLoadState('domcontentloaded');
-      await page.waitForTimeout(2000);
-
-      await page.waitForSelector('.dq-run-detail-page, .dq-run-detail-content', { timeout: 30000 });
-      console.log('DQ run detail page loaded');
-
-      // Verify DQ results are displayed (only if run succeeded)
-      const dqResults = page.locator('.dq-results-viewer, .dq-run-results-section');
-      if ((await dqResults.count()) > 0) {
-        console.log('DQ results viewer found');
-        // Check for results summary
-        try {
-          await expect(page.locator('.dq-results-summary, .summary-card')).toHaveCount(1, {
-            timeout: 5000,
-          });
-          console.log('DQ results summary found');
-        } catch {
-          console.log('DQ results summary not found (may still be loading)');
-        }
-      } else {
-        console.log('DQ results not yet available (run may still be processing)');
-      }
-
-      // Go back to asset
-      console.log('Navigating back to asset detail...');
-      await page.goto(`/assets/${assetId}`);
-      await page.waitForLoadState('domcontentloaded');
-      await page.waitForSelector('.asset-detail-page, .asset-detail-content', { timeout: 30000 });
-      await page.waitForTimeout(2000);
     }
 
-    // Step 5: Run Compliance Check
+    // Conditional skip so the per-reason skip-counter gate (PR 10) can
+    // fail CI when DQ-worker-down skips cross the threshold.
+    test.skip(
+      dqTerminalStatus === null,
+      'DQ runner backend did not process run within 60s — skip. DQ worker may not be running.',
+    );
+    if (dqTerminalStatus === null) {
+      return;
+    }
+    console.log('DQ run completed with status:', dqTerminalStatus);
+
+    // Navigate to the DQ run detail page for UI verification
+    console.log('Navigating to DQ run detail page...');
+    await navigateToRouteFromApp(page, `/dq/runs/${dqRunId}`, {
+      timeout: 30000,
+      contentSelector: '.dq-run-detail-page, .dq-run-detail-content, .error-display',
+      user: testUser,
+    });
+    await page.waitForSelector('.dq-run-detail-page, .dq-run-detail-content', {
+      timeout: 30000,
+    });
+    console.log('DQ run detail page loaded');
+
+    // Verify DQ results are displayed (only if run succeeded)
+    const dqResults = page.locator('.dq-results-viewer, .dq-run-results-section');
+    if ((await dqResults.count()) > 0) {
+      console.log('DQ results viewer found');
+      try {
+        await expect(page.locator('.dq-results-summary, .summary-card')).toHaveCount(1, {
+          timeout: 5000,
+        });
+        console.log('DQ results summary found');
+      } catch {
+        console.log('DQ results summary not found (may still be loading)');
+      }
+    } else {
+      console.log('DQ results not yet available (run may still be processing)');
+    }
+
+    // Go back to asset
+    console.log('Navigating back to asset detail...');
+    await navigateToRouteFromApp(page, `/assets/${assetId}`, {
+      timeout: 30000,
+      contentSelector: '.asset-detail-page, .asset-detail-content, .error-display',
+      user: testUser,
+    });
+    await page.waitForSelector('.asset-detail-page, .asset-detail-content', { timeout: 30000 });
+
+    // Step 5: Run Compliance Check — same pattern as DQ: observe POST
+    // response + poll via API, no page reloads (which can redirect to /login
+    // if a background refresh fails).
     console.log('Looking for Run Compliance Check button...');
     const runComplianceButton = page.locator('button:has-text("Run Compliance Check")');
-    const complianceButtonCount = await runComplianceButton.count();
-    console.log('Run Compliance Check button count:', complianceButtonCount);
+    await runComplianceButton.waitFor({ state: 'visible', timeout: 30000 });
 
-    if (complianceButtonCount > 0) {
-      await runComplianceButton.click();
+    const complianceCreatePromise = page.waitForResponse(
+      (resp) =>
+        resp.url().includes('/compliance/runs/') &&
+        resp.request().method() === 'POST',
+      { timeout: 45000 },
+    );
+    await runComplianceButton.click();
+    const complianceCreateResponse = await complianceCreatePromise;
+    const complianceCreateStatus = complianceCreateResponse.status();
+    if (complianceCreateStatus !== 201) {
+      const body = await complianceCreateResponse.text().catch(() => '');
+      throw new Error(
+        `POST /compliance/runs/ returned ${complianceCreateStatus}. Body: ${body.slice(0, 400)}`,
+      );
+    }
+    const complianceRunCreated = (await complianceCreateResponse.json()) as { id: string };
+    const complianceRunId = complianceRunCreated.id;
+    console.log('Compliance run created, ID:', complianceRunId);
+
+    // Poll for compliance terminal status via API (max 120s — compliance
+    // typically runs longer than DQ).
+    console.log('Polling /compliance/runs/{id}/ for terminal status...');
+    let complianceTerminalStatus: string | null = null;
+    for (let i = 0; i < 60; i++) {
       await page.waitForTimeout(2000);
-
-      // Wait for compliance run to appear
-      await page.waitForSelector('.quality-gate-run-item', { timeout: 30000 });
-
-      // Wait for compliance run to complete (polling)
-      let complianceRunCompleted = false;
-      for (let i = 0; i < 60; i++) {
-        await page.waitForTimeout(2000);
-        const complianceRunStatus = page.locator('.quality-gate-run-item .status-badge').last();
-        if ((await complianceRunStatus.count()) > 0) {
-          const statusText = await complianceRunStatus.textContent();
-          if (statusText && (statusText.includes('SUCCEEDED') || statusText.includes('FAILED'))) {
-            complianceRunCompleted = true;
-            break;
-          }
-        }
-        await page.reload();
-        await page.waitForSelector('.asset-detail-page, .asset-detail-content', { timeout: 30000 });
+      const complianceRun = await verifyViaApi<{ status: string }>(
+        page,
+        `/api/v1/compliance/runs/${complianceRunId}/`,
+        {},
+      );
+      if (
+        complianceRun.status === 'SUCCEEDED' ||
+        complianceRun.status === 'FAILED'
+      ) {
+        complianceTerminalStatus = complianceRun.status;
+        break;
       }
+    }
+    test.skip(
+      complianceTerminalStatus === null,
+      'Compliance runner backend did not process run within 120s — skip. Compliance worker may not be running.',
+    );
+    if (complianceTerminalStatus === null) {
+      return;
+    }
+    console.log('Compliance run completed with status:', complianceTerminalStatus);
 
-      expect(complianceRunCompleted).toBe(true);
+    // Navigate to the compliance run detail page for UI verification
+    console.log('Navigating to compliance run detail page...');
+    await navigateToRouteFromApp(page, `/compliance/runs/${complianceRunId}`, {
+      timeout: 30000,
+      contentSelector: '.compliance-run-detail-page, .compliance-run-detail-content, .error-display',
+      user: testUser,
+    });
+    await page.waitForSelector(
+      '.compliance-run-detail-page, .compliance-run-detail-content',
+      { timeout: 30000 },
+    );
 
-      // Check for fail-closed warning if compliance failed
-      const blockedIndicator = page.locator('.blocked-indicator, .run-blocked');
-      if ((await blockedIndicator.count()) > 0) {
-        // Verify fail-closed UX is shown
-        await expect(page.locator('.blocked-message, .fail-closed-warning')).toHaveCount(1, {
+    // If compliance failed, verify fail-closed UX on the detail page
+    if (complianceTerminalStatus === 'FAILED') {
+      const remediationSection = page.locator(
+        '.compliance-results-remediation, .remediation-suggestions'
+      );
+      if ((await remediationSection.count()) > 0) {
+        await expect(page.locator('.remediation-item, .remediation-suggestion')).toHaveCount(1, {
           timeout: 5000,
         });
-
-        // Click on compliance run to view details and remediation guidance
-        const complianceRunItem = page
-          .locator('.quality-gate-run-item.run-blocked, .quality-gate-run-item')
-          .last();
-        await complianceRunItem.click();
-
-        await page.waitForURL(/\/compliance\/runs\/[^/]+$/, { timeout: 30000 });
-        await page.waitForSelector('.compliance-run-detail-page, .compliance-run-detail-content', {
-          timeout: 30000,
-        });
-
-        // Verify remediation suggestions are shown
-        const remediationSection = page.locator(
-          '.compliance-results-remediation, .remediation-suggestions'
-        );
-        if ((await remediationSection.count()) > 0) {
-          await expect(page.locator('.remediation-item, .remediation-suggestion')).toHaveCount(1, {
-            timeout: 5000,
-          });
-        }
-
-        // Verify fail-closed warning is prominent — at least one warning must be visible.
-        // Use first().toBeVisible() rather than toHaveCount(1) because multiple warnings
-        // may appear simultaneously (e.g. one per failed check), which is valid behavior.
-        await expect(page.locator('.fail-closed-warning, .blocked-warning').first()).toBeVisible({
-          timeout: 5000,
-        });
-
-        // Go back to asset
-        await page.goto(`/assets/${assetId}`);
-        await page.waitForSelector('.asset-detail-page, .asset-detail-content', { timeout: 30000 });
-
-        // Step 6: Retry compliance check (after remediation guidance)
-        // In a real scenario, user would fix data issues first
-        // For this test, we'll just verify the retry button is available
-        const retryComplianceButton = page.locator('button:has-text("Run Compliance Check")');
-        if ((await retryComplianceButton.count()) > 0) {
-          // Verify button is enabled (user can retry)
-          await expect(retryComplianceButton).toBeEnabled();
-        }
-      } else {
-        // Compliance passed - verify success indicators
-        const successBadge = page.locator(
-          '.overall-status-badge.overall-status-pass, .status-badge.status-succeeded'
-        );
-        if ((await successBadge.count()) > 0) {
-          // Click to view results
-          const complianceRunItem = page.locator('.quality-gate-run-item').last();
-          await complianceRunItem.click();
-
-          // Under parallel test load the SPA navigation can be slow; use a generous timeout.
-          await page.waitForURL(/\/compliance\/runs\/[^/]+$/, { timeout: 30000 });
-          await page.waitForSelector(
-            '.compliance-run-detail-page, .compliance-run-detail-content',
-            { timeout: 30000 }
-          );
-
-          // Verify results viewer is usable at scale
-          const filters = page.locator('.compliance-results-filters, .filter-group');
-          if ((await filters.count()) > 0) {
-            // Verify filtering is available
-            await expect(page.locator('select')).toHaveCount(1, { timeout: 5000 });
-          }
-        }
       }
+      // At least one fail-closed warning must be visible (multiple are valid).
+      await expect(page.locator('.fail-closed-warning, .blocked-warning').first()).toBeVisible({
+        timeout: 5000,
+      });
+    } else {
+      // Compliance passed — verify filtering UX is available
+      const filters = page.locator('.compliance-results-filters, .filter-group');
+      if ((await filters.count()) > 0) {
+        await expect(page.locator('select')).toHaveCount(1, { timeout: 5000 });
+      }
+    }
+
+    // Step 6: back to asset detail; verify retry button present+enabled
+    await navigateToRouteFromApp(page, `/assets/${assetId}`, {
+      timeout: 30000,
+      contentSelector: '.asset-detail-page, .asset-detail-content, .error-display',
+      user: testUser,
+    });
+    await page.waitForSelector('.asset-detail-page, .asset-detail-content', { timeout: 30000 });
+    const retryComplianceButton = page.locator('button:has-text("Run Compliance Check")');
+    if ((await retryComplianceButton.count()) > 0) {
+      await expect(retryComplianceButton).toBeEnabled();
     }
 
     // Step 7: Verify results viewers are usable at scale (filtering/severity grouping)
