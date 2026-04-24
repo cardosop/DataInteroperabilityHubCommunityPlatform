@@ -232,11 +232,19 @@ test.describe('Phase 3 Quality Gates', () => {
 
     // Step 4: Run DQ Check — dataset is pre-linked so button renders on first load.
     // `Run DQ Check` only renders when asset.dataset_id is set (see AssetDetailPage.tsx).
+    //
+    // OnboardingChecklist also renders a "Run DQ Check" button (class
+    // `onboarding-step-action`, data-testid `onboarding-action-run-dq`).
+    // Scope the locator to `.asset-quality-gates-section` so we always hit
+    // the canonical action button in the Quality Gates section, not the
+    // onboarding step's shortcut (which routes through the same handler
+    // but has different rendering state — disabled while a mutation is
+    // pending via OnboardingChecklist props rather than the page's own
+    // mutation state).
     console.log('Looking for Run DQ Check button...');
-    await page.waitForSelector('.asset-quality-gates-section, .quality-gate-subsection', {
-      timeout: 30000,
-    });
-    const finalDQButton = page.locator('button:has-text("Run DQ Check")');
+    const qualityGatesSection = page.locator('.asset-quality-gates-section');
+    await qualityGatesSection.waitFor({ state: 'visible', timeout: 30000 });
+    const finalDQButton = qualityGatesSection.locator('button:has-text("Run DQ Check")');
     await finalDQButton.waitFor({ state: 'visible', timeout: 30000 });
 
     // Observe the POST /dq/runs/ response directly so we catch silent
@@ -337,8 +345,18 @@ test.describe('Phase 3 Quality Gates', () => {
     // Step 5: Run Compliance Check — same pattern as DQ: observe POST
     // response + poll via API, no page reloads (which can redirect to /login
     // if a background refresh fails).
+    //
+    // Scoped to `.asset-quality-gates-section` for the same reason as DQ:
+    // OnboardingChecklist renders "Run Compliance Scan" (different text
+    // today — see OnboardingChecklist.tsx:205) but the labels are one
+    // string-tweak away from colliding. Scoping makes the selector robust
+    // to that kind of future onboarding-label drift.
     console.log('Looking for Run Compliance Check button...');
-    const runComplianceButton = page.locator('button:has-text("Run Compliance Check")');
+    const qualityGatesForCompliance = page.locator('.asset-quality-gates-section');
+    await qualityGatesForCompliance.waitFor({ state: 'visible', timeout: 30000 });
+    const runComplianceButton = qualityGatesForCompliance.locator(
+      'button:has-text("Run Compliance Check")',
+    );
     await runComplianceButton.waitFor({ state: 'visible', timeout: 30000 });
 
     const complianceCreatePromise = page.waitForResponse(
@@ -434,7 +452,12 @@ test.describe('Phase 3 Quality Gates', () => {
       user: testUser,
     });
     await page.waitForSelector('.asset-detail-page, .asset-detail-content', { timeout: 30000 });
-    const retryComplianceButton = page.locator('button:has-text("Run Compliance Check")');
+    // Scoped to the Quality Gates section for the same reason as the
+    // primary compliance-run button above (onboarding-label collision
+    // resilience).
+    const retryComplianceButton = page
+      .locator('.asset-quality-gates-section')
+      .locator('button:has-text("Run Compliance Check")');
     if ((await retryComplianceButton.count()) > 0) {
       await expect(retryComplianceButton).toBeEnabled();
     }
