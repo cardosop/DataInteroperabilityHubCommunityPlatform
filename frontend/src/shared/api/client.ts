@@ -152,6 +152,52 @@ function normalizeApiError(
   };
 }
 
+/**
+ * Endpoints that must be reached WITHOUT an `Authorization: Bearer` header,
+ * even when the client happens to have a token in memory from a prior
+ * session.
+ *
+ * Why this exists: the backend's auth middleware validates the Authorization
+ * header BEFORE reading the request body. If a stale/revoked/invalid bearer
+ * is attached to `/auth/login/`, the backend returns 401 without ever
+ * looking at the email+password in the body — the login request fails even
+ * though the credentials are valid. The user then retries, localStorage
+ * gets cleared on the 401, and the second attempt succeeds (no stale
+ * header). This produces the classic "first login always fails, second
+ * works" UX regression.
+ *
+ * These endpoints are anonymous by definition — a user hits them BEFORE
+ * having a session — so the Authorization header is never appropriate.
+ *
+ * Verified via curl against staging on 2026-04-24:
+ *   POST /auth/login/ with valid creds + no Authorization       → 200
+ *   POST /auth/login/ with valid creds + bogus Authorization    → 401
+ */
+export const ANONYMOUS_ENDPOINTS: readonly string[] = [
+  '/auth/login/',
+  '/auth/register/',
+  '/auth/password-reset/',
+  '/auth/password-reset/confirm/',
+  '/auth/verify-email/',
+  '/auth/resend-verification/',
+  '/auth/accept-invitation/',
+] as const;
+
+/**
+ * True when `url` targets an endpoint in ANONYMOUS_ENDPOINTS.
+ *
+ * Matches by suffix because callers pass paths relative to baseURL
+ * (e.g. `/auth/login/`) but absolute URLs are also possible
+ * (e.g. `https://api.stagingmeshant-internal.example.com/api/v1/auth/login/`).
+ * Query strings are tolerated (`?next=/foo`) by checking for the
+ * substring plus a `?` sentinel.
+ */
+export function isAnonymousEndpoint(url: string): boolean {
+  return ANONYMOUS_ENDPOINTS.some(
+    (ep) => url === ep || url.endsWith(ep) || url.includes(`${ep}?`),
+  );
+}
+
 export class ApiClient {
   _accessToken: string | null = null;
   _refreshToken: string | null = null;
@@ -180,16 +226,33 @@ export class ApiClient {
     this._getTenantId = getter || null;
   }
 
-  /** Build headers for a specific HTTP method */
-  _buildHeaders(method: string): Record<string, string> {
+  /**
+   * Build headers for a specific HTTP method + URL.
+   *
+   * The URL is needed so we can skip the Authorization header for anonymous
+   * endpoints (login, register, password reset, etc.). Attaching a stale
+   * bearer to those endpoints causes the backend's auth middleware to
+   * return 401 without reading the request body — see ANONYMOUS_ENDPOINTS.
+   *
+   * `url` is optional so existing callers that haven't been updated keep
+   * working (the ApiClient still attaches the bearer, matching prior
+   * behaviour when we can't check the URL). All InternalHttpClient code
+   * paths pass the URL.
+   */
+  _buildHeaders(method: string, url?: string): Record<string, string> {
     const headers: Record<string, string> = {
       'Content-Type': 'application/json',
     };
 
-    // Auth token — skip in cookie mode (httpOnly cookies are sent automatically
-    // via credentials: 'include'; sending a Bearer header would be redundant
-    // and the token isn't available in JS anyway).
-    if (this._accessToken && !this._cookieAuthMode) {
+    // Auth token — skip for three reasons:
+    //   1. Cookie mode (httpOnly cookies are sent automatically via
+    //      credentials: 'include'; a Bearer header would be redundant and
+    //      the token isn't available in JS anyway).
+    //   2. No token in memory.
+    //   3. URL targets an anonymous endpoint (login/register/...) where
+    //      attaching a stale bearer would trigger a spurious 401.
+    const skipAuthForAnonymous = url !== undefined && isAnonymousEndpoint(url);
+    if (this._accessToken && !this._cookieAuthMode && !skipAuthForAnonymous) {
       headers['Authorization'] = `Bearer ${this._accessToken}`;
     }
 
@@ -398,8 +461,9 @@ class InternalHttpClient implements HttpClient {
       }
     }
 
-    // Build headers (method-aware: CSRF for POST, Cache-Control for GET)
-    const baseHeaders = this._apiClient._buildHeaders(method);
+    // Build headers (method-aware: CSRF for POST, Cache-Control for GET;
+    // URL-aware: skip Authorization for anonymous endpoints like /auth/login/).
+    const baseHeaders = this._apiClient._buildHeaders(method, url);
     const headers = new Headers({
       ...baseHeaders,
       'X-Correlation-ID': correlationId,

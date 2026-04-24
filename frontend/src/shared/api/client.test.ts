@@ -91,6 +91,58 @@ describe('ApiClient (fetch-based)', () => {
       expect(headers.get('Authorization')).toBe('Bearer test-token-123');
     });
 
+    it('OMITS Authorization header for /auth/login/ even when token is set', async () => {
+      // Regression guard — see ANONYMOUS_ENDPOINTS in client.ts.
+      // Sending a stale/revoked bearer to login causes the backend auth
+      // middleware to 401 without reading the body, producing the
+      // "first login always fails, second succeeds" UX bug. The client
+      // must NOT attach Authorization to anonymous endpoints.
+      client.setAccessToken('stale-token-from-prior-session');
+      fetchMock.mockResolvedValue(mockFetchResponse({ access_token: 'new-token' }));
+
+      await client.getClient().post('/auth/login/', {
+        email: 'u@example.com',
+        password: 'pw',
+      });
+
+      const [, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+      const headers = new Headers(init.headers as HeadersInit);
+      expect(headers.get('Authorization')).toBeNull();
+    });
+
+    it.each([
+      ['/auth/login/'],
+      ['/auth/register/'],
+      ['/auth/password-reset/'],
+      ['/auth/password-reset/confirm/'],
+      ['/auth/verify-email/'],
+      ['/auth/resend-verification/'],
+      ['/auth/accept-invitation/'],
+    ])('OMITS Authorization header for %s (anonymous endpoint)', async (path) => {
+      client.setAccessToken('stale-token');
+      fetchMock.mockResolvedValue(mockFetchResponse({}));
+
+      await client.getClient().post(path, {});
+
+      const [, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+      const headers = new Headers(init.headers as HeadersInit);
+      expect(headers.get('Authorization')).toBeNull();
+    });
+
+    it('STILL adds Authorization for authenticated endpoints even with similar names', async () => {
+      // `/auth/me/` and `/auth/sessions/` are authenticated endpoints;
+      // they must still get the Authorization header despite matching
+      // the `/auth/` prefix.
+      client.setAccessToken('valid-token');
+      fetchMock.mockResolvedValue(mockFetchResponse({}));
+
+      await client.getClient().get('/auth/me/');
+
+      const [, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+      const headers = new Headers(init.headers as HeadersInit);
+      expect(headers.get('Authorization')).toBe('Bearer valid-token');
+    });
+
     it('adds X-Tenant-ID header when tenant getter is set', async () => {
       client.setTenantIdGetter(() => 'tenant-abc');
       fetchMock.mockResolvedValue(mockFetchResponse({}));
