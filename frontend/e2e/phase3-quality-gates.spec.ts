@@ -15,6 +15,7 @@ import {
   navigateToRouteFromApp,
   waitForAppMainReady,
 } from './fixtures/helpers';
+import { verifyViaApi } from './fixtures/verifyViaApi';
 
 test.describe('Phase 3 Quality Gates', () => {
   test('complete journey: run compliance + DQ → handle fail → rerun → pass', async ({ page }) => {
@@ -115,6 +116,18 @@ test.describe('Phase 3 Quality Gates', () => {
     if (!assetId || assetId === 'create' || assetId.length < 30) {
       throw new Error(`Invalid asset ID extracted: ${assetId} from URL: ${assetUrl}`);
     }
+
+    // Dual-channel verification (PR 7a-ext2 — second verifyViaApi adoption).
+    // The URL regex above proves the UI routed to an asset detail page, but
+    // not that the backend actually persisted the asset. A UI regression
+    // that redirects on a 5xx would pass the URL check silently. Hit the
+    // API directly and assert the record landed with the expected key +
+    // DRAFT status before proceeding with the DQ / compliance flow that
+    // depends on it.
+    await verifyViaApi(page, `/api/v1/assets/${assetId}/`, {
+      key: assetKey,
+      status: 'DRAFT',
+    });
 
     // Wait for asset detail page to load
     await page.waitForLoadState('domcontentloaded');
