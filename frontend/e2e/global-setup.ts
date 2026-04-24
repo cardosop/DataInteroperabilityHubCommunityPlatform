@@ -100,8 +100,27 @@ async function globalSetup(config: FullConfig) {
           // 120+ tests that all depend on it. If the auth service is broken (DB down,
           // user doesn't exist, rate-limited), fail fast with a clear message instead
           // of letting every test fail with unclear timeout errors.
-          const E2E_EMAIL = process.env.E2E_TEST_USER_EMAIL || 'e2e-test-dpo@meshant.com';
-          const E2E_PASSWORD = process.env.E2E_TEST_USER_PASSWORD || 'E2eTestPass123!';
+          //
+          // Single source of truth for credentials: ensureTestUser() (in
+          // setup/create-test-user.ts:183-184) consults E2E_ADMIN_EMAIL /
+          // E2E_ADMIN_PASSWORD with defaults "e2e_test@example.com" /
+          // "TestPass123" — matching hub/apps/users/management/commands/
+          // ensure_e2e_user_roles.py:31. This gate MUST use the same defaults
+          // so it doesn't cry wolf when local/staging credentials haven't
+          // been overridden.
+          //
+          // E2E_TEST_USER_* aliases are retained only because the
+          // `playwright-mvp-quarantine-nightly.yml` workflow sets them from
+          // STAGING_E2E_USER_* secrets — honoring both names keeps that path
+          // working. Drop this fallback if/when that workflow is updated.
+          const E2E_EMAIL =
+            process.env.E2E_ADMIN_EMAIL ||
+            process.env.E2E_TEST_USER_EMAIL ||
+            'e2e_test@example.com';
+          const E2E_PASSWORD =
+            process.env.E2E_ADMIN_PASSWORD ||
+            process.env.E2E_TEST_USER_PASSWORD ||
+            'TestPass123';
           try {
             const authCheck = await fetch(`${API_BASE_URL}/auth/login/`, {
               method: 'POST',
