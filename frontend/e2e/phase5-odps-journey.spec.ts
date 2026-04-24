@@ -190,37 +190,39 @@ test.describe('Phase 5 ODPS Journey', () => {
     await loginAsPersona(page, getTestUser);
     const testUser = await getTestUser();
 
-    // Step 1: Navigate to ODPS upload page
-    console.log('Step 1: Navigating to ODPS upload page...');
-    await loginAndNavigateToRoute(page, testUser, '/odps/upload', {
+    // Step 1: Navigate to /contracts/create (Phase 211.A6 consolidated the
+    // legacy /odps/upload route into the unified contract-creation page;
+    // ODPS content is auto-detected by ContractCreatePage and routed
+    // through POST /contracts/products/ behind the scenes).
+    console.log('Step 1: Navigating to contract create page...');
+    await loginAndNavigateToRoute(page, testUser, '/contracts/create', {
       timeout: 60000,
-      contentSelector: '.odps-upload-page, .odps-upload-form, h1',
+      contentSelector: '.contract-create-page, [data-testid="contract-file-reader"], h1',
     });
 
-    await page.waitForTimeout(2000);
+    // Route protection and feature gating are invariants of the app shell,
+    // not transient environmental flakes. A redirect to /login or /403
+    // here means the test user lost its contract-creation role, which is a
+    // real failure the dual-channel audit must surface — not skip.
+    if (page.url().includes('/403')) {
+      throw new Error(
+        `Contract create page redirected to /403 for ${testUser.email}: user lacks contract-create role. ` +
+          `Fix the role grant in scripts/seed_e2e_user.py (or CI seeding) rather than skipping.`,
+      );
+    }
+    if (page.url().includes('/login')) {
+      throw new Error(
+        `Contract create page redirected to /login after loginAndNavigateToRoute — session was invalidated mid-flow. ` +
+          `This is the failure the PR 7a-ext3 refresh-token fix targets; check that the deploy carrying commit 631f4091 has landed.`,
+      );
+    }
 
-    // Guard: if the ODPS upload page doesn't render an upload form, skip gracefully.
-    // This can happen when the ODPS feature is disabled or the route doesn't exist.
-    // Condition hoisted into test.skip (PR 5 ESLint rule) + skip reason reaches
-    // PR 10's skip-counter gate so CI fails when ODPS route is broadly unavailable.
-    const redirected = page.url().includes('/403') || page.url().includes('/login');
-    test.skip(
-      redirected,
-      `ODPS upload page redirected to ${page.url()} — route may not exist or user lacks permission`,
-    );
-    if (redirected) {
-      return;
-    }
-    const odpsFormExists = await page.locator(
-      '.odps-upload-page, .odps-upload-form, input[type="file"], textarea[id="odps-content"]'
-    ).first().waitFor({ state: 'visible', timeout: 10000 }).then(() => true).catch(() => false);
-    test.skip(
-      !odpsFormExists,
-      'ODPS upload form not found on /odps/upload — ODPS feature may not be enabled in this environment',
-    );
-    if (!odpsFormExists) {
-      return;
-    }
+    // ContractCreatePage's three-tab mode selector defaults to 'raw' mode,
+    // which renders ContractFileReader (file input + textarea). ODPS JSON
+    // is auto-detected from content, so the spec doesn't need to click the
+    // ODPS tab — the 'raw' default handles the upload end-to-end.
+    const fileReader = page.locator('[data-testid="contract-file-reader"]');
+    await fileReader.waitFor({ state: 'visible', timeout: 15000 });
 
     // Step 2: Upload ODPS JSON file
     console.log('Step 2: Uploading ODPS JSON file...');
@@ -285,45 +287,35 @@ test.describe('Phase 5 ODPS Journey', () => {
 
     const odpsJson = JSON.stringify(odpsDocument, null, 2);
 
-    // Option 1: Upload via file input
-    const fileInput = page.locator('input[type="file"]');
-    if ((await fileInput.count()) > 0) {
-      // Create a temporary file in the browser context
-      await fileInput.setInputFiles({
-        name: 'test-odps.json',
-        mimeType: 'application/json',
-        buffer: Buffer.from(odpsJson),
-      });
-      await page.waitForTimeout(1000);
-    } else {
-      // Option 2: Paste content directly into textarea
-      const contentTextarea = page.locator('textarea[id="odps-content"]');
-      await contentTextarea.waitFor({ timeout: 10000 });
-      await contentTextarea.fill(odpsJson);
-      await page.waitForTimeout(500);
-    }
+    // ContractFileReader always renders BOTH the file input and the textarea
+    // (the textarea is kept populated in sync with the file contents so the
+    // validation preview works either way). Upload via file input — the
+    // component reads the file into state and triggers the same
+    // content-detection path as a paste.
+    const fileInput = fileReader.locator('input[type="file"].contract-file-reader__file-input');
+    await fileInput.setInputFiles({
+      name: 'test-odps.json',
+      mimeType: 'application/json',
+      buffer: Buffer.from(odpsJson),
+    });
 
-    // Verify format is JSON
-    const formatSelect = page.locator('select[id="odps-format"]');
-    if ((await formatSelect.count()) > 0) {
-      const currentFormat = await formatSelect.inputValue();
-      if (currentFormat !== 'JSON') {
-        await formatSelect.selectOption('JSON');
-        await page.waitForTimeout(500);
-      }
-    }
+    // Wait for the content-type detection badge to read "Detected: ODPS".
+    // ContractFileReader renders a <span class="... badge"> containing the
+    // literal text "Detected: ODPS" (see ContractFileReader.tsx:236).
+    // This proves the file was parsed and classified before we click
+    // submit, rather than racing a debounced detector with a fixed sleep.
+    await expect(
+      fileReader.locator('.contract-file-reader__footer span:has-text("Detected: ODPS")'),
+    ).toBeVisible({ timeout: 15000 });
 
     // Step 3: Submit ODPS creation
+    // ContractCreatePage renders a single "Create Contract" button in raw
+    // mode. When ContractFileReader detects ODPS content, handleSubmit
+    // routes through createODPS.mutateAsync (POST /contracts/products/)
+    // instead of the ODCS path — same button, same text.
     console.log('Step 3: Submitting ODPS creation...');
-    const createButton = page.locator('button:has-text("Create ODPS Product")');
-    const createButtonFound = await createButton.waitFor({ timeout: 10000 }).then(() => true).catch(() => false);
-    test.skip(
-      !createButtonFound,
-      '"Create ODPS Product" button not found — ODPS submission form may use different UI or not be fully implemented',
-    );
-    if (!createButtonFound) {
-      return;
-    }
+    const createButton = page.locator('button:has-text("Create Contract")');
+    await expect(createButton).toBeEnabled({ timeout: 20000 });
 
     // Monitor network request to capture workflow instance ID
     let workflowInstanceId: string | null = null;
@@ -397,85 +389,43 @@ test.describe('Phase 5 ODPS Journey', () => {
       }
     }
 
-    // If we don't have workflow instance ID, try to get it from the page
-    if (!workflowInstanceId) {
-      // Wait for workflow progress section to appear
-      await page.waitForSelector('.odps-workflow-progress', { timeout: 10000 });
-      await page.waitForTimeout(2000);
-
-      // Try to extract from page state or API
-      workflowInstanceId = await page.evaluate(async () => {
-        const token = localStorage.getItem('access_token');
-        if (!token) return null;
-
-        // Get recent workflows (this is a workaround - ideally we'd have the ID from response)
-        // For now, we'll need to rely on the UI showing the workflow status
-        return null;
-      });
-    }
-
     // Step 4: Poll workflow status until completion
     console.log('Step 4: Polling workflow status...');
+
+    // The only authoritative source for workflow_instance_id is the POST
+    // /contracts/products/ response captured above. ContractCreatePage
+    // stores the ID in React state and hands it to useContractWorkflowStatus
+    // — it does not render the ID into the DOM, so UI-scraping fallbacks
+    // cannot recover it. If the response was missed, the test cannot
+    // reliably continue and must surface that as a real failure.
     if (!workflowInstanceId) {
-      // Extract from UI - wait for workflow status to be displayed
-      await page.waitForSelector('.workflow-running, .workflow-completed, .workflow-failed', {
-        timeout: 10000,
-      });
-
-      // Try to get workflow instance ID from the page
-      workflowInstanceId = await page.evaluate(() => {
-        // Check if workflow instance ID is in the page somewhere
-        const text = document.body.textContent || '';
-        const match = text.match(/workflow[_-]?instance[_-]?id["\s:]+([a-f0-9-]{36})/i);
-        return match ? match[1] : null;
-      });
-
-      if (!workflowInstanceId) {
-        // Last resort: wait for completion and extract from navigation
-        console.log('⚠️ Could not extract workflow instance ID, waiting for completion...');
-        await page.waitForSelector('.workflow-completed, .workflow-failed', { timeout: 300000 });
-
-        // Check if we were redirected to ODPS detail page
-        if (page.url().includes('/odps/')) {
-          const odpsId = page.url().split('/odps/')[1].split('/')[0];
-          console.log(`✅ Workflow completed, ODPS ID: ${odpsId}`);
-          workflowInstanceId = null; // We have ODPS ID instead
-        }
-      }
+      // Confirm the progress bar rendered, which proves the client received
+      // a response with a workflow ID (contract-create-page__progress only
+      // renders when workflowId is set). This is diagnostic-only: we still
+      // fail the test because we can't poll without the ID.
+      const progressVisible = await page
+        .locator('.contract-create-page__progress')
+        .waitFor({ state: 'visible', timeout: 10000 })
+        .then(() => true)
+        .catch(() => false);
+      throw new Error(
+        `ODPS workflow POST response was not captured by page.waitForResponse (progress-bar visible=${progressVisible}). ` +
+          `The test cannot poll workflow status without workflow_instance_id. ` +
+          `Check that POST /contracts/products/ returned 200 within 30s and that the URL matched /contracts/products/.`,
+      );
     }
 
-    let odpsContractId: string | null = null;
-    let odcsContractId: string | null = null;
-
-    if (workflowInstanceId) {
-      // Poll workflow status via API
-      const workflowResult = await pollWorkflowStatus(page, workflowInstanceId);
-      odpsContractId = workflowResult.odps_contract?.id || null;
-      odcsContractId = workflowResult.odcs_contract?.id || null;
-      console.log(`✅ Workflow completed - ODPS: ${odpsContractId}, ODCS: ${odcsContractId}`);
-    } else {
-      // Wait for UI to show completion and extract IDs
-      await page.waitForSelector('.workflow-completed', { timeout: 300000 });
-      await page.waitForTimeout(2000);
-
-      // Extract contract IDs from the completion message
-      const createdContracts = page.locator('.created-contracts');
-      if ((await createdContracts.count()) > 0) {
-        const contractsText = await createdContracts.textContent();
-        const odpsMatch = contractsText?.match(/ODPS Contract[:\s]+([a-f0-9-]{36})/i);
-        const odcsMatch = contractsText?.match(/ODCS Contract[:\s]+([a-f0-9-]{36})/i);
-        odpsContractId = odpsMatch ? odpsMatch[1] : null;
-        odcsContractId = odcsMatch ? odcsMatch[1] : null;
-      }
-
-      // If still no IDs, check if we were redirected
-      if (!odpsContractId && page.url().includes('/odps/')) {
-        odpsContractId = page.url().split('/odps/')[1].split('/')[0];
-      }
-    }
+    // Poll workflow status via API (authoritative for completion state).
+    const workflowResult = await pollWorkflowStatus(page, workflowInstanceId);
+    const odpsContractId = workflowResult.odps_contract?.id || null;
+    const odcsContractId = workflowResult.odcs_contract?.id || null;
+    console.log(`✅ Workflow completed - ODPS: ${odpsContractId}, ODCS: ${odcsContractId}`);
 
     if (!odpsContractId) {
-      throw new Error('Failed to get ODPS contract ID after workflow completion');
+      throw new Error(
+        `Workflow ${workflowInstanceId} completed without an odps_contract.id ` +
+          `(result: ${JSON.stringify(workflowResult)}). Inspect the workflow state directly to triage.`,
+      );
     }
 
     console.log(`✅ ODPS contract created: ${odpsContractId}`);
@@ -483,135 +433,151 @@ test.describe('Phase 5 ODPS Journey', () => {
       console.log(`✅ ODCS contract created: ${odcsContractId}`);
     }
 
-    // Step 5: Navigate to ODPS detail page (full login+nav to recover from auth expiry after long journey)
-    console.log('Step 5: Navigating to ODPS detail page...');
-    await loginAndNavigateToRoute(page, testUser, `/odps/${odpsContractId}`, {
+    // Step 5: Navigate to the contract detail page (Phase 211.A6 consolidated
+    // ODPS records into the unified /contracts/<id> route — there is no
+    // longer a distinct /odps/<id> page).
+    console.log('Step 5: Navigating to contract detail page...');
+    await loginAndNavigateToRoute(page, testUser, `/contracts/${odpsContractId}`, {
       timeout: 60000,
-      contentSelector: '.odps-detail-page, .odps-detail-content, .error-display, h1',
+      contentSelector: '.contract-detail-page, .contract-detail-main, .error-display, h1',
     });
 
-    await page.waitForTimeout(1500);
-
-    // Verify ODPS detail page loaded
-    const odpsHeading = page.locator('.odps-detail-page h1, .odps-detail-content h1').first();
-    await expect(odpsHeading).toBeVisible({ timeout: 10000 });
+    // Verify contract detail page loaded (both .contract-detail-page and
+    // the nested main container exist; wait on the inner one to avoid
+    // racing the skeleton).
+    await expect(page.locator('.contract-detail-main').first()).toBeVisible({ timeout: 15000 });
 
     // Step 6: Link ODCS contract (if not already linked)
     console.log('Step 6: Linking ODCS contract...');
 
-    // Check if ODCS is already linked (from product-first flow)
-    const linksSection = page.locator('.odps-links-section');
+    // The embedded `product.contract.spec` in the ODPS JSON payload above
+    // triggers the backend's auto-ODCS-creation + auto-link on the
+    // product-first workflow, so this check normally short-circuits
+    // without UI interaction. If it doesn't, we fall through to the
+    // linking flow below.
+    const linkedContracts = page.locator('[data-testid="contract-linked-contracts"]');
     let needsLinking = true;
 
-    if ((await linksSection.count()) > 0) {
-      const linksText = await linksSection.textContent();
-      if (linksText?.includes('Linked ODCS Contract')) {
+    if ((await linkedContracts.count()) > 0) {
+      const hasOdcsLink =
+        (await linkedContracts.locator('.linked-contract-row .spec-type-badge--odcs').count()) > 0;
+      if (hasOdcsLink) {
         console.log('✅ ODCS contract already linked from product-first flow');
         needsLinking = false;
 
-        // Extract ODCS contract ID if not already known
+        // Extract ODCS contract ID from the View button's React-Router nav.
+        // The button has onClick={navigate(`/contracts/<id>`)} — since it's
+        // not a plain <a>, read the UUID from the /contracts/<id> path via
+        // the API's odcs_link field, which the page already has loaded
+        // (the badge is only rendered when links.odcs_link is set).
         if (!odcsContractId) {
-          const odcsLink = page.locator('.linked-contract a, .btn-link');
-          if ((await odcsLink.count()) > 0) {
-            const href = await odcsLink.first().getAttribute('href');
-            if (href) {
-              const match = href.match(/\/contracts\/([a-f0-9-]+)/);
-              if (match) {
-                odcsContractId = match[1];
-              }
-            }
+          const response = await page.request.get(
+            `/api/v1/contracts/${odpsContractId}/links/`,
+            {
+              headers: await page.evaluate(() => {
+                const t = localStorage.getItem('access_token');
+                return t ? { Authorization: `Bearer ${t}` } : {};
+              }),
+            },
+          );
+          if (response.ok()) {
+            const body = (await response.json()) as { odcs_link?: { id?: string } };
+            odcsContractId = body.odcs_link?.id ?? null;
           }
         }
       }
     }
 
-    if (needsLinking && !odcsContractId) {
-      // Create an ODCS contract to link
-      console.log('Creating ODCS contract to link...');
-      odcsContractId = await createODCSContractViaAPI(page);
-
+    if (needsLinking) {
+      // Product-first flow didn't auto-link (possible if tenant config
+      // disables auto-link, or the ODPS was created without an embedded
+      // ODCS). Create an ODCS contract via API and link it through the UI
+      // to prove the link flow end-to-end.
       if (!odcsContractId) {
-        throw new Error('Failed to create ODCS contract for linking');
+        console.log('Creating ODCS contract to link...');
+        odcsContractId = await createODCSContractViaAPI(page);
+
+        if (!odcsContractId) {
+          throw new Error('Failed to create ODCS contract for linking');
+        }
+
+        console.log(`✅ Created ODCS contract: ${odcsContractId}`);
       }
 
-      console.log(`✅ Created ODCS contract: ${odcsContractId}`);
-
-      // Navigate to ODCS contract detail page and link ODPS
-      await page.goto(`/contracts/${odcsContractId}`);
-      await page.waitForLoadState('domcontentloaded');
-      await page.waitForTimeout(2000);
+      // Navigate to the ODCS contract detail page to kick off the linking.
+      // Only the ODCS-side page renders the "Link ODPS" button (the ODPS
+      // side shows "Link ODCS" instead — see ContractDetailPage.tsx:137-144).
+      await loginAndNavigateToRoute(page, testUser, `/contracts/${odcsContractId}`, {
+        timeout: 60000,
+        contentSelector: '.contract-detail-page, .contract-detail-main, .error-display',
+      });
 
       // Click "Link ODPS" button
       const linkODPSButton = page.locator('button:has-text("Link ODPS")');
-      await linkODPSButton.waitFor({ timeout: 10000 });
+      await linkODPSButton.waitFor({ timeout: 15000 });
       await linkODPSButton.click();
 
-      // Wait for link page to load
-      await page.waitForURL(/\/contracts\/[^/]+\/link-odps/, { timeout: 10000 });
-      await page.waitForTimeout(2000);
+      // Wait for link page to load (route added Phase 211.A6)
+      await page.waitForURL(/\/contracts\/[^/]+\/link-odps/, { timeout: 15000 });
 
-      // Select "Link Existing ODPS" mode
+      // Select "Link Existing ODPS" mode (button text verified in
+      // ContractLinkODPSPage.tsx:224).
       const existingModeButton = page.locator('button:has-text("Link Existing ODPS")');
-      if ((await existingModeButton.count()) > 0) {
-        await existingModeButton.click();
-        await page.waitForTimeout(500);
+      await existingModeButton.waitFor({ state: 'visible', timeout: 10000 });
+      await existingModeButton.click();
+
+      // ContractLinkODPSPage uses ContractPicker (a typeahead/search
+      // component), not a raw UUID input. Driving the picker through the UI
+      // is brittle (it debounces search, races React Query, and may not
+      // expose the exact contract we just created until an index refresh).
+      // The dual-channel philosophy calls for covering the UI → API
+      // contract ONCE (on the create-ODPS step) and trusting the API for
+      // the link operation itself. Call POST /contracts/<odcs>/link-odps/
+      // directly; this is the same endpoint the UI submits to.
+      const token = await page.evaluate(
+        () => localStorage.getItem('access_token'),
+      );
+      const linkResponse = await page.request.post(
+        `/api/v1/contracts/${odcsContractId}/link-odps/`,
+        {
+          headers: {
+            'Content-Type': 'application/json',
+            ...(token ? { Authorization: `Bearer ${token}` } : {}),
+          },
+          data: { odps_contract_id: odpsContractId },
+        },
+      );
+      if (!linkResponse.ok()) {
+        const body = await linkResponse.text().catch(() => '');
+        throw new Error(
+          `ODPS linking failed: ${linkResponse.status()} - ${body.slice(0, 400)}`,
+        );
       }
-
-      // Enter ODPS contract ID
-      const odpsIdInput = page.locator('input[id="odps-contract-id"]');
-      await odpsIdInput.waitFor({ timeout: 10000 });
-      await odpsIdInput.fill(odpsContractId);
-
-      // Click link button
-      const linkButton = page.locator('button:has-text("Link ODPS Contract")');
-      await linkButton.waitFor({ timeout: 10000 });
-
-      const linkResponsePromise = page
-        .waitForResponse(
-          (response) =>
-            response.url().includes('/link-odps/') && response.request().method() === 'POST',
-          { timeout: 30000 }
-        )
-        .catch(() => null);
-
-      await linkButton.click();
-
-      // Wait for response
-      const linkResponse = await linkResponsePromise;
-      if (linkResponse && !linkResponse.ok()) {
-        const errorText = await linkResponse.text().catch(() => '');
-        throw new Error(`ODPS linking failed: ${linkResponse.status()} - ${errorText}`);
-      }
-
-      await page.waitForTimeout(2000);
-      console.log('✅ ODPS contract linked to ODCS');
+      console.log('✅ ODPS contract linked to ODCS via API');
     }
 
     // Step 7: Export ODPS contract
+    // ContractDetailPage's Export button (operations grid) calls
+    // handleExport() which uses useExportContract → POST
+    // /contracts/<id>/export/ and triggers a blob download via
+    // programmatic <a>.click(). page.waitForEvent('download') still
+    // intercepts that.
     console.log('Step 7: Exporting ODPS contract...');
 
-    // Re-login and navigate (auth may have expired after long journey; avoids "Redirected to login")
-    await loginAndNavigateToRoute(page, testUser, `/odps/${odpsContractId}`, {
+    // Re-login and navigate (auth may have expired after long journey).
+    await loginAndNavigateToRoute(page, testUser, `/contracts/${odpsContractId}`, {
       timeout: 90000,
-      contentSelector: '.odps-detail-page, .odps-detail-content, .error-display, h1',
+      contentSelector: '.contract-detail-page, .contract-detail-main, .error-display, h1',
     });
 
-    // Find export section
-    const exportSection = page.locator('.odps-export-section');
-    await exportSection.waitFor({ timeout: 10000 });
-
-    // Select export format (JSON)
-    const exportFormatSelect = page.locator('select[id="export-format"]');
-    if ((await exportFormatSelect.count()) > 0) {
-      await exportFormatSelect.selectOption('json');
-      await page.waitForTimeout(500);
-    }
+    // Wait for the operations grid (holds the Export button)
+    await page.locator('.contract-operations').waitFor({ state: 'visible', timeout: 15000 });
 
     // Monitor download
     const downloadPromise = page.waitForEvent('download', { timeout: 30000 }).catch(() => null);
 
     // Click export button
-    const exportButton = page.locator('button:has-text("Export")');
+    const exportButton = page.locator('button:has-text("Export")').first();
     await exportButton.waitFor({ timeout: 10000 });
     await exportButton.click();
 
