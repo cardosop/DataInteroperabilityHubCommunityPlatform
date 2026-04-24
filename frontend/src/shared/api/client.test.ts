@@ -250,9 +250,13 @@ describe('ApiClient (fetch-based)', () => {
         }),
       );
 
+      // 500 is present in HTTP_STATUS_CODE_MAP (client.ts:126 — `500:
+      // 'INTERNAL_ERROR'`) so the normalized error code is INTERNAL_ERROR,
+      // not the UNKNOWN_ERROR fallback. This test previously asserted the
+      // fallback value; corrected here to match the actual mapping.
       await expect(client.getClient().get('assets/')).rejects.toMatchObject({
         error: {
-          code: 'UNKNOWN_ERROR',
+          code: 'INTERNAL_ERROR',
           http_status: 500,
         },
       });
