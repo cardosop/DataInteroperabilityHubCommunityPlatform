@@ -39,6 +39,8 @@
 
 'use strict';
 
+const { hasIntentionalJustification } = require('./_intentional.cjs');
+
 /**
  * Does `node` (an expression) contain — anywhere in its syntax tree — a
  * call expression whose callee's property name is exactly `count`?
@@ -174,43 +176,6 @@ function containsExpectCall(node) {
       }
     } else if (child && typeof child === 'object' && child.type) {
       if (containsExpectCall(child)) return true;
-    }
-  }
-  return false;
-}
-
-/**
- * True iff there's an `// intentional: <anything>` (case-insensitive,
- * whitespace-forgiving) comment either
- *   a) on the line directly preceding the `if` statement, or
- *   b) on the same line as the `if`'s block-open brace (trailing comment).
- *
- * We scope strictly so a far-away `// intentional:` doesn't accidentally
- * license every `if` below it.
- */
-function hasIntentionalJustification(node, sourceCode) {
-  const INTENTIONAL = /^\s*intentional\s*:/i;
-
-  // Case (a): leading comment on the line directly above.
-  const before = sourceCode.getCommentsBefore(node);
-  if (before.length > 0) {
-    const last = before[before.length - 1];
-    if (
-      last.loc.end.line === node.loc.start.line - 1 &&
-      INTENTIONAL.test(last.value)
-    ) {
-      return true;
-    }
-  }
-
-  // Case (b): trailing comment on the same line as the `if`.
-  // `getComments` is ESLint 8+ -preserved API via SourceCode; but the
-  // cross-version-safe approach is to scan all comments in the file
-  // once and match line numbers.
-  const allComments = sourceCode.getAllComments();
-  for (const c of allComments) {
-    if (c.loc.start.line === node.loc.start.line && INTENTIONAL.test(c.value)) {
-      return true;
     }
   }
   return false;

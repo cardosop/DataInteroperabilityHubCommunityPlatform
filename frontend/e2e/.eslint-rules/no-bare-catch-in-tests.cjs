@@ -25,6 +25,8 @@
 
 'use strict';
 
+const { hasIntentionalJustification: sharedHasIntentional } = require('./_intentional.cjs');
+
 /**
  * A catch block is "silent" when it contains zero AST-level statements
  * (no matter whether the source between the braces is whitespace-only,
@@ -38,51 +40,17 @@ function isCatchBodySilent(block) {
 }
 
 function hasIntentionalJustification(catchClauseNode, sourceCode) {
-  const INTENTIONAL = /^\s*intentional\s*:/i;
-  // Preceding-line comment attached to the `catch` clause or the
-  // enclosing try statement (if the comment is right before the `try`
-  // it's probably about the try, not the catch — we only accept
-  // comments between `}` of try and `catch`).
-  const before = sourceCode.getCommentsBefore(catchClauseNode);
-  if (before.length > 0) {
-    const last = before[before.length - 1];
-    if (
-      last.loc.end.line === catchClauseNode.loc.start.line - 1 &&
-      INTENTIONAL.test(last.value)
-    ) {
-      return true;
-    }
-  }
-
-  // Trailing comment on the same line as `catch` start.
-  const allComments = sourceCode.getAllComments();
-  for (const c of allComments) {
-    if (
-      c.loc.start.line === catchClauseNode.loc.start.line &&
-      INTENTIONAL.test(c.value)
-    ) {
-      return true;
-    }
-  }
-
-  // Inside the empty block body. A catch body that holds a comment
-  // starting with `intentional:` is a common, readable shape — the
-  // author annotates the swallow in situ rather than above the clause.
-  // Only honour this when the body is otherwise code-free (which is
-  // always the case when this function is called, since we only reach
-  // here for silent bodies).
-  const blockStart = catchClauseNode.body.range[0];
-  const blockEnd = catchClauseNode.body.range[1];
-  for (const c of allComments) {
-    if (
-      c.range[0] > blockStart &&
-      c.range[1] < blockEnd &&
-      INTENTIONAL.test(c.value)
-    ) {
-      return true;
-    }
-  }
-  return false;
+  // Use the shared helper with the catch's empty body as the
+  // accept-inside range. Common in-situ annotation shape:
+  //   try { ... } catch {
+  //     // intentional: <why>
+  //   }
+  return sharedHasIntentional(catchClauseNode, sourceCode, {
+    acceptInsideRange: {
+      start: catchClauseNode.body.range[0],
+      end: catchClauseNode.body.range[1],
+    },
+  });
 }
 
 /** @type {import('eslint').Rule.RuleModule} */

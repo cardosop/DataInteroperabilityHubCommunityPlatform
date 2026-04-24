@@ -44,6 +44,8 @@
 
 'use strict';
 
+const { hasIntentionalJustification: sharedHasIntentional } = require('./_intentional.cjs');
+
 /**
  * Returns true if the given handler node is a "constant silent
  * fallback" — its body resolves statically to one of:
@@ -110,15 +112,16 @@ function isSilentConstantExpression(expr) {
 /**
  * True iff an `// intentional: …` comment sits immediately above the
  * `.catch(...)` call expression or trails on the same line.
+ *
+ * Delegates the actual matching to the shared helper, BUT also walks
+ * the statement-level ancestors of the call expression — a `.catch`
+ * mid-chain often sits inside an `await` / variable-declaration /
+ * expression-statement whose start line is what the author actually
+ * placed the comment above. The shared helper's
+ * `acceptInsideRange` is not used here because `.catch` calls are
+ * never empty-bodied containers.
  */
 function hasIntentionalJustification(callNode, sourceCode) {
-  const INTENTIONAL = /^\s*intentional\s*:/i;
-
-  // The call-expression's statement-level ancestor is usually what
-  // users put the comment above — but ESLint's `getCommentsBefore`
-  // on the call node itself also captures a leading-line comment when
-  // the call sits at the top of a line. We check both the call node
-  // and its closest enclosing statement.
   const candidates = [callNode];
   let p = callNode.parent;
   for (let i = 0; i < 4 && p; i++, p = p.parent) {
@@ -131,29 +134,8 @@ function hasIntentionalJustification(callNode, sourceCode) {
       candidates.push(p);
     }
   }
-
   for (const cand of candidates) {
-    const before = sourceCode.getCommentsBefore(cand);
-    if (before.length > 0) {
-      const last = before[before.length - 1];
-      if (
-        last.loc.end.line === cand.loc.start.line - 1 &&
-        INTENTIONAL.test(last.value)
-      ) {
-        return true;
-      }
-    }
-  }
-
-  // Trailing comment on the same line as the `.catch(` start.
-  const allComments = sourceCode.getAllComments();
-  for (const c of allComments) {
-    if (
-      c.loc.start.line === callNode.loc.start.line &&
-      INTENTIONAL.test(c.value)
-    ) {
-      return true;
-    }
+    if (sharedHasIntentional(cand, sourceCode)) return true;
   }
   return false;
 }

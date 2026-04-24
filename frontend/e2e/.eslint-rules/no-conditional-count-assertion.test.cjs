@@ -67,6 +67,31 @@ ruleTester.run('no-conditional-count-assertion', rule, {
         }
       }`,
     },
+    // Multi-line `// intentional:` block above the if — the magic-string
+    // is on the FIRST line of the block; the LAST line is continuation
+    // prose. The shared helper walks the whole contiguous block.
+    {
+      code: `async function t() {
+        // intentional: first dataset row is genuinely optional — the test
+        // runs against shared staging where dataset presence varies per
+        // tenant. A missing row is a legitimate empty-list signal.
+        if ((await firstDataset.count()) > 0) {
+          await expect(firstDataset).toBeVisible();
+        }
+      }`,
+    },
+    // /* … */ block-comment with intentional on an inner line.
+    {
+      code: `async function t() {
+        /*
+         * intentional: optional pagination control
+         * (only renders when the list overflows a single page)
+         */
+        if ((await pager.count()) > 0) {
+          await expect(pager).toBeVisible();
+        }
+      }`,
+    },
     // .length check (not .count()) — out of scope for this rule.
     {
       code: `function t() {
