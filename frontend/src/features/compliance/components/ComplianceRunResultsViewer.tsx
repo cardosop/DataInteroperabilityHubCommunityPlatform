@@ -234,9 +234,14 @@ export function ComplianceRunResultsViewer({ results }: ComplianceRunResultsView
                           <strong>Regulations Affected:</strong> {detail.regulations_affected.join(', ')}
                         </div>
                       )}
-                      {detail?.detection_confidence !== undefined && (
+                      {detail?.detection_confidence && (
                         <div className="violation-confidence">
-                          <strong>Confidence:</strong> {Math.round(detail.detection_confidence * 100)}%
+                          <strong>Confidence:</strong>{' '}
+                          <span
+                            className={`confidence-badge confidence-${detail.detection_confidence.toLowerCase()}`}
+                          >
+                            {detail.detection_confidence}
+                          </span>
                         </div>
                       )}
                       {detail?.sample_values && detail.sample_values.length > 0 && (

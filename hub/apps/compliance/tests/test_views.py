@@ -929,6 +929,97 @@ class ComplianceRunViewSetTest(TestCase):
         self.assertEqual(len(response.data["violations"]), 0)
         self.assertEqual(response.data["compliance_score"], 100.0)
 
+    def test_results_violation_details_derives_regulations_and_preserves_confidence_label(
+        self,
+    ):
+        """
+        Regression: earlier the /results/ endpoint always emitted
+        `regulations_affected: []` on every violation because it read a
+        non-existent key from column_findings — leaving the frontend
+        Regulation filter dropdown empty ("doesn't do anything"). And it
+        defaulted `detection_confidence` to 0.0 even though the CLI emits
+        a string label (HIGH/MEDIUM/LOW), breaking the frontend renderer
+        into "Confidence: NaN%".
+
+        Fix: derive regulations_affected by walking regulation_mapping_json
+        (the real source of truth) and preserve the confidence label as-is.
+        """
+        self.compliance_run.status = ComplianceRunStatus.SUCCEEDED
+        self.compliance_run.overall_status = "FAIL"
+        self.compliance_run.risk_level = RiskLevel.CRITICAL
+        self.compliance_run.allowed_to_store = False
+        self.compliance_run.column_findings_json = [
+            {
+                "column": "email",
+                "categories": ["PII_DIRECT_EMAIL"],
+                "confidence": "HIGH",
+                "match_ratio": 1.0,
+                "total_sampled": 2,
+                "sample_matches": 2,
+            }
+        ]
+        self.compliance_run.regulation_mapping_json = {
+            "GDPR": {
+                "applies": True,
+                "applicable_categories": ["PII_DIRECT_EMAIL"],
+            },
+            "LGPD": {
+                "applies": True,
+                "applicable_categories": ["PII_DIRECT_EMAIL"],
+            },
+            "HIPAA": {
+                "applies": False,  # applies=False must not surface
+                "applicable_categories": ["PII_DIRECT_EMAIL"],
+            },
+            "metadata": {  # the non-regulation metadata key must be skipped
+                "timestamp": "2026-04-24T18:27:15Z",
+            },
+        }
+        self.compliance_run.detected_categories_json = {}
+        self.compliance_run.completed_at = timezone.now()
+        self.compliance_run.save()
+
+        self.client.force_authenticate(user=self.user)
+        # Type annotation: DRF's APIClient returns a rest_framework.response.Response
+        # which has `.data` (the parsed body). pyright sees the base Django
+        # type on APIClient.get; annotate locally so .data access is typed
+        # correctly without scattering `# type: ignore` comments.
+        from rest_framework.response import Response
+
+        response: Response = self.client.get(  # type: ignore[assignment]
+            f"/api/v1/compliance/runs/{self.compliance_run.id}/results/"
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+
+        details = response.data["violation_details"]
+        self.assertEqual(len(details), 1, details)
+        d = details[0]
+
+        # regulations_affected must be derived from regulation_mapping_json,
+        # filtered by applies=True, excluding the metadata key, sorted.
+        self.assertEqual(
+            d["regulations_affected"],
+            ["GDPR", "LGPD"],
+            "regulations_affected must include applies=True regulations listing "
+            "this PII type, exclude applies=False, skip the `metadata` key, and "
+            "be sorted.",
+        )
+
+        # detection_confidence must stay the string label from the CLI.
+        # A numeric default (e.g. 0.0) would let a future render site do
+        # Math.round(x * 100) and print NaN% or "0%" — both user-visible bugs.
+        self.assertEqual(
+            d["detection_confidence"],
+            "HIGH",
+            "detection_confidence must preserve the CLI's qualitative label "
+            "(HIGH/MEDIUM/LOW) — not be coerced to a numeric default.",
+        )
+        self.assertIsInstance(
+            d["detection_confidence"],
+            str,
+            "detection_confidence must be typed as a string label, not a number.",
+        )
+
     # ========== ERROR HANDLING ==========
 
     def test_create_compliance_run_invalid_scan_mode(self):

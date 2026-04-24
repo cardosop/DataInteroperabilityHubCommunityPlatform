@@ -448,6 +448,31 @@ class ComplianceRunViewSet(viewsets.ModelViewSet):
         regulation_mapping = compliance_run.regulation_mapping_json or {}
         detected_categories = compliance_run.detected_categories_json or {}
 
+        # Build a PII-type → [regulation_name, ...] index from regulation_mapping_json.
+        # The raw regulation_mapping_json shape is
+        #   {"GDPR": {"applies": true, "applicable_categories": ["PII_DIRECT_EMAIL", ...], ...},
+        #    "LGPD": {...}, "metadata": {...}}
+        # — regulations are keyed at the top level and list their applicable PII
+        # categories. The earlier implementation read `finding.get("regulations_affected")`
+        # which does not exist on column_findings entries (the CLI emits only
+        # `confidence`, `match_ratio`, `categories`, etc.). That left every
+        # violation with `regulations_affected: []`, which in turn made the
+        # Regulation filter dropdown in the frontend viewer render with
+        # exactly one option ("All Regulations") — the filter looked broken.
+        regulations_by_pii_type: dict[str, list[str]] = {}
+        for reg_name, reg_info in regulation_mapping.items():
+            # Skip the non-regulation metadata key emitted at the same level.
+            if reg_name == "metadata":
+                continue
+            if not isinstance(reg_info, dict):
+                continue
+            # Respect the CLI's own `applies` flag — a regulation listed but
+            # marked applies=False should not surface as affecting the violation.
+            if reg_info.get("applies") is False:
+                continue
+            for pii in reg_info.get("applicable_categories", []) or []:
+                regulations_by_pii_type.setdefault(pii, []).append(reg_name)
+
         # Build violation details from column findings
         violations = []
         violation_details = []
@@ -469,14 +494,24 @@ class ComplianceRunViewSet(viewsets.ModelViewSet):
                 }
                 violations.append(violation)
 
-                # Add detailed violation information
+                # Add detailed violation information.
+                #
+                # `detection_confidence` is a qualitative label (HIGH/MEDIUM/LOW)
+                # produced by the DataContract CLI — not a numeric score. The
+                # earlier default `0.0` pretended the field was numeric and
+                # broke the frontend renderer which did `Math.round(x * 100)%`
+                # and produced "Confidence: NaN%" whenever the actual string
+                # value landed. Using `None` when the label is missing keeps
+                # the type honest (string-or-null, never a surprise number).
                 violation_detail = {
                     "column": column_name,
                     "pii_type": pii_type,
                     "risk_score": risk_score,
                     "severity": violation["severity"],
-                    "regulations_affected": finding.get("regulations_affected", []),
-                    "detection_confidence": finding.get("confidence", 0.0),
+                    "regulations_affected": sorted(
+                        regulations_by_pii_type.get(pii_type, [])
+                    ),
+                    "detection_confidence": finding.get("confidence"),
                     "sample_values": finding.get("sample_values", [])[:3],  # Limit to 3 samples
                 }
                 violation_details.append(violation_detail)

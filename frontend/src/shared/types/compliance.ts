@@ -109,7 +109,14 @@ export interface ComplianceRunResults {
     risk_score: number;
     severity: string;
     regulations_affected?: string[];
-    detection_confidence?: number;
+    /**
+     * Qualitative PII-detection confidence label from the DataContract CLI
+     * (HIGH / MEDIUM / LOW). The field was incorrectly typed as `number`
+     * previously — the backend always shipped the string label, which broke
+     * the render site in ComplianceRunResultsViewer ("Confidence: NaN%").
+     * See hub/apps/compliance/views.py:479 (renamed comment).
+     */
+    detection_confidence?: 'HIGH' | 'MEDIUM' | 'LOW' | null;
     sample_values?: string[];
   }>;
   remediation_suggestions: Array<{

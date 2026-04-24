@@ -376,6 +376,30 @@
   border-radius: 4px;
 }
 
+/* PII-detection confidence label (HIGH / MEDIUM / LOW) — qualitative,
+ * not a percentage. See hub/apps/compliance/views.py:479. */
+.confidence-badge {
+  display: inline-block;
+  padding: 0.125rem 0.5rem;
+  border-radius: 12px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+.confidence-badge.confidence-high {
+  background: var(--color-danger-50, #fee2e2);
+  color: var(--color-danger-700, #b91c1c);
+}
+.confidence-badge.confidence-medium {
+  background: var(--color-warning-50, #fef3c7);
+  color: var(--color-warning-700, #b45309);
+}
+.confidence-badge.confidence-low {
+  background: var(--color-neutral-100, #f3f4f6);
+  color: var(--color-neutral-700, #374151);
+}
+
 .violation-samples code {
   background: var(--color-neutral-100);
   padding: 0.25rem 0.5rem;
