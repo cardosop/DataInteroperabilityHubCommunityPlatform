@@ -53,8 +53,15 @@ export function useCreateDataset() {
     mutationFn: (data: DatasetCreateRequest) => datasetService.create(data),
     successMessage: 'Dataset created',
     errorMessage: 'Failed to create dataset',
-    onSuccess: () => {
+    onSuccess: (_dataset, variables) => {
       queryClient.invalidateQueries({ queryKey: ['datasets'] });
+      // When the dataset is linked to an asset at creation, the asset's
+      // serialized dataset_id changes. Invalidate the asset queries so
+      // AssetDetailPage picks up the new dataset_id and renders dataset-
+      // gated controls like "Run DQ Check" on first re-fetch.
+      if (variables.asset_id) {
+        queryClient.invalidateQueries({ queryKey: ['assets'] });
+      }
     },
   });
 }

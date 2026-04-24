@@ -169,6 +169,15 @@ class DatasetViewSet(viewsets.ModelViewSet):
 
         try:
             invalidate_dataset_list_cache(str(tenant.id))
+            # When the dataset is linked to an asset at creation time, the
+            # asset's serialized `dataset_id` field changes (AssetSerializer
+            # resolves it from obj.datasets). The asset detail cache must be
+            # invalidated so the next GET /assets/{id}/ returns the new
+            # dataset_id — parallel to the invalidation in AssetViewSet.attach_dataset.
+            if asset_id:
+                from hub.apps.assets.caching import invalidate_asset_detail_cache
+
+                invalidate_asset_detail_cache(str(asset_id))
         except Exception as e:
             import logging
 
