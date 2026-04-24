@@ -15,7 +15,7 @@
 
 import { test, expect } from '@playwright/test';
 
-import { evaluateGuard } from './fixtures/guardedTest';
+import { evaluateGuard, test as guardedTest } from './fixtures/guardedTest';
 import type { GuardBuffer } from './fixtures/guardedTest';
 import { matchBody } from './fixtures/verifyViaApi';
 import { isBenignConsoleError } from './fixtures/console-utils';
@@ -216,25 +216,21 @@ test.describe('console allowlist regression gate (PR 3)', () => {
 
 // ----------------------------------------------------- guardedTest integration
 
-test.describe('guardedTest — integration (happy path)', () => {
-  // Use a separate import path so we exercise the actual fixture wiring.
-  // Intentionally scoped to "passes when nothing is wrong" because the failure
-  // modes are already covered by the pure evaluateGuard tests above and a
-  // browser-level "expected failure" test would depend on render-time timing
-  // that is fragile to diagnose separately from the guard itself.
-  const { test: guarded } = require('./fixtures/guardedTest');
-
-  guarded('no pageerror, no console.error, no 5xx → test passes', async ({
-    page,
-    guard,
-  }: {
-    page: import('@playwright/test').Page;
-    guard: GuardBuffer;
-  }) => {
-    await page.goto('about:blank');
-    // Sanity check that the fixture handed us a live buffer
-    expect(guard.pageErrors).toEqual([]);
-    expect(guard.consoleErrors).toEqual([]);
-    expect(guard.serverErrors).toEqual([]);
-  });
+// Integration check — exercise the actual guardedTest fixture wiring at
+// least once so we catch any import-time breakage (e.g. a renamed export,
+// a broken listener attach). Named `guardedTest` at import time to avoid
+// shadowing the `test` symbol from '@playwright/test' used for the pure
+// tests above. Intentionally scoped to "passes when nothing is wrong" —
+// the failure modes are already covered by the pure evaluateGuard tests
+// and a browser-level expected-failure test is fragile to diagnose
+// separately from the guard itself.
+guardedTest('guardedTest happy path: no pageerror / console.error / 5xx → test passes', async ({
+  page,
+  guard,
+}) => {
+  await page.goto('about:blank');
+  // Sanity check that the fixture handed us a live buffer.
+  expect(guard.pageErrors).toEqual([]);
+  expect(guard.consoleErrors).toEqual([]);
+  expect(guard.serverErrors).toEqual([]);
 });
