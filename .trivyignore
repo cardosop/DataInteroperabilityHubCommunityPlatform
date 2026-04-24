@@ -259,3 +259,15 @@ CVE-2026-31525
 CVE-2026-31526
 CVE-2026-31527
 CVE-2026-31528
+
+# Added: 2026-04-24 (worker-service trivy gate — run 24890086236)
+# CVE-2026-31532 — kernel: can: raw: fix ro->uniq use-after-free in raw_rcv().
+# Same class as the linux-libc-dev 6.12.74-2 entries above: Debian kernel
+# userspace headers only, status=affected, no Debian fix published.
+# Impact: None — the CAN (Controller Area Network) raw socket subsystem is
+# automotive/industrial bus networking and is never invoked by Meshant
+# container workloads (data hub / API / worker / ingestion). Containers use
+# the host kernel, so the vulnerable kernel code path in the package is
+# never executed.
+# Review by: 2026-05-24.
+CVE-2026-31532
