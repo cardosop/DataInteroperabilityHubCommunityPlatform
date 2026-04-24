@@ -64,6 +64,24 @@ function hasIntentionalJustification(catchClauseNode, sourceCode) {
       return true;
     }
   }
+
+  // Inside the empty block body. A catch body that holds a comment
+  // starting with `intentional:` is a common, readable shape — the
+  // author annotates the swallow in situ rather than above the clause.
+  // Only honour this when the body is otherwise code-free (which is
+  // always the case when this function is called, since we only reach
+  // here for silent bodies).
+  const blockStart = catchClauseNode.body.range[0];
+  const blockEnd = catchClauseNode.body.range[1];
+  for (const c of allComments) {
+    if (
+      c.range[0] > blockStart &&
+      c.range[1] < blockEnd &&
+      INTENTIONAL.test(c.value)
+    ) {
+      return true;
+    }
+  }
   return false;
 }
 

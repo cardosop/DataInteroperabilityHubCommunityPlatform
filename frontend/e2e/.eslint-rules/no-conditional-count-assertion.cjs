@@ -79,6 +79,78 @@ function containsCountCall(node) {
 }
 
 /**
+ * Does the `if` test expression carry a "presence guard" shape — i.e.
+ * "count is greater than zero" — versus an "absence guard" shape?
+ *
+ * Presence guards (flag these):
+ *   count > 0          count >= 1          count !== 0         count != 0
+ *
+ * Absence guards (do NOT flag — they're the invariant-assertion shape,
+ * which is always engineering-correct):
+ *   count === 0        count == 0          count <= 0          count < 1
+ *
+ * Compound expressions like `(count > 0) && (something)` still count as
+ * presence-guard because the `count > 0` subtree drives the pass path
+ * of the `if`.
+ */
+function hasPresenceGuardShape(testNode) {
+  if (!testNode || typeof testNode !== 'object') return false;
+
+  if (testNode.type === 'BinaryExpression') {
+    const { operator, left, right } = testNode;
+    // Normalise direction so we can reason from the count() side.
+    // Match both `count() > 0` and `0 < count()`.
+    const leftHasCount = containsCountCall(left);
+    const rightHasCount = containsCountCall(right);
+    if (!leftHasCount && !rightHasCount) return false;
+
+    const countOnLeft = leftHasCount;
+    const other = countOnLeft ? right : left;
+
+    // Only numeric-literal comparisons carry a fixed shape we can
+    // classify. Dynamic comparisons (e.g. `count > threshold`) are
+    // ambiguous; treat them as presence-guards conservatively because
+    // the common-case threshold is >= 1.
+    const otherVal = other && other.type === 'Literal' ? other.value : null;
+
+    if (countOnLeft) {
+      // left-hand-side: `count() <op> <rhs>`
+      if (operator === '>' && otherVal === 0) return true;
+      if (operator === '>=' && typeof otherVal === 'number' && otherVal >= 1) return true;
+      if ((operator === '!==' || operator === '!=') && otherVal === 0) return true;
+      if (typeof otherVal !== 'number') return true;
+      return false;
+    } else {
+      // right-hand-side form: `<lhs> <op> count()`
+      if (operator === '<' && otherVal === 0) return true;
+      if (operator === '<=' && typeof otherVal === 'number' && otherVal <= -1) return true;
+      if ((operator === '!==' || operator === '!=') && otherVal === 0) return true;
+      if (typeof otherVal !== 'number') return true;
+      return false;
+    }
+  }
+
+  if (testNode.type === 'LogicalExpression') {
+    // `(count > 0) && other` or `other && (count > 0)` — either subtree
+    // can be the presence-guard that drives the if's pass path. We are
+    // conservative: if ANY subtree is a presence-guard, flag.
+    return hasPresenceGuardShape(testNode.left) || hasPresenceGuardShape(testNode.right);
+  }
+
+  if (testNode.type === 'AwaitExpression') {
+    return hasPresenceGuardShape(testNode.argument);
+  }
+
+  // Standalone `if (await x.count())` — truthy check. Treat as
+  // presence-guard (count > 0 equivalent in JS).
+  if (containsCountCall(testNode)) {
+    return true;
+  }
+
+  return false;
+}
+
+/**
  * True when `node` (a block / expression) contains an `expect(...)`
  * call anywhere in its subtree.
  */
@@ -168,6 +240,10 @@ module.exports = {
     return {
       IfStatement(node) {
         if (!containsCountCall(node.test)) return;
+        // Only flag presence-guarded shapes (`count > 0` / `>= 1` / `!== 0` /
+        // truthy). Absence-guarded shapes (`count === 0`, `count <= 0`) are
+        // the invariant-assertion pattern and are always correct.
+        if (!hasPresenceGuardShape(node.test)) return;
         // Only flag `if` guards whose body exercises `expect`.
         if (!containsExpectCall(node.consequent)) return;
         if (hasIntentionalJustification(node, sourceCode)) return;

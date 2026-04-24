@@ -73,6 +73,51 @@ ruleTester.run('no-conditional-count-assertion', rule, {
         if (arr.length > 0) { expect(arr[0]).toBe(1); }
       }`,
     },
+    // Loop iteration — `while (count > 0)` walks rows and is NOT an
+    // assertion-guard. Must not be flagged even though both count() and
+    // expect() appear nearby.
+    {
+      code: `async function t() {
+        while ((await rows.count()) > 0) {
+          await rows.first().click();
+        }
+        await expect(page.locator('.done')).toBeVisible();
+      }`,
+    },
+    // For-loop over a count() value — same category (iteration).
+    {
+      code: `async function t() {
+        const n = await rows.count();
+        for (let i = 0; i < n; i++) {
+          await rows.nth(i).click();
+        }
+      }`,
+    },
+    // Inverted form: `if (count === 0)` is "assert absence" — the
+    // opposite of the silent-skip anti-pattern. Legitimate usage.
+    {
+      code: `async function t() {
+        if ((await banner.count()) === 0) {
+          await expect(page.locator('.no-banner-state')).toBeVisible();
+        }
+      }`,
+    },
+    // `count <= 0` — also an absence guard. Must not flag.
+    {
+      code: `async function t() {
+        if ((await banner.count()) <= 0) {
+          await expect(emptyState).toBeVisible();
+        }
+      }`,
+    },
+    // `0 === count()` — flipped operand order, still absence. Not flagged.
+    {
+      code: `async function t() {
+        if (0 === (await banner.count())) {
+          await expect(emptyState).toBeVisible();
+        }
+      }`,
+    },
   ],
   invalid: [
     // The canonical bug: guard + expect, no justification.
@@ -117,6 +162,35 @@ ruleTester.run('no-conditional-count-assertion', rule, {
       code: `async function t() {
         // TODO: figure out why this is conditional
         if ((await banner.count()) > 0) {
+          await expect(banner).toBeVisible();
+        }
+      }`,
+      errors: [{ messageId: 'conditionalCountExpect' }],
+    },
+    // Flipped operand order for presence guard: `0 < count()`.
+    {
+      code: `async function t() {
+        if (0 < (await banner.count())) {
+          await expect(banner).toBeVisible();
+        }
+      }`,
+      errors: [{ messageId: 'conditionalCountExpect' }],
+    },
+    // Truthy test (no comparison operator) — also a presence guard in JS
+    // semantics because `0` is falsy.
+    {
+      code: `async function t() {
+        if (await banner.count()) {
+          await expect(banner).toBeVisible();
+        }
+      }`,
+      errors: [{ messageId: 'conditionalCountExpect' }],
+    },
+    // Compound `&& other-check` — the count > 0 branch still drives the
+    // presence-guarded pass path.
+    {
+      code: `async function t() {
+        if ((await banner.count()) > 0 && ready) {
           await expect(banner).toBeVisible();
         }
       }`,

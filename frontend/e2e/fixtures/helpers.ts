@@ -39,7 +39,10 @@ async function injectTokensBeforeGotoForUser(page: Page, user?: TestUser): Promi
       }]).catch(() => {});
     }
   } catch {
-    // API login may fail under load; continue with existing auth
+    // intentional: API login can fail transiently under parallel E2E load
+    // (rate-limit 429 or auth-race). The caller continues with any existing
+    // browser-context auth; a genuine "can't log in at all" path surfaces
+    // later via ensureTestUser's explicit retry chain in create-test-user.ts.
   }
 }
 
@@ -957,7 +960,10 @@ async function runNavToRoute(
         await waitForAppMainReady(page, waitOptions);
         return;
       } catch {
-        // Publish button not found - fall through to goto
+        // intentional: click-based navigation is a preferred SPA path,
+        // but when the Publish button is absent (different persona /
+        // MVP gating / UI redesign) we intentionally fall through to
+        // the `goto` below as a last-resort routing strategy.
       }
     }
   }
@@ -981,7 +987,10 @@ async function runNavToRoute(
         await waitForAppMainReady(page, waitOptions);
         return;
       } catch {
-        // Create button not found - fall through to goto
+        // intentional: click-based navigation is a preferred SPA path,
+        // but when the Create button is absent (empty state / different
+        // persona / MVP gating) we intentionally fall through to the
+        // `goto` below as a last-resort routing strategy.
       }
     }
   }
@@ -1006,7 +1015,10 @@ async function runNavToRoute(
         await waitForAppMainReady(page, waitOptions);
         return;
       } catch {
-        // Create button not found - fall through to goto
+        // intentional: click-based navigation is a preferred SPA path,
+        // but when the Create button is absent (empty state / different
+        // persona / MVP gating) we intentionally fall through to the
+        // `goto` below as a last-resort routing strategy.
       }
     }
   }
@@ -1125,7 +1137,11 @@ async function runNavToRoute(
       try {
         await createBtn.first().waitFor({ state: 'visible', timeout: 15000 });
       } catch {
-        /* Optional: Create button may not be visible (empty state, different UI); fall through to goto */
+        // intentional: the Create-Dataset button is genuinely optional
+        // here — tenants without datasets render an empty state with a
+        // differently-labelled CTA. The subsequent `count() > 0` + click
+        // path handles the happy case; on absence we fall through to
+        // `goto`, which always works.
       }
       if ((await createBtn.count()) > 0) {
         await createBtn.first().click();
@@ -1364,7 +1380,10 @@ export async function navigateToRouteFromApp(
         await page.waitForLoadState('domcontentloaded');
         await page.waitForTimeout(1500);
       } catch {
-        // Publish button not found - fall through to goto
+        // intentional: click-based navigation is a preferred SPA path,
+        // but when the Publish button is absent (different persona /
+        // MVP gating / UI redesign) we intentionally fall through to
+        // the `goto` below as a last-resort routing strategy.
       }
       await waitForAppMainReady(page, navOptions);
       return;
@@ -1453,7 +1472,11 @@ export async function navigateToRouteFromApp(
       try {
         await createBtn.first().waitFor({ state: 'visible', timeout: 15000 });
       } catch {
-        /* Optional: Create button may not be visible (empty state, different UI); fall through to goto */
+        // intentional: the Create-Dataset button is genuinely optional
+        // here — tenants without datasets render an empty state with a
+        // differently-labelled CTA. The subsequent `count() > 0` + click
+        // path handles the happy case; on absence we fall through to
+        // `goto`, which always works.
       }
       if ((await createBtn.count()) > 0) {
         await createBtn.first().click();
@@ -1597,7 +1620,12 @@ export async function waitForLoadingComplete(
   try {
     await page.waitForSelector(loadingSelector, { state: 'hidden', timeout });
   } catch {
-    // Loading spinner might not exist or may be stuck; continue
+    // intentional: this is `waitForLoadingComplete`, a best-effort
+    // wait. A missing loading spinner (some pages don't render one) or
+    // a stuck spinner under slow-staging conditions should NOT fail
+    // the test — the caller then runs its own stronger visibility
+    // assertion on the real content. Surfaces of failure: the caller's
+    // subsequent `expect(...).toBeVisible()` will produce the loud red.
   }
 
   await page.waitForLoadState('domcontentloaded');
@@ -2357,7 +2385,12 @@ export async function ensureAssetActivationPrerequisites(
           });
           if (h.ok && (await verifyActivationReadyForE2e())) return { success: true };
         } catch {
-          /* retry */
+          // intentional: this is inside a retry loop with explicit
+          // attempt bound (`postAttempt`) and exponential backoff on
+          // the next line. Transient network / rate-limit failures
+          // during the probe are expected; we retry rather than throw.
+          // A hard failure surfaces when all attempts are exhausted —
+          // caller observes `success: false` and fails loudly.
         }
         await new Promise((r) => setTimeout(r, 2000 * (postAttempt + 1)));
       }

@@ -118,6 +118,25 @@ ruleTester.run('no-catch-swallow-in-tests', rule, {
       `,
       errors: [{ messageId: 'silentFallback' }],
     },
+    // `void 0` / `void expr` — evaluates to undefined, same silent swallow.
+    {
+      code: `const x = await api.get().catch(() => void 0);`,
+      errors: [{ messageId: 'silentFallback' }],
+    },
+    {
+      code: `const x = await api.get().catch((e) => void e);`,
+      errors: [{ messageId: 'silentFallback' }],
+    },
+    // `function () { return null; }` handler — equivalent to the arrow
+    // form and must be flagged the same way.
+    {
+      code: `await api.get().catch(function () { return null; });`,
+      errors: [{ messageId: 'silentFallback' }],
+    },
+    {
+      code: `await api.get().catch(function (e) { return undefined; });`,
+      errors: [{ messageId: 'silentFallback' }],
+    },
   ],
 });
 

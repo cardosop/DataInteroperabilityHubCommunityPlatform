@@ -46,6 +46,26 @@ ruleTester.run('no-bare-catch-in-tests', rule, {
     {
       code: `try { f(); } catch { } // intentional: race with auto-logout`,
     },
+    // Justification INSIDE the empty catch body — common, readable
+    // in-situ form where the author annotates the swallow next to the
+    // site. Only honoured when the body is otherwise code-free.
+    {
+      code: `
+        try { f(); } catch {
+          // intentional: best-effort teardown, failures handled by pref check
+        }
+      `,
+    },
+    // Multi-line explanation comment starting with intentional:
+    {
+      code: `
+        try { f(); } catch {
+          // intentional: fall-through for missing-UI path; the caller's
+          // subsequent visibility assertion produces the red on actual
+          // breakage, not us.
+        }
+      `,
+    },
     // No catch at all — fine.
     {
       code: `try { f(); } finally { g(); }`,

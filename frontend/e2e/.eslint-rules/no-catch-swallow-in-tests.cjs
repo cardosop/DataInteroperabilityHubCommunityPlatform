@@ -45,25 +45,30 @@
 'use strict';
 
 /**
- * Returns true if the given arrow-function node is a "constant silent
+ * Returns true if the given handler node is a "constant silent
  * fallback" — its body resolves statically to one of:
- *   null | undefined | 0 | false | '' | [] | {}
+ *   null | undefined | 0 | false | '' | [] | {}  (or `void <expr>`,
+ *   which evaluates to undefined)
  *
- * Both expression-body arrows (`() => null`) and block-body arrows
- * whose only statement is `return <constant>` are considered.
+ * Covers both ArrowFunctionExpression and FunctionExpression
+ * (`.catch(function () { return null; })`), and both expression-body
+ * and block-body forms whose only statement is `return <constant>`.
  */
-function isConstantSilentFallback(arrowNode) {
-  if (!arrowNode) return false;
-  if (arrowNode.type !== 'ArrowFunctionExpression') return false;
-
-  // Expression-body form: `() => <expr>`
-  if (arrowNode.body.type !== 'BlockStatement') {
-    return isSilentConstantExpression(arrowNode.body);
+function isConstantSilentFallback(fnNode) {
+  if (!fnNode) return false;
+  if (fnNode.type !== 'ArrowFunctionExpression' && fnNode.type !== 'FunctionExpression') {
+    return false;
   }
 
-  // Block-body form: `() => { ... }` — only a single `return <expr>`
-  // qualifies as silent.
-  const body = arrowNode.body.body;
+  // Expression-body arrow: `() => <expr>`. FunctionExpression always
+  // has a block body per JS grammar.
+  if (fnNode.type === 'ArrowFunctionExpression' && fnNode.body.type !== 'BlockStatement') {
+    return isSilentConstantExpression(fnNode.body);
+  }
+
+  // Block-body form: `{ ... }` — only a single `return <expr>` qualifies
+  // as silent.
+  const body = fnNode.body.body;
   if (body.length !== 1) return false;
   const stmt = body[0];
   if (stmt.type !== 'ReturnStatement') return false;
@@ -82,6 +87,12 @@ function isSilentConstantExpression(expr) {
   }
   // `undefined` — represented as an Identifier in AST.
   if (expr.type === 'Identifier' && expr.name === 'undefined') {
+    return true;
+  }
+  // `void <anything>` — unary `void` always evaluates to undefined,
+  // so `.catch(() => void 0)` or `() => void e` are silent fallbacks
+  // (returning undefined) regardless of the argument.
+  if (expr.type === 'UnaryExpression' && expr.operator === 'void') {
     return true;
   }
   // []
