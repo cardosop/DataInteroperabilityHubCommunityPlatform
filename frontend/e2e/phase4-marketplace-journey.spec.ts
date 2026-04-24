@@ -12,6 +12,7 @@ import { expect, test, type Page } from '@playwright/test';
 import { clearAuthStorage, getConsumerTestUser, getTestUser, loginAsPersona } from './fixtures/auth';
 import { loginAndNavigateToRoute, waitForAppMainReady } from './fixtures/helpers';
 import { isBenignConsoleError } from './fixtures/console-utils';
+import { verifyViaApi } from './fixtures/verifyViaApi';
 
 const getApiBaseUrl = () => process.env.VITE_API_BASE_URL || 'http://localhost:8000/api/v1';
 
@@ -784,6 +785,19 @@ test.describe('Phase 4 Marketplace Journey', () => {
     const orderId = orderUrl.split('/').pop()!;
     console.log(`✅ Created order: ${orderId}`);
     console.log(`📍 Order URL: ${orderUrl}`);
+
+    // Dual-channel verification (PR 7a-ext2e). The URL match proves the UI
+    // routed on a 201/202 response; it does not prove the Order row is
+    // backed by the expected listing or that the entitlement-creation
+    // side-effects fired. Hit /api/v1/marketplace/orders/<id>/ directly so
+    // subsequent steps (entitlement list check) don't race a silently
+    // failed order-finalise job.
+    await verifyViaApi(
+      page,
+      `/api/v1/marketplace/orders/${orderId}/`,
+      (body: { listing_id?: string; listing?: { id?: string } }) =>
+        body.listing_id === listingId || body.listing?.id === listingId,
+    );
 
     console.log('⏳ Waiting for order detail page to load...');
     await page.waitForSelector('.order-detail-page, .order-detail-content', { timeout: 10000 });

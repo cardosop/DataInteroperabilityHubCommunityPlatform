@@ -13,6 +13,7 @@ import { expect, test } from '@playwright/test';
 import { getTestUser } from '../../fixtures/auth';
 import { loginAndNavigateToRoute } from '../../fixtures/helpers';
 import { createAssetViaApi } from '../../fixtures/api-assets';
+import { verifyViaApi } from '../../fixtures/verifyViaApi';
 
 test.describe('JOURNEY-MP-002: Publish Asset to Marketplace', () => {
   test.setTimeout(120000);
@@ -122,6 +123,22 @@ test.describe('JOURNEY-MP-002: Publish Asset to Marketplace', () => {
       if (resultType === 'navigated') {
         // Listing created — confirm we landed on the listing detail page
         expect(page.url()).toMatch(/\/marketplace\/listings\/[a-fA-F0-9-]{36}$/);
+
+        // Dual-channel verification (PR 7a-ext2d). UI navigation only proves
+        // the client-side router transition; it does not prove the backend
+        // persisted the Listing row. Hit the API directly to confirm the
+        // listing exists and is linked to the asset the user chose — catches
+        // the failure mode where the frontend optimistically navigates on a
+        // 202-with-pending-job and the job later silently fails.
+        const listingId = page.url().match(/\/marketplace\/listings\/([a-fA-F0-9-]{36})/)?.[1];
+        if (!listingId) {
+          throw new Error(`Expected /marketplace/listings/<uuid> URL after submit; got ${page.url()}`);
+        }
+        await verifyViaApi(
+          page,
+          `/api/v1/marketplace/listings/${listingId}/`,
+          (body: { asset_id?: string }) => body.asset_id === assetId,
+        );
       } else if (resultType === 'api-error') {
         // Backend rejected the listing creation (e.g. duplicate, permission, plan limit)
         const errText = await page.locator('.error-display').first().textContent().catch(() => '');
