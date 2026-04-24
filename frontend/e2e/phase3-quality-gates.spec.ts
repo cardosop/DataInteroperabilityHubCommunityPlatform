@@ -307,17 +307,19 @@ test.describe('Phase 3 Quality Gates', () => {
     });
     console.log('DQ run detail page loaded');
 
-    // Verify DQ results are displayed (only if run succeeded)
+    // Verify DQ results are displayed (only if run succeeded).
+    // The viewer renders 1 `.dq-results-summary` container with N
+    // `.summary-card` children — assert the container is visible, not
+    // an exact count.
     const dqResults = page.locator('.dq-results-viewer, .dq-run-results-section');
     if ((await dqResults.count()) > 0) {
       console.log('DQ results viewer found');
-      try {
-        await expect(page.locator('.dq-results-summary, .summary-card')).toHaveCount(1, {
-          timeout: 5000,
-        });
+      const dqSummary = page.locator('.dq-results-summary').first();
+      if ((await dqSummary.count()) > 0) {
+        await expect(dqSummary).toBeVisible({ timeout: 5000 });
         console.log('DQ results summary found');
-      } catch {
-        console.log('DQ results summary not found (may still be loading)');
+      } else {
+        console.log('DQ results summary not yet rendered (may still be loading)');
       }
     } else {
       console.log('DQ results not yet available (run may still be processing)');
@@ -404,19 +406,24 @@ test.describe('Phase 3 Quality Gates', () => {
         '.compliance-results-remediation, .remediation-suggestions'
       );
       if ((await remediationSection.count()) > 0) {
-        await expect(page.locator('.remediation-item, .remediation-suggestion')).toHaveCount(1, {
-          timeout: 5000,
-        });
+        // `.remediation-item` is per-item in an N-item list; assert at least
+        // one is visible, not an exact count.
+        await expect(
+          page.locator('.remediation-item, .remediation-suggestion').first()
+        ).toBeVisible({ timeout: 5000 });
       }
       // At least one fail-closed warning must be visible (multiple are valid).
       await expect(page.locator('.fail-closed-warning, .blocked-warning').first()).toBeVisible({
         timeout: 5000,
       });
     } else {
-      // Compliance passed — verify filtering UX is available
+      // Compliance passed — verify filtering UX is available.
+      // The ComplianceRunResultsViewer renders Severity + Regulation filters
+      // by design, so assert scoped visibility rather than an exact count.
       const filters = page.locator('.compliance-results-filters, .filter-group');
       if ((await filters.count()) > 0) {
-        await expect(page.locator('select')).toHaveCount(1, { timeout: 5000 });
+        const complianceSelects = page.locator('.compliance-results-filters select');
+        await expect(complianceSelects.first()).toBeVisible({ timeout: 5000 });
       }
     }
 
