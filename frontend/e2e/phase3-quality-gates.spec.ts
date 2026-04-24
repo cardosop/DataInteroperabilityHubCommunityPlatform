@@ -439,22 +439,18 @@ test.describe('Phase 3 Quality Gates', () => {
       await expect(retryComplianceButton).toBeEnabled();
     }
 
-    // Step 7: Verify results viewers are usable at scale (filtering/severity grouping)
-    // Test DQ results viewer filtering
+    // Step 7: Verify results viewers are usable at scale (filtering/severity grouping).
+    // Use SPA navigation — the DQ and Compliance chunks were already loaded
+    // earlier in the test (we visited /dq/runs/{id} and /compliance/runs/{id}),
+    // so client-side nav is fast and avoids the full page-reload + retry dance
+    // that previously burned the remaining test budget. `.dq-run-list-page`
+    // is rendered unconditionally by DQRunListPage so no extra wait needed.
     console.log('Navigating to DQ runs list page...');
-    await page.goto('/dq');
-    await page.waitForLoadState('domcontentloaded');
-    await page.waitForTimeout(2000);
-
-    const dqContentSelector = '.dq-run-list-page, .dq-run-list-table, .empty-state, .error-display';
-    try {
-      await page.waitForSelector(dqContentSelector, { timeout: 25000 });
-    } catch {
-      console.log('DQ page content wait timed out, retrying navigation...');
-      await page.goto('/dq', { waitUntil: 'domcontentloaded', timeout: 30000 });
-      await page.waitForTimeout(3000);
-      await page.waitForSelector(dqContentSelector, { timeout: 45000 });
-    }
+    await navigateToRouteFromApp(page, '/dq', {
+      timeout: 30000,
+      contentSelector: '.dq-run-list-page, .error-display',
+      user: testUser,
+    });
     console.log('DQ runs list page loaded');
 
     // Verify filters are available
@@ -472,23 +468,13 @@ test.describe('Phase 3 Quality Gates', () => {
       }
     }
 
-    // Test Compliance results viewer filtering
+    // Test Compliance results viewer filtering — same SPA-nav pattern as DQ above.
     console.log('Navigating to Compliance runs list page...');
-    await page.goto('/compliance');
-    await page.waitForLoadState('domcontentloaded');
-    await page.waitForTimeout(2000);
-
-    const complianceContentSelector =
-      '.compliance-run-list-page, .compliance-run-list-table, .empty-state, .error-display';
-    try {
-      await page.waitForSelector(complianceContentSelector, { timeout: 25000 });
-    } catch {
-      // Transient connection reset may prevent load; retry navigation once
-      console.log('Compliance page content wait timed out, retrying navigation...');
-      await page.goto('/compliance', { waitUntil: 'domcontentloaded', timeout: 30000 });
-      await page.waitForTimeout(3000);
-      await page.waitForSelector(complianceContentSelector, { timeout: 45000 });
-    }
+    await navigateToRouteFromApp(page, '/compliance', {
+      timeout: 30000,
+      contentSelector: '.compliance-run-list-page, .error-display',
+      user: testUser,
+    });
     console.log('Compliance runs list page loaded');
 
     const complianceFilters = page.locator('.compliance-run-list-filters select');
