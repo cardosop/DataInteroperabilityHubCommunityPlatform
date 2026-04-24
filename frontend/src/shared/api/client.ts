@@ -381,6 +381,22 @@ export class ApiClient {
 
   setRefreshToken(token: string | null): void {
     this._refreshToken = token;
+    // Persist to localStorage in non-cookie mode so that rotations performed
+    // silently by the 401-interceptor (_handleRefreshAndRetry → _refreshAccessToken)
+    // survive a page reload. Without this, localStorage keeps the pre-rotation
+    // token; the next reload reads it, presents a revoked token, and the backend
+    // revokes the entire family → user is kicked to /login after any 4xx that
+    // was followed by a reload. Cookie mode stores tokens in httpOnly cookies,
+    // so localStorage must stay empty.
+    if (typeof window !== 'undefined' && !this._cookieAuthMode) {
+      try {
+        if (token === null) {
+          localStorage.removeItem('refresh_token');
+        } else {
+          localStorage.setItem('refresh_token', token);
+        }
+      } catch { /* SSR / disabled storage — memory-only is acceptable fallback */ }
+    }
   }
 
   clearTokens(): void {
