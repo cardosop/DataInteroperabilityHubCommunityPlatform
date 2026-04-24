@@ -413,5 +413,45 @@ test.describe('Phase 2c — Asset Activation WITH Dataset (full golden path)', (
       timeout: 15000,
     });
     console.log(`Asset ${assetId} → ACTIVE (UI-verified, with dataset + DQ + compliance)`);
+
+    // ─────────────────────────────────────────────────────────────────
+    // Step 9 — Regression guard: DQ score renders as a sensible percent
+    //
+    // Backend contract: hub/apps/dq/models.py:113 documents quality_score
+    // as 0-100 (already a percentage). AssetDetailPage must render it
+    // as-is, not multiply by 100 a second time. Historical bug: the
+    // component had `Math.round(quality_score * 100)%` which produced
+    // "Score: 10000%" for a fully-passing run — both in the
+    // `.inline-summary-score` near the top of the page and in the
+    // `.quality-score` entries within the Quality Gates list.
+    //
+    // Assert every rendered score on the page parses to an integer in
+    // [0, 100]. Catches any future drift (unit mix-ups on new fields,
+    // accidental reintroduction of the `* 100`) at the UI level where
+    // it actually matters to users.
+    // ─────────────────────────────────────────────────────────────────
+    const scoreTexts = await page
+      .locator('.inline-summary-score, .quality-score')
+      .allTextContents();
+    expect(
+      scoreTexts.length,
+      'Expected at least one rendered DQ/compliance score on the asset detail page after a SUCCEEDED run.',
+    ).toBeGreaterThan(0);
+    for (const raw of scoreTexts) {
+      const match = raw.match(/(-?\d+(?:\.\d+)?)\s*%/);
+      expect(
+        match,
+        `Rendered score text "${raw}" does not contain a "<number>%" token. ` +
+          `If the format changed intentionally, update this regex.`,
+      ).not.toBeNull();
+      const value = Number(match![1]);
+      expect(
+        value,
+        `Rendered score "${raw}" parsed to ${value}; expected an integer percent ` +
+          `in [0, 100]. If this is >100, AssetDetailPage is multiplying quality_score ` +
+          `by 100 again — backend contract (hub/apps/dq/models.py:113) is already 0-100.`,
+      ).toBeGreaterThanOrEqual(0);
+      expect(value).toBeLessThanOrEqual(100);
+    }
   });
 });

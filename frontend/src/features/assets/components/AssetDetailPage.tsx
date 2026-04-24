@@ -419,7 +419,7 @@ export function AssetDetailPage() {
                 </span>
                 {latestDQRun.quality_score != null && (
                   <span className="inline-summary-score">
-                    Score: {Math.round(latestDQRun.quality_score * 100)}%
+                    Score: {Math.round(latestDQRun.quality_score)}%
                   </span>
                 )}
                 {latestDQRun.overall_status && (
@@ -764,7 +764,7 @@ export function AssetDetailPage() {
                       <div className="run-details">
                         {run.quality_score !== null && run.quality_score !== undefined && (
                           <span className="quality-score">
-                            Score: {Math.round(run.quality_score * 100)}%
+                            Score: {Math.round(run.quality_score)}%
                           </span>
                         )}
                         <span className="run-date">
