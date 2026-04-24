@@ -6,9 +6,13 @@ import tseslint from 'typescript-eslint'
 import { defineConfig, globalIgnores } from 'eslint/config'
 import { createRequire } from 'node:module'
 
-// CommonJS rule file; loaded via createRequire because this config is ES modules.
+// CommonJS rule files; loaded via createRequire because this config is ES modules.
 const require = createRequire(import.meta.url)
 const noTestSkipTrueRule = require('./e2e/.eslint-rules/no-test-skip-true.cjs')
+// 226.A silent-failure elimination rules. See e2e/.eslint-rules/README.md.
+const noConditionalCountAssertionRule = require('./e2e/.eslint-rules/no-conditional-count-assertion.cjs')
+const noCatchSwallowInTestsRule = require('./e2e/.eslint-rules/no-catch-swallow-in-tests.cjs')
+const noBareCatchInTestsRule = require('./e2e/.eslint-rules/no-bare-catch-in-tests.cjs')
 
 export default defineConfig([
   globalIgnores(['dist', 'coverage']),
@@ -62,19 +66,46 @@ export default defineConfig([
       'no-restricted-syntax': 'off',
     },
   },
-  // PR 5 — block `test.skip(true, ...)` regressions in Playwright specs.
-  // See e2e/.eslint-rules/no-test-skip-true.js for the full rationale.
+  // Custom E2E-spec guard rules. Plugin-style so every rule lives under
+  // the `e2e-guards/` prefix and can be disabled per-site with a standard
+  // `// eslint-disable-next-line e2e-guards/<rule-name>` comment.
+  //
+  //   no-test-skip-true                 (PR 5) — error
+  //   no-conditional-count-assertion    (226.A1) — warn during cleanup cycle,
+  //                                                flip to error when the
+  //                                                residual count hits the
+  //                                                ≤ 30 target
+  //   no-catch-swallow-in-tests         (226.A2) — same ramp: warn now,
+  //                                                error at the ≤ 120 target
+  //   no-bare-catch-in-tests            (226.A3) — warn now, flip to error
+  //                                                once the count is 0
+  //
+  // Warn-level during the cleanup is deliberate: ESLint still surfaces
+  // each site in CI output, but the build stays green so the cleanup PRs
+  // can land incrementally without being blocked on their own progress.
+  // The `// intentional: <why>` escape hatch each rule honours means new
+  // well-justified uses do not accrue noise while the backlog drains.
   {
     files: ['e2e/**/*.ts', 'e2e/**/*.spec.ts'],
     plugins: {
       'e2e-guards': {
         rules: {
           'no-test-skip-true': noTestSkipTrueRule,
+          'no-conditional-count-assertion': noConditionalCountAssertionRule,
+          'no-catch-swallow-in-tests': noCatchSwallowInTestsRule,
+          'no-bare-catch-in-tests': noBareCatchInTestsRule,
         },
       },
     },
     rules: {
       'e2e-guards/no-test-skip-true': 'error',
+      'e2e-guards/no-conditional-count-assertion': 'warn',
+      'e2e-guards/no-catch-swallow-in-tests': 'warn',
+      'e2e-guards/no-bare-catch-in-tests': 'warn',
+      // Companion core ESLint rule — catches `catch (e) { throw e; }`
+      // (body non-empty but useless). Pairs with `no-bare-catch-in-tests`
+      // to cover both useless-catch shapes.
+      'no-useless-catch': 'error',
     },
   },
 ])
