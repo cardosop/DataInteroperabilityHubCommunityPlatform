@@ -13,6 +13,7 @@ import * as fs from 'fs';
 import { getTestUser, loginAsPersona } from './fixtures/auth';
 import { isBenignConsoleError } from './fixtures/console-utils';
 import { loginAndNavigateToRoute } from './fixtures/helpers';
+import { verifyViaApi } from './fixtures/verifyViaApi';
 
 const getApiBaseUrl = () => process.env.VITE_API_BASE_URL || 'http://localhost:8000/api/v1';
 
@@ -343,6 +344,23 @@ test.describe('Phase 5 ODPS Journey', () => {
         const responseData = await response.json();
         workflowInstanceId = responseData.workflow_instance_id;
         console.log(`✅ ODPS creation started, workflow instance ID: ${workflowInstanceId}`);
+
+        // Dual-channel verification (PR 7a-ext2b) — third adoption of the
+        // pattern. Confirm the workflow instance is actually queryable at
+        // its status endpoint before we start polling; catches the
+        // failure mode where the UI's response reports a workflow ID but
+        // the backend never registered it (e.g. side-effect registration
+        // failed inside a `@transaction.atomic` block). Using a predicate
+        // rather than exact match because the status can be any of
+        // pending/running/completed/failed.
+        if (workflowInstanceId) {
+          await verifyViaApi(
+            page,
+            `/api/v1/contracts/products/workflows/${workflowInstanceId}/status/`,
+            (body: { status?: string }) =>
+              typeof body.status === 'string' && body.status.length > 0,
+          );
+        }
       } else {
         const errorText = await response.text().catch(() => '');
         const errorJson = await response.json().catch(() => null);

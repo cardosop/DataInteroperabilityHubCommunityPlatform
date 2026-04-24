@@ -15,6 +15,7 @@ import { clearAuthStorage, getTestUser, loginUser } from './fixtures/auth';
 import { E2E_APP_NAME } from './fixtures/brand';
 import { isBenignConsoleError } from './fixtures/console-utils';
 import { waitForLoadingComplete } from './fixtures/helpers';
+import { verifyViaApi } from './fixtures/verifyViaApi';
 
 test.describe('Login → Load App Shell (DoD-2.2)', () => {
   test.setTimeout(120000);
@@ -34,6 +35,22 @@ test.describe('Login → Load App Shell (DoD-2.2)', () => {
 
     // Step 2: Use loginUser fixture (handles rate limiting, retries, and navigation)
     await loginUser(page, testUser);
+
+    // Dual-channel login verification (PR 7a-ext2c — fourth adoption).
+    // loginUser succeeded at the UI level (form submit + redirect), but
+    // that only proves the client-side state transition. Hit /auth/me/
+    // directly to confirm the session is real server-side — catches the
+    // failure mode where the UI shows "logged in" but the token was
+    // actually rejected (e.g. the stale-bearer-on-login bug fa87ce28
+    // closed). Using a predicate that matches the expected email so a
+    // wrong-user session (e.g. cached from a prior run) also surfaces.
+    await verifyViaApi(
+      page,
+      '/api/v1/auth/me/',
+      (body: { email?: string }) =>
+        typeof body.email === 'string' &&
+        body.email.toLowerCase() === testUser.email.toLowerCase(),
+    );
 
     // Step 3: Wait for page to be fully loaded (after login)
     await page.waitForLoadState('domcontentloaded');
