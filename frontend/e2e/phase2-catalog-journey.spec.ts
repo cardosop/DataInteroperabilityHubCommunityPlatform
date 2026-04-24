@@ -243,24 +243,19 @@ test.describe('Phase 2 Catalog Journey', () => {
 
     await page.waitForTimeout(2000);
 
-    // Verify contracts page loads - check for heading or empty state
+    // Contracts page loads as either heading or empty-state — wait on
+    // whichever paints first, then branch. Replaces the stacked count()
+    // guards (226.A1 anti-pattern).
     const contractsHeading = page.locator('.contract-list-page h1, .app-main h1').first();
-    const emptyState = page.locator('.empty-state');
-
-    if ((await contractsHeading.count()) > 0) {
-      const headingText = await contractsHeading.textContent();
-      if (headingText?.includes('Contracts')) {
-        // Heading found with Contracts text
-      } else {
-        // Just verify page loaded
-        await expect(contractsHeading).toBeVisible({ timeout: 5000 });
-      }
-    } else if ((await emptyState.count()) > 0) {
-      // Empty state is fine - page loaded correctly
-      expect(page.url()).toContain('/contracts');
+    const contractsEmptyState = page.locator('.empty-state').first();
+    await contractsHeading.or(contractsEmptyState).waitFor({
+      state: 'visible',
+      timeout: 15000,
+    });
+    if (await contractsHeading.isVisible()) {
+      await expect(contractsHeading).toBeVisible();
     } else {
-      // Wait a bit more
-      await page.waitForTimeout(2000);
+      // Empty-state path. URL assertion is the invariant that stays.
       expect(page.url()).toContain('/contracts');
     }
 
@@ -272,52 +267,49 @@ test.describe('Phase 2 Catalog Journey', () => {
 
     await page.waitForTimeout(2000);
 
-    // Find and click Activate Asset button
+    // Activate Asset button MUST render here — we just created a DRAFT
+    // asset with no contract. The prior `if (count() > 0) … else log`
+    // shape silently passed when the button disappeared, hiding real
+    // regressions in the activation UI (the whole point of this test).
+    // Drop the guard and let the `waitFor` assert it loudly.
     const activateButton = page.locator('button:has-text("Activate Asset")');
-    if ((await activateButton.count()) > 0) {
-      const responsePromise = page.waitForResponse(
-        (r) => r.url().includes('/assets/') && r.url().includes('/activate/'),
-        { timeout: 30000 }
-      ).catch(() => null);
-      await activateButton.click();
-      await page.waitForTimeout(3000);
-
-      const response = await responsePromise;
-      const statusBadge = page.locator('.status-badge').first();
-      if (response?.status() === 200) {
-        await page.reload();
-        await page.waitForLoadState('domcontentloaded');
-        await waitForLoadingComplete(page, { timeout: 35000 });
-        await expect(statusBadge).toContainText('ACTIVE', { timeout: 15000 });
-      } else {
-        // Backend returned non-200 on activate — verified via curl against
-        // staging on 2026-04-24 that this is a legit business-rule 400
-        // with one of:
-        //   * {"code":"VALIDATION_ERROR","error":"version field is required
-        //      for optimistic locking"} (when the UI doesn't send `version`)
-        //   * {"code":"ASSET_ACTIVATION_BLOCKED","error":"...requirements
-        //      not met","details":["Asset must have an ACTIVE contract"]}
-        //      (when the asset has no contract yet — this test's path)
-        //
-        // The original spec did `page.reload()` + assert `.status-badge`
-        // shows DRAFT, but on staging the UI's 400-handler has a
-        // logout-on-4xx side effect that drops the session: the reload
-        // then lands on /login and the badge assertion fails with a
-        // misleading "element not found". Tracked as PR 7a-ext3.
-        //
-        // Dual-channel substitute (PR 7a-ext1): verify the invariant — the
-        // asset stays in DRAFT — via the REST API directly. Same guarantee,
-        // doesn't depend on the UI's post-failed-activate state, and is
-        // exactly the cross-channel pattern this whole initiative exists
-        // to showcase.
-        await verifyViaApi(page, `/api/v1/assets/${assetId}/`, {
-          status: 'DRAFT',
-        });
-      }
+    await activateButton.waitFor({ state: 'visible', timeout: 15000 });
+    const responsePromise = page.waitForResponse(
+      (r) => r.url().includes('/assets/') && r.url().includes('/activate/'),
+      { timeout: 30000 },
+    );
+    await activateButton.click();
+    const response = await responsePromise;
+    const statusBadge = page.locator('.status-badge').first();
+    if (response.status() === 200) {
+      await page.reload();
+      await page.waitForLoadState('domcontentloaded');
+      await waitForLoadingComplete(page, { timeout: 35000 });
+      await expect(statusBadge).toContainText('ACTIVE', { timeout: 15000 });
     } else {
-      console.log(
-        'Activate Asset button not found - asset may already be active or activation not available'
-      );
+      // Backend returned non-200 on activate — verified via curl against
+      // staging on 2026-04-24 that this is a legit business-rule 400
+      // with one of:
+      //   * {"code":"VALIDATION_ERROR","error":"version field is required
+      //      for optimistic locking"} (when the UI doesn't send `version`)
+      //   * {"code":"ASSET_ACTIVATION_BLOCKED","error":"...requirements
+      //      not met","details":["Asset must have an ACTIVE contract"]}
+      //      (when the asset has no contract yet — this test's path)
+      //
+      // The original spec did `page.reload()` + assert `.status-badge`
+      // shows DRAFT, but on staging the UI's 400-handler has a
+      // logout-on-4xx side effect that drops the session: the reload
+      // then lands on /login and the badge assertion fails with a
+      // misleading "element not found". Tracked as PR 7a-ext3.
+      //
+      // Dual-channel substitute (PR 7a-ext1): verify the invariant — the
+      // asset stays in DRAFT — via the REST API directly. Same guarantee,
+      // doesn't depend on the UI's post-failed-activate state, and is
+      // exactly the cross-channel pattern this whole initiative exists
+      // to showcase.
+      await verifyViaApi(page, `/api/v1/assets/${assetId}/`, {
+        status: 'DRAFT',
+      });
     }
   });
 
@@ -334,27 +326,40 @@ test.describe('Phase 2 Catalog Journey', () => {
     // Wait a bit more for React to render
     await page.waitForTimeout(2000);
 
-    // Check for Assets heading (in the main content area, not header)
+    // Three mutually-exclusive page outcomes: heading rendered, empty
+    // state rendered, or error-display rendered. The previous form used
+    // stacked `if ((await x.count()) > 0) { expect(...) }` guards (226.A1
+    // anti-pattern: a truly missing page silently passed because every
+    // guard returned 0). Use Playwright's `.or()` chain to require that
+    // AT LEAST ONE of the three selectors becomes visible within the
+    // budget, then branch on which one won to keep the existing
+    // error-state logging behaviour.
     const assetsHeading = page
       .locator('.asset-list-page h1, .app-main h1:has-text("Assets")')
       .first();
-    const emptyState = page.locator('.empty-state');
-    const errorDisplay = page.locator('.error-display');
-
-    if ((await assetsHeading.count()) > 0) {
-      await expect(assetsHeading).toContainText('Assets', { timeout: 5000 });
-    } else if ((await emptyState.count()) > 0) {
-      // Empty state is fine - page loaded correctly
-      expect(page.url()).toContain('/assets');
-    } else if ((await errorDisplay.count()) > 0) {
-      // Error state - log it but don't fail (might be expected if no assets)
+    const emptyState = page.locator('.empty-state').first();
+    const errorDisplay = page.locator('.error-display').first();
+    try {
+      await assetsHeading.or(emptyState).or(errorDisplay).waitFor({
+        state: 'visible',
+        timeout: 15000,
+      });
+    } catch {
+      await page.screenshot({ path: 'test-results/assets-page-debug.png', fullPage: true });
+      throw new Error('Assets page did not load — no heading, empty state, or error found');
+    }
+    if (await assetsHeading.isVisible()) {
+      await expect(assetsHeading).toContainText('Assets');
+    } else if (await errorDisplay.isVisible()) {
+      // Error state is an accepted outcome (e.g. empty-tenant backend
+      // probe can 404 before the empty-state fallback paints). Log for
+      // triage, assert we're still on the right route.
       const errorText = await errorDisplay.textContent();
       console.log('Assets page error:', errorText);
       expect(page.url()).toContain('/assets');
     } else {
-      // Take screenshot for debugging
-      await page.screenshot({ path: 'test-results/assets-page-debug.png', fullPage: true });
-      throw new Error('Assets page did not load - no heading, empty state, or error found');
+      // Empty-state path — page loaded correctly with no assets.
+      expect(page.url()).toContain('/assets');
     }
 
     // Test filters only if assets list is shown (not empty state)
