@@ -318,3 +318,49 @@ CVE-2026-31666
 CVE-2026-31667
 CVE-2026-31669
 CVE-2026-31788
+
+# Added: 2026-04-25 (worker-service trivy gate — run 24941236121)
+# Twenty-one MORE kernel CVEs disclosed in the Debian vulndb for
+# linux-libc-dev 6.12.74-2 in the same hour the previous batch landed
+# (the vulndb is being updated rapidly today as the upstream Linux 6.13
+# review window closes). All status=affected, no Debian fix published.
+# Same class as every other linux-libc-dev entry in this file: container
+# userspace headers — the host kernel runs the actual code paths, never
+# our containers.
+#
+# Subsystems touched (none invoked from Meshant container workloads):
+#   - x86/fred speculative safety (microarch-only)
+#   - bpf devmap, netfilter bpf hook, clsact (eBPF; we don't load eBPF)
+#   - PCI dwc MSI-X (PCI device-side; we run on AWS instances)
+#   - wifi mt76 mt7925 (wireless drivers)
+#   - net/sched act_ife (traffic shaping; we use Kubernetes/AWS LB)
+#   - pinctrl cs42l43, ALSA 6fire, em28xx (peripheral/audio drivers)
+#   - Squashfs metadata bounds (we don't mount Squashfs)
+#   - Bluetooth L2CAP (no BT in EKS)
+#   - nfnetlink_osf, net/tls UAF (TLS handled by gunicorn/userspace)
+#   - futex requeue/exiting pointer (we use Python threading, no raw futex)
+#   - nvmet (NVMe target — block-device-side, not workloads)
+#   - can gw, media mc/em28xx (CAN bus, video capture)
+#   - mm blk-cgroup UAF (block I/O cgroup; we don't tune that)
+# Review by: 2026-05-25 (same window as the prior batch).
+CVE-2026-23354
+CVE-2026-23359
+CVE-2026-23361
+CVE-2026-23363
+CVE-2026-23378
+CVE-2026-23387
+CVE-2026-23388
+CVE-2026-23395
+CVE-2026-23397
+CVE-2026-23412
+CVE-2026-23413
+CVE-2026-23422
+CVE-2026-31473
+CVE-2026-31533
+CVE-2026-31554
+CVE-2026-31555
+CVE-2026-31557
+CVE-2026-31570
+CVE-2026-31581
+CVE-2026-31583
+CVE-2026-31586
