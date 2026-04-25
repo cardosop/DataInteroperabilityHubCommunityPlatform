@@ -33,6 +33,7 @@ test.describe('UC-MKT-ADV-001: Configure Usage-Based Pricing', () => {
       expect(hasErrorOnList).toBe(false);
 
       const listingLink = page.locator('.listing-list-page a[href*="/marketplace/listings/"]').first();
+      // intentional: marketplace listing-row click-through is genuinely optional — listing presence depends on whether a DPO has published listings in this tenant.
       if ((await listingLink.count()) > 0) {
         await listingLink.click();
         await page.waitForURL(/\/marketplace\/listings\/[^/]+/, { timeout: 15000 });
@@ -100,6 +101,7 @@ test.describe('UC-MKT-ADV-001: Configure Usage-Based Pricing', () => {
       test.skip(page.url().includes('/login'), 'Auth redirect — infrastructure issue');
 
       const listingLink = page.locator('.listing-list-page a[href*="/marketplace/listings/"]').first();
+      // intentional: marketplace listing-row click-through is genuinely optional — listing presence depends on whether a DPO has published listings in this tenant.
       if ((await listingLink.count()) > 0) {
         await listingLink.click();
         await page.waitForURL(/\/marketplace\/listings\/[^/]+/, { timeout: 15000 });

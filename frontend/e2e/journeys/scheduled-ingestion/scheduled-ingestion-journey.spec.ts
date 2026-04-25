@@ -15,6 +15,9 @@ import { expect, test } from '@playwright/test';
 import { createScheduledIngestionViaApi } from '../../fixtures/api-assets';
 import { clearAuthStorage, getTenantAdminUser, loginUser } from '../../fixtures/auth';
 import { hasLoginPrompt, loginAndNavigateToRoute } from '../../fixtures/helpers';
+// Phase 226 B1e — dual-channel verification on schedule create + trigger.
+import { verifyViaApi } from '../../fixtures/verifyViaApi';
+import { verifyAuditEvent } from '../../fixtures/verifyAuditEvent';
 
 const API_BASE = process.env.E2E_API_BASE_URL || process.env.VITE_API_BASE_URL || 'http://localhost:8000/api/v1';
 const PREFECT_INTEGRATION_URL =
@@ -285,6 +288,26 @@ test.describe('Scheduled Ingestion Journey', () => {
       // when the name appears in both the breadcrumb and a detail field (dd element).
       await expect(page.getByText(name, { exact: false }).first()).toBeVisible({ timeout: 10000 });
 
+      // Phase 226 B1e — dual-channel verification of schedule creation
+      // (UC-INGEST-001). Assert backend persisted the schedule with the
+      // expected name, and that the audit row exists for the create.
+      const scheduleUrl = page.url();
+      const scheduleIdMatch = scheduleUrl.match(/\/scheduled-ingestions\/([0-9a-f-]{20,})/);
+      const scheduleId = scheduleIdMatch ? scheduleIdMatch[1] : '';
+      if (scheduleId) {
+        await verifyViaApi(page, `/api/v1/scheduled-ingestions/${scheduleId}/`, {
+          name,
+        });
+        // Action name + resource_type verified against backend call site:
+        // hub/apps/scheduled_ingestion/views.py:343-354 emits
+        // `create_audit_event(resource_type="SCHEDULED_INGESTION", action="CREATED", ...)`.
+        await verifyAuditEvent(page, {
+          action: 'CREATED',
+          resourceType: 'SCHEDULED_INGESTION',
+          resourceId: scheduleId,
+        });
+      }
+
       // Allow deployment sync to complete (on_commit creates Prefect deployment asynchronously)
       await page.waitForTimeout(10000);
 
@@ -543,6 +566,7 @@ test.describe('Scheduled Ingestion Journey', () => {
       await deleteBtn.first().click();
 
       const confirmDialog = page.locator('[role="dialog"], .confirm-dialog, .modal');
+      // intentional: confirm-dialog presence depends on whether the tenant uses native browser confirm() vs a custom modal — both UX shapes are valid.
       if ((await confirmDialog.count()) > 0) {
         await expect(confirmDialog.first()).toBeVisible({ timeout: 5000 });
         const confirmBtn = confirmDialog

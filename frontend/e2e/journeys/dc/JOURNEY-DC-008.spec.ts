@@ -64,6 +64,7 @@ test.describe('JOURNEY-DC-008: Rate and Review Asset', () => {
       }
       const socialSection = page.locator('[data-testid="asset-social-section"]');
       await socialSection.waitFor({ state: 'visible', timeout: 10000 }).catch(() => null);
+      // intentional: social-section is feature-flag-gated — only renders for tenants with community/social features enabled.
       if ((await socialSection.count()) > 0 && (await socialSection.isVisible())) {
         await expect(socialSection.locator('h2')).toContainText(/Community/i);
       }

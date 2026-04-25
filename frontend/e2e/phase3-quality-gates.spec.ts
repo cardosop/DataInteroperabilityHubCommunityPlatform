@@ -320,9 +320,19 @@ test.describe('Phase 3 Quality Gates', () => {
     // `.summary-card` children — assert the container is visible, not
     // an exact count.
     const dqResults = page.locator('.dq-results-viewer, .dq-run-results-section');
+    // intentional: DQ-results viewer is genuinely optional — it only
+    // renders after the DQ run has completed AND the React Query
+    // cache has populated. The earlier polling loop tolerates the
+    // run-still-pending case via test.skip; this assertion adds
+    // observability when the viewer IS up but doesn't fail the
+    // run-pending path.
     if ((await dqResults.count()) > 0) {
       console.log('DQ results viewer found');
       const dqSummary = page.locator('.dq-results-summary').first();
+      // intentional: summary card paints AFTER the viewer container,
+      // so a brief gap between viewer and summary is normal. Loud
+      // failure (timeout) on a missing viewer would fire on the line
+      // above; this inner check is purely additive observability.
       if ((await dqSummary.count()) > 0) {
         await expect(dqSummary).toBeVisible({ timeout: 5000 });
         console.log('DQ results summary found');
@@ -423,6 +433,12 @@ test.describe('Phase 3 Quality Gates', () => {
       const remediationSection = page.locator(
         '.compliance-results-remediation, .remediation-suggestions'
       );
+      // intentional: remediation section only renders when the
+      // compliance run found violations. A clean dataset (no PII, no
+      // policy issues) produces zero violations and therefore no
+      // remediation section — that's a legitimate path. The
+      // fail-closed-warning assertion below this block runs
+      // unconditionally and surfaces the missing-page case loudly.
       if ((await remediationSection.count()) > 0) {
         // `.remediation-item` is per-item in an N-item list; assert at least
         // one is visible, not an exact count.
@@ -439,6 +455,9 @@ test.describe('Phase 3 Quality Gates', () => {
       // The ComplianceRunResultsViewer renders Severity + Regulation filters
       // by design, so assert scoped visibility rather than an exact count.
       const filters = page.locator('.compliance-results-filters, .filter-group');
+      // intentional: filter UI only renders for runs that produced at
+      // least one violation (otherwise there's nothing to filter).
+      // Empty-violation runs legitimately skip this assertion.
       if ((await filters.count()) > 0) {
         const complianceSelects = page.locator('.compliance-results-filters select');
         await expect(complianceSelects.first()).toBeVisible({ timeout: 5000 });
@@ -458,6 +477,11 @@ test.describe('Phase 3 Quality Gates', () => {
     const retryComplianceButton = page
       .locator('.asset-quality-gates-section')
       .locator('button:has-text("Run Compliance Check")');
+    // intentional: the retry button is presence-conditional because
+    // compliance-blocked assets land us on a different code path
+    // where the button is hidden until the user opens the asset's
+    // Quality Gates accordion. Both rendering paths satisfy the
+    // happy-path coverage above; this is supplementary.
     if ((await retryComplianceButton.count()) > 0) {
       await expect(retryComplianceButton).toBeEnabled();
     }
@@ -478,13 +502,21 @@ test.describe('Phase 3 Quality Gates', () => {
 
     // Verify filters are available
     const dqFilters = page.locator('.dq-run-list-filters select');
+    // intentional: DQ-list filter dropdown only renders when the
+    // tenant has DQ runs to filter. Empty-tenant runs legitimately
+    // skip filtering coverage — list-loads coverage is asserted
+    // above this block.
     if ((await dqFilters.count()) > 0) {
       // Test filtering by status
       await dqFilters.first().selectOption('SUCCEEDED');
       await page.waitForTimeout(1000);
 
-      // Verify filtered results
       const filteredRows = page.locator('.dq-run-row');
+      // intentional: post-filter row presence is genuinely optional
+      // — filtering by SUCCEEDED can legitimately produce zero rows
+      // when no run has that status yet. The selectOption above
+      // exercises the filter UI; this inner check supplements with
+      // row-content correctness when matches exist.
       if ((await filteredRows.count()) > 0) {
         const firstRowStatus = await filteredRows.first().locator('.status-badge').textContent();
         expect(firstRowStatus).toContain('SUCCEEDED');
@@ -501,13 +533,15 @@ test.describe('Phase 3 Quality Gates', () => {
     console.log('Compliance runs list page loaded');
 
     const complianceFilters = page.locator('.compliance-run-list-filters select');
+    // intentional: same shape as the DQ-list filter block above —
+    // filter UI is genuinely optional for empty-tenant runs.
     if ((await complianceFilters.count()) > 0) {
-      // Test filtering by status
       await complianceFilters.first().selectOption('SUCCEEDED');
       await page.waitForTimeout(1000);
 
-      // Verify filtered results
       const filteredRows = page.locator('.compliance-run-row');
+      // intentional: post-filter rows are also optional — see DQ
+      // counterpart for the same rationale.
       if ((await filteredRows.count()) > 0) {
         const firstRowStatus = await filteredRows.first().locator('.status-badge').textContent();
         expect(firstRowStatus).toContain('SUCCEEDED');

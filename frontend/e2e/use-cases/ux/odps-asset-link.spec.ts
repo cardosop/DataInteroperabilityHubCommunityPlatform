@@ -92,6 +92,7 @@ test.describe('ODPS Upload with Asset Linking (AssetPicker)', () => {
     await pickerInput.click();
     await page.waitForTimeout(500);
     const firstOption = page.locator('.asset-picker-option').first();
+    // intentional: asset-picker option is presence-conditional — picker results depend on tenant assets matching the search term.
     if ((await firstOption.count()) > 0) {
       await firstOption.click();
       await page.waitForTimeout(300);

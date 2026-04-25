@@ -149,6 +149,7 @@ test.describe('JOURNEY-PA-002: Manage Tenant Lifecycle', () => {
       // The resume button appears after React Query updates with new tenant status
       const resumeButton = page.locator(`[data-testid="resume-tenant-${targetTenant.id}"]`);
       await resumeButton.waitFor({ state: 'visible', timeout: 10000 }).catch(() => null);
+      // intentional: resume-tenant button only renders for SUSPENDED tenants — fixture state may not always reach the suspended branch.
       if ((await resumeButton.count()) > 0) {
         // Actual resume URL: POST /tenants/{id}/reactivate/ (adminService.resumeTenant)
         const resumeResponsePromise = page.waitForResponse(

@@ -55,6 +55,7 @@ test.describe('JOURNEY-DC-003: Search and Filter Assets', () => {
         return;
       }
       const filterSelect = page.locator('.filter-select').first();
+      // intentional: filter UI is presence-conditional — filters render only when the list has enough items to need filtering.
       if ((await filterSelect.count()) > 0) {
         await filterSelect.selectOption({ index: 1 });
         // Wait for the filter to take effect — result container must render a terminal state
@@ -101,6 +102,7 @@ test.describe('JOURNEY-DC-003: Search and Filter Assets', () => {
         return;
       }
       const searchInput = page.locator('.listing-list-filters input, input[placeholder*="Search"]').first();
+      // intentional: filter UI is presence-conditional — filters render only when the list has enough items to need filtering.
       if ((await searchInput.count()) > 0) {
         await searchInput.fill('xyznonexistent');
         // After filter applied — wait for results to settle

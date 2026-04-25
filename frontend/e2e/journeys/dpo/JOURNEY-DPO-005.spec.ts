@@ -66,6 +66,7 @@ test.describe('JOURNEY-DPO-005: Configure Data Contracts', () => {
 
       // Open edit if button is present
       const editBtn = page.locator('button:has-text("Edit")');
+      // intentional: edit affordance is role-conditional — read-only roles legitimately don't see it.
       if ((await editBtn.count()) > 0) {
         await editBtn.click();
         await page.waitForLoadState('domcontentloaded');

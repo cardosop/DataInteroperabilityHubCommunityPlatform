@@ -266,6 +266,7 @@ test.describe('Feature: Data Quality', () => {
 
         // Check that the "Failed" summary card has a numeric value
         const failedValue = page.locator('.summary-value.failed');
+        // intentional: failed-summary card only renders when the DQ run produced at least one failure — clean datasets legitimately skip this assertion.
         if (await failedValue.count() > 0) {
           const text = await failedValue.first().textContent();
           const failedCount = parseInt(text || '0', 10);

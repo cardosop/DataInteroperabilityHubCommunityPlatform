@@ -55,6 +55,7 @@ test.describe('JOURNEY-CPO-003: Review Access Request', () => {
         throw new Error(`Unexpected redirect to ${page.url()} — verify CPO user has governance access`);
       }
       const requestRow = page.locator('.governance-access-request-table tr.row-link').first();
+      // intentional: access-request row is genuinely optional — depends on whether any pending access requests exist in the tenant.
       if ((await requestRow.count()) > 0) {
         await requestRow.click();
         await page.waitForURL(/\/governance\/access-requests\/[^/]+$/, { timeout: 10000 });

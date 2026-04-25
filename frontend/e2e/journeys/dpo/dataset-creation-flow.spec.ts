@@ -6,6 +6,9 @@
 import { expect, test } from '@playwright/test';
 import { clearAuthStorage, getTestUser } from '../../fixtures/auth';
 import { hasLoginPrompt, loginAndNavigateToRoute, waitForLoadingComplete } from '../../fixtures/helpers';
+// Phase 226 B1a — dual-channel verification on dataset-create mutation.
+import { verifyViaApi } from '../../fixtures/verifyViaApi';
+import { verifyAuditEvent } from '../../fixtures/verifyAuditEvent';
 
 test.describe('Dataset Creation Flow', () => {
   test.setTimeout(120000);
@@ -51,6 +54,7 @@ test.describe('Dataset Creation Flow', () => {
       await page.waitForTimeout(500);
 
       const fileInput = page.locator('input[type="file"]');
+      // intentional: file-input is form-version-dependent — newer forms use a custom drag-drop component without a raw <input type=file>; both shapes are valid.
       if ((await fileInput.count()) > 0) {
         // Upload file with retry on rate limit (429) - parse retry-after from error message
         let uploadSuccess = false;
@@ -186,5 +190,16 @@ test.describe('Dataset Creation Flow', () => {
     await expect(
       page.locator('.dataset-detail-page, .dataset-detail-content, .dataset-detail-metadata').first()
     ).toBeVisible({ timeout: 5000 });
+
+    // Phase 226 B1a — dual-channel verification.
+    const datasetUrl = page.url();
+    const datasetId = datasetUrl.split('/').pop() ?? '';
+    expect(datasetId.length).toBeGreaterThan(30);
+    await verifyViaApi(page, `/api/v1/datasets/${datasetId}/`, {});
+    await verifyAuditEvent(page, {
+      action: 'DATASET_CREATED',
+      resourceType: 'DATASET',
+      resourceId: datasetId,
+    });
   });
 });

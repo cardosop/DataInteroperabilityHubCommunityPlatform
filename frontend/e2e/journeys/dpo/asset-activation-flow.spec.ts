@@ -6,6 +6,9 @@
 import { randomUUID } from 'node:crypto';
 import { expect, test } from '@playwright/test';
 import { clearAuthStorage, getTestUser } from '../../fixtures/auth';
+// Phase 226 B1a — dual-channel verification on the activate mutation.
+import { verifyViaApi } from '../../fixtures/verifyViaApi';
+import { verifyAuditEvent } from '../../fixtures/verifyAuditEvent';
 import {
   ensureAssetActivationPrerequisites,
   hasLoginPrompt,
@@ -126,6 +129,7 @@ test.describe('Asset Activation Flow', () => {
       const activateBtn = page.locator(
         'button:has-text("Activate"), button:has-text("Activate Asset")'
       );
+      // intentional: activate button is state-conditional — only renders when the asset is in DRAFT and meets activation pre-reqs.
       if ((await activateBtn.count()) > 0) {
         const respPromise = page.waitForResponse(
           (resp) => resp.url().includes('/assets/') && resp.url().includes('/activate/'),
@@ -335,6 +339,20 @@ test.describe('Asset Activation Flow', () => {
         'Backend did not persist ACTIVE status after activation. Check cache invalidation and activation logic.'
       );
     }
+
+    // Phase 226 B1a — dual-channel verification formalised. The existing
+    // page.evaluate-fetch above proves the backend returned ACTIVE; the
+    // verifyViaApi helper uses the same channel more strictly (throws with
+    // diff on mismatch). The audit-event check guards against a dropped
+    // create_audit_event call on the activation code path.
+    await verifyViaApi(page, `/api/v1/assets/${assetId}/`, {
+      status: 'ACTIVE',
+    });
+    await verifyAuditEvent(page, {
+      action: 'ASSET_ACTIVATED',
+      resourceType: 'ASSET',
+      resourceId: assetId,
+    });
 
     // Reload to ensure UI reflects backend state (apiActive already verified backend has ACTIVE)
     await page.waitForTimeout(1500);

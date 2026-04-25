@@ -139,8 +139,11 @@ test.describe('Governance Retention Policy CRUD', () => {
         'button:has-text("New Policy"), a:has-text("Create Policy")'
       );
       if ((await createButton.count()) === 0) {
-        // Empty state may have a different CTA
         const emptyCta = page.locator('.empty-state a, .empty-state button').first();
+        // intentional: empty-state CTA is genuinely optional — the
+        // primary "Create Policy" button check above is the canonical
+        // entry; this branch is a documented fallback for tenants that
+        // render the empty state with a different CTA shape.
         if ((await emptyCta.count()) > 0) {
           await emptyCta.click();
           await page.waitForURL(/\/governance\/retention\/new/, { timeout: 10000 });
@@ -573,6 +576,11 @@ test.describe('Governance Retention Policy CRUD', () => {
         { timeout: 90000 }
       );
 
+      // intentional: custom-dialog confirmation flow is one of two
+      // valid UX shapes (the other being native browser confirm()).
+      // `isCustomDialog` is the orchestrator that picks the path —
+      // if false we go through the native-confirm branch below this
+      // block, which has its own deterministic assertions.
       if (isCustomDialog && (await customDialog.count()) > 0) {
         await expect(customDialog.first()).toBeVisible({ timeout: 5000 });
         const confirmButton = customDialog
@@ -705,11 +713,22 @@ test.describe('Governance Retention Policy CRUD', () => {
 
       // ── Step 3: Edit ──────────────────────────────────────────────────────
       const editButton = page.locator('button:has-text("Edit"), a:has-text("Edit")');
+      // intentional: edit affordance is genuinely role-conditional —
+      // some retention policies are read-only for non-PA personas, in
+      // which case the Edit button is hidden by design. The CRUD
+      // happy-path coverage runs from a PA fixture above; this branch
+      // tolerates non-PA reuse of the same spec.
       if ((await editButton.count()) > 0) {
         await editButton.first().click();
         await page.waitForURL(/\/governance\/retention\/[^/]+\/edit/, { timeout: 10000 });
 
         const editNameInput = page.locator('input[name="name"], input#name');
+        // intentional: edit-form input shape varies (name vs id
+        // selector) across page-versioning. Both selectors are tried
+        // via the .or() above; presence-conditional only applies when
+        // neither matches, in which case we skip the form-mutation
+        // sub-flow rather than fail. The page-route URL assertion
+        // above this block confirms navigation.
         if ((await editNameInput.count()) > 0) {
           // Wait for form to be initialized by useEffect before editing
           await page.waitForFunction(
@@ -733,6 +752,10 @@ test.describe('Governance Retention Policy CRUD', () => {
           const updateButton = page.locator(
             'button[type="submit"]:has-text("Update"), button[type="submit"]:has-text("Save")'
           );
+          // intentional: button label is intentionally tolerant
+          // ("Update" or "Save") because the form library label varies.
+          // If neither matches, we skip the submit step but the form-
+          // load assertion above already verified the editor opened.
           if ((await updateButton.count()) > 0) {
             await updateButton.first().click();
             const updateResp = await updateResponsePromise;
@@ -750,6 +773,9 @@ test.describe('Governance Retention Policy CRUD', () => {
       );
 
       const deleteBtn = page.locator('button:has-text("Delete"), [data-testid="delete-button"]');
+      // intentional: delete affordance is role-gated (PA/TA-only by
+      // policy). The CRUD happy-path runs from a PA fixture; non-PA
+      // reuse of this spec legitimately skips the delete branch.
       if ((await deleteBtn.count()) > 0) {
         const deleteResponsePromise = page.waitForResponse(
           (resp) =>

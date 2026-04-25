@@ -12,6 +12,9 @@
 import { expect, test } from '../../fixtures/test-data-cleanup';
 import { createAssetViaApi } from '../../fixtures/api-assets';
 import { clearAuthStorage, getTestUser } from '../../fixtures/auth';
+// Phase 226 B1a — dual-channel verification for the listing-create mutation.
+import { verifyViaApi } from '../../fixtures/verifyViaApi';
+import { verifyAuditEvent } from '../../fixtures/verifyAuditEvent';
 import {
   loginAndNavigateToRoute,
   waitForAssetDropdownOptions,
@@ -67,9 +70,27 @@ test.describe('JOURNEY-DPO-002: Publish Asset to Marketplace', () => {
       const resp = await createListingResponse;
       // Track the UI-created listing for per-test teardown (Phase 213.C, Option A).
       // Reading the response body is safe — the page already received it.
+      let listingId: string | undefined;
       if (resp.ok()) {
         const created = (await resp.json().catch(() => null)) as { id?: string } | null;
-        if (created?.id) cleanup.track({ type: 'listing', id: created.id, owner: testUser });
+        if (created?.id) {
+          listingId = created.id;
+          cleanup.track({ type: 'listing', id: created.id, owner: testUser });
+        }
+      }
+      // Phase 226 B1a — dual-channel verification (UC-AM-002 listing publish).
+      // Asserts backend persisted the listing as DRAFT (pre-publish) and that
+      // the audit trail recorded LISTING_CREATED. The PUBLISHED status check
+      // happens below after the Publish button fires.
+      if (listingId) {
+        await verifyViaApi(page, `/api/v1/marketplace/listings/${listingId}/`, {
+          status: 'DRAFT',
+        });
+        await verifyAuditEvent(page, {
+          action: 'LISTING_CREATED',
+          resourceType: 'LISTING',
+          resourceId: listingId,
+        });
       }
       if (resp.status() >= 400) {
         const body = await resp.text().catch(() => '');
@@ -108,6 +129,7 @@ test.describe('JOURNEY-DPO-002: Publish Asset to Marketplace', () => {
           const publishBtn = page.locator(
             'button:has-text("Publish"), [data-testid="publish-listing-btn"]'
           );
+          // intentional: publish button is state-conditional — only renders when the listing is in DRAFT state.
           if ((await publishBtn.count()) > 0) {
             const publishResponsePromise = page.waitForResponse(
               (r) =>

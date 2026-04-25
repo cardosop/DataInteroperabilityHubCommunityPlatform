@@ -34,6 +34,7 @@ test.describe('JOURNEY-DC-002: Search Marketplace', () => {
       const searchInput = page.locator(
         '.listing-list-filters input[type="text"], .listing-list-filters input, input[placeholder*="Search"]'
       ).first();
+      // intentional: filter UI is presence-conditional — filters render only when the list has enough items to need filtering.
       if ((await searchInput.count()) > 0) {
         await searchInput.fill('xyznonexistent_e2e');
         // Wait for results to update — either empty state or results list

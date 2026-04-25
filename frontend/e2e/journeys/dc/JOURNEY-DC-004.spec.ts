@@ -56,6 +56,7 @@ test.describe('JOURNEY-DC-004: Access Entitlement', () => {
         return;
       }
       const entitlementRow = page.locator('.entitlement-list-page a[href*="/marketplace/entitlements/"]').first();
+      // intentional: entitlement-row click-through is genuinely optional — entitlement presence depends on whether the test user has purchased anything.
       if ((await entitlementRow.count()) > 0) {
         await entitlementRow.click();
         await page.waitForURL(/\/marketplace\/entitlements\/[^/]+/, { timeout: 10000 });

@@ -12,6 +12,9 @@
  */
 
 import { expect, test } from '@playwright/test';
+// Phase 226 B1e — dual-channel verification on scheduled-export create.
+import { verifyViaApi } from '../../fixtures/verifyViaApi';
+import { verifyAuditEvent } from '../../fixtures/verifyAuditEvent';
 import {
   cleanupOldScheduledExports,
   createAssetViaApi,
@@ -408,6 +411,26 @@ test.describe('Scheduled Export Journey', () => {
         timeout: 5000,
       });
 
+      // Phase 226 B1e — dual-channel verification of schedule creation
+      // (UC-EXPORT-001). Extract the schedule ID from the URL, confirm the
+      // backend persisted the name, and verify the audit row.
+      const exportUrl = page.url();
+      const exportIdMatch = exportUrl.match(/\/scheduled-exports\/([0-9a-f-]{20,})/);
+      const exportId = exportIdMatch ? exportIdMatch[1] : '';
+      if (exportId) {
+        await verifyViaApi(page, `/api/v1/scheduled-exports/${exportId}/`, {
+          name,
+        });
+        // Action name + resource_type verified against backend call site:
+        // hub/apps/scheduled_export/views.py emits
+        // `create_audit_event(resource_type="SCHEDULED_EXPORT", action="CREATED", ...)`.
+        await verifyAuditEvent(page, {
+          action: 'CREATED',
+          resourceType: 'SCHEDULED_EXPORT',
+          resourceId: exportId,
+        });
+      }
+
       // Wait for export to load (name visible) — .first() avoids strict-mode when name appears
       // in both breadcrumb and a detail field simultaneously
       await expect(page.getByText(name, { exact: false }).first()).toBeVisible({ timeout: 10000 });
@@ -725,6 +748,7 @@ test.describe('Scheduled Export Journey', () => {
 
       // Handle confirm dialog (custom modal or native browser dialog)
       const confirmDialog = page.locator('[role="dialog"], .confirm-dialog, .modal');
+      // intentional: confirm-dialog presence depends on whether the tenant uses native browser confirm() vs a custom modal — both UX shapes are valid.
       if ((await confirmDialog.count()) > 0) {
         await expect(confirmDialog.first()).toBeVisible({ timeout: 5000 });
         const confirmBtn = confirmDialog

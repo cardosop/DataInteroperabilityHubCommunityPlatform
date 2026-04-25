@@ -99,7 +99,13 @@ export default defineConfig([
     },
     rules: {
       'e2e-guards/no-test-skip-true': 'error',
-      'e2e-guards/no-conditional-count-assertion': 'warn',
+      // 226.A1 flipped to `error` 2026-04-24 once the per-file triage
+      // brought the global count below the plan's ≤30 target. Each
+      // remaining flagged site (now <30 across the suite) carries a
+      // standard `// intentional: <why>` annotation, OR is a real
+      // silent-failure that should fail CI. New regressions break the
+      // build instead of accruing as warnings.
+      'e2e-guards/no-conditional-count-assertion': 'error',
       'e2e-guards/no-catch-swallow-in-tests': 'warn',
       'e2e-guards/no-bare-catch-in-tests': 'warn',
       // Companion core ESLint rule — catches `catch (e) { throw e; }`

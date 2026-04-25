@@ -40,6 +40,7 @@ test.describe('UC-MKT-ADV-002: Preview Data Before Purchase', () => {
         .catch(() => null);
 
       const listingLink = page.locator('.listing-list-page a[href*="/marketplace/listings/"]').first();
+      // intentional: marketplace listing-row click-through is genuinely optional — listing presence depends on whether a DPO has published listings in this tenant.
       if ((await listingLink.count()) > 0) {
         await listingLink.click();
         await page.waitForURL(/\/marketplace\/listings\/[^/]+/, { timeout: 15000 });

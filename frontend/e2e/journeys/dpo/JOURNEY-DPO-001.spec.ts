@@ -21,6 +21,12 @@ import {
   navigateToRouteFromApp,
   waitForAppMainReady,
 } from '../../fixtures/helpers';
+// Phase 226 B1a — dual-channel verification: after every UI-driven mutation,
+// assert both the backend resource shape via verifyViaApi AND the audit
+// trail row via verifyAuditEvent. See
+// /home/ph/.claude/plans/now-pls-create-a-binary-cloud.md §Track B.
+import { verifyViaApi } from '../../fixtures/verifyViaApi';
+import { verifyAuditEvent } from '../../fixtures/verifyAuditEvent';
 
 // Phase 213.C.6 — configurable poll budgets for DQ + compliance pipelines.
 // Local default: 90s (matches prior hard-coded value).
@@ -108,6 +114,17 @@ test.describe('JOURNEY-DPO-001: Onboard New Asset via Data-First Flow', () => {
       const assetHeading = page.locator('.asset-detail-page h1, .asset-detail-content h1').first();
       await expect(assetHeading).toContainText('Test Asset', { timeout: 10000 });
       await expect(page.locator('.asset-detail-page .status-badge').first()).toContainText('DRAFT');
+
+      // Phase 226 B1a — dual-channel post-create verification (UC-AM-001).
+      await verifyViaApi(page, `/api/v1/assets/${assetId}/`, {
+        key: assetKey,
+        status: 'DRAFT',
+      });
+      await verifyAuditEvent(page, {
+        action: 'ASSET_CREATED',
+        resourceType: 'ASSET',
+        resourceId: assetId,
+      });
 
       // Step 2: Create Dataset (with file upload when dropzone present)
       await navigateToRouteFromApp(page, '/datasets/create', {
@@ -738,6 +755,7 @@ test.describe('JOURNEY-DPO-001: Onboard New Asset via Data-First Flow', () => {
           .locator('select')
           .filter({ hasText: /All Statuses|Draft|Active|Retired/ })
           .first();
+        // intentional: status filter is presence-conditional — toolbar filters only render for non-empty lists.
         if ((await statusSelect.count()) > 0) {
           await statusSelect.selectOption('DRAFT');
           // Wait for the API refetch to complete — the component shows ListPageSkeleton during loading,

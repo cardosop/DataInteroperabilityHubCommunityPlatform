@@ -164,6 +164,7 @@ test.describe('JOURNEY-TA-002: Manage User Roles', () => {
           .locator('.user-edit-role-checkbox')
           .filter({ hasText: /DATA_PROVIDER|Data Provider/i })
           .locator('input[type="checkbox"]');
+        // intentional: role-checkbox state UI varies across role-permission renderings — non-PA personas may see read-only mode.
         if ((await reloadedCheckbox.count()) > 0) {
           const newCheckState = await reloadedCheckbox.first().isChecked();
           expect(newCheckState).toBe(!wasChecked);

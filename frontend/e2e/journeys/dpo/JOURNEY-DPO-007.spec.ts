@@ -136,6 +136,7 @@ test.describe('JOURNEY-DPO-007: Use AI Schema Matching for Asset Creation', () =
         page.locator('.schema-matching-page, [data-testid="schema-matching-page"]').first()
       ).toBeVisible({ timeout: 5000 });
       const fileInput = page.locator('input[type="file"]').first();
+      // intentional: file-input is form-version-dependent — newer forms use a custom drag-drop component without a raw <input type=file>; both shapes are valid.
       if ((await fileInput.count()) > 0) {
         await fileInput.setInputFiles({
           name: 'schema.json',

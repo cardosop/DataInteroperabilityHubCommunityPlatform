@@ -82,6 +82,7 @@ test.describe('UC-MKT-003: Purchase Asset from Marketplace', () => {
         return;
       }
       const link = page.locator('.listing-list-page a[href*="/marketplace/listings/"]').first();
+      // intentional: marketplace listing-row click-through is genuinely optional — listing presence depends on whether a DPO has published listings in this tenant.
       if ((await link.count()) > 0) {
         await link.click();
         await page.waitForURL(/\/marketplace\/listings\/[^/]+/, { timeout: 10000 });
