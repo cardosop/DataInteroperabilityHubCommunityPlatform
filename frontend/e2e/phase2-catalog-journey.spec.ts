@@ -15,10 +15,20 @@ import { loginAndNavigateToRoute, navigateToRouteFromApp, waitForAppMainReady, w
 import { verifyViaApi } from './fixtures/verifyViaApi';
 
 test.describe('Phase 2 Catalog Journey', () => {
+  // Per-test budget MUST exceed the longest inner-call timeout. Every test
+  // in this file calls `loginAndNavigateToRoute({ timeout: 60_000 })`, plus
+  // subsequent locator waits and dual-channel verifyViaApi roundtrips.
+  // Playwright's default 30 s test budget is shorter than just the login
+  // step, which is why tests other than the explicitly-bumped first one
+  // were timing out with "Page/context/browser was closed". Hoisting the
+  // budget to the describe so every test inherits it. 120 s matches the
+  // long-journey test (line 18) and gives the simpler list-and-detail
+  // tests headroom for slow staging logins (network + auth-race retries).
+  test.setTimeout(120000);
+
   test('complete journey: create asset → upload file → create dataset → create contract → activate', async ({
     page,
   }) => {
-    test.setTimeout(120000);
     const testUser = await getTestUser();
     await loginAndNavigateToRoute(page, testUser, '/assets', {
       timeout: 60000,
