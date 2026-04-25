@@ -40,7 +40,7 @@ test.describe('Phase 17: Change Plan & Invoices', () => {
 
     const changePlanSection = page.locator('.subscription-change-plan');
     const changePlanSelect = page.locator('.subscription-change-plan-controls select');
-    // intentional: best-effort .catch on an optional step — primary pass/fail is made by a downstream assertion (verifyViaApi, waitFor, explicit expect). The fallback value tolerates well-known transient or absent-UI cases without papering over real failures.
+    // intentional: probes optional UI presence — the branch logic below handles both rendered and missing cases deterministically; absence is a legitimate tenant/role state, not a test failure.
     await changePlanSection.waitFor({ state: 'visible', timeout: 10000 }).catch(() => null);
     if (!(await changePlanSection.isVisible())) {
       test.skip(true, 'Change plan section not visible (no alternative plans available)');

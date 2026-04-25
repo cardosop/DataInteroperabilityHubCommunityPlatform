@@ -57,7 +57,7 @@ test.describe('Edge Cases (real tests)', () => {
     expect(page.url()).toContain('/marketplace');
     const hasSearchError = (await page.locator('.error-display').count()) > 0;
     if (hasSearchError) {
-      // intentional: best-effort .catch on an optional step — primary pass/fail is made by a downstream assertion (verifyViaApi, waitFor, explicit expect). The fallback value tolerates well-known transient or absent-UI cases without papering over real failures.
+      // intentional: tolerates a detached/removed element while extracting text for a diagnostic message; the surrounding throw/expect below this catch is the primary failure path.
       const errText = await page.locator('.error-display').first().textContent().catch(() => '');
       throw new Error(`Special-char search caused a backend error: ${errText?.slice(0, 200)}`);
     }
@@ -85,7 +85,7 @@ test.describe('Edge Cases (real tests)', () => {
     expect(page.url()).toContain('/marketplace');
     const hasUnicodeError = (await page.locator('.error-display').count()) > 0;
     if (hasUnicodeError) {
-      // intentional: best-effort .catch on an optional step — primary pass/fail is made by a downstream assertion (verifyViaApi, waitFor, explicit expect). The fallback value tolerates well-known transient or absent-UI cases without papering over real failures.
+      // intentional: tolerates a detached/removed element while extracting text for a diagnostic message; the surrounding throw/expect below this catch is the primary failure path.
       const errText = await page.locator('.error-display').first().textContent().catch(() => '');
       throw new Error(`Unicode search caused a backend error: ${errText?.slice(0, 200)}`);
     }
@@ -110,7 +110,7 @@ test.describe('Edge Cases (real tests)', () => {
 
     // Separate wait for actual content now that the app shell is confirmed ready.
     // 90s covers slow backends under parallel E2E load (assets API can be slow to respond).
-    // intentional: best-effort .catch on an optional step — primary pass/fail is made by a downstream assertion (verifyViaApi, waitFor, explicit expect). The fallback value tolerates well-known transient or absent-UI cases without papering over real failures.
+    // intentional: probes optional UI presence via a multi-line locator chain — the branch logic below handles both rendered and missing cases deterministically; absence is a legitimate tenant/role state.
     await page
       .locator('.asset-list-page, .empty-state, .error-display, .asset-list-pagination')
       .first()
@@ -155,7 +155,7 @@ test.describe('Edge Cases (real tests)', () => {
     expect(page.url()).toContain('/marketplace');
     const hasMaxLenError = (await page.locator('.error-display').count()) > 0;
     if (hasMaxLenError) {
-      // intentional: best-effort .catch on an optional step — primary pass/fail is made by a downstream assertion (verifyViaApi, waitFor, explicit expect). The fallback value tolerates well-known transient or absent-UI cases without papering over real failures.
+      // intentional: tolerates a detached/removed element while extracting text for a diagnostic message; the surrounding throw/expect below this catch is the primary failure path.
       const errText = await page.locator('.error-display').first().textContent().catch(() => '');
       throw new Error(`Max-length search caused a backend error: ${errText?.slice(0, 200)}`);
     }
@@ -179,7 +179,7 @@ test.describe('Edge Cases (real tests)', () => {
     // — not 'name'. The previous selector never matched and the test silently
     // skipped after 60s. Use the canonical id used in AssetCreatePage.tsx.
     const nameInput = page.locator('input#asset-name, input[name="name"]').first();
-    // intentional: best-effort .catch on an optional step — primary pass/fail is made by a downstream assertion (verifyViaApi, waitFor, explicit expect). The fallback value tolerates well-known transient or absent-UI cases without papering over real failures.
+    // intentional: probes optional UI presence — the branch logic below handles both rendered and missing cases deterministically; absence is a legitimate tenant/role state, not a test failure.
     await nameInput.waitFor({ state: 'visible', timeout: 60000 }).catch(() => null);
     test.skip((await nameInput.count()) === 0, 'Asset create form did not load — backend may be slow');
     await nameInput.fill('A'.repeat(500));
@@ -201,7 +201,7 @@ test.describe('Edge Cases (real tests)', () => {
     // Same id correction as the max-length test above: input id is 'asset-key',
     // not 'key' (see frontend/src/features/assets/components/AssetCreatePage.tsx:221).
     const keyInput = page.locator('input#asset-key, input[name="key"]').first();
-    // intentional: best-effort .catch on an optional step — primary pass/fail is made by a downstream assertion (verifyViaApi, waitFor, explicit expect). The fallback value tolerates well-known transient or absent-UI cases without papering over real failures.
+    // intentional: probes optional UI presence — the branch logic below handles both rendered and missing cases deterministically; absence is a legitimate tenant/role state, not a test failure.
     await keyInput.waitFor({ state: 'visible', timeout: 60000 }).catch(() => null);
     test.skip((await keyInput.count()) === 0, 'Asset create form did not load — backend may be slow');
     await keyInput.fill('!@#$%^&*() invalid key');
@@ -221,7 +221,7 @@ test.describe('Edge Cases (real tests)', () => {
     test.skip(!page.url().includes('/assets/create'), 'Redirected away from /assets/create');
 
     const submitBtn = page.locator('button:has-text("Create Asset"), button[type="submit"]').first();
-    // intentional: best-effort .catch on an optional step — primary pass/fail is made by a downstream assertion (verifyViaApi, waitFor, explicit expect). The fallback value tolerates well-known transient or absent-UI cases without papering over real failures.
+    // intentional: probes optional UI presence — the branch logic below handles both rendered and missing cases deterministically; absence is a legitimate tenant/role state, not a test failure.
     await submitBtn.waitFor({ state: 'visible', timeout: 60000 }).catch(() => null);
     test.skip((await submitBtn.count()) === 0, 'Asset create form did not load — backend may be slow');
     // The Create Asset form contract: submit MUST be disabled until the

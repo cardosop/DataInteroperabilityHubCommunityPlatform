@@ -83,7 +83,7 @@ test.describe('JOURNEY-MP-002: Publish Asset to Marketplace', () => {
       // The select is populated asynchronously by useAssets({ status: 'ACTIVE' }).
       // Wait for the specific option to appear before selecting — avoids silent selectOption failure
       // if React Query hasn't resolved yet when the page first renders.
-      // intentional: best-effort .catch on an optional step — primary pass/fail is made by a downstream assertion (verifyViaApi, waitFor, explicit expect). The fallback value tolerates well-known transient or absent-UI cases without papering over real failures.
+      // intentional: treats promise rejection as a structured false — the caller's if/else below consumes the boolean without swallowing.
       const assetOptionAvailable = await page
         .waitForSelector(`#asset_id option[value="${assetId}"]`, { state: 'attached', timeout: 15000 })
         .then(() => true)
@@ -143,7 +143,7 @@ test.describe('JOURNEY-MP-002: Publish Asset to Marketplace', () => {
         );
       } else if (resultType === 'api-error') {
         // Backend rejected the listing creation (e.g. duplicate, permission, plan limit)
-        // intentional: best-effort .catch on an optional step — primary pass/fail is made by a downstream assertion (verifyViaApi, waitFor, explicit expect). The fallback value tolerates well-known transient or absent-UI cases without papering over real failures.
+        // intentional: tolerates a detached/removed element while extracting text for a diagnostic message; the surrounding throw/expect below this catch is the primary failure path.
         const errText = await page.locator('.error-display').first().textContent().catch(() => '');
         test.info().annotations.push({
           type: 'note',

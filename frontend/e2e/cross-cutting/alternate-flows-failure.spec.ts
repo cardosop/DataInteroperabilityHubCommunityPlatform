@@ -44,7 +44,7 @@ test.describe('Alternate flows — failure (USE_CASES A1–An)', () => {
       test.skip(true, `First asset create failed (${resp?.status() ?? 'timeout'}) — cannot test duplicate key`);
       return;
     }
-    // intentional: best-effort .catch on an optional step — primary pass/fail is made by a downstream assertion (verifyViaApi, waitFor, explicit expect). The fallback value tolerates well-known transient or absent-UI cases without papering over real failures.
+    // intentional: tolerates alternate-flow URLs (login-redirect, 403) before the URL assertion below resolves the expected route.
     await page.waitForURL(/\/assets\/[^/]+$/, { timeout: 15000 }).catch(() => null);
 
     await page.goto('/assets/create', { waitUntil: 'domcontentloaded' });

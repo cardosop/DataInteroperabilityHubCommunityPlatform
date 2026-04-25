@@ -100,7 +100,7 @@ test.describe('Marketplace and Data Consumer routes', () => {
 
       // Wait for error display — React Query retries failed requests before showing error,
       // so the error display can take 15-30s to appear after the initial 404 response.
-      // intentional: best-effort .catch on an optional step — primary pass/fail is made by a downstream assertion (verifyViaApi, waitFor, explicit expect). The fallback value tolerates well-known transient or absent-UI cases without papering over real failures.
+      // intentional: probes optional UI presence — the branch logic below handles both rendered and missing cases deterministically; absence is a legitimate tenant/role state, not a test failure.
       await page.locator('.error-display, .error-display-title, .listing-detail-main')
         .first().waitFor({ state: 'visible', timeout: 30000 }).catch(() => null);
 
@@ -178,7 +178,7 @@ test.describe('Marketplace and Data Consumer routes', () => {
       // so after networkidle the listing fetch is settled: either ErrorDisplay or 404 page.
       const onPurchasePath = url.includes('/marketplace/listings/');
       // Wait for ErrorDisplay to appear — it renders immediately after the single 404 response
-      // intentional: best-effort .catch on an optional step — primary pass/fail is made by a downstream assertion (verifyViaApi, waitFor, explicit expect). The fallback value tolerates well-known transient or absent-UI cases without papering over real failures.
+      // intentional: probes optional UI presence via a multi-line locator chain — the branch logic below handles both rendered and missing cases deterministically; absence is a legitimate tenant/role state.
       await page
         .locator('.error-display, .error-display-title, text="404 - Page Not Found"')
         .first()
@@ -209,7 +209,7 @@ test.describe('Marketplace and Data Consumer routes', () => {
       await clearAuthStorage(page);
       await gotoWithRetry(page, '/marketplace');
       // Allow time for the redirect
-      // intentional: best-effort .catch on an optional step — primary pass/fail is made by a downstream assertion (verifyViaApi, waitFor, explicit expect). The fallback value tolerates well-known transient or absent-UI cases without papering over real failures.
+      // intentional: tolerates alternate-flow URLs (login-redirect, 403) before the URL assertion below resolves the expected route.
       await page.waitForURL('**/login**', { timeout: 30000 }).catch(() => null);
       expect(page.url()).toContain('/login');
     });

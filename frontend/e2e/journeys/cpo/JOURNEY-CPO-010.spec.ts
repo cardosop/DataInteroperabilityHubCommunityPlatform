@@ -47,7 +47,7 @@ test.describe('JOURNEY-CPO-010: Review AI Auto-Classification Results / View Aud
       // error-display is NOT acceptable for audit page — means backend is down
       const hasAuditError = (await page.locator('.error-display').count()) > 0;
       if (hasAuditError) {
-        // intentional: best-effort .catch on an optional step — primary pass/fail is made by a downstream assertion (verifyViaApi, waitFor, explicit expect). The fallback value tolerates well-known transient or absent-UI cases without papering over real failures.
+        // intentional: tolerates a detached/removed element while extracting text for a diagnostic message; the surrounding throw/expect below this catch is the primary failure path.
         const errText = await page.locator('.error-display').first().textContent().catch(() => '');
         throw new Error(`Audit page shows error for CPO user: "${errText?.slice(0, 300)}"`);
       }

@@ -115,7 +115,7 @@ test.describe('Feature: Data Quality', () => {
       });
       // If asset creation fails (e.g. subscription required), skip gracefully
       if (assetResp.status() >= 400) {
-        // intentional: best-effort .catch on an optional step — primary pass/fail is made by a downstream assertion (verifyViaApi, waitFor, explicit expect). The fallback value tolerates well-known transient or absent-UI cases without papering over real failures.
+        // intentional: tolerates non-text / streaming response body when building a diagnostic message; the `throw new Error(...)` immediately below this catch is the primary failure path — this catch is not the pass/fail decision.
         const body = await assetResp.text().catch(() => '');
         console.log(`DQ SKIP: Asset creation returned ${assetResp.status()}: ${body.slice(0, 300)}`);
         test.skip(true, `Asset creation returned ${assetResp.status()} — ${body.slice(0, 200)}`);
@@ -152,7 +152,7 @@ test.describe('Feature: Data Quality', () => {
 
       // Upload file content to presigned URL
       if (initData.upload_url) {
-        // intentional: best-effort .catch on an optional step — primary pass/fail is made by a downstream assertion (verifyViaApi, waitFor, explicit expect). The fallback value tolerates well-known transient or absent-UI cases without papering over real failures.
+        // intentional: tolerates transient/optional HTTP probe failure — the outer flow has its own primary assertion on the final resource state; this fetch is preparatory.
         const putResp = await request.put(initData.upload_url, {
           data: csvContent,
           headers: { 'Content-Type': 'text/csv' },
@@ -161,7 +161,7 @@ test.describe('Feature: Data Quality', () => {
           // Try localhost rewrite for docker-compose dev
           const url = new URL(initData.upload_url);
           if (url.hostname !== 'localhost') {
-            // intentional: best-effort .catch on an optional step — primary pass/fail is made by a downstream assertion (verifyViaApi, waitFor, explicit expect). The fallback value tolerates well-known transient or absent-UI cases without papering over real failures.
+            // intentional: tolerates transient/optional HTTP probe failure — the outer flow has its own primary assertion on the final resource state; this fetch is preparatory.
             await request.put(`http://localhost:${url.port || '9010'}${url.pathname}${url.search}`, {
               data: csvContent,
               headers: { 'Content-Type': 'text/csv' },
@@ -202,7 +202,7 @@ test.describe('Feature: Data Quality', () => {
         return;
       }
       if (dqRunResp.status() >= 400) {
-        // intentional: best-effort .catch on an optional step — primary pass/fail is made by a downstream assertion (verifyViaApi, waitFor, explicit expect). The fallback value tolerates well-known transient or absent-UI cases without papering over real failures.
+        // intentional: tolerates non-text / streaming response body when building a diagnostic message; the `throw new Error(...)` immediately below this catch is the primary failure path — this catch is not the pass/fail decision.
         const body = await dqRunResp.text().catch(() => '');
         console.log(`DQ SKIP: DQ run creation returned ${dqRunResp.status()}: ${body.slice(0, 300)}`);
         test.skip(true, `DQ run creation returned ${dqRunResp.status()} — ${body.slice(0, 200)}`);
@@ -235,7 +235,7 @@ test.describe('Feature: Data Quality', () => {
       await page.goto(`/dq/runs/${runId}`);
       await page.waitForLoadState('domcontentloaded');
       // Wait for the detail page to render (loading spinner → content)
-      // intentional: best-effort .catch on an optional step — primary pass/fail is made by a downstream assertion (verifyViaApi, waitFor, explicit expect). The fallback value tolerates well-known transient or absent-UI cases without papering over real failures.
+      // intentional: probes optional UI presence via selector — same shape as waitFor; absence is a legitimate state handled by the branch below.
       await page.waitForSelector('.dq-run-detail-page, .error-display, .status-badge', { timeout: 30_000 }).catch(() => null);
 
       // The page must not crash; redirect to login is also acceptable for

@@ -19,7 +19,7 @@ test.describe('Feature: Health', () => {
       expect(healthRes.status()).toBeLessThan(500);
       // Should return structured JSON with status field
       if (healthRes.ok()) {
-        // intentional: best-effort .catch on an optional step — primary pass/fail is made by a downstream assertion (verifyViaApi, waitFor, explicit expect). The fallback value tolerates well-known transient or absent-UI cases without papering over real failures.
+        // intentional: tolerates non-JSON response body (error pages, streaming); the status-code check or shape-check below is the primary pass/fail decision, not this catch.
         const body = await healthRes.json().catch(() => null);
         if (body && typeof body === 'object') {
           expect(
@@ -44,7 +44,7 @@ test.describe('Feature: Health', () => {
 
   test.describe('Edge', () => {
     test('health/ready endpoint responds (readiness check)', async ({ request }) => {
-      // intentional: best-effort .catch on an optional step — primary pass/fail is made by a downstream assertion (verifyViaApi, waitFor, explicit expect). The fallback value tolerates well-known transient or absent-UI cases without papering over real failures.
+      // intentional: tolerates transient/optional HTTP probe failure — the outer flow has its own primary assertion on the final resource state; this fetch is preparatory.
       const readyRes = await request.get('/health/ready/').catch(() => null);
       if (readyRes) {
         // Readiness may return 503 if DB is down — that's acceptable (not 5xx crash)

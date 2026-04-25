@@ -37,7 +37,7 @@ test.describe('JOURNEY-DE-005: Integrate External Data Source', () => {
       await loginAndNavigateToRoute(page, testUser, '/integrations/sync-jobs', { timeout: 60000 });
       // Wait for a terminal render state instead of a fixed sleep
       // Include .unavailable-page for capability-gated routes that redirect before resolving
-      // intentional: best-effort .catch on an optional step — primary pass/fail is made by a downstream assertion (verifyViaApi, waitFor, explicit expect). The fallback value tolerates well-known transient or absent-UI cases without papering over real failures.
+      // intentional: probes optional UI presence via a multi-line locator chain — the branch logic below handles both rendered and missing cases deterministically; absence is a legitimate tenant/role state.
       await page
         .locator('.sync-job-list-page, .empty-state, .error-display, .unavailable-page')
         .first()
@@ -56,7 +56,7 @@ test.describe('JOURNEY-DE-005: Integrate External Data Source', () => {
       expect(onSyncJobs || onIntegrations).toBe(true);
       if (onSyncJobs) {
         // Phase 2 wait: ensure terminal content is visible before count() checks
-        // intentional: best-effort .catch on an optional step — primary pass/fail is made by a downstream assertion (verifyViaApi, waitFor, explicit expect). The fallback value tolerates well-known transient or absent-UI cases without papering over real failures.
+        // intentional: probes optional UI presence via a multi-line locator chain — the branch logic below handles both rendered and missing cases deterministically; absence is a legitimate tenant/role state.
         await page
           .locator('.sync-job-list-page, .empty-state, .error-display')
           .first()

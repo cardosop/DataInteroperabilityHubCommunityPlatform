@@ -136,7 +136,7 @@ test.describe('Phase 8.4: Tenant Admin Views Usage & Config', () => {
     // The config form only renders after the tenant config API call resolves.
     // Wait for the form itself (not just the tab section) before looking for checkboxes.
     const configForm = page.locator('[data-testid="tenant-settings-config"] form');
-    // intentional: best-effort .catch on an optional step — primary pass/fail is made by a downstream assertion (verifyViaApi, waitFor, explicit expect). The fallback value tolerates well-known transient or absent-UI cases without papering over real failures.
+    // intentional: treats the promise's rejection as a structured false — the following if/branch consumes the boolean without swallowing.
     const formLoaded = await configForm.waitFor({ state: 'visible', timeout: 20000 }).then(() => true).catch(() => false);
     if (!formLoaded) {
       test.skip(true, 'Config form did not render — tenant config API may be unavailable');
@@ -176,7 +176,7 @@ test.describe('Phase 8.4: Tenant Admin Views Usage & Config', () => {
     // The config form only renders after the tenant config API call resolves.
     // Wait for the form itself (not just the tab section) before looking for checkboxes.
     const configForm = page.locator('[data-testid="tenant-settings-config"] form');
-    // intentional: best-effort .catch on an optional step — primary pass/fail is made by a downstream assertion (verifyViaApi, waitFor, explicit expect). The fallback value tolerates well-known transient or absent-UI cases without papering over real failures.
+    // intentional: treats the promise's rejection as a structured false — the following if/branch consumes the boolean without swallowing.
     const formLoaded = await configForm.waitFor({ state: 'visible', timeout: 20000 }).then(() => true).catch(() => false);
     if (!formLoaded) {
       test.skip(true, 'Config form did not render — tenant config API may be unavailable');

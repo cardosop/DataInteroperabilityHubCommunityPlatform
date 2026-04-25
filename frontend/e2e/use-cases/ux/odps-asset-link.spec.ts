@@ -171,7 +171,7 @@ test.describe('ODPS Upload with Asset Linking (AssetPicker)', () => {
     await expect(workflowIndicator).toBeVisible({ timeout: 180000 });
 
     await expect(page.locator('.error-display')).not.toBeVisible();
-    // intentional: best-effort .catch on an optional step — primary pass/fail is made by a downstream assertion (verifyViaApi, waitFor, explicit expect). The fallback value tolerates well-known transient or absent-UI cases without papering over real failures.
+    // intentional: visibility check on a transiently-attached element split across lines — treating detached-at-check-time as 'not visible' is semantically correct; the caller's if/else below consumes the boolean.
     const hasWorkflow = await page
       .locator('.odps-workflow-progress')
       .isVisible()

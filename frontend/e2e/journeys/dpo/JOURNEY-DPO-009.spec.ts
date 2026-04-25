@@ -96,7 +96,7 @@ test.describe('JOURNEY-DPO-009: Manage Asset Ratings and Reviews', () => {
         .locator('.social-unavailable, [data-testid="social-unavailable"]')
         .or(page.getByText(/ratings.*not available|community.*disabled/i));
 
-      // intentional: best-effort .catch on an optional step — primary pass/fail is made by a downstream assertion (verifyViaApi, waitFor, explicit expect). The fallback value tolerates well-known transient or absent-UI cases without papering over real failures.
+      // intentional: visibility check on a transiently-attached element — treating a detached-at-check-time element as 'not visible' is the semantically correct fallback; the caller's branch logic uses the boolean result.
       const hasSocialSection = (await socialSection.count()) > 0 && (await socialSection.isVisible().catch(() => false));
       const hasUnavailable = (await unavailableIndicator.count()) > 0;
       const hasDetailPage = (await page.locator('.asset-detail-page, .asset-detail-content').count()) > 0;

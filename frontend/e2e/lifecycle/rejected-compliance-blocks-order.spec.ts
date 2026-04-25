@@ -36,7 +36,7 @@ test.describe('Rejected Compliance Blocks Order', () => {
     expect(orderRes.status()).toBeLessThan(500);
 
     // Verify error response is structured (not a bare 500 traceback)
-    // intentional: best-effort .catch on an optional step — primary pass/fail is made by a downstream assertion (verifyViaApi, waitFor, explicit expect). The fallback value tolerates well-known transient or absent-UI cases without papering over real failures.
+    // intentional: tolerates non-JSON response body (error pages, streaming); the status-code check or shape-check below is the primary pass/fail decision, not this catch.
     const body = await orderRes.json().catch(() => null);
     expect(body, 'Error response must be parseable JSON').not.toBeNull();
   });

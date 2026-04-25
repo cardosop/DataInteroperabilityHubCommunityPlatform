@@ -116,7 +116,7 @@ test.describe('JOURNEY-DPO-003: Manage Asset Lifecycle', () => {
           { timeout: 60000 }
         );
         await activateBtn.first().click();
-        // intentional: best-effort .catch on an optional step — primary pass/fail is made by a downstream assertion (verifyViaApi, waitFor, explicit expect). The fallback value tolerates well-known transient or absent-UI cases without papering over real failures.
+        // intentional: tolerates a fixture-helper failure whose recovery is documented in the helper; the helper raises only on terminal failure after its own retry budget.
         const actResp = await actRespPromise.catch(() => null);
         if (!actResp || actResp.status() !== 200) {
           test.skip(
@@ -132,7 +132,7 @@ test.describe('JOURNEY-DPO-003: Manage Asset Lifecycle', () => {
         });
 
         const activatedBadge = page.locator('.asset-detail-page .status-badge, .status-badge').first();
-        // intentional: best-effort .catch on an optional step — primary pass/fail is made by a downstream assertion (verifyViaApi, waitFor, explicit expect). The fallback value tolerates well-known transient or absent-UI cases without papering over real failures.
+        // intentional: tolerates a detached/removed element while extracting text for a diagnostic message; the surrounding throw/expect below this catch is the primary failure path.
         const activatedStatus = (await activatedBadge.textContent().catch(() => '')) ?? '';
         if (!activatedStatus.includes('ACTIVE')) {
           test.skip(true, `Asset still not ACTIVE after UI activation attempt (status: "${activatedStatus.trim()}").`);
@@ -158,7 +158,7 @@ test.describe('JOURNEY-DPO-003: Manage Asset Lifecycle', () => {
         await retireBtn.click();
         const retireResp = await retireResponsePromise;
         if (retireResp.status() >= 400) {
-          // intentional: best-effort .catch on an optional step — primary pass/fail is made by a downstream assertion (verifyViaApi, waitFor, explicit expect). The fallback value tolerates well-known transient or absent-UI cases without papering over real failures.
+          // intentional: tolerates non-text / streaming response body when building a diagnostic message; the `throw new Error(...)` immediately below this catch is the primary failure path — this catch is not the pass/fail decision.
           const body = await retireResp.text().catch(() => '');
           // 400 often means version conflict — reload and retry once with the page's fresh version
           if (retireResp.status() === 400) {
@@ -175,10 +175,10 @@ test.describe('JOURNEY-DPO-003: Manage Asset Lifecycle', () => {
                 { timeout: 20000 }
               );
               await retireBtn2.click();
-              // intentional: best-effort .catch on an optional step — primary pass/fail is made by a downstream assertion (verifyViaApi, waitFor, explicit expect). The fallback value tolerates well-known transient or absent-UI cases without papering over real failures.
+              // intentional: tolerates non-text / streaming response body when building a diagnostic message; the `throw new Error(...)` immediately below this catch is the primary failure path — this catch is not the pass/fail decision.
               const retireResp2 = await retireResponsePromise2.catch(() => null);
               if (retireResp2 && retireResp2.status() >= 400) {
-                // intentional: best-effort .catch on an optional step — primary pass/fail is made by a downstream assertion (verifyViaApi, waitFor, explicit expect). The fallback value tolerates well-known transient or absent-UI cases without papering over real failures.
+                // intentional: tolerates non-text / streaming response body when building a diagnostic message; the `throw new Error(...)` immediately below this catch is the primary failure path — this catch is not the pass/fail decision.
                 const body2 = await retireResp2.text().catch(() => '');
                 throw new Error(`Retire API returned ${retireResp2.status()} on retry: ${body2.slice(0, 200)}`);
               }

@@ -48,7 +48,7 @@ test.describe('JOURNEY-PA-009: Manage Federated Assets', () => {
       const accessToken = await page.evaluate(() => localStorage.getItem('access_token'));
       if (!accessToken) return;
 
-      // intentional: best-effort .catch on an optional step — primary pass/fail is made by a downstream assertion (verifyViaApi, waitFor, explicit expect). The fallback value tolerates well-known transient or absent-UI cases without papering over real failures.
+      // intentional: tolerates transient/optional HTTP probe failure — the outer flow has its own primary assertion on the final resource state; this fetch is preparatory.
       const meshResp = await page.request.get(`${API_BASE}/mesh/domains/?page_size=5`, {
         headers: { Authorization: `Bearer ${accessToken}` },
       }).catch(() => null);

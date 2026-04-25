@@ -29,7 +29,7 @@ test.describe('JOURNEY-DC-011: Purchase Asset with Usage-Based Pricing', () => {
         return;
       }
       // Phase 2: wait for loading spinner to resolve into a terminal state before checking links
-      // intentional: best-effort .catch on an optional step — primary pass/fail is made by a downstream assertion (verifyViaApi, waitFor, explicit expect). The fallback value tolerates well-known transient or absent-UI cases without papering over real failures.
+      // intentional: probes optional UI presence via a multi-line locator chain — the branch logic below handles both rendered and missing cases deterministically; absence is a legitimate tenant/role state.
       await page
         .locator('.listing-list-page, .listing-list-grid, .empty-state, .error-display')
         .first()

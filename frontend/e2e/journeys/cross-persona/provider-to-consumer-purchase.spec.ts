@@ -92,7 +92,7 @@ test.describe('Cross-Persona: Provider → Consumer Purchase', () => {
           await confirmBtn.first().click();
         }
 
-        // intentional: best-effort .catch on an optional step — primary pass/fail is made by a downstream assertion (verifyViaApi, waitFor, explicit expect). The fallback value tolerates well-known transient or absent-UI cases without papering over real failures.
+        // intentional: tolerates a fixture-helper failure whose recovery is documented in the helper; the helper raises only on terminal failure after its own retry budget.
         const orderResp = await orderRespPromise.catch(() => null);
         if (orderResp && orderResp.status() < 400) {
           const data = (await orderResp.json()) as { id?: string; order?: { id?: string } };

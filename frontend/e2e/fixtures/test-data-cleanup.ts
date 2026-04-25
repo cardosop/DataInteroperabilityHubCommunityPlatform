@@ -145,7 +145,7 @@ async function teardownOne(resource: CleanupResource, accessToken: string): Prom
   const res = await fetch(url, { method, headers });
   // 204 No Content (typical DELETE), 200 OK (typical cancel), 404 Not Found are all OK.
   if (res.ok || res.status === 404) return;
-  // intentional: best-effort .catch on an optional step — primary pass/fail is made by a downstream assertion (verifyViaApi, waitFor, explicit expect). The fallback value tolerates well-known transient or absent-UI cases without papering over real failures.
+  // intentional: tolerates non-text / streaming response body when building a diagnostic message; the `throw new Error(...)` immediately below this catch is the primary failure path — this catch is not the pass/fail decision.
   const body = await res.text().catch(() => '');
   throw new Error(
     `cleanup.teardown ${resource.type}/${resource.id} failed: ${res.status} ${body.slice(0, 200)}`

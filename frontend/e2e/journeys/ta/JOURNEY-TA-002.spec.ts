@@ -140,7 +140,7 @@ test.describe('JOURNEY-TA-002: Manage User Roles', () => {
       const successLocator = page
         .locator('.success-message, [data-testid="save-success"], .toast-success')
         .or(page.getByText(/saved|updated|success/i));
-      // intentional: best-effort .catch on an optional step — primary pass/fail is made by a downstream assertion (verifyViaApi, waitFor, explicit expect). The fallback value tolerates well-known transient or absent-UI cases without papering over real failures.
+      // intentional: visibility check on a transiently-attached element — treating a detached-at-check-time element as 'not visible' is the semantically correct fallback; the caller's branch logic uses the boolean result.
       const hasSuccessToast = await successLocator.first().isVisible().catch(() => false);
       const redirectedToAdmin = page.url().includes('/admin');
       expect(hasSuccessToast || redirectedToAdmin).toBe(true) /* acceptable states */;
@@ -161,7 +161,7 @@ test.describe('JOURNEY-TA-002: Manage User Roles', () => {
         // Fall back: navigate back to user edit page and verify checkbox state changed.
         // (The page may have redirected to /admin after save — locators from the prior page are stale.)
         await page.goto(`/admin/users/${userId}/edit`);
-        // intentional: best-effort .catch on an optional step — primary pass/fail is made by a downstream assertion (verifyViaApi, waitFor, explicit expect). The fallback value tolerates well-known transient or absent-UI cases without papering over real failures.
+        // intentional: probes optional UI presence via selector — same shape as waitFor; absence is a legitimate state handled by the branch below.
         await page.waitForSelector('.user-edit-page, .user-edit-form, form', { timeout: 15000 }).catch(() => null);
         const reloadedCheckbox = page
           .locator('.user-edit-role-checkbox')
@@ -194,7 +194,7 @@ test.describe('JOURNEY-TA-002: Manage User Roles', () => {
       // Error display is NOT an acceptable outcome for an admin user on the admin page
       const hasError = (await page.locator('.error-display').count()) > 0;
       if (hasError) {
-        // intentional: best-effort .catch on an optional step — primary pass/fail is made by a downstream assertion (verifyViaApi, waitFor, explicit expect). The fallback value tolerates well-known transient or absent-UI cases without papering over real failures.
+        // intentional: tolerates a detached/removed element while extracting text for a diagnostic message; the surrounding throw/expect below this catch is the primary failure path.
         const errText = await page.locator('.error-display').first().textContent().catch(() => '');
         // 403/permission errors are acceptable (user may not have full admin rights)
         if (!/403|forbidden|permission/i.test(errText ?? '')) {

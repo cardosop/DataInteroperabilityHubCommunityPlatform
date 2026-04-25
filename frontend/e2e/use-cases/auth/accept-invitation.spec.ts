@@ -92,7 +92,7 @@ test.describe('Accept Invitation (JOURNEY-TA-001)', () => {
       await clearAuthStorage(page);
       await page.goto('/accept-invitation?token=00000000-0000-0000-0000-000000000000', { waitUntil: 'domcontentloaded', timeout: 30000 });
       // Wait for the page to settle — may show "no token" message or the form
-      // intentional: best-effort .catch on an optional step — primary pass/fail is made by a downstream assertion (verifyViaApi, waitFor, explicit expect). The fallback value tolerates well-known transient or absent-UI cases without papering over real failures.
+      // intentional: probes optional UI presence via a multi-line locator chain — the branch logic below handles both rendered and missing cases deterministically; absence is a legitimate tenant/role state.
       await page
         .locator('.accept-invitation-missing-token, [data-testid="accept-invitation-form"], text=/no invitation token|invalid|expired/i')
         .first()

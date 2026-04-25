@@ -25,16 +25,16 @@ test.describe('Lineage Visualization Journey', () => {
     const renderer = page.locator('.react-flow__renderer');
     // If lineage data exists, the renderer should appear
     // If no data, we'll see the empty state — both are valid
-    // intentional: best-effort .catch on an optional step — primary pass/fail is made by a downstream assertion (verifyViaApi, waitFor, explicit expect). The fallback value tolerates well-known transient or absent-UI cases without papering over real failures.
+    // intentional: visibility check on a transiently-attached element — treating a detached-at-check-time element as 'not visible' is the semantically correct fallback; the caller's branch logic uses the boolean result.
     const hasRenderer = await renderer.isVisible().catch(() => false);
-    // intentional: best-effort .catch on an optional step — primary pass/fail is made by a downstream assertion (verifyViaApi, waitFor, explicit expect). The fallback value tolerates well-known transient or absent-UI cases without papering over real failures.
+    // intentional: visibility check on a transiently-attached element — treating a detached-at-check-time element as 'not visible' is the semantically correct fallback; the caller's branch logic uses the boolean result.
     const hasEmptyState = await page.getByText(/loading graph|no nodes/i).isVisible().catch(() => false);
     expect(hasRenderer || hasEmptyState).toBe(true) /* acceptable states */;
   });
 
   test('depth slider is visible and interactive', async ({ page }) => {
     const slider = page.locator('input[type="range"]');
-    // intentional: best-effort .catch on an optional step — primary pass/fail is made by a downstream assertion (verifyViaApi, waitFor, explicit expect). The fallback value tolerates well-known transient or absent-UI cases without papering over real failures.
+    // intentional: probes optional UI presence — the branch logic below handles both rendered and missing cases deterministically; absence is a legitimate tenant/role state, not a test failure.
     await slider.waitFor({ state: 'visible', timeout: 10000 }).catch(() => null);
     if ((await slider.count()) === 0 || !(await slider.isVisible())) {
       test.skip(true, 'Depth slider not rendered (lineage data may be empty)');
@@ -47,7 +47,7 @@ test.describe('Lineage Visualization Journey', () => {
 
   test('React Flow controls (zoom) are present', async ({ page }) => {
     const controls = page.locator('.react-flow__controls');
-    // intentional: best-effort .catch on an optional step — primary pass/fail is made by a downstream assertion (verifyViaApi, waitFor, explicit expect). The fallback value tolerates well-known transient or absent-UI cases without papering over real failures.
+    // intentional: probes optional UI presence — the branch logic below handles both rendered and missing cases deterministically; absence is a legitimate tenant/role state, not a test failure.
     await controls.waitFor({ state: 'visible', timeout: 10000 }).catch(() => null);
     if ((await controls.count()) === 0 || !(await controls.isVisible())) {
       test.skip(true, 'React Flow controls not rendered (lineage data may be empty)');

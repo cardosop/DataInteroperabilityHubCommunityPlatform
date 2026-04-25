@@ -46,7 +46,7 @@ async function loginViaApiCompliance(user: TestUser): Promise<string> {
         continue;
       }
       if (!response.ok) {
-        // intentional: best-effort .catch on an optional step — primary pass/fail is made by a downstream assertion (verifyViaApi, waitFor, explicit expect). The fallback value tolerates well-known transient or absent-UI cases without papering over real failures.
+        // intentional: tolerates non-text / streaming response body when building a diagnostic message; the `throw new Error(...)` immediately below this catch is the primary failure path — this catch is not the pass/fail decision.
         const body = await response.text().catch(() => '');
         throw new Error(`Login failed: ${response.status} ${body}`);
       }
@@ -111,7 +111,7 @@ export async function triggerDQRunViaApi(
     });
     if (resp.status === 404) continue;
     if (!resp.ok) {
-      // intentional: best-effort .catch on an optional step — primary pass/fail is made by a downstream assertion (verifyViaApi, waitFor, explicit expect). The fallback value tolerates well-known transient or absent-UI cases without papering over real failures.
+      // intentional: tolerates non-text / streaming response body when building a diagnostic message; the `throw new Error(...)` immediately below this catch is the primary failure path — this catch is not the pass/fail decision.
       const bodyText = await resp.text().catch(() => '');
       throw new Error(`triggerDQRunViaApi failed: ${resp.status} ${bodyText}`);
     }
@@ -143,7 +143,7 @@ export async function waitForDQRunViaApi(
 
   while (Date.now() - startMs < timeoutMs) {
     for (const endpoint of endpoints) {
-      // intentional: best-effort .catch on an optional step — primary pass/fail is made by a downstream assertion (verifyViaApi, waitFor, explicit expect). The fallback value tolerates well-known transient or absent-UI cases without papering over real failures.
+      // intentional: direct fetch whose connection failure maps to a retry-or-break loop below; the final iteration's explicit resp.ok() check (or max-attempts exhaustion) is the primary pass/fail decision.
       const resp = await fetch(`${API_BASE_URL}${endpoint}`, {
         headers: { Authorization: `Bearer ${token}` },
       }).catch(() => null);
@@ -196,7 +196,7 @@ export async function triggerComplianceRunViaApi(
     });
     if (resp.status === 404) continue;
     if (!resp.ok) {
-      // intentional: best-effort .catch on an optional step — primary pass/fail is made by a downstream assertion (verifyViaApi, waitFor, explicit expect). The fallback value tolerates well-known transient or absent-UI cases without papering over real failures.
+      // intentional: tolerates non-text / streaming response body when building a diagnostic message; the `throw new Error(...)` immediately below this catch is the primary failure path — this catch is not the pass/fail decision.
       const bodyText = await resp.text().catch(() => '');
       throw new Error(`triggerComplianceRunViaApi failed: ${resp.status} ${bodyText}`);
     }
@@ -230,7 +230,7 @@ export async function waitForComplianceRunViaApi(
 
   while (Date.now() - startMs < timeoutMs) {
     for (const endpoint of endpoints) {
-      // intentional: best-effort .catch on an optional step — primary pass/fail is made by a downstream assertion (verifyViaApi, waitFor, explicit expect). The fallback value tolerates well-known transient or absent-UI cases without papering over real failures.
+      // intentional: direct fetch whose connection failure maps to a retry-or-break loop below; the final iteration's explicit resp.ok() check (or max-attempts exhaustion) is the primary pass/fail decision.
       const resp = await fetch(`${API_BASE_URL}${endpoint}`, {
         headers: { Authorization: `Bearer ${token}` },
       }).catch(() => null);

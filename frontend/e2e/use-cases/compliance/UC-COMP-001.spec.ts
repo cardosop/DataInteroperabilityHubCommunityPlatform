@@ -32,7 +32,7 @@ test.describe('UC-COMP-001: Run Compliance Scan', () => {
       // error-display is NOT acceptable — compliance service must be reachable
       const hasError = (await page.locator('.error-display').count()) > 0;
       if (hasError) {
-        // intentional: best-effort .catch on an optional step — primary pass/fail is made by a downstream assertion (verifyViaApi, waitFor, explicit expect). The fallback value tolerates well-known transient or absent-UI cases without papering over real failures.
+        // intentional: tolerates a detached/removed element while extracting text for a diagnostic message; the surrounding throw/expect below this catch is the primary failure path.
         const errText = await page.locator('.error-display').first().textContent().catch(() => '');
         throw new Error(`Compliance list shows error (service may be down): "${errText?.slice(0, 300)}"`);
       }
@@ -73,7 +73,7 @@ test.describe('UC-COMP-001: Run Compliance Scan', () => {
       // error-display is NOT acceptable — compliance service must be reachable
       const hasError = (await page.locator('.error-display').count()) > 0;
       if (hasError) {
-        // intentional: best-effort .catch on an optional step — primary pass/fail is made by a downstream assertion (verifyViaApi, waitFor, explicit expect). The fallback value tolerates well-known transient or absent-UI cases without papering over real failures.
+        // intentional: tolerates a detached/removed element while extracting text for a diagnostic message; the surrounding throw/expect below this catch is the primary failure path.
         const errText = await page.locator('.error-display').first().textContent().catch(() => '');
         throw new Error(`Compliance list shows error in edge test: "${errText?.slice(0, 300)}"`);
       }

@@ -27,7 +27,7 @@ test.describe('JOURNEY-DA-001: Create Transformation Pipeline', () => {
       expect(page.url()).toContain('/transformation');
       const hasError = (await page.locator('.error-display').count()) > 0;
       if (hasError) {
-        // intentional: best-effort .catch on an optional step — primary pass/fail is made by a downstream assertion (verifyViaApi, waitFor, explicit expect). The fallback value tolerates well-known transient or absent-UI cases without papering over real failures.
+        // intentional: tolerates a detached/removed element while extracting text for a diagnostic message; the surrounding throw/expect below this catch is the primary failure path.
         const msg = await page.locator('.error-display').first().textContent().catch(() => '');
         throw new Error(`Transformation pipelines list shows error instead of content: "${msg?.slice(0, 300)}"`);
       }

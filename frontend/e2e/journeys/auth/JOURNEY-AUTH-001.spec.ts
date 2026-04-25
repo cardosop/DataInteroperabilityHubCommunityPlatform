@@ -203,7 +203,7 @@ test.describe('JOURNEY-AUTH-001: First-Time Visitor Registers', () => {
       await page.fill('input#email', email);
       await page.fill('input#password', password);
       await page.click('button[type="submit"]');
-      // intentional: best-effort .catch on an optional step — primary pass/fail is made by a downstream assertion (verifyViaApi, waitFor, explicit expect). The fallback value tolerates well-known transient or absent-UI cases without papering over real failures.
+      // intentional: probes optional UI presence via selector — same shape as waitFor; absence is a legitimate state handled by the branch below.
       await page.waitForSelector('.error-message, [role="alert"]', { timeout: 15000 }).catch(() => null);
       await page.waitForTimeout(2000);
       const hasError =
@@ -321,7 +321,7 @@ test.describe('JOURNEY-AUTH-001: First-Time Visitor Registers', () => {
           const hasNetworkError =
             (await page.locator('.error-message').count()) > 0 &&
             /(network|connection|unavailable|try again)/i.test(
-              // intentional: best-effort .catch on an optional step — primary pass/fail is made by a downstream assertion (verifyViaApi, waitFor, explicit expect). The fallback value tolerates well-known transient or absent-UI cases without papering over real failures.
+              // intentional: tolerates a detached/removed element while extracting text for a diagnostic message; the surrounding throw/expect below this catch is the primary failure path.
               (await page.locator('.error-message').first().textContent().catch(() => '')) ?? ''
             );
           test.skip(

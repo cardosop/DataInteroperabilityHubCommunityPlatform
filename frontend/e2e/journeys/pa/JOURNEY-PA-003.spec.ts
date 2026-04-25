@@ -65,7 +65,7 @@ test.describe('JOURNEY-PA-003: Configure Platform Settings', () => {
         { timeout: 20000 }
       );
       await saveBtn.first().click();
-      // intentional: best-effort .catch on an optional step — primary pass/fail is made by a downstream assertion (verifyViaApi, waitFor, explicit expect). The fallback value tolerates well-known transient or absent-UI cases without papering over real failures.
+      // intentional: tolerates a fixture-helper failure whose recovery is documented in the helper; the helper raises only on terminal failure after its own retry budget.
       const resp = await saveResponse.catch(() => null);
       if (resp) {
         expect(resp.status()).toBeGreaterThanOrEqual(200);
@@ -76,7 +76,7 @@ test.describe('JOURNEY-PA-003: Configure Platform Settings', () => {
         // additionally proves the governance layer recorded the config
         // change. Backend emits TENANT_CONFIG_UPDATED per
         // hub/apps/tenants/views.py:449.
-        // intentional: best-effort .catch on an optional step — primary pass/fail is made by a downstream assertion (verifyViaApi, waitFor, explicit expect). The fallback value tolerates well-known transient or absent-UI cases without papering over real failures.
+        // intentional: tolerates non-JSON response body (error pages, streaming); the status-code check or shape-check below is the primary pass/fail decision, not this catch.
         const body = (await resp.json().catch(() => null)) as { tenant_id?: string; id?: string } | null;
         const tenantId = body?.tenant_id ?? body?.id;
         if (tenantId) {

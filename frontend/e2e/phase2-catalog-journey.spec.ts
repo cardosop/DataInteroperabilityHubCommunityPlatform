@@ -58,7 +58,7 @@ test.describe('Phase 2 Catalog Journey', () => {
     try {
       await page.waitForURL(uuidRegex, { timeout: 60000, waitUntil: 'domcontentloaded' });
     } catch {
-      // intentional: best-effort .catch on an optional step — primary pass/fail is made by a downstream assertion (verifyViaApi, waitFor, explicit expect). The fallback value tolerates well-known transient or absent-UI cases without papering over real failures.
+      // intentional: tolerates a detached/removed element while extracting text for a diagnostic message; the surrounding throw/expect below this catch is the primary failure path.
       const errEl = await page.locator('.error-display').first().textContent().catch(() => '');
       const errHint = errEl ? ` Backend error: ${errEl.slice(0, 200)}` : '';
       throw new Error(`Asset creation redirect timed out. Current URL: ${page.url()}.${errHint}`);

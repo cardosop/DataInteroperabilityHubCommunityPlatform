@@ -34,7 +34,7 @@ test.describe('JOURNEY-DC-007: Create Transformation Pipeline for Data', () => {
         return;
       }
 
-      // intentional: best-effort .catch on an optional step — primary pass/fail is made by a downstream assertion (verifyViaApi, waitFor, explicit expect). The fallback value tolerates well-known transient or absent-UI cases without papering over real failures.
+      // intentional: probes optional UI presence via selector — same shape as waitFor; absence is a legitimate state handled by the branch below.
       await page.waitForSelector(
         '.transformation-pipeline-list-page, .empty-state, .unavailable-page',
         { timeout: 30000 }
@@ -94,7 +94,7 @@ test.describe('JOURNEY-DC-007: Create Transformation Pipeline for Data', () => {
         contentSelector:
           '.transformation-pipeline-list-page, .unavailable-page, .empty-state, .error-display',
       });
-      // intentional: best-effort .catch on an optional step — primary pass/fail is made by a downstream assertion (verifyViaApi, waitFor, explicit expect). The fallback value tolerates well-known transient or absent-UI cases without papering over real failures.
+      // intentional: probes optional UI presence via a multi-line locator chain — the branch logic below handles both rendered and missing cases deterministically; absence is a legitimate tenant/role state.
       await page
         .locator('.transformation-pipeline-list-page, .unavailable-page, .app-main')
         .first()

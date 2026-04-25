@@ -42,7 +42,7 @@ test.describe('JOURNEY-DE-014: Create ODPS via API', () => {
         '/odps/00000000-0000-0000-0000-000000000000',
         { timeout: 90000 }
       );
-      // intentional: best-effort .catch on an optional step — primary pass/fail is made by a downstream assertion (verifyViaApi, waitFor, explicit expect). The fallback value tolerates well-known transient or absent-UI cases without papering over real failures.
+      // intentional: probes optional UI presence via a multi-line locator chain — the branch logic below handles both rendered and missing cases deterministically; absence is a legitimate tenant/role state.
       await page
         .locator('.error-display, .odps-detail-main')
         .first()

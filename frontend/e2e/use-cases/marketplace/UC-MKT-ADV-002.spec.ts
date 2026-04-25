@@ -33,7 +33,7 @@ test.describe('UC-MKT-ADV-002: Preview Data Before Purchase', () => {
       expect(hasErrorOnList).toBe(false);
 
       // Phase 2: wait for loading spinner to resolve into a terminal state before checking links
-      // intentional: best-effort .catch on an optional step — primary pass/fail is made by a downstream assertion (verifyViaApi, waitFor, explicit expect). The fallback value tolerates well-known transient or absent-UI cases without papering over real failures.
+      // intentional: probes optional UI presence via a multi-line locator chain — the branch logic below handles both rendered and missing cases deterministically; absence is a legitimate tenant/role state.
       await page
         .locator('.listing-list-page, .listing-list-grid, .empty-state')
         .first()
@@ -89,7 +89,7 @@ test.describe('UC-MKT-ADV-002: Preview Data Before Purchase', () => {
       await page.waitForLoadState('domcontentloaded');
       // Use lenient check: network errors (API restart) produce .error-display with non-"not found"
       // text — both network errors and 404s are valid error outcomes for a non-existent resource.
-      // intentional: best-effort .catch on an optional step — primary pass/fail is made by a downstream assertion (verifyViaApi, waitFor, explicit expect). The fallback value tolerates well-known transient or absent-UI cases without papering over real failures.
+      // intentional: probes optional UI presence via a multi-line locator chain — the branch logic below handles both rendered and missing cases deterministically; absence is a legitimate tenant/role state.
       await page
         .locator('.error-display, .listing-detail-main')
         .first()

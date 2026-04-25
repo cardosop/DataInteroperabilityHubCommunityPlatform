@@ -27,7 +27,7 @@ test.describe('JOURNEY-CM-002: Moderate Reviews and Ratings', () => {
       await loginUser(page, testUser);
       await page.goto(`/assets/${assetId}`);
       await page.waitForLoadState('domcontentloaded');
-      // intentional: best-effort .catch on an optional step — primary pass/fail is made by a downstream assertion (verifyViaApi, waitFor, explicit expect). The fallback value tolerates well-known transient or absent-UI cases without papering over real failures.
+      // intentional: probes optional UI presence via a multi-line locator chain — the branch logic below handles both rendered and missing cases deterministically; absence is a legitimate tenant/role state.
       await page
         .locator('.asset-detail-page')
         .first()
@@ -43,7 +43,7 @@ test.describe('JOURNEY-CM-002: Moderate Reviews and Ratings', () => {
 
       // CM-002 specific: check for social section with Ratings/Reviews tabs
       const socialSection = page.locator('[data-testid="asset-social-section"]');
-      // intentional: best-effort .catch on an optional step — primary pass/fail is made by a downstream assertion (verifyViaApi, waitFor, explicit expect). The fallback value tolerates well-known transient or absent-UI cases without papering over real failures.
+      // intentional: probes optional UI presence — the branch logic below handles both rendered and missing cases deterministically; absence is a legitimate tenant/role state, not a test failure.
       await socialSection.waitFor({ state: 'visible', timeout: 10000 }).catch(() => null);
 
       if ((await socialSection.count()) === 0 || !(await socialSection.isVisible())) {
@@ -85,7 +85,7 @@ test.describe('JOURNEY-CM-002: Moderate Reviews and Ratings', () => {
       await loginUser(page, testUser);
       await page.goto(`/assets/${assetId}`);
       await page.waitForLoadState('domcontentloaded');
-      // intentional: best-effort .catch on an optional step — primary pass/fail is made by a downstream assertion (verifyViaApi, waitFor, explicit expect). The fallback value tolerates well-known transient or absent-UI cases without papering over real failures.
+      // intentional: probes optional UI presence via a multi-line locator chain — the branch logic below handles both rendered and missing cases deterministically; absence is a legitimate tenant/role state.
       await page
         .locator('.asset-detail-page')
         .first()

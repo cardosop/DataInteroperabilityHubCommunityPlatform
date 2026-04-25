@@ -25,7 +25,7 @@ test.describe('JOURNEY-DS-004: Tune Recommendation Engine', () => {
       await loginUser(page, testUser);
       await page.goto('/ml');
       await page.waitForLoadState('domcontentloaded');
-      // intentional: best-effort .catch on an optional step — primary pass/fail is made by a downstream assertion (verifyViaApi, waitFor, explicit expect). The fallback value tolerates well-known transient or absent-UI cases without papering over real failures.
+      // intentional: probes optional UI presence via a multi-line locator chain — the branch logic below handles both rendered and missing cases deterministically; absence is a legitimate tenant/role state.
       await page
         .locator('.ml-page, .unavailable-page, [data-testid="unavailable-page"]')
         .first()
@@ -81,7 +81,7 @@ test.describe('JOURNEY-DS-004: Tune Recommendation Engine', () => {
       await loginUser(page, testUser);
       await page.goto('/ml');
       await page.waitForLoadState('domcontentloaded');
-      // intentional: best-effort .catch on an optional step — primary pass/fail is made by a downstream assertion (verifyViaApi, waitFor, explicit expect). The fallback value tolerates well-known transient or absent-UI cases without papering over real failures.
+      // intentional: probes optional UI presence via a multi-line locator chain — the branch logic below handles both rendered and missing cases deterministically; absence is a legitimate tenant/role state.
       await page
         .locator('.ml-page, .unavailable-page')
         .first()

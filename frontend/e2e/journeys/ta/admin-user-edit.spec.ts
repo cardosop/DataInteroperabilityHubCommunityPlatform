@@ -27,7 +27,7 @@ test.describe('Admin User Edit UI', () => {
       if ((await usersTab.count()) > 0) {
         await usersTab.first().click();
         // Wait for users API response and React render — 1500ms is too short under load
-        // intentional: best-effort .catch on an optional step — primary pass/fail is made by a downstream assertion (verifyViaApi, waitFor, explicit expect). The fallback value tolerates well-known transient or absent-UI cases without papering over real failures.
+        // intentional: probes optional UI via a multi-line waitForSelector chain — same shape as waitFor; absence is a legitimate state handled by the caller's branch below.
         await page
           .waitForSelector('.admin-table tbody tr, .empty-state', { timeout: 15000 })
           .catch(() => null);

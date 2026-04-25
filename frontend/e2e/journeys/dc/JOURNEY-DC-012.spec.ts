@@ -26,7 +26,7 @@ test.describe('JOURNEY-DC-012: Preview Data Before Purchase', () => {
       });
       if (page.url().includes('/login')) { test.skip(true, 'Redirected to login — auth may have expired'); return; }
       // Phase 2: wait for loading spinner to resolve into a terminal state before checking links
-      // intentional: best-effort .catch on an optional step — primary pass/fail is made by a downstream assertion (verifyViaApi, waitFor, explicit expect). The fallback value tolerates well-known transient or absent-UI cases without papering over real failures.
+      // intentional: probes optional UI presence via a multi-line locator chain — the branch logic below handles both rendered and missing cases deterministically; absence is a legitimate tenant/role state.
       await page
         .locator('.listing-list-page, .listing-list-grid, .empty-state, .error-display')
         .first()
@@ -68,7 +68,7 @@ test.describe('JOURNEY-DC-012: Preview Data Before Purchase', () => {
       // Wait for terminal state: error display or listing content.
       // Exclude #email (login form) from initial wait — waiting for the
       // API call to return 404 and render ErrorDisplay is the correct check.
-      // intentional: best-effort .catch on an optional step — primary pass/fail is made by a downstream assertion (verifyViaApi, waitFor, explicit expect). The fallback value tolerates well-known transient or absent-UI cases without papering over real failures.
+      // intentional: probes optional UI presence via a multi-line locator chain — the branch logic below handles both rendered and missing cases deterministically; absence is a legitimate tenant/role state.
       await page
         .locator('.error-display, .listing-detail-main')
         .first()

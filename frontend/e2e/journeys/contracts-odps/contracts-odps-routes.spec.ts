@@ -36,7 +36,7 @@ test.describe('Contracts and ODPS routes', () => {
       if (!ok) return;
 
       // Wait for terminal states: error-display (contract not found) or odps-link-page (success form).
-      // intentional: best-effort .catch on an optional step — primary pass/fail is made by a downstream assertion (verifyViaApi, waitFor, explicit expect). The fallback value tolerates well-known transient or absent-UI cases without papering over real failures.
+      // intentional: probes optional UI presence via a multi-line locator chain — the branch logic below handles both rendered and missing cases deterministically; absence is a legitimate tenant/role state.
       await page
         .locator('.error-display, .odps-link-page')
         .first()
@@ -86,7 +86,7 @@ test.describe('Contracts and ODPS routes', () => {
       await responsePromise;
 
       // Race: wait for error or editor content rather than sleeping
-      // intentional: best-effort .catch on an optional step — primary pass/fail is made by a downstream assertion (verifyViaApi, waitFor, explicit expect). The fallback value tolerates well-known transient or absent-UI cases without papering over real failures.
+      // intentional: probes optional UI presence — the branch logic below handles both rendered and missing cases deterministically; absence is a legitimate tenant/role state, not a test failure.
       await page.locator('.error-display, .error-display-title, .contract-editor-page')
         .first().waitFor({ state: 'visible', timeout: 30000 }).catch(() => null);
 
@@ -106,7 +106,7 @@ test.describe('Contracts and ODPS routes', () => {
 
       // H3: warn if error is not a clean 404
       if (hasErrorDisplay) {
-        // intentional: best-effort .catch on an optional step — primary pass/fail is made by a downstream assertion (verifyViaApi, waitFor, explicit expect). The fallback value tolerates well-known transient or absent-UI cases without papering over real failures.
+        // intentional: tolerates a detached/removed element while extracting text for a diagnostic message; the surrounding throw/expect below this catch is the primary failure path.
         const errorText = await page.locator('.error-display, .error-display-title').first().textContent().catch(() => '');
         if (errorText && !errorText.includes('404') && !errorText.toLowerCase().includes('not found')) {
           console.warn(`[H3] contract edit nil-UUID: error-display shows non-404 error: "${errorText.slice(0, 200)}"`);
@@ -137,7 +137,7 @@ test.describe('Contracts and ODPS routes', () => {
 
       await responsePromise;
 
-      // intentional: best-effort .catch on an optional step — primary pass/fail is made by a downstream assertion (verifyViaApi, waitFor, explicit expect). The fallback value tolerates well-known transient or absent-UI cases without papering over real failures.
+      // intentional: probes optional UI presence — the branch logic below handles both rendered and missing cases deterministically; absence is a legitimate tenant/role state, not a test failure.
       await page.locator('.error-display, .error-display-title, .odps-detail-page, .odps-detail-main')
         .first().waitFor({ state: 'visible', timeout: 30000 }).catch(() => null);
 
@@ -157,7 +157,7 @@ test.describe('Contracts and ODPS routes', () => {
 
       // H3: warn if error is not a clean 404
       if (hasErrorDisplay) {
-        // intentional: best-effort .catch on an optional step — primary pass/fail is made by a downstream assertion (verifyViaApi, waitFor, explicit expect). The fallback value tolerates well-known transient or absent-UI cases without papering over real failures.
+        // intentional: tolerates a detached/removed element while extracting text for a diagnostic message; the surrounding throw/expect below this catch is the primary failure path.
         const errorText = await page.locator('.error-display, .error-display-title').first().textContent().catch(() => '');
         if (errorText && !errorText.includes('404') && !errorText.toLowerCase().includes('not found')) {
           console.warn(`[H3] odps detail nil-UUID: error-display shows non-404 error: "${errorText.slice(0, 200)}"`);

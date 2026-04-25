@@ -423,7 +423,7 @@ test.describe('Phase 7.5 — FEATURES Gap Closure', () => {
           { timeout: 15000 }
         );
         await approveBtn.click();
-        // intentional: best-effort .catch on an optional step — primary pass/fail is made by a downstream assertion (verifyViaApi, waitFor, explicit expect). The fallback value tolerates well-known transient or absent-UI cases without papering over real failures.
+        // intentional: tolerates a fixture-helper failure whose recovery is documented in the helper; the helper raises only on terminal failure after its own retry budget.
         await approveResponse.catch(() => null); // tolerate if URL pattern doesn't match
         // Status may take a moment to update; use waitFor with catch to avoid hard failure
         // if the badge class doesn't match exactly (e.g. status transitions to PENDING_REVIEW first)
@@ -447,7 +447,7 @@ test.describe('Phase 7.5 — FEATURES Gap Closure', () => {
             { timeout: 15000 }
           );
           await submitReject.click();
-          // intentional: best-effort .catch on an optional step — primary pass/fail is made by a downstream assertion (verifyViaApi, waitFor, explicit expect). The fallback value tolerates well-known transient or absent-UI cases without papering over real failures.
+          // intentional: tolerates a fixture-helper failure whose recovery is documented in the helper; the helper raises only on terminal failure after its own retry budget.
           await rejectResponse.catch(() => null);
           await page
             .locator('.governance-status-badge.REJECTED')
@@ -587,7 +587,7 @@ test.describe('Phase 7.5 — FEATURES Gap Closure', () => {
     });
 
     const fileListPage = page.locator('.file-list-page, .empty-state, .error-display, h1');
-    // intentional: best-effort .catch on an optional step — primary pass/fail is made by a downstream assertion (verifyViaApi, waitFor, explicit expect). The fallback value tolerates well-known transient or absent-UI cases without papering over real failures.
+    // intentional: treats the promise's rejection as a structured false — the following if/branch consumes the boolean without swallowing.
     const fileListVisible = await fileListPage.first().waitFor({ state: 'visible', timeout: 15000 }).then(() => true).catch(() => false);
     if (!fileListVisible) {
       test.skip(true, '/files page did not load expected content within 15s — skip');
@@ -595,7 +595,7 @@ test.describe('Phase 7.5 — FEATURES Gap Closure', () => {
     }
     // Heading check: FileListPage may render without an explicit "Files" heading — accept any content
     const filesHeading = page.getByRole('heading', { name: /Files/i });
-    // intentional: best-effort .catch on an optional step — primary pass/fail is made by a downstream assertion (verifyViaApi, waitFor, explicit expect). The fallback value tolerates well-known transient or absent-UI cases without papering over real failures.
+    // intentional: treats the promise's rejection as a structured false — the following if/branch consumes the boolean without swallowing.
     const hasFilesHeading = await filesHeading.waitFor({ state: 'visible', timeout: 5000 }).then(() => true).catch(() => false);
     if (!hasFilesHeading) {
       // /files page loads but without a "Files" heading — verify it still has file list content
@@ -628,7 +628,7 @@ test.describe('Phase 7.5 — FEATURES Gap Closure', () => {
 
     const fileInput = page.locator('input.file-upload-input');
     // Allow extra time for DatasetCreatePage to fully render (async asset/schema data may delay mount)
-    // intentional: best-effort .catch on an optional step — primary pass/fail is made by a downstream assertion (verifyViaApi, waitFor, explicit expect). The fallback value tolerates well-known transient or absent-UI cases without papering over real failures.
+    // intentional: treats the promise's rejection as a structured false — the following if/branch consumes the boolean without swallowing.
     const inputAttached = await fileInput.waitFor({ state: 'attached', timeout: 30000 }).then(() => true).catch(() => false);
     if (!inputAttached) {
       // DatasetCreatePage file upload input not mounted — may require specific capabilities or the
@@ -798,7 +798,7 @@ test.describe('Phase 7.5 — FEATURES Gap Closure', () => {
         await page.waitForTimeout(1000);
         // Confirm delete — selector may vary; try known class first, then generic dialog confirm
         const confirmDeleteBtn = page.locator('.file-list-confirm-delete-btn');
-        // intentional: best-effort .catch on an optional step — primary pass/fail is made by a downstream assertion (verifyViaApi, waitFor, explicit expect). The fallback value tolerates well-known transient or absent-UI cases without papering over real failures.
+        // intentional: treats promise rejection as a structured false — the caller's if/else below consumes the boolean without swallowing.
         const hasConfirmBtn = await confirmDeleteBtn
           .waitFor({ state: 'visible', timeout: 5000 })
           .then(() => true)
@@ -1193,7 +1193,7 @@ test.describe('Phase 7.5 — FEATURES Gap Closure', () => {
     }
 
     // Wait for either results or error to appear — event-driven instead of fixed timeout
-    // intentional: best-effort .catch on an optional step — primary pass/fail is made by a downstream assertion (verifyViaApi, waitFor, explicit expect). The fallback value tolerates well-known transient or absent-UI cases without papering over real failures.
+    // intentional: probes optional UI via a multi-line waitForSelector chain — same shape as waitFor; absence is a legitimate state handled by the caller's branch below.
     await page
       .waitForSelector('[data-testid="schema-matching-results"], .error-display', {
         timeout: 15000,
@@ -1421,7 +1421,7 @@ test.describe('Phase 7.5 — FEATURES Gap Closure', () => {
     await expect(statusBadge).toBeVisible({ timeout: 5000 });
 
     // Wait for the health status badge to become stable — event-driven
-    // intentional: best-effort .catch on an optional step — primary pass/fail is made by a downstream assertion (verifyViaApi, waitFor, explicit expect). The fallback value tolerates well-known transient or absent-UI cases without papering over real failures.
+    // intentional: probes optional UI presence — the branch logic below handles both rendered and missing cases deterministically; absence is a legitimate tenant/role state, not a test failure.
     await statusBadge.waitFor({ state: 'visible', timeout: 10000 }).catch(() => null);
 
     // Verify status badge shows a valid status

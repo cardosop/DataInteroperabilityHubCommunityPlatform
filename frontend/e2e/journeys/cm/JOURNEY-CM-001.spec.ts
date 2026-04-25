@@ -23,7 +23,7 @@ test.describe('JOURNEY-CM-001: Manage Data Community', () => {
     test('communities page loads with community list or empty state', async ({ page }) => {
       await page.goto('/communities');
       await page.waitForLoadState('domcontentloaded');
-      // intentional: best-effort .catch on an optional step — primary pass/fail is made by a downstream assertion (verifyViaApi, waitFor, explicit expect). The fallback value tolerates well-known transient or absent-UI cases without papering over real failures.
+      // intentional: probes optional UI presence via a multi-line locator chain — the branch logic below handles both rendered and missing cases deterministically; absence is a legitimate tenant/role state.
       await page
         .locator('.communities-page, [data-testid="communities-page"], .unavailable-page')
         .first()

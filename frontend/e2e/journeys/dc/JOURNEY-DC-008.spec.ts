@@ -56,7 +56,7 @@ test.describe('JOURNEY-DC-008: Rate and Review Asset', () => {
       await page.waitForSelector('.asset-detail-page, .error-display', { timeout: 15000 });
       if ((await page.locator('.error-display').count()) > 0) {
         const errText =
-          // intentional: best-effort .catch on an optional step — primary pass/fail is made by a downstream assertion (verifyViaApi, waitFor, explicit expect). The fallback value tolerates well-known transient or absent-UI cases without papering over real failures.
+          // intentional: tolerates a detached/removed element while extracting text for a diagnostic message; the surrounding throw/expect below this catch is the primary failure path.
           (await page.locator('.error-display').first().textContent().catch(() => '')) ?? '';
         throw new Error(
           `Asset detail failed to load (required for Community section test). ` +
@@ -64,7 +64,7 @@ test.describe('JOURNEY-DC-008: Rate and Review Asset', () => {
         );
       }
       const socialSection = page.locator('[data-testid="asset-social-section"]');
-      // intentional: best-effort .catch on an optional step — primary pass/fail is made by a downstream assertion (verifyViaApi, waitFor, explicit expect). The fallback value tolerates well-known transient or absent-UI cases without papering over real failures.
+      // intentional: probes optional UI presence — the branch logic below handles both rendered and missing cases deterministically; absence is a legitimate tenant/role state, not a test failure.
       await socialSection.waitFor({ state: 'visible', timeout: 10000 }).catch(() => null);
       // intentional: social-section is feature-flag-gated — only renders for tenants with community/social features enabled.
       if ((await socialSection.count()) > 0 && (await socialSection.isVisible())) {

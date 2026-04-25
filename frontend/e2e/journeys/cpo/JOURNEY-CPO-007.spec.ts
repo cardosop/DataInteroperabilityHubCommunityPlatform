@@ -35,7 +35,7 @@ test.describe('JOURNEY-CPO-007: Set Up GDPR Right to be Forgotten', () => {
       // error-display is NOT acceptable — compliance service must be reachable
       const hasError = (await page.locator('.error-display').count()) > 0;
       if (hasError) {
-        // intentional: best-effort .catch on an optional step — primary pass/fail is made by a downstream assertion (verifyViaApi, waitFor, explicit expect). The fallback value tolerates well-known transient or absent-UI cases without papering over real failures.
+        // intentional: tolerates a detached/removed element while extracting text for a diagnostic message; the surrounding throw/expect below this catch is the primary failure path.
         const errText = await page.locator('.error-display').first().textContent().catch(() => '');
         throw new Error(`Compliance page shows error for CPO user: "${errText?.slice(0, 300)}"`);
       }
@@ -82,15 +82,15 @@ test.describe('JOURNEY-CPO-007: Set Up GDPR Right to be Forgotten', () => {
 
       // Look for GDPR / erasure / data-deletion related text
       const gdprText = page.getByText(/GDPR|erasure|data.deletion|right.to.be.forgotten|retention/i);
-      // intentional: best-effort .catch on an optional step — primary pass/fail is made by a downstream assertion (verifyViaApi, waitFor, explicit expect). The fallback value tolerates well-known transient or absent-UI cases without papering over real failures.
+      // intentional: visibility check on a transiently-attached element — treating a detached-at-check-time element as 'not visible' is the semantically correct fallback; the caller's branch logic uses the boolean result.
       const gdprTextVisible = (await gdprText.count()) > 0 && await gdprText.first().isVisible().catch(() => false);
 
       // Look for governance sub-navigation links
       const retentionLink = page.locator('a[href*="/governance/retention"]');
       const accessRequestsLink = page.locator('a[href*="/governance/access-requests"]');
-      // intentional: best-effort .catch on an optional step — primary pass/fail is made by a downstream assertion (verifyViaApi, waitFor, explicit expect). The fallback value tolerates well-known transient or absent-UI cases without papering over real failures.
+      // intentional: visibility check on a transiently-attached element — treating a detached-at-check-time element as 'not visible' is the semantically correct fallback; the caller's branch logic uses the boolean result.
       const hasRetentionLink = (await retentionLink.count()) > 0 && await retentionLink.first().isVisible().catch(() => false);
-      // intentional: best-effort .catch on an optional step — primary pass/fail is made by a downstream assertion (verifyViaApi, waitFor, explicit expect). The fallback value tolerates well-known transient or absent-UI cases without papering over real failures.
+      // intentional: visibility check on a transiently-attached element — treating a detached-at-check-time element as 'not visible' is the semantically correct fallback; the caller's branch logic uses the boolean result.
       const hasAccessRequestsLink = (await accessRequestsLink.count()) > 0 && await accessRequestsLink.first().isVisible().catch(() => false);
 
       const hasGovSubNav = hasRetentionLink || hasAccessRequestsLink;

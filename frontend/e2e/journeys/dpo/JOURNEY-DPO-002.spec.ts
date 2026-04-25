@@ -72,7 +72,7 @@ test.describe('JOURNEY-DPO-002: Publish Asset to Marketplace', () => {
       // Reading the response body is safe — the page already received it.
       let listingId: string | undefined;
       if (resp.ok()) {
-        // intentional: best-effort .catch on an optional step — primary pass/fail is made by a downstream assertion (verifyViaApi, waitFor, explicit expect). The fallback value tolerates well-known transient or absent-UI cases without papering over real failures.
+        // intentional: tolerates non-JSON response body (error pages, streaming); the status-code check or shape-check below is the primary pass/fail decision, not this catch.
         const created = (await resp.json().catch(() => null)) as { id?: string } | null;
         if (created?.id) {
           listingId = created.id;
@@ -94,7 +94,7 @@ test.describe('JOURNEY-DPO-002: Publish Asset to Marketplace', () => {
         });
       }
       if (resp.status() >= 400) {
-        // intentional: best-effort .catch on an optional step — primary pass/fail is made by a downstream assertion (verifyViaApi, waitFor, explicit expect). The fallback value tolerates well-known transient or absent-UI cases without papering over real failures.
+        // intentional: tolerates non-text / streaming response body when building a diagnostic message; the `throw new Error(...)` immediately below this catch is the primary failure path — this catch is not the pass/fail decision.
         const body = await resp.text().catch(() => '');
         throw new Error(
           `Create listing API failed: ${resp.status()} ${body}. ` +

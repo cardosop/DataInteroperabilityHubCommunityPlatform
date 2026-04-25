@@ -101,7 +101,7 @@ test.describe('Phase 3 Quality Gates', () => {
       }
     }
     if (page.url().includes('/assets/create')) {
-      // intentional: best-effort .catch on an optional step — primary pass/fail is made by a downstream assertion (verifyViaApi, waitFor, explicit expect). The fallback value tolerates well-known transient or absent-UI cases without papering over real failures.
+      // intentional: tolerates a detached/removed element while extracting text for a diagnostic message; the surrounding throw/expect below this catch is the primary failure path.
       const errEl = await page.locator('.error-display').first().textContent().catch(() => '');
       const errHint = errEl ? ` Backend error: ${errEl.slice(0, 200)}` : '';
       throw new Error(`Asset creation redirect failed. Still on create page.${errHint}`);
@@ -265,7 +265,7 @@ test.describe('Phase 3 Quality Gates', () => {
     const dqCreateResponse = await dqCreateResponsePromise;
     const dqCreateStatus = dqCreateResponse.status();
     if (dqCreateStatus !== 201) {
-      // intentional: best-effort .catch on an optional step — primary pass/fail is made by a downstream assertion (verifyViaApi, waitFor, explicit expect). The fallback value tolerates well-known transient or absent-UI cases without papering over real failures.
+      // intentional: tolerates non-text / streaming response body when building a diagnostic message; the `throw new Error(...)` immediately below this catch is the primary failure path — this catch is not the pass/fail decision.
       const body = await dqCreateResponse.text().catch(() => '');
       throw new Error(
         `POST /dq/runs/ returned ${dqCreateStatus}. Body: ${body.slice(0, 400)}`,
@@ -381,7 +381,7 @@ test.describe('Phase 3 Quality Gates', () => {
     const complianceCreateResponse = await complianceCreatePromise;
     const complianceCreateStatus = complianceCreateResponse.status();
     if (complianceCreateStatus !== 201) {
-      // intentional: best-effort .catch on an optional step — primary pass/fail is made by a downstream assertion (verifyViaApi, waitFor, explicit expect). The fallback value tolerates well-known transient or absent-UI cases without papering over real failures.
+      // intentional: tolerates non-text / streaming response body when building a diagnostic message; the `throw new Error(...)` immediately below this catch is the primary failure path — this catch is not the pass/fail decision.
       const body = await complianceCreateResponse.text().catch(() => '');
       throw new Error(
         `POST /compliance/runs/ returned ${complianceCreateStatus}. Body: ${body.slice(0, 400)}`,

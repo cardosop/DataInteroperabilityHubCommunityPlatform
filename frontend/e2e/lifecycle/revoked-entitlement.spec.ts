@@ -32,7 +32,7 @@ test.describe('Revoked Entitlement', () => {
 
     // If 200, verify the response is structured (not blank or malformed)
     if (entitlementsRes.ok()) {
-      // intentional: best-effort .catch on an optional step — primary pass/fail is made by a downstream assertion (verifyViaApi, waitFor, explicit expect). The fallback value tolerates well-known transient or absent-UI cases without papering over real failures.
+      // intentional: tolerates non-JSON response body (error pages, streaming); the status-code check or shape-check below is the primary pass/fail decision, not this catch.
       const body = await entitlementsRes.json().catch(() => null);
       expect(body, 'Entitlements response must be valid JSON').not.toBeNull();
       // DRF pagination: { count, results: [] } or direct array

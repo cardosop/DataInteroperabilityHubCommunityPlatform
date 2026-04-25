@@ -36,7 +36,7 @@ test.describe('JOURNEY-PA-007: Manage ODPS Products (Platform)', () => {
       if (!accessToken) return;
 
       // ODPS page uses the /contracts/ endpoint filtered client-side (no standalone /odps/ endpoint).
-      // intentional: best-effort .catch on an optional step — primary pass/fail is made by a downstream assertion (verifyViaApi, waitFor, explicit expect). The fallback value tolerates well-known transient or absent-UI cases without papering over real failures.
+      // intentional: tolerates transient/optional HTTP probe failure — the outer flow has its own primary assertion on the final resource state; this fetch is preparatory.
       const odpsResp = await page.request.get(`${API_BASE}/contracts/?page_size=5`, {
         headers: { Authorization: `Bearer ${accessToken}` },
       }).catch(() => null);
@@ -56,7 +56,7 @@ test.describe('JOURNEY-PA-007: Manage ODPS Products (Platform)', () => {
       // UI shows list or empty state (no error)
       const hasError = (await page.locator('.error-display').count()) > 0;
       if (hasError) {
-        // intentional: best-effort .catch on an optional step — primary pass/fail is made by a downstream assertion (verifyViaApi, waitFor, explicit expect). The fallback value tolerates well-known transient or absent-UI cases without papering over real failures.
+        // intentional: tolerates a detached/removed element while extracting text for a diagnostic message; the surrounding throw/expect below this catch is the primary failure path.
         const errText = await page.locator('.error-display').first().textContent().catch(() => '');
         if (!/403|forbidden/i.test(errText ?? '')) {
           throw new Error(`ODPS list shows error: ${errText}`);

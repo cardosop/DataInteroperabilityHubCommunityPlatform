@@ -25,7 +25,7 @@ test.describe('JOURNEY-DE-009: Set Up Data Virtualization', () => {
         return;
       }
       expect(page.url()).toContain('/virtualization');
-      // intentional: best-effort .catch on an optional step — primary pass/fail is made by a downstream assertion (verifyViaApi, waitFor, explicit expect). The fallback value tolerates well-known transient or absent-UI cases without papering over real failures.
+      // intentional: probes optional UI presence via a multi-line locator chain — the branch logic below handles both rendered and missing cases deterministically; absence is a legitimate tenant/role state.
       await page
         .locator('.virtual-dataset-list-page, .virtual-dataset-list-header, .empty-state, .error-display')
         .first()

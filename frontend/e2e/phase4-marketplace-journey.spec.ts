@@ -457,7 +457,7 @@ test.describe('Phase 4 Marketplace Journey', () => {
       assetUrl = page.url();
       const finalMatch = assetUrl.match(/\/assets\/([^/]+)/);
       if (!finalMatch || finalMatch[1] === 'create') {
-        // intentional: best-effort .catch on an optional step — primary pass/fail is made by a downstream assertion (verifyViaApi, waitFor, explicit expect). The fallback value tolerates well-known transient or absent-UI cases without papering over real failures.
+        // intentional: tolerates a detached/removed element while extracting text for a diagnostic message; the surrounding throw/expect below this catch is the primary failure path.
         const errEl = await page.locator('.error-display').first().textContent().catch(() => '');
         const errHint = errEl ? ` Backend error: ${errEl.slice(0, 200)}` : '';
         throw new Error(
@@ -574,7 +574,7 @@ test.describe('Phase 4 Marketplace Journey', () => {
             clearTimeout(timeoutId);
             if (!response.ok) {
               const errorText = await response.text();
-              // intentional: best-effort .catch on an optional step — primary pass/fail is made by a downstream assertion (verifyViaApi, waitFor, explicit expect). The fallback value tolerates well-known transient or absent-UI cases without papering over real failures.
+              // intentional: tolerates non-JSON response body (error pages, streaming); the status-code check or shape-check below is the primary pass/fail decision, not this catch.
               const errorJson = await response.json().catch(() => null);
               return {
                 success: false,
@@ -764,16 +764,16 @@ test.describe('Phase 4 Marketplace Journey', () => {
     const orderResponse = await orderResponsePromise;
     if (orderResponse) {
       if (!orderResponse.ok()) {
-        // intentional: best-effort .catch on an optional step — primary pass/fail is made by a downstream assertion (verifyViaApi, waitFor, explicit expect). The fallback value tolerates well-known transient or absent-UI cases without papering over real failures.
+        // intentional: tolerates non-text / streaming response body when building a diagnostic message; the `throw new Error(...)` immediately below this catch is the primary failure path — this catch is not the pass/fail decision.
         const errorText = await orderResponse.text().catch(() => '');
-        // intentional: best-effort .catch on an optional step — primary pass/fail is made by a downstream assertion (verifyViaApi, waitFor, explicit expect). The fallback value tolerates well-known transient or absent-UI cases without papering over real failures.
+        // intentional: tolerates non-JSON response body (error pages, streaming); the status-code check or shape-check below is the primary pass/fail decision, not this catch.
         const errorJson = await orderResponse.json().catch(() => null);
         orderCreateError = `Status ${orderResponse.status()}: ${errorJson ? JSON.stringify(errorJson, null, 2) : errorText}`;
         console.log('❌ Order creation error:', orderCreateError);
         console.log('📤 Request payload was:', JSON.stringify(orderCreateRequest, null, 2));
         throw new Error(`Order creation failed: ${orderCreateError}`);
       } else {
-        // intentional: best-effort .catch on an optional step — primary pass/fail is made by a downstream assertion (verifyViaApi, waitFor, explicit expect). The fallback value tolerates well-known transient or absent-UI cases without papering over real failures.
+        // intentional: tolerates non-JSON response body (error pages, streaming); the status-code check or shape-check below is the primary pass/fail decision, not this catch.
         const responseData = await orderResponse.json().catch(() => null);
         console.log('✅ Order creation API call succeeded');
         if (responseData) {

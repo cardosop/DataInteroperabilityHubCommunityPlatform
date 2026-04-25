@@ -394,7 +394,7 @@ test.describe('Phase 6 Mesh + Virtualization', () => {
       );
     }
 
-    // intentional: best-effort .catch on an optional step — primary pass/fail is made by a downstream assertion (verifyViaApi, waitFor, explicit expect). The fallback value tolerates well-known transient or absent-UI cases without papering over real failures.
+    // intentional: treats promise rejection as a structured false — the caller's if/else below consumes the boolean without swallowing.
     const queryUIVisible = await page
       .locator('.query-execution-ui, .query-execution-section')
       .first()
@@ -416,7 +416,7 @@ test.describe('Phase 6 Mesh + Virtualization', () => {
     await executeBtn.click();
 
     // DoD-7.1: result, progress, cancel, or error visible (backend may return 400 in some envs)
-    // intentional: best-effort .catch on an optional step — primary pass/fail is made by a downstream assertion (verifyViaApi, waitFor, explicit expect). The fallback value tolerates well-known transient or absent-UI cases without papering over real failures.
+    // intentional: treats promise rejection as a structured false — the caller's if/else below consumes the boolean without swallowing.
     const queryResultVisible = await page
       .locator(
         '.progress-section, .results-section, .results-table, .error-section, .error-display, .query-execution-ui button:has-text("Cancel"), .query-execution-ui button:has-text("Executing")'
@@ -527,7 +527,7 @@ test.describe('Phase 6 Mesh + Virtualization', () => {
     await addSourceBtn.click();
 
     const odbcSourceForm = page.locator('[data-testid="odbc-source-form"]');
-    // intentional: best-effort .catch on an optional step — primary pass/fail is made by a downstream assertion (verifyViaApi, waitFor, explicit expect). The fallback value tolerates well-known transient or absent-UI cases without papering over real failures.
+    // intentional: treats the promise's rejection as a structured false — the following if/branch consumes the boolean without swallowing.
     const odbcFormVisible = await odbcSourceForm.waitFor({ state: 'visible', timeout: 5000 }).then(() => true).catch(() => false);
     if (!odbcFormVisible) {
       // "Add source" button exists but the ODBC form is not rendered — verify the page is still functional
@@ -567,7 +567,7 @@ test.describe('Phase 6 Mesh + Virtualization', () => {
       return;
     }
 
-    // intentional: best-effort .catch on an optional step — primary pass/fail is made by a downstream assertion (verifyViaApi, waitFor, explicit expect). The fallback value tolerates well-known transient or absent-UI cases without papering over real failures.
+    // intentional: treats promise rejection as a structured false — the caller's if/else below consumes the boolean without swallowing.
     const queryUIVisible = await page
       .locator('.query-execution-ui, .query-execution-section')
       .first()
@@ -585,7 +585,7 @@ test.describe('Phase 6 Mesh + Virtualization', () => {
     await executeBtn.waitFor({ state: 'visible', timeout: 5000 });
     await executeBtn.click();
 
-    // intentional: best-effort .catch on an optional step — primary pass/fail is made by a downstream assertion (verifyViaApi, waitFor, explicit expect). The fallback value tolerates well-known transient or absent-UI cases without papering over real failures.
+    // intentional: treats promise rejection as a structured false — the caller's if/else below consumes the boolean without swallowing.
     const odbcQueryResultVisible = await page
       .locator(
         '.progress-section, .results-section, .results-table, .error-section, .error-display'
@@ -602,7 +602,7 @@ test.describe('Phase 6 Mesh + Virtualization', () => {
     }
 
     const resultsTable = page.locator('.results-table, .results-section table');
-    // intentional: best-effort .catch on an optional step — primary pass/fail is made by a downstream assertion (verifyViaApi, waitFor, explicit expect). The fallback value tolerates well-known transient or absent-UI cases without papering over real failures.
+    // intentional: treats the promise's rejection as a structured false — the following if/branch consumes the boolean without swallowing.
     const hasResult = await resultsTable.waitFor({ state: 'visible', timeout: 15000 }).then(() => true).catch(() => false);
     if (!hasResult) {
       // No results table — ODBC driver unavailable; verify error response is shown (graceful degradation)

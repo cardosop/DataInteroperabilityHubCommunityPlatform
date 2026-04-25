@@ -69,9 +69,9 @@ test.describe('JOURNEY-AUTH-004: Unauthenticated User Accesses Public Resources'
       // Authenticated shell must not be visible to unauthenticated visitors
       const appSidebar = page.locator('.app-sidebar');
       const appHeader = page.locator('.app-header');
-      // intentional: best-effort .catch on an optional step — primary pass/fail is made by a downstream assertion (verifyViaApi, waitFor, explicit expect). The fallback value tolerates well-known transient or absent-UI cases without papering over real failures.
+      // intentional: visibility check on a transiently-attached element — treating a detached-at-check-time element as 'not visible' is the semantically correct fallback; the caller's branch logic uses the boolean result.
       const sidebarVisible = await appSidebar.isVisible().catch(() => false);
-      // intentional: best-effort .catch on an optional step — primary pass/fail is made by a downstream assertion (verifyViaApi, waitFor, explicit expect). The fallback value tolerates well-known transient or absent-UI cases without papering over real failures.
+      // intentional: visibility check on a transiently-attached element — treating a detached-at-check-time element as 'not visible' is the semantically correct fallback; the caller's branch logic uses the boolean result.
       const headerVisible = await appHeader.isVisible().catch(() => false);
       // When redirected to /login the shell is not rendered; when on /assets the shell should
       // also not render because auth guard clears it before login prompt is shown.

@@ -89,11 +89,11 @@ test.describe('JOURNEY-DS-001: Use Natural Language Search', () => {
       const resultsArea = page.locator(
         '.search-results, .result-list, [data-testid*="result"], .search-page'
       );
-      // intentional: best-effort .catch on an optional step — primary pass/fail is made by a downstream assertion (verifyViaApi, waitFor, explicit expect). The fallback value tolerates well-known transient or absent-UI cases without papering over real failures.
+      // intentional: visibility check on a transiently-attached element — treating a detached-at-check-time element as 'not visible' is the semantically correct fallback; the caller's branch logic uses the boolean result.
       const resultsVisible = (await resultsArea.count()) > 0 && await resultsArea.first().isVisible().catch(() => false);
 
       const emptyResults = page.getByText(/no results|0 results|nothing found/i);
-      // intentional: best-effort .catch on an optional step — primary pass/fail is made by a downstream assertion (verifyViaApi, waitFor, explicit expect). The fallback value tolerates well-known transient or absent-UI cases without papering over real failures.
+      // intentional: visibility check on a transiently-attached element — treating a detached-at-check-time element as 'not visible' is the semantically correct fallback; the caller's branch logic uses the boolean result.
       const emptyVisible = (await emptyResults.count()) > 0 && await emptyResults.first().isVisible().catch(() => false);
 
       // Either results area or empty results message should be shown

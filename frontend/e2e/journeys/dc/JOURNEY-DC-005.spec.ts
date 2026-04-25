@@ -30,7 +30,7 @@ test.describe('JOURNEY-DC-005: Download Data', () => {
       }
 
       // Wait for loading to settle before inspecting content
-      // intentional: best-effort .catch on an optional step — primary pass/fail is made by a downstream assertion (verifyViaApi, waitFor, explicit expect). The fallback value tolerates well-known transient or absent-UI cases without papering over real failures.
+      // intentional: probes optional UI presence via a multi-line locator chain — the branch logic below handles both rendered and missing cases deterministically; absence is a legitimate tenant/role state.
       await page
         .locator('.entitlement-list-page, .empty-state, .error-display')
         .first()
@@ -41,7 +41,7 @@ test.describe('JOURNEY-DC-005: Download Data', () => {
       if ((await entitlementLink.count()) === 0) {
         // Consumer has no entitlements — assert empty-state is shown (not a blank render)
         // Phase 2 wait to ensure terminal state has loaded before count() checks
-        // intentional: best-effort .catch on an optional step — primary pass/fail is made by a downstream assertion (verifyViaApi, waitFor, explicit expect). The fallback value tolerates well-known transient or absent-UI cases without papering over real failures.
+        // intentional: probes optional UI presence via a multi-line locator chain — the branch logic below handles both rendered and missing cases deterministically; absence is a legitimate tenant/role state.
         await page
           .locator('.empty-state, .error-display, .entitlement-list-page')
           .first()
@@ -62,7 +62,7 @@ test.describe('JOURNEY-DC-005: Download Data', () => {
       const hasDetail = (await page.locator('.entitlement-detail-page').count()) > 0;
       const hasErrorOnDetail = (await page.locator('.error-display').count()) > 0;
       if (hasErrorOnDetail && !hasDetail) {
-        // intentional: best-effort .catch on an optional step — primary pass/fail is made by a downstream assertion (verifyViaApi, waitFor, explicit expect). The fallback value tolerates well-known transient or absent-UI cases without papering over real failures.
+        // intentional: tolerates a detached/removed element while extracting text for a diagnostic message; the surrounding throw/expect below this catch is the primary failure path.
         const msg = await page.locator('.error-display').first().textContent().catch(() => '');
         throw new Error(`Entitlement detail shows error instead of content: "${msg?.slice(0, 300)}"`);
       }
@@ -144,7 +144,7 @@ test.describe('JOURNEY-DC-005: Download Data', () => {
       expect(url).toContain('/marketplace/entitlements');
 
       // Phase 2 wait: wait for terminal state to appear
-      // intentional: best-effort .catch on an optional step — primary pass/fail is made by a downstream assertion (verifyViaApi, waitFor, explicit expect). The fallback value tolerates well-known transient or absent-UI cases without papering over real failures.
+      // intentional: probes optional UI presence via a multi-line locator chain — the branch logic below handles both rendered and missing cases deterministically; absence is a legitimate tenant/role state.
       await page
         .locator('.empty-state, .entitlement-list-page, .error-display')
         .first()
