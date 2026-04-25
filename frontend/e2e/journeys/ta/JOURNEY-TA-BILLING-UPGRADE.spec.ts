@@ -13,8 +13,10 @@
  * What this spec proves today
  * ---------------------------
  * Without the Stripe secret key wired into the staging backend
- * (externalSecrets.stripe.enabled is `false` in helm/values.staging.yaml;
- * STRIPE_SECRET_KEY is not in the repo's gh secrets either), the backend
+ * (externalSecrets.stripe.enabled defaults to `false` at
+ * helm/values.yaml:697-698 and is NOT overridden in
+ * helm/values.staging.yaml; STRIPE_SECRET_KEY is not in the repo's gh
+ * secrets either), the backend
  * `SubscriptionService.update_subscription` takes the non-Stripe path:
  *
  *   1. Validates the plan transition (downgrade-guard etc.)
@@ -263,7 +265,8 @@ test.describe('JOURNEY-TA-BILLING-UPGRADE: UC-BILL-002 Billing Upgrade', () => {
         description:
           'stripe_customer_id is null on the post-upgrade subscription. ' +
           'Backend is taking the non-Stripe path — STRIPE_SECRET_KEY not set ' +
-          'and/or externalSecrets.stripe.enabled is false in helm/values.staging.yaml. ' +
+          'and/or externalSecrets.stripe.enabled (defaulted to false at ' +
+          'helm/values.yaml:697-698, not overridden in helm/values.staging.yaml). ' +
           'Stripe-layer assertions skipped. Unblock: wire STRIPE_SECRET_KEY via ' +
           'AWS Secrets Manager at staging/hub/stripe + flip externalSecrets.stripe.enabled.',
       });

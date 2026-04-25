@@ -301,3 +301,192 @@ def test_script_ci_mode_exit_zero_or_one():
         timeout=60,
     )
     assert result.returncode in (0, 1)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# strip_gap_blocks — pure-logic tests for the false-positive defense added in
+# Phase 226.D self-audit. Spec authors mark partial-coverage gaps with the
+# literal UC IDs of missing scenarios so a future implementer can grep them
+# and find the spec needing extension. The tool's substring matcher must
+# NOT attribute those gap-listed IDs as covered. See
+# scripts/report_uc_journey_test_coverage.py:strip_gap_blocks docstring.
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+def test_strip_gap_blocks_no_gap_returns_unchanged():
+    """Content with no gap markers is returned byte-for-byte."""
+    sys.path.insert(0, str(REPO_ROOT))
+    from scripts.report_uc_journey_test_coverage import strip_gap_blocks
+
+    content = (
+        "/**\n"
+        " * Use cases covered:\n"
+        " *   - UC-FOO-001\n"
+        " *   - UC-FOO-002\n"
+        " */\n"
+        "test('hello', () => {});\n"
+    )
+    assert strip_gap_blocks(content) == content
+
+
+def test_strip_gap_blocks_jsdoc_coverage_gap_block_removed():
+    """JSDoc 'Coverage gap' bulleted block is fully stripped."""
+    sys.path.insert(0, str(REPO_ROOT))
+    from scripts.report_uc_journey_test_coverage import strip_gap_blocks
+
+    content = (
+        "/**\n"
+        " * Use cases covered:\n"
+        " *   - UC-TRANS-001\n"
+        " *\n"
+        " * Coverage gap (intentionally out of scope):\n"
+        " *   - UC-TRANS-002\n"
+        " *   - UC-TRANS-003\n"
+        " *\n"
+        " * Other prose continues here.\n"
+        " */\n"
+    )
+    out = strip_gap_blocks(content)
+    assert "UC-TRANS-001" in out  # covered ID survives
+    assert "UC-TRANS-002" not in out  # gap-listed ID removed
+    assert "UC-TRANS-003" not in out
+    assert "Other prose continues here." in out  # post-gap content survives
+
+
+def test_strip_gap_blocks_not_covered_marker_also_recognised():
+    """'NOT covered' is an accepted gap-block-head synonym."""
+    sys.path.insert(0, str(REPO_ROOT))
+    from scripts.report_uc_journey_test_coverage import strip_gap_blocks
+
+    content = (
+        "/**\n"
+        " * Use cases covered: UC-X-001\n"
+        " *\n"
+        " * NOT covered by this spec:\n"
+        " *   - UC-X-002\n"
+        " *\n"
+        " * post-gap line\n"
+        " */\n"
+    )
+    out = strip_gap_blocks(content)
+    assert "UC-X-001" in out
+    assert "UC-X-002" not in out
+    assert "post-gap line" in out
+
+
+def test_strip_gap_blocks_multiple_gap_blocks_all_stripped():
+    """A file with two gap blocks has both stripped."""
+    sys.path.insert(0, str(REPO_ROOT))
+    from scripts.report_uc_journey_test_coverage import strip_gap_blocks
+
+    content = (
+        "/**\n"
+        " * Coverage gap:\n"
+        " *   - UC-A-001\n"
+        " *\n"
+        " * Use cases covered: UC-B-001\n"
+        " */\n"
+        "// Coverage gap: also includes UC-A-002\n"
+        "// resume\n"
+    )
+    out = strip_gap_blocks(content)
+    assert "UC-A-001" not in out
+    assert "UC-A-002" not in out
+    assert "UC-B-001" in out
+
+
+def test_strip_gap_blocks_gap_at_eof_terminates_cleanly():
+    """A gap block with no trailing terminator (EOF) is still fully stripped."""
+    sys.path.insert(0, str(REPO_ROOT))
+    from scripts.report_uc_journey_test_coverage import strip_gap_blocks
+
+    content = (
+        "/**\n"
+        " * Use cases covered: UC-Y-001\n"
+        " * Coverage gap:\n"
+        " *   - UC-Y-002\n"
+    )
+    out = strip_gap_blocks(content)
+    assert "UC-Y-001" in out
+    assert "UC-Y-002" not in out
+
+
+def test_strip_gap_blocks_python_hash_comments_supported():
+    """Python `#`-style comment-block gap markers are also recognised."""
+    sys.path.insert(0, str(REPO_ROOT))
+    from scripts.report_uc_journey_test_coverage import strip_gap_blocks
+
+    content = (
+        "# Use cases covered: UC-PY-001\n"
+        "#\n"
+        "# Coverage gap:\n"
+        "#   - UC-PY-002\n"
+        "#\n"
+        "def test_one(): pass\n"
+    )
+    out = strip_gap_blocks(content)
+    assert "UC-PY-001" in out
+    assert "UC-PY-002" not in out
+    assert "def test_one(): pass" in out
+
+
+def test_find_references_in_file_excludes_gap_listed_ids(tmp_path):
+    """find_references_in_file must NOT attribute IDs listed only inside a Coverage gap block."""
+    sys.path.insert(0, str(REPO_ROOT))
+    from scripts.report_uc_journey_test_coverage import find_references_in_file
+
+    spec = tmp_path / "fake.spec.ts"
+    spec.write_text(
+        "/**\n"
+        " * Use cases covered (per docs/CRITICAL_UC_JOURNEY_IDS.yaml):\n"
+        " *   - UC-TRANS-001\n"
+        " *\n"
+        " * Coverage gap (intentionally out of scope; queued for future specs):\n"
+        " *   - UC-TRANS-002\n"
+        " *   - UC-TRANS-003\n"
+        " *\n"
+        " * All tests run against the real backend.\n"
+        " */\n"
+        "test('x', () => {});\n",
+        encoding="utf-8",
+    )
+    found = find_references_in_file(
+        spec, ["UC-TRANS-001", "UC-TRANS-002", "UC-TRANS-003"]
+    )
+    assert "UC-TRANS-001" in found
+    assert "UC-TRANS-002" not in found, (
+        "Regression: substring matcher attributed gap-listed UC-TRANS-002 as covered. "
+        "Phase 226.D4 explicitly relies on this distinction."
+    )
+    assert "UC-TRANS-003" not in found
+
+
+def test_strip_gap_blocks_realworld_d4_specs_eliminate_false_positives():
+    """
+    Anchor test: each Phase 226.D4 transformation spec, when scanned by
+    find_references_in_file, must report UC-TRANS-001 as referenced and
+    must NOT report UC-TRANS-002 / UC-TRANS-003 as referenced. Anchors
+    the closure-note contract for Phase 226.D4 in CI.
+    """
+    sys.path.insert(0, str(REPO_ROOT))
+    from scripts.report_uc_journey_test_coverage import find_references_in_file
+
+    specs = [
+        REPO_ROOT / "frontend/e2e/journeys/dpo/JOURNEY-DPO-008.spec.ts",
+        REPO_ROOT / "frontend/e2e/journeys/de/JOURNEY-DE-007.spec.ts",
+        REPO_ROOT / "frontend/e2e/journeys/da/JOURNEY-DA-001.spec.ts",
+        REPO_ROOT / "frontend/e2e/journeys/dc/JOURNEY-DC-007.spec.ts",
+        REPO_ROOT / "frontend/e2e/journeys/dev/JOURNEY-DEV-006.spec.ts",
+    ]
+    for spec in specs:
+        assert spec.is_file(), f"D4 anchor spec missing: {spec}"
+        found = find_references_in_file(
+            spec, ["UC-TRANS-001", "UC-TRANS-002", "UC-TRANS-003"]
+        )
+        assert "UC-TRANS-001" in found, f"{spec.name} should attribute UC-TRANS-001"
+        assert "UC-TRANS-002" not in found, (
+            f"{spec.name} false-attributes UC-TRANS-002 as covered — Phase 226.D4 closure violated"
+        )
+        assert "UC-TRANS-003" not in found, (
+            f"{spec.name} false-attributes UC-TRANS-003 as covered — Phase 226.D4 closure violated"
+        )

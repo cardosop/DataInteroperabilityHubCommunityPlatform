@@ -83,15 +83,70 @@ def collect_test_files(root: Path) -> list[Path]:
     return sorted(set(files))
 
 
+_GAP_BLOCK_HEAD_RE = re.compile(r"\b(Coverage gap|NOT covered)\b")
+
+
+def strip_gap_blocks(content: str) -> str:
+    """
+    Remove text inside ``Coverage gap`` / ``NOT covered`` comment blocks before
+    substring matching, so IDs listed there are NOT attributed as covered.
+
+    Convention: a gap block starts on a line containing ``Coverage gap`` or
+    ``NOT covered`` and continues until a blank line, a blank-comment line
+    (``*`` with no other content), or end of content.
+
+    Why this exists: spec authors mark partial-coverage gaps with the literal
+    UC IDs of the missing scenarios so a future implementer can grep
+    ``UC-FOO-002`` and find the exact spec that needs the missing coverage
+    added — bidirectional traceability for humans. Without this filter, the
+    naive substring matcher in :func:`find_references_in_file` would falsely
+    attribute those gap-listed IDs as covered. See the
+    ``Coverage gap (intentionally out of scope; ...)`` blocks in the
+    transformation specs (Phase 226.D4) for the canonical use of this
+    convention.
+    """
+    out: list[str] = []
+    in_gap = False
+    for line in content.splitlines(keepends=True):
+        if not in_gap:
+            if _GAP_BLOCK_HEAD_RE.search(line):
+                in_gap = True
+                # Drop the head line entirely so a same-line declaration like
+                # "Coverage gap: UC-XXX-002" doesn't slip through. The label
+                # itself does not contain UC IDs by convention.
+                continue
+            out.append(line)
+            continue
+        # in_gap == True
+        stripped = line.strip()
+        # Block ends at a blank line, a blank JSDoc/Python-docstring line
+        # (`*` or `#` alone), or any line that's not continuing a comment.
+        is_blank_comment = stripped in ("", "*", "*/", "#") or re.fullmatch(
+            r"[*#/]+\s*", stripped or ""
+        ) is not None
+        is_continuing_comment = bool(re.match(r"^\s*(\*|#|//)", line))
+        if is_blank_comment or not is_continuing_comment:
+            in_gap = False
+            out.append(line)
+        # else: drop the line — it is inside the gap region.
+    return "".join(out)
+
+
 def find_references_in_file(file_path: Path, ids: list[str]) -> list[str]:
-    """Return which of the given IDs appear in the file content (docstring, name)."""
+    """
+    Return which of the given IDs appear in the file content (docstring, name).
+
+    Text inside ``Coverage gap`` / ``NOT covered`` comment blocks is removed
+    before matching — see :func:`strip_gap_blocks`.
+    """
     try:
         content = file_path.read_text()
     except Exception:
         return []
+    scanned = strip_gap_blocks(content)
     found: list[str] = []
     for id_ in ids:
-        if id_ in content:
+        if id_ in scanned:
             found.append(id_)
     return found
 
