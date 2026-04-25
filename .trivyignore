@@ -364,3 +364,21 @@ CVE-2026-31570
 CVE-2026-31581
 CVE-2026-31583
 CVE-2026-31586
+
+# Added: 2026-04-25 (datacontract-service trivy gate — run 24941570064)
+# CVE-2026-41989 — Libgcrypt: Denial of Service and buffer overflow via
+# crafted ECDH ciphertext. Affects libgcrypt20 1.11.0-7 in the
+# python:3.12-slim base image. Status=affected, no Debian fix published.
+#
+# Impact: None for datacontract-service.
+#   - libgcrypt is pulled in transitively by GnuPG / curl / libsystemd
+#     in the base image; the datacontract-service Python code does not
+#     import or call into libgcrypt directly (`grep -r gcrypt services/
+#     datacontract-service` finds zero usage).
+#   - The CVE requires the attacker to feed crafted ECDH ciphertext into
+#     libgcrypt's ECDH decryption routine. Datacontract-service exposes a
+#     contract-validation HTTP API (JSON/YAML in, validation result out);
+#     no ECDH key exchange happens in this service. TLS to/from clients
+#     terminates at the ingress/ALB, not inside libgcrypt.
+# Review by: 2026-05-25 — drop once Debian backports a fix to bookworm.
+CVE-2026-41989
