@@ -12,7 +12,7 @@
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",
     "lint:rules": "node e2e/.eslint-rules/run-tests.cjs",
-    "lint:e2e:guards": "eslint e2e --rule 'e2e-guards/no-test-skip-true: error' --rule 'e2e-guards/no-conditional-count-assertion: warn' --rule 'e2e-guards/no-catch-swallow-in-tests: warn' --rule 'e2e-guards/no-bare-catch-in-tests: warn' --rule 'no-useless-catch: error'",
+    "lint:e2e:guards": "eslint e2e",
     "typecheck": "tsc --noEmit",
     "format": "prettier --write \"src/**/*.{ts,tsx,css}\"",
     "format:check": "prettier --check \"src/**/*.{ts,tsx,css}\"",
