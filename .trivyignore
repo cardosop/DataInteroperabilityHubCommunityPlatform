@@ -271,3 +271,50 @@ CVE-2026-31528
 # never executed.
 # Review by: 2026-05-24.
 CVE-2026-31532
+
+# Added: 2026-04-25 (worker-service trivy gate — run 24939962860)
+# Twenty-eight kernel CVEs published today against linux-libc-dev 6.12.74-2
+# in the Debian 13.4 ("Trixie") vulndb. All status=affected, no Debian fix
+# published. Same class as every other linux-libc-dev entry in this file:
+# the package ships userspace kernel headers — containers use the host
+# kernel, so the vulnerable kernel code paths are never executed.
+#
+# Subsystems touched (per CVE titles, none invoked from Meshant workloads):
+#   - KVM x86/SEV (virtualization; we run on managed EKS)
+#   - usbip / usb gadget / cdc-phonet / xen privcmd (USB + paravirt drivers)
+#   - smb client (CIFS file sharing — not used in Python/Django workloads)
+#   - ALSA fireworks/usx2y (audio drivers)
+#   - HID core/alps (input devices)
+#   - rxrpc (AFS RPC), tipc (cluster IPC), stmmac (Synopsys ethernet MAC)
+#   - mptcp slab UAF, xfrm IPsec, netfilter nft_ct
+#   - btrfs filesystem, uinput, x86/CPU FPDSS Zen1 microarch
+#   - mm filemap nr_pages overflow
+# Review by: 2026-05-25.
+CVE-2026-31588
+CVE-2026-31591
+CVE-2026-31592
+CVE-2026-31593
+CVE-2026-31607
+CVE-2026-31609
+CVE-2026-31613
+CVE-2026-31614
+CVE-2026-31617
+CVE-2026-31619
+CVE-2026-31620
+CVE-2026-31623
+CVE-2026-31624
+CVE-2026-31625
+CVE-2026-31628
+CVE-2026-31630
+CVE-2026-31637
+CVE-2026-31638
+CVE-2026-31642
+CVE-2026-31648
+CVE-2026-31649
+CVE-2026-31662
+CVE-2026-31663
+CVE-2026-31665
+CVE-2026-31666
+CVE-2026-31667
+CVE-2026-31669
+CVE-2026-31788
