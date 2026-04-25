@@ -5,6 +5,18 @@
  * Persona: External Developer
  * Reference: docs/USER_JOURNEYS.md
  *
+ * Use cases covered (per docs/CRITICAL_UC_JOURNEY_IDS.yaml):
+ *   - UC-TRANS-001  # Create Transformation Pipeline — API-integration-
+ *                     surface coverage from the External Developer
+ *                     persona (page-load + capability gating). This
+ *                     spec does NOT exercise the developer-side SDK
+ *                     create/execute/monitor calls.
+ *
+ * Coverage gap (intentionally out of scope; queued for future specs):
+ *   - UC-TRANS-002  # Execute Transformation Pipeline
+ *   - UC-TRANS-003  # Monitor Pipeline Execution
+ * Tagging tracked under Phase 226.D4.
+ *
  * Verifies that the transformation API documentation/integration page is accessible.
  * The transformation pipeline feature is capability-gated (`transformation` capability).
  *

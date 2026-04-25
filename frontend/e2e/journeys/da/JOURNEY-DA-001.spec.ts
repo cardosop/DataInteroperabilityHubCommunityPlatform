@@ -5,6 +5,17 @@
  * Persona: Data Analyst
  * Reference: docs/USER_JOURNEYS.md
  *
+ * Use cases covered (per docs/CRITICAL_UC_JOURNEY_IDS.yaml):
+ *   - UC-TRANS-001  # Create Transformation Pipeline — list/route-access
+ *                     coverage from the Data Analyst persona. This spec
+ *                     does NOT submit a pipeline create form or assert
+ *                     pipeline state.
+ *
+ * Coverage gap (intentionally out of scope; queued for future specs):
+ *   - UC-TRANS-002  # Execute Transformation Pipeline
+ *   - UC-TRANS-003  # Monitor Pipeline Execution
+ * Tagging tracked under Phase 226.D4.
+ *
  * Uses placeholder transformation API (/api/v1/transformation/pipelines/).
  * Success/Failure/Edge. Real backend only; no mocks.
  */

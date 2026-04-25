@@ -5,6 +5,18 @@
  * Persona: Data Product Owner
  * Reference: docs/USER_JOURNEYS.md
  *
+ * Use cases covered (per docs/CRITICAL_UC_JOURNEY_IDS.yaml):
+ *   - UC-TRANS-001  # Create Transformation Pipeline — list/create-page
+ *                     navigation + access-control + capability gating.
+ *                     This spec does NOT submit the create form or assert
+ *                     downstream pipeline state.
+ *
+ * Coverage gap (intentionally out of scope; queued for future specs):
+ *   - UC-TRANS-002  # Execute Transformation Pipeline
+ *   - UC-TRANS-003  # Monitor Pipeline Execution
+ * Tagging tracked under Phase 226.D4. The execute/monitor paths require
+ * a running transformation worker on staging that isn't yet wired.
+ *
  * The transformation pipeline feature is capability-gated (`transformation` capability).
  * Routes: /transformation (list), /transformation/create, /transformation/pipelines/:id
  * When the capability is disabled the CapabilityRoute renders /unavailable; when enabled

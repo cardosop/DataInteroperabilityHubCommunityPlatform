@@ -5,6 +5,17 @@
  * Persona: Data Consumer
  * Reference: docs/USER_JOURNEYS.md
  *
+ * Use cases covered (per docs/CRITICAL_UC_JOURNEY_IDS.yaml):
+ *   - UC-TRANS-001  # Create Transformation Pipeline — list/access-control
+ *                     coverage from the Data Consumer persona, including
+ *                     the role-restricted 403/redirect path. This spec
+ *                     does NOT submit a pipeline create form.
+ *
+ * Coverage gap (intentionally out of scope; queued for future specs):
+ *   - UC-TRANS-002  # Execute Transformation Pipeline
+ *   - UC-TRANS-003  # Monitor Pipeline Execution
+ * Tagging tracked under Phase 226.D4.
+ *
  * The transformation pipeline feature is capability-gated (`transformation` capability).
  * Routes: /transformation (list), /transformation/create, /transformation/pipelines/:id
  *
