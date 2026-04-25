@@ -49,6 +49,7 @@ async function loginViaApiMarketplace(user: TestUser): Promise<string> {
         continue;
       }
       if (!response.ok) {
+        // intentional: api-marketplace fixture wraps best-effort listing/order reuse; failure means we create fresh, not test failure. Final failure surfaces if the fresh path itself fails.
         const body = await response.text().catch(() => '');
         throw new Error(`Login failed: ${response.status} ${body}`);
       }
@@ -132,6 +133,7 @@ export async function createListingViaApi(
     body: JSON.stringify(body),
   });
   if (!resp.ok) {
+    // intentional: api-marketplace fixture wraps best-effort listing/order reuse; failure means we create fresh, not test failure. Final failure surfaces if the fresh path itself fails.
     const body = await resp.text().catch(() => '');
     throw new Error(`createListingViaApi failed: ${resp.status} ${body}`);
   }
@@ -170,6 +172,7 @@ export async function publishListingViaApi(
     { method: 'POST', headers }
   );
   if (!publishResp.ok) {
+    // intentional: api-marketplace fixture wraps best-effort listing/order reuse; failure means we create fresh, not test failure. Final failure surfaces if the fresh path itself fails.
     const body = await publishResp.text().catch(() => '');
     throw new Error(`publishListingViaApi failed: ${publishResp.status} ${body}`);
   }
@@ -194,6 +197,7 @@ export async function placeOrderViaApi(
     body: JSON.stringify({ listing_id: listingId }),
   });
   if (!resp.ok) {
+    // intentional: api-marketplace fixture wraps best-effort listing/order reuse; failure means we create fresh, not test failure. Final failure surfaces if the fresh path itself fails.
     const body = await resp.text().catch(() => '');
     // 409 = consumer already has an active order for this listing. Extract the
     // existing order_id from the error response instead of failing — the test's
@@ -230,6 +234,7 @@ export async function getOrderStatusViaApi(user: TestUser, orderId: string): Pro
     headers: { Authorization: `Bearer ${token}` },
   });
   if (!resp.ok) {
+    // intentional: api-marketplace fixture wraps best-effort listing/order reuse; failure means we create fresh, not test failure. Final failure surfaces if the fresh path itself fails.
     const body = await resp.text().catch(() => '');
     throw new Error(`getOrderStatusViaApi failed: ${resp.status} ${body}`);
   }
@@ -251,6 +256,7 @@ export async function approveOrderViaApi(adminUser: TestUser, orderId: string): 
     },
   });
   if (!resp.ok) {
+    // intentional: api-marketplace fixture wraps best-effort listing/order reuse; failure means we create fresh, not test failure. Final failure surfaces if the fresh path itself fails.
     const body = await resp.text().catch(() => '');
     throw new Error(`approveOrderViaApi failed: ${resp.status} ${body}`);
   }
@@ -268,6 +274,7 @@ export async function getEntitlementsViaApi(
     headers: { Authorization: `Bearer ${token}` },
   });
   if (!resp.ok) {
+    // intentional: api-marketplace fixture wraps best-effort listing/order reuse; failure means we create fresh, not test failure. Final failure surfaces if the fresh path itself fails.
     const body = await resp.text().catch(() => '');
     throw new Error(`getEntitlementsViaApi failed: ${resp.status} ${body}`);
   }

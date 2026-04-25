@@ -122,15 +122,59 @@ function isSilentConstantExpression(expr) {
  * never empty-bodied containers.
  */
 function hasIntentionalJustification(callNode, sourceCode) {
+  // Walk up the parent chain collecting ancestors that could legitimately
+  // carry a leading `// intentional: <why>` annotation. We accept:
+  //   * the call expression itself (for trailing or leading-line comments
+  //     that abut the `.catch(...)` line)
+  //   * any AwaitExpression / VariableDeclaration / ReturnStatement
+  //     directly wrapping it (the most common shape — comment goes above
+  //     `const x = await foo.catch(...)`)
+  //   * the closest enclosing **statement** of ANY kind (IfStatement,
+  //     ForStatement, ExpressionStatement, etc.) — handles the natural
+  //     `// intentional: …  /  if (cond) await foo.catch(...)` shape
+  //     where the comment licenses the entire conditional including the
+  //     mid-chain swallow.
+  // We bound the walk depth to keep the search cheap and prevent a
+  // far-away annotation from licensing distant inner code.
+  // Real statement nodes only — AwaitExpression is an expression, not a
+  // statement, so it must NOT short-circuit the walk to the enclosing
+  // IfStatement / ForStatement / TryStatement etc. (those are where
+  // a `// intentional: …` annotation typically lives).
+  const STATEMENT_TYPES = new Set([
+    'ExpressionStatement',
+    'VariableDeclaration',
+    'ReturnStatement',
+    'IfStatement',
+    'ForStatement',
+    'ForOfStatement',
+    'ForInStatement',
+    'WhileStatement',
+    'DoWhileStatement',
+    'TryStatement',
+    'SwitchStatement',
+    'BlockStatement',
+    'ThrowStatement',
+  ]);
+
   const candidates = [callNode];
   let p = callNode.parent;
-  for (let i = 0; i < 4 && p; i++, p = p.parent) {
+  for (let i = 0; i < 8 && p; i++, p = p.parent) {
     if (
       p.type === 'ExpressionStatement' ||
       p.type === 'VariableDeclaration' ||
       p.type === 'ReturnStatement' ||
       p.type === 'AwaitExpression'
     ) {
+      candidates.push(p);
+    }
+    // Collect every enclosing statement within the bounded walk depth.
+    // Each is a place an author might legitimately put a leading
+    // `// intentional: …` comment (above the `if`, above the outer
+    // `try`, above the function-body's open brace, etc.). The first
+    // candidate whose preceding-comment matches wins; we don't stop
+    // at "first enclosing statement" because the annotation may be
+    // outside the inner-most one (e.g. above an outer `try { ... }`).
+    if (STATEMENT_TYPES.has(p.type)) {
       candidates.push(p);
     }
   }

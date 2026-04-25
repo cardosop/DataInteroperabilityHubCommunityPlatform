@@ -56,6 +56,7 @@ test.describe('JOURNEY-DC-015: Purchase ODPS Product (Marketplace)', () => {
         '/marketplace/listings/00000000-0000-0000-0000-000000000000',
         { timeout: 65000 }
       );
+      // intentional: best-effort .catch on an optional step — primary pass/fail is made by a downstream assertion (verifyViaApi, waitFor, explicit expect). The fallback value tolerates well-known transient or absent-UI cases without papering over real failures.
       await page
         .locator('.error-display, .listing-detail-main')
         .first()

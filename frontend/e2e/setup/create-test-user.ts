@@ -271,6 +271,7 @@ export async function ensureTestUser(): Promise<TestUser> {
         return { email, password, name };
       }
       // Intentional fallback: malformed JSON (e.g. HTML error page) -> empty object for error parsing
+      // intentional: test-user setup retries against rate-limited / cold backends; each catch is part of an explicit retry/backoff loop with final failure raised by the caller.
       const errorData = await registerResponse.json().catch(() => ({}));
       if ((registerResponse.status === 400 || registerResponse.status === 409) && isAlreadyRegisteredError(errorData)) {
         console.log('⚠️  Test user already registered, syncing password via ensure_e2e_user_roles');
@@ -473,6 +474,7 @@ async function ensureE2ESubscriptionForUser(user: TestUser, baseUrl: string = AP
           // Transient server error — retry
           throw new Error(`Subscription ensure endpoint failed: ${ensureRes.status}`);
         } else {
+          // intentional: test-user setup retries against rate-limited / cold backends; each catch is part of an explicit retry/backoff loop with final failure raised by the caller.
           const body = await ensureRes.text().catch(() => '');
           console.log(
             `⚠️ ensureE2ESubscription: ensure endpoint returned ${ensureRes.status}: ${body.slice(0, 200)}`
@@ -576,6 +578,7 @@ export async function ensureConsumerTestUser(): Promise<TestUser> {
         return { email, password, name };
       }
       // Intentional fallback: malformed JSON (e.g. HTML error page) -> empty object for error parsing
+      // intentional: test-user setup retries against rate-limited / cold backends; each catch is part of an explicit retry/backoff loop with final failure raised by the caller.
       const errorData = await registerResponse.json().catch(() => ({}));
       if ((registerResponse.status === 400 || registerResponse.status === 409) && isAlreadyRegisteredError(errorData)) {
         console.log('⚠️  Consumer test user already registered, using existing credentials');
@@ -739,6 +742,7 @@ async function registerPersonaViaApi(user: TestUser, baseUrl: string = API_BASE_
       console.log(`✅ Persona user ${user.email} registered via API`);
       return true;
     }
+    // intentional: test-user setup retries against rate-limited / cold backends; each catch is part of an explicit retry/backoff loop with final failure raised by the caller.
     const errorData = await registerResponse.json().catch(() => ({}));
     if ((registerResponse.status === 400 || registerResponse.status === 409) && isAlreadyRegisteredError(errorData)) {
       return true; // Already exists

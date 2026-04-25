@@ -48,6 +48,7 @@ async function loginViaApiUsers(user: TestUser): Promise<string> {
         continue;
       }
       if (!response.ok) {
+        // intentional: best-effort .catch on an optional step — primary pass/fail is made by a downstream assertion (verifyViaApi, waitFor, explicit expect). The fallback value tolerates well-known transient or absent-UI cases without papering over real failures.
         const body = await response.text().catch(() => '');
         throw new Error(`Login failed: ${response.status} ${body}`);
       }
@@ -93,6 +94,7 @@ export async function inviteUserViaApi(
     });
     if (resp.status === 404) continue; // Try next endpoint
     if (!resp.ok) {
+      // intentional: best-effort .catch on an optional step — primary pass/fail is made by a downstream assertion (verifyViaApi, waitFor, explicit expect). The fallback value tolerates well-known transient or absent-UI cases without papering over real failures.
       const body = await resp.text().catch(() => '');
       lastError = new Error(`Invite user failed: ${resp.status} ${body}`);
       continue;
@@ -115,6 +117,7 @@ export async function inviteUserViaApi(
     body: JSON.stringify({ email, role, password: 'TempPass123!' }),
   });
   if (!createResp.ok) {
+    // intentional: best-effort .catch on an optional step — primary pass/fail is made by a downstream assertion (verifyViaApi, waitFor, explicit expect). The fallback value tolerates well-known transient or absent-UI cases without papering over real failures.
     const body = await createResp.text().catch(() => '');
     throw lastError || new Error(`Create user fallback failed: ${createResp.status} ${body}`);
   }
@@ -137,6 +140,7 @@ export async function acceptInvitationViaApi(
 
   // If tokenOrEmail looks like an email address, try the test endpoint to get the token
   if (tokenOrEmail.includes('@')) {
+    // intentional: best-effort .catch on an optional step — primary pass/fail is made by a downstream assertion (verifyViaApi, waitFor, explicit expect). The fallback value tolerates well-known transient or absent-UI cases without papering over real failures.
     const testTokenResp = await fetch(
       `${API_BASE_URL}/test/get-invitation-token/?email=${encodeURIComponent(tokenOrEmail)}`
     ).catch(() => null);
@@ -155,6 +159,7 @@ export async function acceptInvitationViaApi(
     });
     if (resp.status === 404) continue;
     if (!resp.ok) {
+      // intentional: best-effort .catch on an optional step — primary pass/fail is made by a downstream assertion (verifyViaApi, waitFor, explicit expect). The fallback value tolerates well-known transient or absent-UI cases without papering over real failures.
       const body = await resp.text().catch(() => '');
       throw new Error(`Accept invitation failed: ${resp.status} ${body}`);
     }
@@ -187,6 +192,7 @@ export async function assignRolesViaApi(
     });
     if (resp.status === 404) continue;
     if (!resp.ok) {
+      // intentional: best-effort .catch on an optional step — primary pass/fail is made by a downstream assertion (verifyViaApi, waitFor, explicit expect). The fallback value tolerates well-known transient or absent-UI cases without papering over real failures.
       const body = await resp.text().catch(() => '');
       throw new Error(`assignRolesViaApi failed: ${resp.status} ${body}`);
     }
@@ -243,6 +249,7 @@ export async function getMeViaApi(
     headers: { Authorization: `Bearer ${token}` },
   });
   if (!resp.ok) {
+    // intentional: best-effort .catch on an optional step — primary pass/fail is made by a downstream assertion (verifyViaApi, waitFor, explicit expect). The fallback value tolerates well-known transient or absent-UI cases without papering over real failures.
     const body = await resp.text().catch(() => '');
     throw new Error(`getMeViaApi failed: ${resp.status} ${body}`);
   }

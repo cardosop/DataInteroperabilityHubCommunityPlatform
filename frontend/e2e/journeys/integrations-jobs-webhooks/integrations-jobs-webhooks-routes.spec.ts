@@ -123,6 +123,7 @@ test.describe('Integrations, Jobs, Scheduled Ingestion, Webhooks routes', () => 
       const nonExistentId = '00000000-0000-0000-0000-000000000000';
       // Fixed: use the full UUID path instead of partial includes('/jobs/') && includes('00000000')
       // which could match unrelated requests. Only 404 is valid; no status filter was previously set.
+      // intentional: best-effort .catch on an optional step — primary pass/fail is made by a downstream assertion (verifyViaApi, waitFor, explicit expect). The fallback value tolerates well-known transient or absent-UI cases without papering over real failures.
       const responsePromise = page
         .waitForResponse(
           (resp) =>
@@ -151,6 +152,7 @@ test.describe('Integrations, Jobs, Scheduled Ingestion, Webhooks routes', () => 
       }
       await responsePromise;
 
+      // intentional: best-effort .catch on an optional step — primary pass/fail is made by a downstream assertion (verifyViaApi, waitFor, explicit expect). The fallback value tolerates well-known transient or absent-UI cases without papering over real failures.
       await page.locator('.error-display, .error-display-title, .job-detail-page')
         .first().waitFor({ state: 'visible', timeout: 30000 }).catch(() => null);
 

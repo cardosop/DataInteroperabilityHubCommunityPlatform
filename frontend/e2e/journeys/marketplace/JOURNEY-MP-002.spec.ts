@@ -44,6 +44,7 @@ test.describe('JOURNEY-MP-002: Publish Asset to Marketplace', () => {
     test('DPO can fill publish form and submit listing', async ({ page }) => {
       const testUser = await getTestUser();
       // ListingPublishPage only shows ACTIVE assets in the dropdown — must use ensureActivated
+      // intentional: best-effort .catch on an optional step — primary pass/fail is made by a downstream assertion (verifyViaApi, waitFor, explicit expect). The fallback value tolerates well-known transient or absent-UI cases without papering over real failures.
       const assetId = await createAssetViaApi(testUser, { ensureActivated: true }).catch(() => null);
       if (!assetId) {
         test.skip(true, 'Could not create/find an ACTIVE asset — skipping publish form interaction');
@@ -82,6 +83,7 @@ test.describe('JOURNEY-MP-002: Publish Asset to Marketplace', () => {
       // The select is populated asynchronously by useAssets({ status: 'ACTIVE' }).
       // Wait for the specific option to appear before selecting — avoids silent selectOption failure
       // if React Query hasn't resolved yet when the page first renders.
+      // intentional: best-effort .catch on an optional step — primary pass/fail is made by a downstream assertion (verifyViaApi, waitFor, explicit expect). The fallback value tolerates well-known transient or absent-UI cases without papering over real failures.
       const assetOptionAvailable = await page
         .waitForSelector(`#asset_id option[value="${assetId}"]`, { state: 'attached', timeout: 15000 })
         .then(() => true)
@@ -141,6 +143,7 @@ test.describe('JOURNEY-MP-002: Publish Asset to Marketplace', () => {
         );
       } else if (resultType === 'api-error') {
         // Backend rejected the listing creation (e.g. duplicate, permission, plan limit)
+        // intentional: best-effort .catch on an optional step — primary pass/fail is made by a downstream assertion (verifyViaApi, waitFor, explicit expect). The fallback value tolerates well-known transient or absent-UI cases without papering over real failures.
         const errText = await page.locator('.error-display').first().textContent().catch(() => '');
         test.info().annotations.push({
           type: 'note',

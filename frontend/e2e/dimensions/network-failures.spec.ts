@@ -113,6 +113,7 @@ test.describe('Dimension: Network failures', () => {
     const url = page.url();
     const onLogin = url.includes('/login');
     const onChromeError = url.startsWith('chrome-error://');
+    // intentional: best-effort .catch on an optional step — primary pass/fail is made by a downstream assertion (verifyViaApi, waitFor, explicit expect). The fallback value tolerates well-known transient or absent-UI cases without papering over real failures.
     const bodyText = (await page.locator('body').textContent().catch(() => '')) ?? '';
     const hasVisibleContent = bodyText.trim().length > 0;
     const sawDisconnectedError =

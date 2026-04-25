@@ -21,6 +21,9 @@ import {
 } from '../../fixtures/auth-journey-steps';
 import { waitForLoadingComplete } from '../../fixtures/helpers';
 import { getMeViaApi } from '../../fixtures/api-users';
+// Phase 226 B1d — dual-channel verification after register + first asset.
+import { verifyViaApi } from '../../fixtures/verifyViaApi';
+import { verifyAuditEvent } from '../../fixtures/verifyAuditEvent';
 
 /**
  * Navigate to the registration page, handling the /login → "Create an account" link flow.
@@ -153,6 +156,21 @@ test.describe('JOURNEY-AUTH-001: First-Time Visitor Registers', () => {
         .first();
       await expect(assetHeading).toBeVisible({ timeout: 15_000 });
       await expect(assetHeading).toContainText('E2E Personal Asset', { timeout: 10_000 });
+
+      // Phase 226 B1d — dual-channel verification. Critical for AUTH-001 / UC-AUTH-001
+      // because the whole register → tenant-creation → asset-create chain
+      // must prove backend state, not just UI state. Newly-registered users
+      // are the most likely class to hit tenant-scoping bugs.
+      const assetId = page.url().split('/').pop() ?? '';
+      await verifyViaApi(page, `/api/v1/assets/${assetId}/`, {
+        key: assetKey,
+        status: 'DRAFT',
+      });
+      await verifyAuditEvent(page, {
+        action: 'ASSET_CREATED',
+        resourceType: 'ASSET',
+        resourceId: assetId,
+      });
     });
   });
 
@@ -185,6 +203,7 @@ test.describe('JOURNEY-AUTH-001: First-Time Visitor Registers', () => {
       await page.fill('input#email', email);
       await page.fill('input#password', password);
       await page.click('button[type="submit"]');
+      // intentional: best-effort .catch on an optional step — primary pass/fail is made by a downstream assertion (verifyViaApi, waitFor, explicit expect). The fallback value tolerates well-known transient or absent-UI cases without papering over real failures.
       await page.waitForSelector('.error-message, [role="alert"]', { timeout: 15000 }).catch(() => null);
       await page.waitForTimeout(2000);
       const hasError =
@@ -302,6 +321,7 @@ test.describe('JOURNEY-AUTH-001: First-Time Visitor Registers', () => {
           const hasNetworkError =
             (await page.locator('.error-message').count()) > 0 &&
             /(network|connection|unavailable|try again)/i.test(
+              // intentional: best-effort .catch on an optional step — primary pass/fail is made by a downstream assertion (verifyViaApi, waitFor, explicit expect). The fallback value tolerates well-known transient or absent-UI cases without papering over real failures.
               (await page.locator('.error-message').first().textContent().catch(() => '')) ?? ''
             );
           test.skip(

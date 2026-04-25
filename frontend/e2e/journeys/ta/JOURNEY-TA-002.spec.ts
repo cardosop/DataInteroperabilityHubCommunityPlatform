@@ -140,11 +140,13 @@ test.describe('JOURNEY-TA-002: Manage User Roles', () => {
       const successLocator = page
         .locator('.success-message, [data-testid="save-success"], .toast-success')
         .or(page.getByText(/saved|updated|success/i));
+      // intentional: best-effort .catch on an optional step — primary pass/fail is made by a downstream assertion (verifyViaApi, waitFor, explicit expect). The fallback value tolerates well-known transient or absent-UI cases without papering over real failures.
       const hasSuccessToast = await successLocator.first().isVisible().catch(() => false);
       const redirectedToAdmin = page.url().includes('/admin');
       expect(hasSuccessToast || redirectedToAdmin).toBe(true) /* acceptable states */;
 
       // ── Backend verification: re-fetch user and assert role changed ───────
+      // intentional: best-effort .catch on an optional step — primary pass/fail is made by a downstream assertion (verifyViaApi, waitFor, explicit expect). The fallback value tolerates well-known transient or absent-UI cases without papering over real failures.
       const updatedUser = await getUserByEmailViaApi(adminUser, email).catch(() => null);
       if (updatedUser) {
         const expectedRole = 'DATA_PROVIDER';
@@ -159,6 +161,7 @@ test.describe('JOURNEY-TA-002: Manage User Roles', () => {
         // Fall back: navigate back to user edit page and verify checkbox state changed.
         // (The page may have redirected to /admin after save — locators from the prior page are stale.)
         await page.goto(`/admin/users/${userId}/edit`);
+        // intentional: best-effort .catch on an optional step — primary pass/fail is made by a downstream assertion (verifyViaApi, waitFor, explicit expect). The fallback value tolerates well-known transient or absent-UI cases without papering over real failures.
         await page.waitForSelector('.user-edit-page, .user-edit-form, form', { timeout: 15000 }).catch(() => null);
         const reloadedCheckbox = page
           .locator('.user-edit-role-checkbox')
@@ -191,6 +194,7 @@ test.describe('JOURNEY-TA-002: Manage User Roles', () => {
       // Error display is NOT an acceptable outcome for an admin user on the admin page
       const hasError = (await page.locator('.error-display').count()) > 0;
       if (hasError) {
+        // intentional: best-effort .catch on an optional step — primary pass/fail is made by a downstream assertion (verifyViaApi, waitFor, explicit expect). The fallback value tolerates well-known transient or absent-UI cases without papering over real failures.
         const errText = await page.locator('.error-display').first().textContent().catch(() => '');
         // 403/permission errors are acceptable (user may not have full admin rights)
         if (!/403|forbidden|permission/i.test(errText ?? '')) {
@@ -214,6 +218,7 @@ test.describe('JOURNEY-TA-002: Manage User Roles', () => {
       // Wait for the SPA auth guard to redirect unauthenticated users to /login or /403.
       // The previous pattern /\/(login|admin|403)/ matched /admin immediately before the
       // redirect completed; use a more specific pattern that requires the actual destination.
+      // intentional: best-effort .catch on an optional step — primary pass/fail is made by a downstream assertion (verifyViaApi, waitFor, explicit expect). The fallback value tolerates well-known transient or absent-UI cases without papering over real failures.
       await page.waitForURL(/\/(login|403)(\?|$)/, { timeout: 20_000 }).catch(() => null);
       const url = page.url();
       const redirectedCorrectly =

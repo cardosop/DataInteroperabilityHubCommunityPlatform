@@ -7,6 +7,8 @@ import { randomUUID } from 'node:crypto';
 import { expect, test } from '@playwright/test';
 import { clearAuthStorage, getTestUser } from '../../fixtures/auth';
 import { hasLoginPrompt, loginAndNavigateToRoute, waitForLoadingComplete } from '../../fixtures/helpers';
+import { verifyViaApi } from '../../fixtures/verifyViaApi';
+import { verifyAuditEvent } from '../../fixtures/verifyAuditEvent';
 
 test.describe('Asset Creation Flow', () => {
   test.setTimeout(120000);
@@ -111,5 +113,23 @@ test.describe('Asset Creation Flow', () => {
     const statusBadge = page.locator('.asset-detail-page .status-badge').first();
     await expect(statusBadge).toBeVisible({ timeout: 10000 });
     await expect(statusBadge).toContainText('DRAFT');
+
+    // Phase 226 B1a + G8a — dual-channel verification. The UI shows the
+    // asset page; the API must confirm the backend persisted it with the
+    // expected key + DRAFT status, and the audit trail must carry the
+    // ASSET_CREATED event. Without these two checks a UI that renders
+    // consistently around stale/incorrect backend state would pass silently.
+    const assetUrl = page.url();
+    const assetId = assetUrl.split('/').pop() ?? '';
+    expect(assetId.length).toBeGreaterThan(30);
+    await verifyViaApi(page, `/api/v1/assets/${assetId}/`, {
+      key: assetKey,
+      status: 'DRAFT',
+    });
+    await verifyAuditEvent(page, {
+      action: 'ASSET_CREATED',
+      resourceType: 'ASSET',
+      resourceId: assetId,
+    });
   });
 });

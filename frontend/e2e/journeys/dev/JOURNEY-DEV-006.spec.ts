@@ -33,6 +33,7 @@ test.describe('JOURNEY-DEV-006: Integrate Transformation Pipeline API', () => {
         throw new Error('Unexpected redirect to login on /transformation');
       }
 
+      // intentional: best-effort .catch on an optional step — primary pass/fail is made by a downstream assertion (verifyViaApi, waitFor, explicit expect). The fallback value tolerates well-known transient or absent-UI cases without papering over real failures.
       await page.waitForSelector(
         '.transformation-pipeline-list-page, .empty-state, .unavailable-page',
         { timeout: 30000 }

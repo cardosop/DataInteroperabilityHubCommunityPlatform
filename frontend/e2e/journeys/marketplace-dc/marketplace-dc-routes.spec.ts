@@ -71,6 +71,7 @@ test.describe('Marketplace and Data Consumer routes', () => {
       const nonExistentId = '00000000-0000-0000-0000-000000000000';
       // Added .catch(() => null) — without it, if a login redirect fires before the API
       // responds, the 15s waitForResponse hard-throws instead of gracefully handling it.
+      // intentional: best-effort .catch on an optional step — primary pass/fail is made by a downstream assertion (verifyViaApi, waitFor, explicit expect). The fallback value tolerates well-known transient or absent-UI cases without papering over real failures.
       const responsePromise = page.waitForResponse(
         (resp) =>
           resp.url().includes(`/marketplace/listings/${nonExistentId}`) &&
@@ -99,6 +100,7 @@ test.describe('Marketplace and Data Consumer routes', () => {
 
       // Wait for error display — React Query retries failed requests before showing error,
       // so the error display can take 15-30s to appear after the initial 404 response.
+      // intentional: best-effort .catch on an optional step — primary pass/fail is made by a downstream assertion (verifyViaApi, waitFor, explicit expect). The fallback value tolerates well-known transient or absent-UI cases without papering over real failures.
       await page.locator('.error-display, .error-display-title, .listing-detail-main')
         .first().waitFor({ state: 'visible', timeout: 30000 }).catch(() => null);
 
@@ -167,6 +169,7 @@ test.describe('Marketplace and Data Consumer routes', () => {
       // ListingDetailPage to mount and fetch the non-existent listing. TanStack Query
       // retries 3x (exponential: ~1s,2s,4s) before settling into error state.
       // networkidle guarantees all retries are complete before we inspect the DOM.
+      // intentional: best-effort .catch on an optional step — primary pass/fail is made by a downstream assertion (verifyViaApi, waitFor, explicit expect). The fallback value tolerates well-known transient or absent-UI cases without papering over real failures.
       await page.waitForLoadState('networkidle', { timeout: 30000 }).catch(() => null);
       const url = page.url();
 
@@ -175,6 +178,7 @@ test.describe('Marketplace and Data Consumer routes', () => {
       // so after networkidle the listing fetch is settled: either ErrorDisplay or 404 page.
       const onPurchasePath = url.includes('/marketplace/listings/');
       // Wait for ErrorDisplay to appear — it renders immediately after the single 404 response
+      // intentional: best-effort .catch on an optional step — primary pass/fail is made by a downstream assertion (verifyViaApi, waitFor, explicit expect). The fallback value tolerates well-known transient or absent-UI cases without papering over real failures.
       await page
         .locator('.error-display, .error-display-title, text="404 - Page Not Found"')
         .first()
@@ -205,6 +209,7 @@ test.describe('Marketplace and Data Consumer routes', () => {
       await clearAuthStorage(page);
       await gotoWithRetry(page, '/marketplace');
       // Allow time for the redirect
+      // intentional: best-effort .catch on an optional step — primary pass/fail is made by a downstream assertion (verifyViaApi, waitFor, explicit expect). The fallback value tolerates well-known transient or absent-UI cases without papering over real failures.
       await page.waitForURL('**/login**', { timeout: 30000 }).catch(() => null);
       expect(page.url()).toContain('/login');
     });

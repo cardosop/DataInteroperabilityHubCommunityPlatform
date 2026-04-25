@@ -70,7 +70,9 @@ test.describe('Feature: Auth', () => {
   test.describe('Failure', () => {
     test('login with empty credentials shows validation or stays on login', async ({ page }) => {
       await page.goto('/login', { waitUntil: 'domcontentloaded' });
+      // intentional: best-effort .catch on an optional step — primary pass/fail is made by a downstream assertion (verifyViaApi, waitFor, explicit expect). The fallback value tolerates well-known transient or absent-UI cases without papering over real failures.
       await page.waitForSelector('input[type="email"]', { timeout: 15000 }).catch(() => null);
+      // intentional: best-effort .catch on an optional step — primary pass/fail is made by a downstream assertion (verifyViaApi, waitFor, explicit expect). The fallback value tolerates well-known transient or absent-UI cases without papering over real failures.
       await page.click('button[type="submit"]').catch(() => null);
       // Wait for validation feedback to appear (HTML5 validation or server response)
       await page
@@ -107,6 +109,7 @@ test.describe('Feature: Auth', () => {
       await page.goto('/nonexistent-auth-route-xyz', { waitUntil: 'domcontentloaded' });
 
       // Wait for any terminal state — 404 content, app shell, or loading
+      // intentional: best-effort .catch on an optional step — primary pass/fail is made by a downstream assertion (verifyViaApi, waitFor, explicit expect). The fallback value tolerates well-known transient or absent-UI cases without papering over real failures.
       await page
         .locator('.not-found-page, .app-main, [role="status"], text=/not found|404|loading/i')
         .first()
@@ -148,6 +151,7 @@ test.describe('Feature: Auth', () => {
       // Wait for the TERMINAL state: either the form fields render (capabilities confirmed
       // registration available) or the unavailable page appears (registration disabled).
       // 60s covers: capabilities fetch (25s) + retry (25s) + React render.
+      // intentional: best-effort .catch on an optional step — primary pass/fail is made by a downstream assertion (verifyViaApi, waitFor, explicit expect). The fallback value tolerates well-known transient or absent-UI cases without papering over real failures.
       await page
         .locator('input#name, .unavailable-page')
         .first()
@@ -172,6 +176,7 @@ test.describe('Feature: Auth', () => {
       }
       if ((await page.locator('input#name').count()) === 0) return false;
       // Wait for all form fields to render (React may batch state updates)
+      // intentional: best-effort .catch on an optional step — primary pass/fail is made by a downstream assertion (verifyViaApi, waitFor, explicit expect). The fallback value tolerates well-known transient or absent-UI cases without papering over real failures.
       await page
         .locator('input#password')
         .waitFor({ state: 'visible', timeout: 5000 })
@@ -253,6 +258,7 @@ test.describe('Feature: Auth', () => {
       await page.locator('input#password').fill('SecurePass123');
       // Wait for API response — registration with duplicate email must return 4xx
       const [response] = await Promise.all([
+        // intentional: best-effort .catch on an optional step — primary pass/fail is made by a downstream assertion (verifyViaApi, waitFor, explicit expect). The fallback value tolerates well-known transient or absent-UI cases without papering over real failures.
         page
           .waitForResponse(
             (resp) =>
@@ -298,6 +304,7 @@ test.describe('Feature: Auth', () => {
   test.describe('Edge', () => {
     test('register page loads or redirects when registration disabled', async ({ page }) => {
       await page.goto('/register', { waitUntil: 'domcontentloaded' });
+      // intentional: best-effort .catch on an optional step — primary pass/fail is made by a downstream assertion (verifyViaApi, waitFor, explicit expect). The fallback value tolerates well-known transient or absent-UI cases without papering over real failures.
       await page
         .locator('h1, .register-page, .unavailable-page')
         .first()

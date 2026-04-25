@@ -68,6 +68,7 @@ test.describe('DQ, Compliance, Governance routes', () => {
         (await page.locator('.error-display').count()) > 0 ||
         (await page.locator('.error-display-title').count()) > 0;
       if (hasError) {
+        // intentional: best-effort .catch on an optional step — primary pass/fail is made by a downstream assertion (verifyViaApi, waitFor, explicit expect). The fallback value tolerates well-known transient or absent-UI cases without papering over real failures.
         const errText = await page
           .locator('.error-display, .error-display-title')
           .first()
@@ -95,6 +96,7 @@ test.describe('DQ, Compliance, Governance routes', () => {
       });
       if (!ok) return;
 
+      // intentional: best-effort .catch on an optional step — primary pass/fail is made by a downstream assertion (verifyViaApi, waitFor, explicit expect). The fallback value tolerates well-known transient or absent-UI cases without papering over real failures.
       await page.locator('.error-display, .error-display-title, .dq-run-detail-page')
         .first().waitFor({ state: 'visible', timeout: 30000 }).catch(() => null);
 
@@ -110,6 +112,7 @@ test.describe('DQ, Compliance, Governance routes', () => {
 
       // H3: warn on non-404 errors (e.g. 500, network failure)
       if (hasErrorDisplay) {
+        // intentional: best-effort .catch on an optional step — primary pass/fail is made by a downstream assertion (verifyViaApi, waitFor, explicit expect). The fallback value tolerates well-known transient or absent-UI cases without papering over real failures.
         const errText = await page
           .locator('.error-display, .error-display-title')
           .first()
@@ -130,6 +133,7 @@ test.describe('DQ, Compliance, Governance routes', () => {
       });
       if (!ok) return;
 
+      // intentional: best-effort .catch on an optional step — primary pass/fail is made by a downstream assertion (verifyViaApi, waitFor, explicit expect). The fallback value tolerates well-known transient or absent-UI cases without papering over real failures.
       await page.locator('.error-display, .error-display-title, .compliance-run-detail-page')
         .first().waitFor({ state: 'visible', timeout: 30000 }).catch(() => null);
 
@@ -145,6 +149,7 @@ test.describe('DQ, Compliance, Governance routes', () => {
 
       // H3: warn on non-404 errors (e.g. 500, network failure)
       if (hasErrorDisplay) {
+        // intentional: best-effort .catch on an optional step — primary pass/fail is made by a downstream assertion (verifyViaApi, waitFor, explicit expect). The fallback value tolerates well-known transient or absent-UI cases without papering over real failures.
         const errText = await page
           .locator('.error-display, .error-display-title')
           .first()

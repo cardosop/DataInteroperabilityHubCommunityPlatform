@@ -36,6 +36,7 @@ test.describe('JOURNEY-DE-007: Create Transformation Pipeline', () => {
         return;
       }
 
+      // intentional: best-effort .catch on an optional step — primary pass/fail is made by a downstream assertion (verifyViaApi, waitFor, explicit expect). The fallback value tolerates well-known transient or absent-UI cases without papering over real failures.
       await page.waitForSelector(
         '.transformation-pipeline-list-page, .empty-state, .unavailable-page',
         { timeout: 30000 }
@@ -100,6 +101,7 @@ test.describe('JOURNEY-DE-007: Create Transformation Pipeline', () => {
         return;
       }
 
+      // intentional: best-effort .catch on an optional step — primary pass/fail is made by a downstream assertion (verifyViaApi, waitFor, explicit expect). The fallback value tolerates well-known transient or absent-UI cases without papering over real failures.
       await page.waitForSelector(
         '.transformation-detail-page, .unavailable-page, .error-display',
         { timeout: 30000 }

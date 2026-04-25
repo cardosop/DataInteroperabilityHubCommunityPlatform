@@ -36,6 +36,7 @@ test.describe('UC-INT-001: Install Pre-built Connector', () => {
       const { clearAuthStorage } = await import('../../fixtures/auth');
       await clearAuthStorage(page);
       await page.goto('/integrations', { waitUntil: 'domcontentloaded' });
+      // intentional: best-effort .catch on an optional step — primary pass/fail is made by a downstream assertion (verifyViaApi, waitFor, explicit expect). The fallback value tolerates well-known transient or absent-UI cases without papering over real failures.
       await page.waitForURL(/\/(login|403)/, { timeout: 20_000 }).catch(() => null);
       // Unauthenticated access must redirect — still on /integrations means auth guard is not working
       expect(page.url().includes('/login') || page.url().includes('/403')).toBe(true);

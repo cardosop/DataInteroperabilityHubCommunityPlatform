@@ -25,6 +25,7 @@ test.describe('JOURNEY-DE-013: Configure Data Mesh Domain', () => {
         return;
       }
       expect(page.url()).toContain('/mesh');
+      // intentional: best-effort .catch on an optional step — primary pass/fail is made by a downstream assertion (verifyViaApi, waitFor, explicit expect). The fallback value tolerates well-known transient or absent-UI cases without papering over real failures.
       await page
         .locator('.mesh-domain-list-page, .mesh-domain-list-header, .empty-state, .error-display')
         .first()
@@ -59,6 +60,7 @@ test.describe('JOURNEY-DE-013: Configure Data Mesh Domain', () => {
         '/mesh/00000000-0000-0000-0000-000000000000',
         { timeout: 90000 }
       );
+      // intentional: best-effort .catch on an optional step — primary pass/fail is made by a downstream assertion (verifyViaApi, waitFor, explicit expect). The fallback value tolerates well-known transient or absent-UI cases without papering over real failures.
       await page
         .locator('.error-display, .mesh-domain-detail-page .mesh-domain-detail-content')
         .first()

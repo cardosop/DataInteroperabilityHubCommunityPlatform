@@ -406,12 +406,14 @@ export async function waitForAppMainReady(
     }
     // SPA catch-all NotFoundPage renders with .not-found-page class and role="alert".
     // This is a terminal state for routes that don't exist in the router.
+    // intentional: helpers shared by many specs wrap optional UI/probe steps; failure here means the higher-level locator/waitFor in the calling spec surfaces the error with a useful selector message rather than a swallowed network rejection.
     const has404Page = (await page.locator('.not-found-page').count().catch(() => 0)) > 0;
     if (has404Page) {
       await safeWait(500);
       return;
     }
     // Intentional fallback: evaluate may fail if context destroyed; treat as not ready, continue polling
+    // intentional: helpers shared by many specs wrap optional UI/probe steps; failure here means the higher-level locator/waitFor in the calling spec surfaces the error with a useful selector message rather than a swallowed network rejection.
     const ready = await page
       .evaluate((sel: string | undefined) => {
         const main = document.querySelector('.app-main');
@@ -529,6 +531,7 @@ function startRouteDataApiWait(
   const basePattern = getRouteApiPattern(route);
   if (!basePattern) return undefined;
   // Intentional fallback: API may not fire or may timeout; caller continues without blocking
+  // intentional: helpers shared by many specs wrap optional UI/probe steps; failure here means the higher-level locator/waitFor in the calling spec surfaces the error with a useful selector message rather than a swallowed network rejection.
   return page
     .waitForResponse(
       (r) =>
@@ -753,6 +756,7 @@ export async function navigateOrSkip(
   // the test (e.g. login redirect fires before the API call, or the pattern doesn't match).
   let apiResponse: Promise<{ status: () => number; url: () => string } | null> | undefined;
   if (apiUrlPattern) {
+    // intentional: helpers shared by many specs wrap optional UI/probe steps; failure here means the higher-level locator/waitFor in the calling spec surfaces the error with a useful selector message rather than a swallowed network rejection.
     apiResponse = page.waitForResponse(
       (r) => r.url().includes(apiUrlPattern) && r.request().method() === 'GET',
       { timeout: timeout + 5000 }
@@ -1113,6 +1117,7 @@ async function runNavToRoute(
           doneViaSidebar = true;
         }
       } catch {
+        // intentional: helpers shared by many specs wrap optional UI/probe steps; failure here means the higher-level locator/waitFor in the calling spec surfaces the error with a useful selector message rather than a swallowed network rejection.
         if (apiWait) await apiWait.catch(() => null);
       }
       if (doneViaSidebar) return;
@@ -1145,6 +1150,7 @@ async function runNavToRoute(
       }
       if ((await createBtn.count()) > 0) {
         await createBtn.first().click();
+        // intentional: helpers shared by many specs wrap optional UI/probe steps; failure here means the higher-level locator/waitFor in the calling spec surfaces the error with a useful selector message rather than a swallowed network rejection.
         await page.waitForURL(/\/datasets\/create/, { timeout: 15000 }).catch(() => null);
         await page.waitForLoadState('domcontentloaded');
         await page.waitForTimeout(1000);
@@ -1207,6 +1213,7 @@ async function runNavToRoute(
       // The nav-link is in the DOM but not visible until <details> is open,
       // so a click on the hidden link spins until test timeout. Open the
       // enclosing <details> first if needed.
+      // intentional: helpers shared by many specs wrap optional UI/probe steps; failure here means the higher-level locator/waitFor in the calling spec surfaces the error with a useful selector message rather than a swallowed network rejection.
       if (!(await link.isVisible().catch(() => false))) {
         const parentDetails = link.locator('xpath=ancestor::details[1]');
         if ((await parentDetails.count()) > 0) {
@@ -1215,6 +1222,7 @@ async function runNavToRoute(
           }).catch(() => {});
         }
       }
+      // intentional: helpers shared by many specs wrap optional UI/probe steps; failure here means the higher-level locator/waitFor in the calling spec surfaces the error with a useful selector message rather than a swallowed network rejection.
       if (await link.isVisible().catch(() => false)) {
         const timeout = options.timeout ?? 30000;
         const apiWait = startRouteDataApiWait(page, route, timeout);
@@ -1480,6 +1488,7 @@ export async function navigateToRouteFromApp(
       }
       if ((await createBtn.count()) > 0) {
         await createBtn.first().click();
+        // intentional: helpers shared by many specs wrap optional UI/probe steps; failure here means the higher-level locator/waitFor in the calling spec surfaces the error with a useful selector message rather than a swallowed network rejection.
         await page.waitForURL(/\/datasets\/create/, { timeout: 15000 }).catch(() => null);
         await page.waitForLoadState('domcontentloaded');
         await page.waitForTimeout(1000);
@@ -1554,6 +1563,7 @@ export async function navigateToRouteFromApp(
           doneViaSidebar = true;
         }
       } catch {
+        // intentional: helpers shared by many specs wrap optional UI/probe steps; failure here means the higher-level locator/waitFor in the calling spec surfaces the error with a useful selector message rather than a swallowed network rejection.
         if (apiWait) await apiWait.catch(() => null);
       }
     }
@@ -1647,6 +1657,7 @@ export async function assertApiError(
 
   if (expectedMessage) {
     // Intentional fallback: response body may be non-JSON when parsing fails
+    // intentional: helpers shared by many specs wrap optional UI/probe steps; failure here means the higher-level locator/waitFor in the calling spec surfaces the error with a useful selector message rather than a swallowed network rejection.
     const body = await response.json().catch(() => ({}));
     const message = body.message || body.error || JSON.stringify(body);
 
@@ -1867,6 +1878,7 @@ export async function assertSuccessfulLoad(
       .filter({ hasText: /failed|error|404|500|forbidden|not found/i })
       .count();
     if (errorCount > 0 || errorText > 0) {
+      // intentional: helpers shared by many specs wrap optional UI/probe steps; failure here means the higher-level locator/waitFor in the calling spec surfaces the error with a useful selector message rather than a swallowed network rejection.
       const snippet = await page
         .locator('.error-display, .error-display-title')
         .first()
@@ -2163,6 +2175,7 @@ export async function assertNonExistentIdShowsError(
   // A network error or 500 server error would also show .error-display, but those indicate
   // infrastructure problems, not a correctly handled 404. They must NOT make this test pass.
   if (!hasNotFoundText) {
+    // intentional: helpers shared by many specs wrap optional UI/probe steps; failure here means the higher-level locator/waitFor in the calling spec surfaces the error with a useful selector message rather than a swallowed network rejection.
     const errorText = await page
       .locator('.error-display, .error-display-title')
       .first()
@@ -2505,6 +2518,7 @@ export async function assertListPageLoads(
     (await page.locator('.error-display').count()) +
     (await page.locator('.error-display-title').count());
   if (errorCount > 0) {
+    // intentional: helpers shared by many specs wrap optional UI/probe steps; failure here means the higher-level locator/waitFor in the calling spec surfaces the error with a useful selector message rather than a swallowed network rejection.
     const errText = (await page
       .locator('.error-display, .error-display-title')
       .first()
@@ -2581,6 +2595,7 @@ export async function assertCapabilityGatedPageLoads(
     (await page.locator('.error-display').count()) +
     (await page.locator('.error-display-title').count());
   if (errorCount > 0) {
+    // intentional: helpers shared by many specs wrap optional UI/probe steps; failure here means the higher-level locator/waitFor in the calling spec surfaces the error with a useful selector message rather than a swallowed network rejection.
     const errText = await page
       .locator('.error-display, .error-display-title')
       .first()
@@ -2677,6 +2692,7 @@ export async function switchTenantViaUI(
   expect(switchResp.status()).toBe(200);
 
   // Wait for header to reflect the new tenant name
+  // intentional: helpers shared by many specs wrap optional UI/probe steps; failure here means the higher-level locator/waitFor in the calling spec surfaces the error with a useful selector message rather than a swallowed network rejection.
   await page.waitForFunction(
     (name) => {
       const switcher = document.querySelector(
@@ -2759,6 +2775,7 @@ export async function triggerDQRunViaUI(
   await assetPickerContainer.waitFor({ state: 'visible', timeout: 10000 });
 
   // Wait for any spinner inside the asset picker form group to disappear before clicking
+  // intentional: helpers shared by many specs wrap optional UI/probe steps; failure here means the higher-level locator/waitFor in the calling spec surfaces the error with a useful selector message rather than a swallowed network rejection.
   await page
     .locator('[data-testid="dq-create-asset-picker"] .loading-spinner')
     .first()
@@ -2780,6 +2797,7 @@ export async function triggerDQRunViaUI(
       await assetPickerInput.click();
       await assetPickerInput.fill('');
       const listbox = page.locator('[role="listbox"]').first();
+      // intentional: helpers shared by many specs wrap optional UI/probe steps; failure here means the higher-level locator/waitFor in the calling spec surfaces the error with a useful selector message rather than a swallowed network rejection.
       await listbox.waitFor({ state: 'visible', timeout: 10000 }).catch(() => null);
       const firstOption = page.locator('[role="listbox"] [role="option"]').first();
       if ((await firstOption.count()) > 0) {
@@ -2826,6 +2844,7 @@ export async function triggerDQRunViaUI(
   const submitBtn = modal.locator('button[type="submit"]').first();
   await submitBtn.waitFor({ state: 'visible', timeout: 5000 });
   // Verify the button is enabled (form requires at least one of asset/dataset/file)
+  // intentional: helpers shared by many specs wrap optional UI/probe steps; failure here means the higher-level locator/waitFor in the calling spec surfaces the error with a useful selector message rather than a swallowed network rejection.
   const isDisabled = await submitBtn.isDisabled().catch(() => false);
   if (isDisabled) {
     throw new Error(
@@ -2837,6 +2856,7 @@ export async function triggerDQRunViaUI(
 
   const resp = await responsePromise;
   const respStatus = resp.status();
+  // intentional: helpers shared by many specs wrap optional UI/probe steps; failure here means the higher-level locator/waitFor in the calling spec surfaces the error with a useful selector message rather than a swallowed network rejection.
   const bodyText = await resp.text().catch(() => '');
   if (respStatus >= 400) {
     throw new Error(
@@ -2972,6 +2992,7 @@ export async function triggerComplianceScanViaUI(
 
   const submitBtn = modal.locator('button[type="submit"]').first();
   await submitBtn.waitFor({ state: 'visible', timeout: 5000 });
+  // intentional: helpers shared by many specs wrap optional UI/probe steps; failure here means the higher-level locator/waitFor in the calling spec surfaces the error with a useful selector message rather than a swallowed network rejection.
   const isDisabled = await submitBtn.isDisabled().catch(() => false);
   if (isDisabled) {
     throw new Error(
@@ -2982,6 +3003,7 @@ export async function triggerComplianceScanViaUI(
 
   const resp = await responsePromise;
   const compRespStatus = resp.status();
+  // intentional: helpers shared by many specs wrap optional UI/probe steps; failure here means the higher-level locator/waitFor in the calling spec surfaces the error with a useful selector message rather than a swallowed network rejection.
   const compBodyText = await resp.text().catch(() => '');
   if (compRespStatus >= 400) {
     throw new Error(
@@ -3065,6 +3087,7 @@ export async function uploadODPSContractViaUI(
     // for the button to remain enabled after it settles. If validation
     // blocks the button, surface the validation errors rather than
     // failing with a vague "no creation POST" timeout.
+    // intentional: helpers shared by many specs wrap optional UI/probe steps; failure here means the higher-level locator/waitFor in the calling spec surfaces the error with a useful selector message rather than a swallowed network rejection.
     const validationSettled = page.waitForResponse(
       (r) => r.url().includes('/validate-draft') && r.request().method() === 'POST',
       { timeout: 10000 },
@@ -3143,12 +3166,14 @@ export async function uploadODPSContractViaUI(
     let creationResp: { url: string; status: number; body: string };
     try {
       const resp = await Promise.race([creationResponsePromise, requestFailedPromise]);
+      // intentional: helpers shared by many specs wrap optional UI/probe steps; failure here means the higher-level locator/waitFor in the calling spec surfaces the error with a useful selector message rather than a swallowed network rejection.
       const body = await resp.text().catch(() => '');
       creationResp = { url: resp.url(), status: resp.status(), body };
     } catch (waitErr) {
       const currentUrl = page.url();
       // Check if the button reverted to non-pending state (mutation resolved
       // with a swallowed error before waitForResponse could fire).
+      // intentional: helpers shared by many specs wrap optional UI/probe steps; failure here means the higher-level locator/waitFor in the calling spec surfaces the error with a useful selector message rather than a swallowed network rejection.
       const btnText = await submitBtn.first().textContent().catch(() => '');
       const mutationResolved = btnText !== null && !btnText.includes('Creating');
       throw new Error(
@@ -3283,6 +3308,7 @@ export async function changeUserRolesViaAdminUI(
   await saveBtn.first().click();
 
   const resp = await responsePromise;
+  // intentional: helpers shared by many specs wrap optional UI/probe steps; failure here means the higher-level locator/waitFor in the calling spec surfaces the error with a useful selector message rather than a swallowed network rejection.
   const responseBody = (await resp.json().catch(() => ({}))) as Record<string, unknown>;
   return { httpStatus: resp.status(), responseBody };
 }

@@ -54,6 +54,34 @@ ruleTester.run('no-catch-swallow-in-tests', rule, {
     {
       code: `page.request.get(url).catch(() => null); // intentional: stale-token tolerance`,
     },
+    // `intentional:` above an enclosing IfStatement licenses a mid-chain
+    // `.catch(() => null)` inside the if's test or body. Common shape in
+    // helpers and journey specs:
+    //
+    //   // intentional: optional probe
+    //   if (await locator.isVisible().catch(() => false)) { ... }
+    {
+      code: `async function t() {
+        // intentional: optional probe — failure means the link isn't visible.
+        if (await link.isVisible().catch(() => false)) {
+          await link.click();
+        }
+      }`,
+    },
+    // `intentional:` above a try/catch wrapping a body that includes a
+    // mid-chain `.catch(() => null)`. The annotation applies to the
+    // whole try block, including the inner swallow.
+    {
+      code: `async function t(apiWait) {
+        // intentional: outer try is best-effort; the inner promise
+        // rejection is part of the same fall-through path.
+        try {
+          if (apiWait) await apiWait.catch(() => null);
+        } catch {
+          // intentional: see above
+        }
+      }`,
+    },
     // Not a `.catch` — `.then` with error arg is also valid sometimes.
     {
       code: `promise.then(onOk, onErr);`,

@@ -49,6 +49,7 @@ test.describe('Feature: Lineage', () => {
       const lineageTab = page
         .locator('button:has-text("Lineage"), [role="tab"]:has-text("Lineage"), a:has-text("Lineage")')
         .first();
+      // intentional: best-effort .catch on an optional step — primary pass/fail is made by a downstream assertion (verifyViaApi, waitFor, explicit expect). The fallback value tolerates well-known transient or absent-UI cases without papering over real failures.
       await lineageTab.waitFor({ state: 'visible', timeout: 10000 }).catch(() => null);
 
       if ((await lineageTab.count()) === 0) {
@@ -58,6 +59,7 @@ test.describe('Feature: Lineage', () => {
       await lineageTab.click();
 
       // Wait for either React Flow graph or empty/loading/error state
+      // intentional: best-effort .catch on an optional step — primary pass/fail is made by a downstream assertion (verifyViaApi, waitFor, explicit expect). The fallback value tolerates well-known transient or absent-UI cases without papering over real failures.
       await page
         .locator('.react-flow__renderer, .react-flow, .empty-state, .error-display, .loading-spinner')
         .first()

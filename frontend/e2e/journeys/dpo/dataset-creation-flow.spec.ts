@@ -83,6 +83,7 @@ test.describe('Dataset Creation Flow', () => {
               // Backend: "retry after 6 seconds"; burst window 10s; use at least 10s
               let retryAfter = 10;
               try {
+                // intentional: best-effort .catch on an optional step — primary pass/fail is made by a downstream assertion (verifyViaApi, waitFor, explicit expect). The fallback value tolerates well-known transient or absent-UI cases without papering over real failures.
                 const responseBody = await response.json().catch(() => ({}));
                 const message =
                   (responseBody as { message?: string }).message ||
@@ -121,6 +122,7 @@ test.describe('Dataset Creation Flow', () => {
             }
 
             // Check if it's a rate limit error from console
+            // intentional: best-effort .catch on an optional step — primary pass/fail is made by a downstream assertion (verifyViaApi, waitFor, explicit expect). The fallback value tolerates well-known transient or absent-UI cases without papering over real failures.
             const consoleErrors = await page
               .evaluate(() => {
                 return Array.from(document.querySelectorAll('.error-message, .error-display'))

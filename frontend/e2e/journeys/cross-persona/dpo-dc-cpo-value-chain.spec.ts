@@ -143,6 +143,7 @@ test.describe('Cross-Persona Value Chain: DPO → DC → CPO', () => {
             await confirmBtn.first().click();
           }
 
+          // intentional: best-effort .catch on an optional step — primary pass/fail is made by a downstream assertion (verifyViaApi, waitFor, explicit expect). The fallback value tolerates well-known transient or absent-UI cases without papering over real failures.
           const orderCreateResp = await orderCreateRespPromise.catch(() => null);
           if (orderCreateResp && orderCreateResp.status() < 400) {
             const orderData = (await orderCreateResp.json()) as {
@@ -184,6 +185,7 @@ test.describe('Cross-Persona Value Chain: DPO → DC → CPO', () => {
       // Check order status as DC user first (consumer can always read their own order),
       // then fall back to CPO user.
       const orderStatus =
+        // intentional: best-effort .catch on an optional step — primary pass/fail is made by a downstream assertion (verifyViaApi, waitFor, explicit expect). The fallback value tolerates well-known transient or absent-UI cases without papering over real failures.
         (await getOrderStatusViaApi(dcUser, orderId!).catch(() => null)) ??
         (await getOrderStatusViaApi(cpoUser, orderId!).catch(() => 'UNKNOWN'));
 

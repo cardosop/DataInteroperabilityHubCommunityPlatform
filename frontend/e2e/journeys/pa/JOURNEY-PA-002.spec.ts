@@ -59,6 +59,7 @@ test.describe('JOURNEY-PA-002: Manage Tenant Lifecycle', () => {
         (t) => t.status === 'SUSPENDED' && t.id
       );
       for (const st of suspendedTenants) {
+        // intentional: best-effort .catch on an optional step — primary pass/fail is made by a downstream assertion (verifyViaApi, waitFor, explicit expect). The fallback value tolerates well-known transient or absent-UI cases without papering over real failures.
         await page.request
           .post(`${API_BASE}/tenants/${st.id}/reactivate/`, {
             headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
@@ -148,6 +149,7 @@ test.describe('JOURNEY-PA-002: Manage Tenant Lifecycle', () => {
       // Resume the tenant (cleanup + verification)
       // The resume button appears after React Query updates with new tenant status
       const resumeButton = page.locator(`[data-testid="resume-tenant-${targetTenant.id}"]`);
+      // intentional: best-effort .catch on an optional step — primary pass/fail is made by a downstream assertion (verifyViaApi, waitFor, explicit expect). The fallback value tolerates well-known transient or absent-UI cases without papering over real failures.
       await resumeButton.waitFor({ state: 'visible', timeout: 10000 }).catch(() => null);
       // intentional: resume-tenant button only renders for SUSPENDED tenants — fixture state may not always reach the suspended branch.
       if ((await resumeButton.count()) > 0) {

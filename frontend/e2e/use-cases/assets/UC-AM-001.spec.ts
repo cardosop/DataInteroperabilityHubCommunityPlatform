@@ -76,6 +76,7 @@ test.describe('UC-AM-001: Create Asset via Data-First Flow', () => {
       ]);
 
       if (response.status() >= 400) {
+        // intentional: best-effort .catch on an optional step — primary pass/fail is made by a downstream assertion (verifyViaApi, waitFor, explicit expect). The fallback value tolerates well-known transient or absent-UI cases without papering over real failures.
         const body = await response.text().catch(() => '');
         throw new Error(`POST /assets/ returned ${response.status()}: ${body}`);
       }

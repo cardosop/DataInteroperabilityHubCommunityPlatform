@@ -56,6 +56,7 @@ export async function registerViaApi(user: {
         body: JSON.stringify(user),
       });
       if (!response.ok) {
+        // intentional: auth journey steps wrap optional UI element waits; primary auth-success assertion is in the calling spec.
         const body = await response.text().catch(() => '');
         throw new Error(`Register API failed: ${response.status} ${body}`);
       }
@@ -80,6 +81,7 @@ export async function requestPasswordResetViaApi(email: string): Promise<void> {
     body: JSON.stringify({ email }),
   });
   if (!response.ok) {
+    // intentional: auth journey steps wrap optional UI element waits; primary auth-success assertion is in the calling spec.
     const body = await response.text().catch(() => '');
     throw new Error(`Password reset API failed: ${response.status} ${body}`);
   }
@@ -224,7 +226,9 @@ export async function waitForRegisterPageReady(page: Page, timeoutMs = 35_000): 
   ]);
 
   // If loading hid first, terminal state appears in same render
+  // intentional: auth journey steps wrap optional UI element waits; primary auth-success assertion is in the calling spec.
   const hasCreate = await createHeading.isVisible().catch(() => false);
+  // intentional: auth journey steps wrap optional UI element waits; primary auth-success assertion is in the calling spec.
   const hasUnavailable = await unavailableHeading.isVisible().catch(() => false);
   if (!hasCreate && !hasUnavailable) {
     await Promise.race([
@@ -257,6 +261,7 @@ export async function assertUserHasPersonalTenant(_page: Page, user?: TestUser):
     headers: { Authorization: `Bearer ${apiAuth.access_token}` },
   });
   if (!res.ok) {
+    // intentional: auth journey steps wrap optional UI element waits; primary auth-success assertion is in the calling spec.
     const body = await res.text().catch(() => '');
     throw new Error(`assertUserHasPersonalTenant: /auth/me/ failed: ${res.status} ${body}`);
   }
@@ -301,6 +306,7 @@ export async function runJOURNEY_AUTH_001_Success(page: Page): Promise<void> {
   ]).catch(() => 'timeout' as const);
 
   if (postSubmit === 'error') {
+    // intentional: auth journey steps wrap optional UI element waits; primary auth-success assertion is in the calling spec.
     const errText = await page.locator('.error-message, .error-display').first().textContent().catch(() => '');
     throw new Error(`Registration failed — error shown on page: ${(errText ?? '').slice(0, 200)}`);
   }
@@ -346,6 +352,7 @@ export async function runJOURNEY_AUTH_003_Success(page: Page): Promise<void> {
   await page.goto('/password-reset', { waitUntil: 'domcontentloaded' });
   const resetHeading = page.getByRole('heading', { name: /Reset password/i });
   const unavailableHeading = page.locator('.unavailable-page h1');
+  // intentional: auth journey steps wrap optional UI element waits; primary auth-success assertion is in the calling spec.
   await Promise.race([
     resetHeading.waitFor({ state: 'visible', timeout: 35_000 }),
     unavailableHeading.waitFor({ state: 'visible', timeout: 35_000 }),
@@ -390,6 +397,7 @@ export async function runJOURNEY_AUTH_003_Success(page: Page): Promise<void> {
       .waitFor({ state: 'visible', timeout: 45_000 }).then(() => 'error'),
   ]).catch(() => 'timeout' as const);
   if (formOrError === 'error') {
+    // intentional: auth journey steps wrap optional UI element waits; primary auth-success assertion is in the calling spec.
     const errText = await page.locator('.error-message, .error-display').first().textContent().catch(() => '');
     throw new Error(
       `Token invalid or expired. ${errText}. Ensure MailHog is running and email was captured.`

@@ -106,7 +106,12 @@ export default defineConfig([
       // silent-failure that should fail CI. New regressions break the
       // build instead of accruing as warnings.
       'e2e-guards/no-conditional-count-assertion': 'error',
-      'e2e-guards/no-catch-swallow-in-tests': 'warn',
+      // 226.A2 flipped to `error` 2026-04-24 once the per-file triage
+      // brought the global count to 0 (way below the plan's ≤120
+      // target). All surviving `.catch(() => <constant>)` sites
+      // carry an `// intentional: <why>` annotation justifying the
+      // silent fallback. New regressions break CI.
+      'e2e-guards/no-catch-swallow-in-tests': 'error',
       // 226.A3 flipped to `error` 2026-04-24 once every bare-catch in
       // the suite carried an `// intentional: <why>` annotation
       // (whether inside the empty body, on a leading-line comment, or

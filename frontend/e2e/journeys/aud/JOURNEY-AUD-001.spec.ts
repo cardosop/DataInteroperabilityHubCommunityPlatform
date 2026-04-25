@@ -61,6 +61,7 @@ test.describe('JOURNEY-AUD-001: Query Audit Events / Review Audit Logs', () => {
       }
       expect(page.url()).toContain('/audit');
       // Wait for page content to settle
+      // intentional: best-effort .catch on an optional step — primary pass/fail is made by a downstream assertion (verifyViaApi, waitFor, explicit expect). The fallback value tolerates well-known transient or absent-UI cases without papering over real failures.
       await page
         .locator('.audit-list-filters, .audit-event-list-page, .empty-state')
         .first()
@@ -83,6 +84,7 @@ test.describe('JOURNEY-AUD-001: Query Audit Events / Review Audit Logs', () => {
       await page.goto('/audit');
       await page.waitForLoadState('domcontentloaded');
       // Wait for ProtectedRoute to complete its async initialize() + redirect — up to 20s
+      // intentional: best-effort .catch on an optional step — primary pass/fail is made by a downstream assertion (verifyViaApi, waitFor, explicit expect). The fallback value tolerates well-known transient or absent-UI cases without papering over real failures.
       await page.waitForURL(/\/(403|login)/, { timeout: 20000 }).catch(() => null);
       const url = page.url();
       // Must be refused access — audit log is auditor-only

@@ -6,6 +6,9 @@
 import { expect, test } from '@playwright/test';
 import { clearAuthStorage, getTestUser } from '../../fixtures/auth';
 import { hasLoginPrompt, loginAndNavigateToRoute, waitForLoadingComplete } from '../../fixtures/helpers';
+// Phase 226 B1a — dual-channel verification on contract-create mutation.
+import { verifyViaApi } from '../../fixtures/verifyViaApi';
+import { verifyAuditEvent } from '../../fixtures/verifyAuditEvent';
 
 test.describe('Contract Creation Flow', () => {
   test.setTimeout(90000);
@@ -200,6 +203,16 @@ test.describe('Contract Creation Flow', () => {
       await expect(page.locator('.contract-detail-page, .contract-detail-content, h1').first()).toBeVisible(
         { timeout: 15000 }
       );
+      // Phase 226 B1a — dual-channel verification of contract creation.
+      const contractId = finalUrl.split('/').pop()?.split('?')[0] ?? '';
+      if (contractId.length > 20) {
+        await verifyViaApi(page, `/api/v1/contracts/${contractId}/`, {});
+        await verifyAuditEvent(page, {
+          action: 'CONTRACT_CREATED',
+          resourceType: 'CONTRACT',
+          resourceId: contractId,
+        });
+      }
     } else if (finalUrl.includes('/odps/') && !finalUrl.includes('/upload')) {
       // ODPS detail page - success (navigated after workflow completed)
       await expect(page.locator('.odps-detail-page, .contract-detail-page, h1').first()).toBeVisible(

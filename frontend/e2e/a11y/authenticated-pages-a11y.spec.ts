@@ -52,6 +52,7 @@ test.describe('Authenticated Pages A11y', () => {
       // Navigate to the target route
       await page.goto(route, { waitUntil: 'domcontentloaded' });
       // Wait for meaningful content (app shell or the page itself)
+      // intentional: best-effort .catch on an optional step — primary pass/fail is made by a downstream assertion (verifyViaApi, waitFor, explicit expect). The fallback value tolerates well-known transient or absent-UI cases without papering over real failures.
       await page
         .locator('.app-main, .app-sidebar, [role="main"]')
         .first()

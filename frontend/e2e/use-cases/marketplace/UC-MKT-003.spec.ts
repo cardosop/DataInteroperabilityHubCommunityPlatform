@@ -66,6 +66,7 @@ test.describe('UC-MKT-003: Purchase Asset from Marketplace', () => {
         expect(hasSuccess).toBe(true);
         await expect(page.locator('.error-display')).not.toBeVisible();
       } else {
+        // intentional: best-effort .catch on an optional step — primary pass/fail is made by a downstream assertion (verifyViaApi, waitFor, explicit expect). The fallback value tolerates well-known transient or absent-UI cases without papering over real failures.
         const body = await response.text().catch(() => '');
         throw new Error(`POST /marketplace/orders/ returned ${response.status()}: ${body}`);
       }

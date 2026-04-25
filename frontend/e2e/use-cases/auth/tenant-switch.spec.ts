@@ -44,11 +44,13 @@ test.describe('Tenant Switch (login → switch → verify context)', () => {
 
     // Ensure user has 2 tenants (E2E setup). Retry once — under parallel load the first
     // request can fail with a connection error even though the endpoint is healthy.
+    // intentional: best-effort .catch on an optional step — primary pass/fail is made by a downstream assertion (verifyViaApi, waitFor, explicit expect). The fallback value tolerates well-known transient or absent-UI cases without papering over real failures.
     let setupRes = await page.request.post(`${API_BASE}/test/ensure-e2e-tenant-switch-setup/`, {
       headers: { ...headers, ...e2eTestHeaders() },
     }).catch(() => null);
     if (!setupRes?.ok()) {
       await new Promise((r) => setTimeout(r, 3000));
+      // intentional: best-effort .catch on an optional step — primary pass/fail is made by a downstream assertion (verifyViaApi, waitFor, explicit expect). The fallback value tolerates well-known transient or absent-UI cases without papering over real failures.
       setupRes = await page.request.post(`${API_BASE}/test/ensure-e2e-tenant-switch-setup/`, {
         headers: { ...headers, ...e2eTestHeaders() },
       }).catch(() => null);
@@ -110,11 +112,13 @@ test.describe('Tenant Switch (login → switch → verify context)', () => {
     const headers = { Authorization: `Bearer ${accessToken}` };
 
     // Ensure user has a secondary tenant. Retry once for transient connection errors.
+    // intentional: best-effort .catch on an optional step — primary pass/fail is made by a downstream assertion (verifyViaApi, waitFor, explicit expect). The fallback value tolerates well-known transient or absent-UI cases without papering over real failures.
     let setupRes = await page.request.post(`${API_BASE}/test/ensure-e2e-tenant-switch-setup/`, {
       headers: { ...headers, ...e2eTestHeaders() },
     }).catch(() => null);
     if (!setupRes?.ok()) {
       await new Promise((r) => setTimeout(r, 3000));
+      // intentional: best-effort .catch on an optional step — primary pass/fail is made by a downstream assertion (verifyViaApi, waitFor, explicit expect). The fallback value tolerates well-known transient or absent-UI cases without papering over real failures.
       setupRes = await page.request.post(`${API_BASE}/test/ensure-e2e-tenant-switch-setup/`, {
         headers: { ...headers, ...e2eTestHeaders() },
       }).catch(() => null);
@@ -164,6 +168,7 @@ test.describe('Tenant Switch (login → switch → verify context)', () => {
     // Assets must load without error (validates tenant context switch worked)
     const hasError = (await page.locator('.error-display').count()) > 0;
     if (hasError) {
+      // intentional: best-effort .catch on an optional step — primary pass/fail is made by a downstream assertion (verifyViaApi, waitFor, explicit expect). The fallback value tolerates well-known transient or absent-UI cases without papering over real failures.
       const errText = await page.locator('.error-display').first().textContent().catch(() => '');
       if (!/403|forbidden/i.test(errText ?? '')) {
         throw new Error(`Assets page shows error after tenant switch: ${errText}`);

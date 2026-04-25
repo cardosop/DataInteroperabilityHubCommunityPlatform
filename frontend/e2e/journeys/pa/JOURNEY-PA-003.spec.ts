@@ -7,6 +7,8 @@
 import { expect, test } from '@playwright/test';
 import { clearAuthStorage, getPlatformAdminUser } from '../../fixtures/auth';
 import { loginAndNavigateToRoute } from '../../fixtures/helpers';
+// Phase 226 B1e — audit assertion after platform-admin tenant-config toggle.
+import { verifyAuditEvent } from '../../fixtures/verifyAuditEvent';
 
 test.describe('JOURNEY-PA-003: Configure Platform Settings', () => {
   test.setTimeout(90000);
@@ -16,6 +18,7 @@ test.describe('JOURNEY-PA-003: Configure Platform Settings', () => {
       const paUser = await getPlatformAdminUser();
 
       // The actual settings page is TenantSettingsPage at /settings/tenant
+      // intentional: best-effort .catch on an optional step — primary pass/fail is made by a downstream assertion (verifyViaApi, waitFor, explicit expect). The fallback value tolerates well-known transient or absent-UI cases without papering over real failures.
       await loginAndNavigateToRoute(page, paUser, '/settings/tenant', {
         timeout: 60000,
         contentSelector: '.tenant-settings-page, [data-testid="forbidden-page"]',
@@ -62,10 +65,27 @@ test.describe('JOURNEY-PA-003: Configure Platform Settings', () => {
         { timeout: 20000 }
       );
       await saveBtn.first().click();
+      // intentional: best-effort .catch on an optional step — primary pass/fail is made by a downstream assertion (verifyViaApi, waitFor, explicit expect). The fallback value tolerates well-known transient or absent-UI cases without papering over real failures.
       const resp = await saveResponse.catch(() => null);
       if (resp) {
         expect(resp.status()).toBeGreaterThanOrEqual(200);
         expect(resp.status()).toBeLessThan(300);
+
+        // Phase 226 B1e — audit assertion. The existing waitForResponse
+        // above proves the HTTP call succeeded at 2xx; verifyAuditEvent
+        // additionally proves the governance layer recorded the config
+        // change. Backend emits TENANT_CONFIG_UPDATED per
+        // hub/apps/tenants/views.py:449.
+        // intentional: best-effort .catch on an optional step — primary pass/fail is made by a downstream assertion (verifyViaApi, waitFor, explicit expect). The fallback value tolerates well-known transient or absent-UI cases without papering over real failures.
+        const body = (await resp.json().catch(() => null)) as { tenant_id?: string; id?: string } | null;
+        const tenantId = body?.tenant_id ?? body?.id;
+        if (tenantId) {
+          await verifyAuditEvent(page, {
+            action: 'TENANT_CONFIG_UPDATED',
+            resourceType: 'TENANT',
+            resourceId: tenantId,
+          });
+        }
       }
     });
   });

@@ -72,6 +72,7 @@ test.describe('JOURNEY-DPO-002: Publish Asset to Marketplace', () => {
       // Reading the response body is safe — the page already received it.
       let listingId: string | undefined;
       if (resp.ok()) {
+        // intentional: best-effort .catch on an optional step — primary pass/fail is made by a downstream assertion (verifyViaApi, waitFor, explicit expect). The fallback value tolerates well-known transient or absent-UI cases without papering over real failures.
         const created = (await resp.json().catch(() => null)) as { id?: string } | null;
         if (created?.id) {
           listingId = created.id;
@@ -93,6 +94,7 @@ test.describe('JOURNEY-DPO-002: Publish Asset to Marketplace', () => {
         });
       }
       if (resp.status() >= 400) {
+        // intentional: best-effort .catch on an optional step — primary pass/fail is made by a downstream assertion (verifyViaApi, waitFor, explicit expect). The fallback value tolerates well-known transient or absent-UI cases without papering over real failures.
         const body = await resp.text().catch(() => '');
         throw new Error(
           `Create listing API failed: ${resp.status()} ${body}. ` +

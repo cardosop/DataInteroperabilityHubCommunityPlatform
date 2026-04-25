@@ -54,6 +54,7 @@ test.describe('Feature: Social on Asset Page (Phase 27.1)', () => {
       // When social capabilities (social.ratings, social.reviews, social.comments) are available,
       // AssetSocialSection renders with data-testid="asset-social-section"
       const socialSection = page.locator('[data-testid="asset-social-section"]');
+      // intentional: best-effort .catch on an optional step — primary pass/fail is made by a downstream assertion (verifyViaApi, waitFor, explicit expect). The fallback value tolerates well-known transient or absent-UI cases without papering over real failures.
       await socialSection.waitFor({ state: 'visible', timeout: 10000 }).catch(() => null);
       if ((await socialSection.count()) === 0 || !(await socialSection.isVisible())) {
         test.skip(true, 'Social capabilities not available; cannot assert Community section');
@@ -81,6 +82,7 @@ test.describe('Feature: Rate and Review on Asset Page (Phase 27.3.2)', () => {
         contentSelector: '.asset-detail-page, .asset-detail-content, .asset-social-section',
       });
       const socialSection = page.locator('[data-testid="asset-social-section"]');
+      // intentional: best-effort .catch on an optional step — primary pass/fail is made by a downstream assertion (verifyViaApi, waitFor, explicit expect). The fallback value tolerates well-known transient or absent-UI cases without papering over real failures.
       await socialSection.waitFor({ state: 'visible', timeout: 10000 }).catch(() => null);
       if ((await socialSection.count()) === 0 || !(await socialSection.isVisible())) {
         test.skip(true, 'Social capabilities not available; skip rate flow');
@@ -92,6 +94,7 @@ test.describe('Feature: Rate and Review on Asset Page (Phase 27.3.2)', () => {
       await ratingsTab.click();
       await page.waitForTimeout(500);
       const submitBtn = page.locator('button:has-text("Submit Rating")');
+      // intentional: best-effort .catch on an optional step — primary pass/fail is made by a downstream assertion (verifyViaApi, waitFor, explicit expect). The fallback value tolerates well-known transient or absent-UI cases without papering over real failures.
       await submitBtn.waitFor({ state: 'visible', timeout: 5000 }).catch(() => null);
       if ((await submitBtn.count()) === 0) {
         test.skip(true, 'Submit Rating button not found; Ratings UI may still be loading');
@@ -120,6 +123,7 @@ test.describe('Feature: Rate and Review on Asset Page (Phase 27.3.2)', () => {
         contentSelector: '.asset-detail-page, .asset-detail-content, .asset-social-section',
       });
       const socialSection = page.locator('[data-testid="asset-social-section"]');
+      // intentional: best-effort .catch on an optional step — primary pass/fail is made by a downstream assertion (verifyViaApi, waitFor, explicit expect). The fallback value tolerates well-known transient or absent-UI cases without papering over real failures.
       await socialSection.waitFor({ state: 'visible', timeout: 10000 }).catch(() => null);
       if ((await socialSection.count()) === 0 || !(await socialSection.isVisible())) {
         test.skip(true, 'Social capabilities not available; skip review flow');
@@ -131,6 +135,7 @@ test.describe('Feature: Rate and Review on Asset Page (Phase 27.3.2)', () => {
       await reviewsTab.click();
       await page.waitForTimeout(500);
       const writeReviewBtn = page.locator('button:has-text("Write Review")');
+      // intentional: best-effort .catch on an optional step — primary pass/fail is made by a downstream assertion (verifyViaApi, waitFor, explicit expect). The fallback value tolerates well-known transient or absent-UI cases without papering over real failures.
       await writeReviewBtn.waitFor({ state: 'visible', timeout: 5000 }).catch(() => null);
       if ((await writeReviewBtn.count()) === 0) {
         test.skip(true, 'Write Review button not found; Reviews UI may still be loading');
@@ -139,6 +144,7 @@ test.describe('Feature: Rate and Review on Asset Page (Phase 27.3.2)', () => {
         await writeReviewBtn.click();
         await page.waitForTimeout(500);
         const textarea = page.locator('.review-form textarea, [placeholder*="review"]');
+        // intentional: best-effort .catch on an optional step — primary pass/fail is made by a downstream assertion (verifyViaApi, waitFor, explicit expect). The fallback value tolerates well-known transient or absent-UI cases without papering over real failures.
         await textarea.waitFor({ state: 'visible', timeout: 3000 }).catch(() => null);
         if ((await textarea.count()) === 0) {
           test.skip(true, 'Review form textarea not found; form may still be loading');

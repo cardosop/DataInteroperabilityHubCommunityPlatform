@@ -16,6 +16,9 @@ import {
   loginAndNavigateToRoute,
   waitForLoadingComplete,
 } from '../../fixtures/helpers';
+// Phase 226 B1a — dual-channel verification after each UI-create flow.
+import { verifyViaApi } from '../../fixtures/verifyViaApi';
+import { verifyAuditEvent } from '../../fixtures/verifyAuditEvent';
 
 test.describe('Onboarding Checklist', () => {
   test.setTimeout(180000);
@@ -44,6 +47,20 @@ test.describe('Onboarding Checklist', () => {
     await expect(page).toHaveURL(/\/assets\/[^/]+$/, { timeout: 20000 });
     await waitForLoadingComplete(page, { timeout: 30000 });
     await page.waitForSelector('.asset-detail-page, .error-display', { timeout: 20000 });
+
+    // Phase 226 B1a — dual-channel verification on asset create before
+    // asserting the checklist UI. The checklist's "step 1 completed" state
+    // only makes sense if the asset actually persisted AND the audit row
+    // exists for governance.
+    const assetId = page.url().split('/').pop() ?? '';
+    await verifyViaApi(page, `/api/v1/assets/${assetId}/`, {
+      status: 'DRAFT',
+    });
+    await verifyAuditEvent(page, {
+      action: 'ASSET_CREATED',
+      resourceType: 'ASSET',
+      resourceId: assetId,
+    });
 
     // Verify the onboarding checklist is visible
     const checklist = page.locator('[data-testid="onboarding-checklist"]');

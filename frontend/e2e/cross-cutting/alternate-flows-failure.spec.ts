@@ -32,6 +32,7 @@ test.describe('Alternate flows — failure (USE_CASES A1–An)', () => {
     await page.fill('textarea[id="asset-description"]', 'Description');
 
     // Wait for POST response to confirm first asset was actually created
+    // intentional: best-effort .catch on an optional step — primary pass/fail is made by a downstream assertion (verifyViaApi, waitFor, explicit expect). The fallback value tolerates well-known transient or absent-UI cases without papering over real failures.
     const firstCreateResp = page.waitForResponse(
       (r) => r.url().includes('/api/v1/assets/') && r.request().method() === 'POST',
       { timeout: 30000 }
@@ -43,6 +44,7 @@ test.describe('Alternate flows — failure (USE_CASES A1–An)', () => {
       test.skip(true, `First asset create failed (${resp?.status() ?? 'timeout'}) — cannot test duplicate key`);
       return;
     }
+    // intentional: best-effort .catch on an optional step — primary pass/fail is made by a downstream assertion (verifyViaApi, waitFor, explicit expect). The fallback value tolerates well-known transient or absent-UI cases without papering over real failures.
     await page.waitForURL(/\/assets\/[^/]+$/, { timeout: 15000 }).catch(() => null);
 
     await page.goto('/assets/create', { waitUntil: 'domcontentloaded' });

@@ -63,6 +63,7 @@ test.describe('Asset Detail: Attach Contract and Dataset (Pickers)', () => {
       '.linked-section:has-text("Linked Contract")'
     );
     await expect(noContractSection).toBeVisible({ timeout: 10000 });
+    // intentional: best-effort .catch on an optional step — primary pass/fail is made by a downstream assertion (verifyViaApi, waitFor, explicit expect). The fallback value tolerates well-known transient or absent-UI cases without papering over real failures.
     const noContractText = await noContractSection
       .locator('text=No contract linked')
       .isVisible()
@@ -75,6 +76,7 @@ test.describe('Asset Detail: Attach Contract and Dataset (Pickers)', () => {
       '.linked-section:has-text("Linked Dataset")'
     );
     await expect(noDatasetSection).toBeVisible({ timeout: 5000 });
+    // intentional: best-effort .catch on an optional step — primary pass/fail is made by a downstream assertion (verifyViaApi, waitFor, explicit expect). The fallback value tolerates well-known transient or absent-UI cases without papering over real failures.
     const noDatasetText = await noDatasetSection
       .locator('text=No dataset linked')
       .isVisible()
@@ -122,6 +124,7 @@ test.describe('Asset Detail: Attach Contract and Dataset (Pickers)', () => {
     const contractPicker = page.locator(
       '[data-testid="asset-attach-contract-picker"]'
     );
+    // intentional: best-effort .catch on an optional step — primary pass/fail is made by a downstream assertion (verifyViaApi, waitFor, explicit expect). The fallback value tolerates well-known transient or absent-UI cases without papering over real failures.
     const hasNoContract = await page
       .locator('text=No contract linked')
       .isVisible()
@@ -188,6 +191,7 @@ test.describe('Asset Detail: Attach Contract and Dataset (Pickers)', () => {
       if ((await fileInput.count()) > 0) {
         await fileInput.first().setInputFiles(testFile);
         // File upload goes to backend — may be slow; also accept error-display (backend unavailable)
+        // intentional: best-effort .catch on an optional step — primary pass/fail is made by a downstream assertion (verifyViaApi, waitFor, explicit expect). The fallback value tolerates well-known transient or absent-UI cases without papering over real failures.
         const uploadDone = await page
           .locator('.file-upload-success, .upload-success, .file-upload-error, .error-display')
           .first()

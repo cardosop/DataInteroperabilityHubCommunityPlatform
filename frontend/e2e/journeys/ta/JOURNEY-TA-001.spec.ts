@@ -95,6 +95,7 @@ test.describe('JOURNEY-TA-001: Onboard New User', () => {
       // Give the SPA auth guard time to check roles and complete the redirect to /403 or /login.
       // React Router's ProtectedRoute redirect is synchronous but auth store init is async;
       // waitForURL waits until the URL actually changes to the expected destination.
+      // intentional: best-effort .catch on an optional step — primary pass/fail is made by a downstream assertion (verifyViaApi, waitFor, explicit expect). The fallback value tolerates well-known transient or absent-UI cases without papering over real failures.
       await page.waitForURL(/\/(403|login)(\?|$)/, { timeout: 15000 }).catch(() => null);
       const url = page.url();
       // Consumer must be refused — /admin is Tenant Admin only

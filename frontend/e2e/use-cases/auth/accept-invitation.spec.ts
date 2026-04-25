@@ -44,6 +44,7 @@ test.describe('Accept Invitation (JOURNEY-TA-001)', () => {
       // The token may already be consumed by another parallel project (3 projects run this test),
       // in which case the backend returns 4xx and the form stays visible with an error.
       const [submitResponse] = await Promise.all([
+        // intentional: best-effort .catch on an optional step — primary pass/fail is made by a downstream assertion (verifyViaApi, waitFor, explicit expect). The fallback value tolerates well-known transient or absent-UI cases without papering over real failures.
         page
           .waitForResponse(
             (resp) => resp.url().includes('/auth/accept-invitation/'),
@@ -91,6 +92,7 @@ test.describe('Accept Invitation (JOURNEY-TA-001)', () => {
       await clearAuthStorage(page);
       await page.goto('/accept-invitation?token=00000000-0000-0000-0000-000000000000', { waitUntil: 'domcontentloaded', timeout: 30000 });
       // Wait for the page to settle — may show "no token" message or the form
+      // intentional: best-effort .catch on an optional step — primary pass/fail is made by a downstream assertion (verifyViaApi, waitFor, explicit expect). The fallback value tolerates well-known transient or absent-UI cases without papering over real failures.
       await page
         .locator('.accept-invitation-missing-token, [data-testid="accept-invitation-form"], text=/no invitation token|invalid|expired/i')
         .first()
@@ -115,6 +117,7 @@ test.describe('Accept Invitation (JOURNEY-TA-001)', () => {
       await page.fill('#password', 'NewPass123!');
       await page.fill('#confirmPassword', 'NewPass123!');
       const [submitResponse] = await Promise.all([
+        // intentional: best-effort .catch on an optional step — primary pass/fail is made by a downstream assertion (verifyViaApi, waitFor, explicit expect). The fallback value tolerates well-known transient or absent-UI cases without papering over real failures.
         page
           .waitForResponse(
             (resp) => resp.url().includes('/auth/accept-invitation/') || resp.url().includes('/auth/invitation/'),

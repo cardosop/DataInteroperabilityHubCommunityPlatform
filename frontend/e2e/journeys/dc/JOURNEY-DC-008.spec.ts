@@ -56,6 +56,7 @@ test.describe('JOURNEY-DC-008: Rate and Review Asset', () => {
       await page.waitForSelector('.asset-detail-page, .error-display', { timeout: 15000 });
       if ((await page.locator('.error-display').count()) > 0) {
         const errText =
+          // intentional: best-effort .catch on an optional step — primary pass/fail is made by a downstream assertion (verifyViaApi, waitFor, explicit expect). The fallback value tolerates well-known transient or absent-UI cases without papering over real failures.
           (await page.locator('.error-display').first().textContent().catch(() => '')) ?? '';
         throw new Error(
           `Asset detail failed to load (required for Community section test). ` +
@@ -63,6 +64,7 @@ test.describe('JOURNEY-DC-008: Rate and Review Asset', () => {
         );
       }
       const socialSection = page.locator('[data-testid="asset-social-section"]');
+      // intentional: best-effort .catch on an optional step — primary pass/fail is made by a downstream assertion (verifyViaApi, waitFor, explicit expect). The fallback value tolerates well-known transient or absent-UI cases without papering over real failures.
       await socialSection.waitFor({ state: 'visible', timeout: 10000 }).catch(() => null);
       // intentional: social-section is feature-flag-gated — only renders for tenants with community/social features enabled.
       if ((await socialSection.count()) > 0 && (await socialSection.isVisible())) {
@@ -76,6 +78,7 @@ test.describe('JOURNEY-DC-008: Rate and Review Asset', () => {
       const { clearAuthStorage } = await import('../../fixtures/auth');
       await clearAuthStorage(page);
       await page.goto('/communities', { waitUntil: 'domcontentloaded' });
+      // intentional: best-effort .catch on an optional step — primary pass/fail is made by a downstream assertion (verifyViaApi, waitFor, explicit expect). The fallback value tolerates well-known transient or absent-UI cases without papering over real failures.
       await page.waitForURL(/\/(login|403)/, { timeout: 20000 }).catch(() => null);
       expect(page.url().includes('/login') || page.url().includes('/403')).toBe(true);
     });

@@ -58,11 +58,31 @@ function hasIntentionalJustification(node, sourceCode, options) {
     }
   }
 
-  // Case (b) — trailing same-line comment.
   const allComments = sourceCode.getAllComments();
+
+  // Case (b) — trailing same-line comment.
   for (const c of allComments) {
     if (c.loc.start.line === node.loc.start.line && INTENTIONAL.test(c.value)) {
       return true;
+    }
+  }
+
+  // Case (b'): purely positional check — a `// intentional: …` comment
+  // whose END line sits exactly on the line directly above the node.
+  // Needed when ESLint attaches the comment to a different AST node
+  // (e.g. the comment is wedged inside a multi-line expression like
+  // `const x = /* comment */ (await foo.catch(() => null));` — the
+  // comment is positionally above the inner `.catch` line, but
+  // `getCommentsBefore(callNode)` doesn't return it because it was
+  // attached to the outer expression by the parser).
+  for (const c of allComments) {
+    if (c.loc.end.line === node.loc.start.line - 1) {
+      if (INTENTIONAL.test(c.value)) return true;
+      if (c.type === 'Block') {
+        for (const inner of c.value.split('\n')) {
+          if (INTENTIONAL.test(inner.replace(/^\s*\*\s?/, ''))) return true;
+        }
+      }
     }
   }
 

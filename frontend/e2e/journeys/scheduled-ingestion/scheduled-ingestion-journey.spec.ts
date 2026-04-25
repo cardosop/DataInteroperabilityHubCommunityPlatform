@@ -261,6 +261,7 @@ test.describe('Scheduled Ingestion Journey', () => {
       } catch {
         const hasError = (await page.locator('.error-display').count()) > 0;
         const errText = hasError
+          // intentional: scheduled-ingestion journey same shape as scheduled-export — best-effort optional steps; primary assertions via verifyViaApi.
           ? (await page.locator('.error-display').first().textContent().catch(() => '')) || ''
           : '';
         throw new Error(
@@ -373,6 +374,7 @@ test.describe('Scheduled Ingestion Journey', () => {
           throw triggerErr;
         }
         if (triggerResponse.status() === 200 || triggerResponse.status() === 202) break;
+        // intentional: scheduled-ingestion journey same shape as scheduled-export — best-effort optional steps; primary assertions via verifyViaApi.
         const body = await triggerResponse.json().catch(() => ({}));
         const isDeploymentNotReady =
           body?.code === 'DEPLOYMENT_NOT_READY' ||
@@ -485,6 +487,7 @@ test.describe('Scheduled Ingestion Journey', () => {
       // ScheduledIngestionEditPage renders a LoadingSpinner while fetching from the API; the form (and
       // its inputs) only appear once the API responds and isLoading becomes false.  Waiting for the
       // URL change is not enough — we must also wait for the form element to materialise in the DOM.
+      // intentional: scheduled-ingestion journey same shape as scheduled-export — best-effort optional steps; primary assertions via verifyViaApi.
       const nameInputReady = await nameInput.first()
         .waitFor({ state: 'visible', timeout: 20000 })
         .then(() => true)

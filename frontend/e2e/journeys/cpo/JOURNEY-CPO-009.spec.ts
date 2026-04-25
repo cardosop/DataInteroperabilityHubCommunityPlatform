@@ -35,6 +35,7 @@ test.describe('JOURNEY-CPO-009: Configure Automated Retention Policies', () => {
       // error-display is NOT acceptable — it means the backend or retention service is down
       const hasError = (await page.locator('.error-display').count()) > 0;
       if (hasError) {
+        // intentional: best-effort .catch on an optional step — primary pass/fail is made by a downstream assertion (verifyViaApi, waitFor, explicit expect). The fallback value tolerates well-known transient or absent-UI cases without papering over real failures.
         const errText = await page.locator('.error-display').first().textContent().catch(() => '');
         throw new Error(`Governance retention page shows error: "${errText?.slice(0, 300)}"`);
       }

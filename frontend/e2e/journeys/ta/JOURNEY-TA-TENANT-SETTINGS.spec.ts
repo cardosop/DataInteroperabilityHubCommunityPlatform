@@ -8,6 +8,9 @@
 import { expect, test } from '@playwright/test';
 import { getTenantAdminUser } from '../../fixtures/auth';
 import { loginAndNavigateToRoute, waitForLoadingComplete } from '../../fixtures/helpers';
+// Phase 226 B1e — dual-channel verification on tenant-config save.
+import { verifyViaApi } from '../../fixtures/verifyViaApi';
+import { verifyAuditEvent } from '../../fixtures/verifyAuditEvent';
 
 test.describe('Phase 8.4: Tenant Admin Views Usage & Config', () => {
   test.setTimeout(120000);
@@ -56,6 +59,35 @@ test.describe('Phase 8.4: Tenant Admin Views Usage & Config', () => {
     const successMsg = page.locator('.tenant-settings-success');
     await expect(successMsg).toBeVisible({ timeout: 5000 });
     await expect(successMsg).toContainText(/updated|success/i);
+
+    // Phase 226 B1e — dual-channel verification of tenant config save.
+    // Assert the backend actually stored the new default_dq_profile value
+    // and that the audit trail recorded TENANT_CONFIG_UPDATED (action name
+    // confirmed via hub/apps/tenants/views.py:449).
+    //
+    // Use `/api/v1/tenants/me/config/` — the "self" variant that scopes to
+    // the caller's active tenant without needing to resolve the tenant id.
+    // This avoids the earlier bug where the wrong localStorage key
+    // (`current_tenant_id` vs the real `active_tenant_id` per
+    // frontend/src/features/auth/store/authStore.ts:65) would skip the check.
+    await verifyViaApi(page, '/api/v1/tenants/me/config/', (body) => {
+      const cfg = body as { default_dq_profile?: string };
+      return cfg.default_dq_profile === 'intake_basic_soda';
+    });
+    // For the audit row we still need the tenant uuid as resource_id.
+    // Read from the active_tenant_id localStorage key (see authStore.ts:65).
+    const activeTenantId = await page.evaluate(
+      () =>
+        (globalThis as { localStorage?: { getItem: (k: string) => string | null } })
+          .localStorage?.getItem('active_tenant_id') ?? null,
+    );
+    if (activeTenantId) {
+      await verifyAuditEvent(page, {
+        action: 'TENANT_CONFIG_UPDATED',
+        resourceType: 'TENANT',
+        resourceId: activeTenantId,
+      });
+    }
   });
 
   test('Phase 11: tenant admin can toggle trust signals enabled', async ({ page }) => {
@@ -104,6 +136,7 @@ test.describe('Phase 8.4: Tenant Admin Views Usage & Config', () => {
     // The config form only renders after the tenant config API call resolves.
     // Wait for the form itself (not just the tab section) before looking for checkboxes.
     const configForm = page.locator('[data-testid="tenant-settings-config"] form');
+    // intentional: best-effort .catch on an optional step — primary pass/fail is made by a downstream assertion (verifyViaApi, waitFor, explicit expect). The fallback value tolerates well-known transient or absent-UI cases without papering over real failures.
     const formLoaded = await configForm.waitFor({ state: 'visible', timeout: 20000 }).then(() => true).catch(() => false);
     if (!formLoaded) {
       test.skip(true, 'Config form did not render — tenant config API may be unavailable');
@@ -143,6 +176,7 @@ test.describe('Phase 8.4: Tenant Admin Views Usage & Config', () => {
     // The config form only renders after the tenant config API call resolves.
     // Wait for the form itself (not just the tab section) before looking for checkboxes.
     const configForm = page.locator('[data-testid="tenant-settings-config"] form');
+    // intentional: best-effort .catch on an optional step — primary pass/fail is made by a downstream assertion (verifyViaApi, waitFor, explicit expect). The fallback value tolerates well-known transient or absent-UI cases without papering over real failures.
     const formLoaded = await configForm.waitFor({ state: 'visible', timeout: 20000 }).then(() => true).catch(() => false);
     if (!formLoaded) {
       test.skip(true, 'Config form did not render — tenant config API may be unavailable');

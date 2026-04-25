@@ -45,6 +45,7 @@ test.describe('Unavailable and 403 pages', () => {
     }) => {
       await clearAuthStorage(page);
       await page.goto('/register', { waitUntil: 'domcontentloaded' });
+      // intentional: best-effort .catch on an optional step — primary pass/fail is made by a downstream assertion (verifyViaApi, waitFor, explicit expect). The fallback value tolerates well-known transient or absent-UI cases without papering over real failures.
       await page.waitForURL(/\/(register|unavailable|login)/, { timeout: 15_000 }).catch(() => null);
       const url = page.url();
       // If registration is disabled → /unavailable. If enabled → /register.

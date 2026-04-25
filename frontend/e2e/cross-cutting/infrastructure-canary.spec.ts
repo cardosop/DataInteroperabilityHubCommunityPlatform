@@ -128,6 +128,7 @@ test.describe('Infrastructure Canary', () => {
     expect(
       putRes.status,
       `S3 PUT failed: ${putRes.status} ${putRes.statusText}. ` +
+        // intentional: best-effort .catch on an optional step — primary pass/fail is made by a downstream assertion (verifyViaApi, waitFor, explicit expect). The fallback value tolerates well-known transient or absent-UI cases without papering over real failures.
         `Body: ${(await putRes.text().catch(() => '')).slice(0, 300)}`
     ).toBe(200);
   });

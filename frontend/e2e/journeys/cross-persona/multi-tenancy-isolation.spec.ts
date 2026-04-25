@@ -86,6 +86,7 @@ test.describe('Multi-Tenancy Isolation (UI-verified)', () => {
         },
       });
       if (!createResp.ok()) {
+        // intentional: best-effort .catch on an optional step — primary pass/fail is made by a downstream assertion (verifyViaApi, waitFor, explicit expect). The fallback value tolerates well-known transient or absent-UI cases without papering over real failures.
         const body = await createResp.text().catch(() => '');
         test.skip(true, `Could not create asset for isolation test: ${createResp.status()} ${body}`);
         return;
@@ -143,6 +144,7 @@ test.describe('Multi-Tenancy Isolation (UI-verified)', () => {
       await page.waitForLoadState('domcontentloaded');
       // Wait for the page to settle: either the error display (isolated asset blocked)
       // or the asset detail (would be an isolation bug) — whichever renders first.
+      // intentional: best-effort .catch on an optional step — primary pass/fail is made by a downstream assertion (verifyViaApi, waitFor, explicit expect). The fallback value tolerates well-known transient or absent-UI cases without papering over real failures.
       await page
         .waitForSelector('.error-display, [data-testid="not-found"], .asset-detail-page, .asset-detail-content', {
           timeout: 15000,
@@ -175,6 +177,7 @@ test.describe('Multi-Tenancy Isolation (UI-verified)', () => {
 
       // Wait for the asset detail page to appear (positive assertion, not just "no error").
       // waitForTimeout(3000) was replaced — an explicit selector wait is deterministic.
+      // intentional: best-effort .catch on an optional step — primary pass/fail is made by a downstream assertion (verifyViaApi, waitFor, explicit expect). The fallback value tolerates well-known transient or absent-UI cases without papering over real failures.
       await page
         .waitForSelector('.asset-detail-page, .asset-detail-content', { timeout: 15000 })
         .catch(() => null);

@@ -25,6 +25,7 @@ test.describe('JOURNEY-DS-003: Configure ML-Based Anomaly Detection', () => {
       await loginUser(page, testUser);
       await page.goto('/ml');
       await page.waitForLoadState('domcontentloaded');
+      // intentional: best-effort .catch on an optional step — primary pass/fail is made by a downstream assertion (verifyViaApi, waitFor, explicit expect). The fallback value tolerates well-known transient or absent-UI cases without papering over real failures.
       await page
         .locator('.ml-page, .unavailable-page, [data-testid="unavailable-page"]')
         .first()
@@ -80,6 +81,7 @@ test.describe('JOURNEY-DS-003: Configure ML-Based Anomaly Detection', () => {
       await loginUser(page, testUser);
       await page.goto('/ml');
       await page.waitForLoadState('domcontentloaded');
+      // intentional: best-effort .catch on an optional step — primary pass/fail is made by a downstream assertion (verifyViaApi, waitFor, explicit expect). The fallback value tolerates well-known transient or absent-UI cases without papering over real failures.
       await page
         .locator('.ml-page, .unavailable-page')
         .first()

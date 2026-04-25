@@ -45,6 +45,7 @@ test.describe('JOURNEY-DC-014: Discover ODPS Products (Semantic Search)', () => 
       const { clearAuthStorage } = await import('../../fixtures/auth');
       await clearAuthStorage(page);
       await page.goto('/semantic', { waitUntil: 'domcontentloaded' });
+      // intentional: best-effort .catch on an optional step — primary pass/fail is made by a downstream assertion (verifyViaApi, waitFor, explicit expect). The fallback value tolerates well-known transient or absent-UI cases without papering over real failures.
       await page.waitForURL(/\/(login|403)/, { timeout: 20000 }).catch(() => null);
       expect(page.url().includes('/login') || page.url().includes('/403')).toBe(true);
     });

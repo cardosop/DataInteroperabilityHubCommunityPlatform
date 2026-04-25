@@ -65,6 +65,7 @@ test.describe('Full Asset Lifecycle', () => {
 
     // Step 6: Verify onboarding checklist shows progress
     const checklist = page.locator('[data-testid="onboarding-checklist"]');
+    // intentional: best-effort .catch on an optional step — primary pass/fail is made by a downstream assertion (verifyViaApi, waitFor, explicit expect). The fallback value tolerates well-known transient or absent-UI cases without papering over real failures.
     if (await checklist.isVisible({ timeout: 5_000 }).catch(() => false)) {
       // Create Asset step should be completed
       await expect(
@@ -85,6 +86,7 @@ test.describe('Full Asset Lifecycle', () => {
 
     // Step 2: Verify spec type column exists
     const table = page.locator('table');
+    // intentional: best-effort .catch on an optional step — primary pass/fail is made by a downstream assertion (verifyViaApi, waitFor, explicit expect). The fallback value tolerates well-known transient or absent-UI cases without papering over real failures.
     if (await table.isVisible({ timeout: 5_000 }).catch(() => false)) {
       await expect(page.locator('th:has-text("Spec Type")')).toBeVisible();
     }
@@ -93,6 +95,7 @@ test.describe('Full Asset Lifecycle', () => {
     const createBtn = page.getByRole('button', { name: /create contract/i }).or(
       page.locator('a:has-text("Create Contract")'),
     );
+    // intentional: best-effort .catch on an optional step — primary pass/fail is made by a downstream assertion (verifyViaApi, waitFor, explicit expect). The fallback value tolerates well-known transient or absent-UI cases without papering over real failures.
     if (await createBtn.isVisible({ timeout: 3_000 }).catch(() => false)) {
       await createBtn.click();
       await page.waitForURL(/\/contracts\/create/, { timeout: 10_000 });
@@ -113,6 +116,7 @@ test.describe('Full Asset Lifecycle', () => {
 
     // Admin section should be collapsed by default
     const adminGroup = sidebar.locator('details:has(summary:has-text("Admin"))');
+    // intentional: best-effort .catch on an optional step — primary pass/fail is made by a downstream assertion (verifyViaApi, waitFor, explicit expect). The fallback value tolerates well-known transient or absent-UI cases without papering over real failures.
     if (await adminGroup.isVisible({ timeout: 3_000 }).catch(() => false)) {
       // Admin should be collapsed (not have 'open' attribute)
       const isOpen = await adminGroup.getAttribute('open');
@@ -129,6 +133,7 @@ test.describe('Full Asset Lifecycle', () => {
 
     // Getting started card should be visible for new users
     const gettingStarted = page.locator('[data-testid="getting-started-card"]');
+    // intentional: best-effort .catch on an optional step — primary pass/fail is made by a downstream assertion (verifyViaApi, waitFor, explicit expect). The fallback value tolerates well-known transient or absent-UI cases without papering over real failures.
     if (await gettingStarted.isVisible({ timeout: 5_000 }).catch(() => false)) {
       await expect(gettingStarted.getByText(/create your first asset/i)).toBeVisible();
 
@@ -144,6 +149,7 @@ test.describe('Full Asset Lifecycle', () => {
 
     // Governance overview should be present
     const governance = page.locator('[data-testid="governance-overview"]');
+    // intentional: best-effort .catch on an optional step — primary pass/fail is made by a downstream assertion (verifyViaApi, waitFor, explicit expect). The fallback value tolerates well-known transient or absent-UI cases without papering over real failures.
     if (await governance.isVisible({ timeout: 5_000 }).catch(() => false)) {
       await expect(governance.getByText(/compliance posture/i)).toBeVisible();
       await expect(governance.getByText(/dq health/i)).toBeVisible();

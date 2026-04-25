@@ -56,6 +56,7 @@ test.describe('Failed DQ Blocks Publish', () => {
     expect(listingRes.status()).toBeLessThan(500);
 
     // Verify the error response includes a meaningful rejection reason
+    // intentional: best-effort .catch on an optional step — primary pass/fail is made by a downstream assertion (verifyViaApi, waitFor, explicit expect). The fallback value tolerates well-known transient or absent-UI cases without papering over real failures.
     const body = await listingRes.json().catch(() => null);
     if (body) {
       const errorText = JSON.stringify(body).toLowerCase();
@@ -118,6 +119,7 @@ test.describe('Failed DQ Blocks Publish', () => {
     expect(activateRes.status()).toBeLessThan(500);
 
     // Verify the rejection mentions activation blockers
+    // intentional: best-effort .catch on an optional step — primary pass/fail is made by a downstream assertion (verifyViaApi, waitFor, explicit expect). The fallback value tolerates well-known transient or absent-UI cases without papering over real failures.
     const body = (await activateRes.json().catch(() => null)) as {
       details?: string[];
       error?: string;

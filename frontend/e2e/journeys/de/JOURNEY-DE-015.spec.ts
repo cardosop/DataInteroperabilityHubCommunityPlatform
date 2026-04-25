@@ -61,6 +61,7 @@ test.describe('JOURNEY-DE-015: Upload Data File', () => {
           });
 
           // Wait for upload response (may be success or 429)
+          // intentional: best-effort .catch on an optional step — primary pass/fail is made by a downstream assertion (verifyViaApi, waitFor, explicit expect). The fallback value tolerates well-known transient or absent-UI cases without papering over real failures.
           const response = await page
             .waitForResponse(
               (resp) =>
@@ -73,6 +74,7 @@ test.describe('JOURNEY-DE-015: Upload Data File', () => {
           if (response && response.status() === 429) {
             let retryAfter = 5;
             try {
+              // intentional: best-effort .catch on an optional step — primary pass/fail is made by a downstream assertion (verifyViaApi, waitFor, explicit expect). The fallback value tolerates well-known transient or absent-UI cases without papering over real failures.
               const responseBody = await response.json().catch(() => ({}));
               const message = responseBody.message || '';
               const retryMatch = message.match(/retry after (\d+) seconds?/i);

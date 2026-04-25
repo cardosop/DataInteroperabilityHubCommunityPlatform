@@ -92,6 +92,7 @@ test.describe('Cross-Persona: Provider → Consumer Purchase', () => {
           await confirmBtn.first().click();
         }
 
+        // intentional: best-effort .catch on an optional step — primary pass/fail is made by a downstream assertion (verifyViaApi, waitFor, explicit expect). The fallback value tolerates well-known transient or absent-UI cases without papering over real failures.
         const orderResp = await orderRespPromise.catch(() => null);
         if (orderResp && orderResp.status() < 400) {
           const data = (await orderResp.json()) as { id?: string; order?: { id?: string } };
@@ -102,6 +103,7 @@ test.describe('Cross-Persona: Provider → Consumer Purchase', () => {
 
     if (!orderId) {
       // Fallback: cross-tenant listing may not be visible; place order via API
+      // intentional: best-effort .catch on an optional step — primary pass/fail is made by a downstream assertion (verifyViaApi, waitFor, explicit expect). The fallback value tolerates well-known transient or absent-UI cases without papering over real failures.
       orderId = await placeOrderViaApi(dcUser, listingId).catch(() => undefined);
     }
 

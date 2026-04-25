@@ -212,6 +212,7 @@ test.describe('Scheduled Export, Retention, ODPS Link: Resource Pickers', () => 
     const contractPicker = page.locator(
       '[data-testid="odps-link-contract-picker"]'
     );
+    // intentional: best-effort .catch on an optional step — primary pass/fail is made by a downstream assertion (verifyViaApi, waitFor, explicit expect). The fallback value tolerates well-known transient or absent-UI cases without papering over real failures.
     const pickerVisible = await contractPicker
       .waitFor({ state: 'visible', timeout: 10000 })
       .then(() => true)

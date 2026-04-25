@@ -62,6 +62,7 @@ test.describe('Admin, Audit, Settings, remaining persona routes', () => {
         (await page.locator('.error-display').count()) > 0 ||
         (await page.locator('.error-display-title').count()) > 0;
       if (hasError) {
+        // intentional: admin-audit-settings routes test page-level navigation tolerance; per-route content failures surface in the URL/heading assertions, not the optional sub-step probes.
         const errText = await page.locator('.error-display, .error-display-title').first().textContent().catch(() => '');
         throw new Error(`Admin page shows error state: "${errText?.slice(0, 300)}"`);
       }
@@ -84,6 +85,7 @@ test.describe('Admin, Audit, Settings, remaining persona routes', () => {
         (await page.locator('.error-display').count()) > 0 ||
         (await page.locator('.error-display-title').count()) > 0;
       if (hasError) {
+        // intentional: admin-audit-settings routes test page-level navigation tolerance; per-route content failures surface in the URL/heading assertions, not the optional sub-step probes.
         const errText = await page.locator('.error-display, .error-display-title').first().textContent().catch(() => '');
         throw new Error(`Audit page shows error state: "${errText?.slice(0, 300)}"`);
       }
@@ -143,6 +145,7 @@ test.describe('Admin, Audit, Settings, remaining persona routes', () => {
         (await page.locator('.error-display').count()) > 0 ||
         (await page.locator('.error-display-title').count()) > 0;
       if (hasError) {
+        // intentional: admin-audit-settings routes test page-level navigation tolerance; per-route content failures surface in the URL/heading assertions, not the optional sub-step probes.
         const errText = await page.locator('.error-display, .error-display-title').first().textContent().catch(() => '');
         throw new Error(`Observability page shows error state: "${errText?.slice(0, 300)}"`);
       }
@@ -169,6 +172,7 @@ test.describe('Admin, Audit, Settings, remaining persona routes', () => {
         (await page.locator('.error-display').count()) > 0 ||
         (await page.locator('.error-display-title').count()) > 0;
       if (hasError) {
+        // intentional: admin-audit-settings routes test page-level navigation tolerance; per-route content failures surface in the URL/heading assertions, not the optional sub-step probes.
         const errText = await page.locator('.error-display, .error-display-title').first().textContent().catch(() => '');
         throw new Error(`Scheduled-exports page shows error state: "${errText?.slice(0, 300)}"`);
       }
@@ -195,6 +199,7 @@ test.describe('Admin, Audit, Settings, remaining persona routes', () => {
         (await page.locator('.error-display').count()) > 0 ||
         (await page.locator('.error-display-title').count()) > 0;
       if (hasError) {
+        // intentional: admin-audit-settings routes test page-level navigation tolerance; per-route content failures surface in the URL/heading assertions, not the optional sub-step probes.
         const errText = await page.locator('.error-display, .error-display-title').first().textContent().catch(() => '');
         throw new Error(`Cost page shows error state: "${errText?.slice(0, 300)}"`);
       }
@@ -219,6 +224,7 @@ test.describe('Admin, Audit, Settings, remaining persona routes', () => {
         (await page.locator('.error-display').count()) > 0 ||
         (await page.locator('.error-display-title').count()) > 0;
       if (hasError) {
+        // intentional: admin-audit-settings routes test page-level navigation tolerance; per-route content failures surface in the URL/heading assertions, not the optional sub-step probes.
         const errText = await page.locator('.error-display, .error-display-title').first().textContent().catch(() => '');
         throw new Error(`Settings/tenant page shows error state: "${errText?.slice(0, 300)}"`);
       }
@@ -271,6 +277,7 @@ test.describe('Admin, Audit, Settings, remaining persona routes', () => {
         (await page.locator('.error-display').count()) > 0 ||
         (await page.locator('.error-display-title').count()) > 0;
       if (hasError) {
+        // intentional: admin-audit-settings routes test page-level navigation tolerance; per-route content failures surface in the URL/heading assertions, not the optional sub-step probes.
         const errText = await page.locator('.error-display, .error-display-title').first().textContent().catch(() => '');
         throw new Error(`Semantic page shows error state: "${errText?.slice(0, 300)}"`);
       }
@@ -287,6 +294,7 @@ test.describe('Admin, Audit, Settings, remaining persona routes', () => {
       const nonExistentId = '00000000-0000-0000-0000-000000000000';
       // Fixed: use full path instead of partial `/webhooks/` && `00000000` (too broad).
       // Only 404 is valid; 200 means the webhook exists (backend bug).
+      // intentional: admin-audit-settings routes test page-level navigation tolerance; per-route content failures surface in the URL/heading assertions, not the optional sub-step probes.
       const responsePromise = page
         .waitForResponse(
           (resp) =>
@@ -315,6 +323,7 @@ test.describe('Admin, Audit, Settings, remaining persona routes', () => {
       }
       await responsePromise;
 
+      // intentional: admin-audit-settings routes test page-level navigation tolerance; per-route content failures surface in the URL/heading assertions, not the optional sub-step probes.
       await page.locator('.error-display, .error-display-title, .webhook-detail-page')
         .first().waitFor({ state: 'visible', timeout: 30000 }).catch(() => null);
 
@@ -323,6 +332,7 @@ test.describe('Admin, Audit, Settings, remaining persona routes', () => {
       // network error, or generic failure. The test verifies the UI shows an error — the
       // exact error text depends on backend load and response time.
       if (hasErrorDisplay) {
+        // intentional: admin-audit-settings routes test page-level navigation tolerance; per-route content failures surface in the URL/heading assertions, not the optional sub-step probes.
         const errText = await page.locator('.error-display, .error-display-title').first().textContent().catch(() => '');
         if (errText && !errText.toLowerCase().includes('not found') && !errText.includes('404')) {
           console.warn(`[WARN] /webhooks/${nonExistentId} error is not 404: "${errText.slice(0, 200)}"`);
@@ -343,6 +353,7 @@ test.describe('Admin, Audit, Settings, remaining persona routes', () => {
       const nonExistentId = '00000000-0000-0000-0000-000000000000';
       // Fixed: use full path instead of partial `/audit/` && `00000000` (too broad).
       // Audit is role-gated (AUDITOR/TENANT_ADMIN) — 403 is also an acceptable outcome.
+      // intentional: admin-audit-settings routes test page-level navigation tolerance; per-route content failures surface in the URL/heading assertions, not the optional sub-step probes.
       const responsePromise = page
         .waitForResponse(
           (resp) =>
@@ -371,6 +382,7 @@ test.describe('Admin, Audit, Settings, remaining persona routes', () => {
       }
       await responsePromise;
 
+      // intentional: admin-audit-settings routes test page-level navigation tolerance; per-route content failures surface in the URL/heading assertions, not the optional sub-step probes.
       await page.locator('.error-display, .error-display-title, [data-testid="audit-event-detail-page"]')
         .first().waitFor({ state: 'visible', timeout: 30000 }).catch(() => null);
 
@@ -385,6 +397,7 @@ test.describe('Admin, Audit, Settings, remaining persona routes', () => {
       // network error, or generic failure. The test verifies the UI shows an error — the
       // exact error text depends on backend load and response time.
       if (hasErrorDisplay) {
+        // intentional: admin-audit-settings routes test page-level navigation tolerance; per-route content failures surface in the URL/heading assertions, not the optional sub-step probes.
         const errText = await page.locator('.error-display, .error-display-title').first().textContent().catch(() => '');
         if (errText && !errText.toLowerCase().includes('not found') && !errText.includes('404')) {
           console.warn(`[WARN] /audit/${nonExistentId} error is not 404: "${errText.slice(0, 200)}"`);
@@ -406,6 +419,7 @@ test.describe('Admin, Audit, Settings, remaining persona routes', () => {
       // Fixed: use full path including /integrations/ prefix instead of just /connections/.
       // The previous pattern `includes('/connections/')` would match ANY connection request,
       // not specifically the integrations connection detail for the nil UUID.
+      // intentional: admin-audit-settings routes test page-level navigation tolerance; per-route content failures surface in the URL/heading assertions, not the optional sub-step probes.
       const responsePromise = page
         .waitForResponse(
           (resp) =>
@@ -434,6 +448,7 @@ test.describe('Admin, Audit, Settings, remaining persona routes', () => {
       }
       await responsePromise;
 
+      // intentional: admin-audit-settings routes test page-level navigation tolerance; per-route content failures surface in the URL/heading assertions, not the optional sub-step probes.
       await page.locator('.error-display, .error-display-title, .marketplace-connection-detail-page')
         .first().waitFor({ state: 'visible', timeout: 30000 }).catch(() => null);
 
@@ -442,6 +457,7 @@ test.describe('Admin, Audit, Settings, remaining persona routes', () => {
       // network error, or generic failure. The test verifies the UI shows an error — the
       // exact error text depends on backend load and response time.
       if (hasErrorDisplay) {
+        // intentional: admin-audit-settings routes test page-level navigation tolerance; per-route content failures surface in the URL/heading assertions, not the optional sub-step probes.
         const errText = await page.locator('.error-display, .error-display-title').first().textContent().catch(() => '');
         if (errText && !errText.toLowerCase().includes('not found') && !errText.includes('404')) {
           console.warn(`[WARN] /integrations/connections/${nonExistentId} error is not 404: "${errText.slice(0, 200)}"`);

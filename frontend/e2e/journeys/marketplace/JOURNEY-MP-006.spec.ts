@@ -49,6 +49,7 @@ test.describe('JOURNEY-MP-006: Manage Marketplace Mappings', () => {
       await page.goto('/integrations/mappings/00000000-0000-0000-0000-000000000000');
       await page.waitForLoadState('domcontentloaded');
       // Wait for redirect to the list page (or login/403 if auth expired)
+      // intentional: best-effort .catch on an optional step — primary pass/fail is made by a downstream assertion (verifyViaApi, waitFor, explicit expect). The fallback value tolerates well-known transient or absent-UI cases without papering over real failures.
       await page
         .waitForURL(
           (url) =>

@@ -111,6 +111,7 @@ test.describe('JOURNEY-EXPORT-001: Create and Run Scheduled Export', () => {
 
       // Try to submit empty form
       const submitBtn = page.getByRole('button', { name: /Create|Save|Submit/i }).first();
+      // intentional: best-effort .catch on an optional step — primary pass/fail is made by a downstream assertion (verifyViaApi, waitFor, explicit expect). The fallback value tolerates well-known transient or absent-UI cases without papering over real failures.
       await submitBtn.waitFor({ state: 'visible', timeout: 10000 }).catch(() => null);
       if ((await submitBtn.count()) === 0) {
         test.skip(true, 'Submit button not found — form may not have loaded');

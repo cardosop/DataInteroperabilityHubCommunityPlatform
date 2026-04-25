@@ -22,6 +22,7 @@ test.describe('JOURNEY-PA-005: Manage Marketplace Configuration', () => {
       let landed = false;
       for (const route of routes) {
         const routeTimeout = route === '/admin' ? 60000 : 15000;
+        // intentional: best-effort .catch on an optional step — primary pass/fail is made by a downstream assertion (verifyViaApi, waitFor, explicit expect). The fallback value tolerates well-known transient or absent-UI cases without papering over real failures.
         await loginAndNavigateToRoute(page, paUser, route, {
           timeout: routeTimeout,
           contentSelector: '.admin-page, .marketplace-config-page',
@@ -41,6 +42,7 @@ test.describe('JOURNEY-PA-005: Manage Marketplace Configuration', () => {
       // Page renders without error
       const hasError = (await page.locator('.error-display').count()) > 0;
       if (hasError) {
+        // intentional: best-effort .catch on an optional step — primary pass/fail is made by a downstream assertion (verifyViaApi, waitFor, explicit expect). The fallback value tolerates well-known transient or absent-UI cases without papering over real failures.
         const errText = await page.locator('.error-display').first().textContent().catch(() => '');
         if (!/403|forbidden/i.test(errText ?? '')) {
           throw new Error(`Marketplace config page shows unexpected error: ${errText}`);

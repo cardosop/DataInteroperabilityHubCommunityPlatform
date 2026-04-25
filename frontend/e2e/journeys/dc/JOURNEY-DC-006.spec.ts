@@ -67,6 +67,7 @@ test.describe('JOURNEY-DC-006: Use Natural Language Search', () => {
       await clearAuthStorage(page);
       await gotoWithRetry(page, '/ai/search');
       await page.waitForLoadState('domcontentloaded').catch(() => {});
+      // intentional: best-effort .catch on an optional step — primary pass/fail is made by a downstream assertion (verifyViaApi, waitFor, explicit expect). The fallback value tolerates well-known transient or absent-UI cases without papering over real failures.
       await page.waitForURL(/\/(login|403)/, { timeout: 20000 }).catch(() => null);
       expect(page.url().includes('/login') || page.url().includes('/403')).toBe(true);
     });

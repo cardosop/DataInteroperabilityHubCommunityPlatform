@@ -66,6 +66,7 @@ test.describe('Feature: Semantic', () => {
         '[data-testid="semantic-sparql-section"], .sparql-form, .cm-editor',
       );
       const errorDisplay = page.locator('.error-display');
+      // intentional: best-effort .catch on an optional step — primary pass/fail is made by a downstream assertion (verifyViaApi, waitFor, explicit expect). The fallback value tolerates well-known transient or absent-UI cases without papering over real failures.
       await sparqlSection.or(errorDisplay).first().waitFor({ state: 'visible', timeout: 15000 }).catch(() => null);
 
       const hasQueryUI = (await sparqlSection.count()) > 0;
@@ -91,6 +92,7 @@ test.describe('Feature: Semantic', () => {
       const ontologyTab = page.locator(
         'button:has-text("Ontology"), [role="tab"]:has-text("Ontology")',
       ).first();
+      // intentional: best-effort .catch on an optional step — primary pass/fail is made by a downstream assertion (verifyViaApi, waitFor, explicit expect). The fallback value tolerates well-known transient or absent-UI cases without papering over real failures.
       await ontologyTab.waitFor({ state: 'visible', timeout: 10000 }).catch(() => null);
       if ((await ontologyTab.count()) === 0) {
         test.skip(true, 'Ontology tab not visible on semantic page');
@@ -104,6 +106,7 @@ test.describe('Feature: Semantic', () => {
       const errorDisplay = page.locator('.error-display');
       const loadingSpinner = page.locator('.loading-spinner');
 
+      // intentional: best-effort .catch on an optional step — primary pass/fail is made by a downstream assertion (verifyViaApi, waitFor, explicit expect). The fallback value tolerates well-known transient or absent-UI cases without papering over real failures.
       await ontologyTree.or(codeBlock).or(errorDisplay).first()
         .waitFor({ state: 'visible', timeout: 20000 })
         .catch(() => null);

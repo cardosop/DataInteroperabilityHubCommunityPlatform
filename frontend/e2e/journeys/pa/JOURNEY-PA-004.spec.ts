@@ -27,6 +27,7 @@ test.describe('JOURNEY-PA-004: Review Platform Analytics', () => {
       let landed = false;
       for (const route of analyticsRoutes) {
         const routeTimeout = route === '/admin' ? 60000 : 15000;
+        // intentional: best-effort .catch on an optional step — primary pass/fail is made by a downstream assertion (verifyViaApi, waitFor, explicit expect). The fallback value tolerates well-known transient or absent-UI cases without papering over real failures.
         await loginAndNavigateToRoute(page, paUser, route, {
           timeout: routeTimeout,
           contentSelector: '.admin-page, .analytics-page, .usage-page',
@@ -47,6 +48,7 @@ test.describe('JOURNEY-PA-004: Review Platform Analytics', () => {
       const accessToken = await page.evaluate(() => localStorage.getItem('access_token'));
       if (!accessToken) return;
 
+      // intentional: best-effort .catch on an optional step — primary pass/fail is made by a downstream assertion (verifyViaApi, waitFor, explicit expect). The fallback value tolerates well-known transient or absent-UI cases without papering over real failures.
       const analyticsResp = await page.request.get(`${API_BASE}/admin/analytics/`, {
         headers: { Authorization: `Bearer ${accessToken}` },
       }).catch(() => null);

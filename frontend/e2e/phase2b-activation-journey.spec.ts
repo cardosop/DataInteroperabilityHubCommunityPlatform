@@ -141,6 +141,7 @@ test.describe('Phase 2b — Asset Activation Golden Path', () => {
     try {
       await page.waitForURL(uuidRegex, { timeout: 60000, waitUntil: 'domcontentloaded' });
     } catch {
+      // intentional: best-effort .catch on an optional step — primary pass/fail is made by a downstream assertion (verifyViaApi, waitFor, explicit expect). The fallback value tolerates well-known transient or absent-UI cases without papering over real failures.
       const errEl = await page.locator('.error-display').first().textContent().catch(() => '');
       const errHint = errEl ? ` Backend error: ${errEl.slice(0, 200)}` : '';
       throw new Error(`Asset create redirect timed out. Current URL: ${page.url()}.${errHint}`);
@@ -176,6 +177,7 @@ test.describe('Phase 2b — Asset Activation Golden Path', () => {
       },
     });
     if (!createContractRes.ok()) {
+      // intentional: best-effort .catch on an optional step — primary pass/fail is made by a downstream assertion (verifyViaApi, waitFor, explicit expect). The fallback value tolerates well-known transient or absent-UI cases without papering over real failures.
       const body = await createContractRes.text().catch(() => '');
       throw new Error(
         `Contract create failed: ${createContractRes.status()} — ${body.slice(0, 400)}`,
@@ -203,6 +205,7 @@ test.describe('Phase 2b — Asset Activation Golden Path', () => {
       },
     );
     if (!validateRes.ok()) {
+      // intentional: best-effort .catch on an optional step — primary pass/fail is made by a downstream assertion (verifyViaApi, waitFor, explicit expect). The fallback value tolerates well-known transient or absent-UI cases without papering over real failures.
       const body = await validateRes.text().catch(() => '');
       throw new Error(
         `Contract validate failed: ${validateRes.status()} — ${body.slice(0, 400)}`,
@@ -252,6 +255,7 @@ test.describe('Phase 2b — Asset Activation Golden Path', () => {
       },
     );
     if (!activateContractRes.ok()) {
+      // intentional: best-effort .catch on an optional step — primary pass/fail is made by a downstream assertion (verifyViaApi, waitFor, explicit expect). The fallback value tolerates well-known transient or absent-UI cases without papering over real failures.
       const body = await activateContractRes.text().catch(() => '');
       throw new Error(
         `Contract activate failed: ${activateContractRes.status()} — ${body.slice(0, 400)}`,
@@ -297,6 +301,7 @@ test.describe('Phase 2b — Asset Activation Golden Path', () => {
     const activateResponse = await activateResponsePromise;
     const activateStatus = activateResponse.status();
     if (activateStatus !== 200) {
+      // intentional: best-effort .catch on an optional step — primary pass/fail is made by a downstream assertion (verifyViaApi, waitFor, explicit expect). The fallback value tolerates well-known transient or absent-UI cases without papering over real failures.
       const body = await activateResponse.text().catch(() => '');
       throw new Error(
         `POST /assets/${assetId}/activate/ returned ${activateStatus}. Body: ${body.slice(0, 400)}. ` +

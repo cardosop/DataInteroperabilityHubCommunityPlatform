@@ -25,6 +25,7 @@ test.describe('JOURNEY-DC-009: Join Data Community', () => {
           '.communities-page, .communities-tab, .unavailable-page, .empty-state, .error-display',
       });
       // Phase 2: wait for loading spinner to resolve into a terminal state (spinner is transient)
+      // intentional: best-effort .catch on an optional step — primary pass/fail is made by a downstream assertion (verifyViaApi, waitFor, explicit expect). The fallback value tolerates well-known transient or absent-UI cases without papering over real failures.
       await page
         .locator('.communities-page, .communities-tab, .unavailable-page, .empty-state, .error-display')
         .first()
@@ -58,6 +59,7 @@ test.describe('JOURNEY-DC-009: Join Data Community', () => {
       const { clearAuthStorage } = await import('../../fixtures/auth');
       await clearAuthStorage(page);
       await page.goto('/communities', { waitUntil: 'domcontentloaded' });
+      // intentional: best-effort .catch on an optional step — primary pass/fail is made by a downstream assertion (verifyViaApi, waitFor, explicit expect). The fallback value tolerates well-known transient or absent-UI cases without papering over real failures.
       await page.waitForURL(/\/(login|403)/, { timeout: 20000 }).catch(() => null);
       expect(page.url().includes('/login') || page.url().includes('/403')).toBe(true);
     });

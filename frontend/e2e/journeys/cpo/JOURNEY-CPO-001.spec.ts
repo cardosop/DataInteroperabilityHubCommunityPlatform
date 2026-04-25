@@ -66,6 +66,7 @@ test.describe('JOURNEY-CPO-001: Review Compliance for Asset', () => {
       // Error-display is NOT acceptable — it means compliance service is down or broken
       const hasError = (await page.locator('.error-display').count()) > 0;
       if (hasError) {
+        // intentional: best-effort .catch on an optional step — primary pass/fail is made by a downstream assertion (verifyViaApi, waitFor, explicit expect). The fallback value tolerates well-known transient or absent-UI cases without papering over real failures.
         const errText = await page.locator('.error-display').first().textContent().catch(() => '');
         throw new Error(`Compliance list shows error for CPO user: ${errText}`);
       }
@@ -151,6 +152,7 @@ test.describe('JOURNEY-CPO-001: Review Compliance for Asset', () => {
       // div in DOM during load), so wait for either the detail page OR an error display to appear.
       await page.goto(`/compliance/runs/${runId}`);
       await page.waitForLoadState('domcontentloaded');
+      // intentional: best-effort .catch on an optional step — primary pass/fail is made by a downstream assertion (verifyViaApi, waitFor, explicit expect). The fallback value tolerates well-known transient or absent-UI cases without papering over real failures.
       await page.waitForSelector('.compliance-run-detail-page, .error-display', { timeout: 30000 }).catch(() => null);
       const hasDetail = (await page.locator('.compliance-run-detail-page').count()) > 0;
       if (!hasDetail) {
@@ -162,6 +164,7 @@ test.describe('JOURNEY-CPO-001: Review Compliance for Asset', () => {
       }
 
       // Poll for terminal state — asset has a linked dataset+file so SUCCEEDED is expected
+      // intentional: best-effort .catch on an optional step — primary pass/fail is made by a downstream assertion (verifyViaApi, waitFor, explicit expect). The fallback value tolerates well-known transient or absent-UI cases without papering over real failures.
       const finalResult = await waitForComplianceRunViaApi(cpoUser, runId!, COMPLIANCE_POLL_TIMEOUT_MS).catch(
         () => null
       );

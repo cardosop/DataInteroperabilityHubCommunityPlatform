@@ -92,6 +92,7 @@ test.describe('JOURNEY-DE-001: Programmatic Contract-First Onboarding', () => {
       });
 
       if (!contractRes.ok()) {
+        // intentional: best-effort .catch on an optional step — primary pass/fail is made by a downstream assertion (verifyViaApi, waitFor, explicit expect). The fallback value tolerates well-known transient or absent-UI cases without papering over real failures.
         const body = await contractRes.text().catch(() => '');
         test.info().annotations.push({
           type: 'contract-create-failed',

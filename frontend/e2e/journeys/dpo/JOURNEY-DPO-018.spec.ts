@@ -19,6 +19,9 @@ import { expect, test } from '@playwright/test';
 import { createAssetViaApi, createDatasetViaApi } from '../../fixtures/api-assets';
 import { clearAuthStorage, getTestUser } from '../../fixtures/auth';
 import { loginAndNavigateToRoute, waitForLoadingComplete } from '../../fixtures/helpers';
+// Phase 226 B1a — dual-channel verification on dataset-link mutation.
+import { verifyViaApi } from '../../fixtures/verifyViaApi';
+import { verifyAuditEvent } from '../../fixtures/verifyAuditEvent';
 
 test.describe('JOURNEY-DPO-018: Edit Dataset and Link to Asset', () => {
   test.setTimeout(120000);
@@ -135,6 +138,19 @@ test.describe('JOURNEY-DPO-018: Edit Dataset and Link to Asset', () => {
       );
       // The picker suggestion was clicked (or test was skipped), so the asset must be persisted.
       expect(persistedAssetId).toBe(assetId);
+
+      // Phase 226 B1a — formalise the API cross-check with verifyViaApi, and
+      // assert the audit trail recorded the dataset update (the UI shows the
+      // save succeeded; without the audit check a dropped create_audit_event
+      // on the update path would ship silently).
+      await verifyViaApi(page, `/api/v1/datasets/${datasetId}/`, {
+        asset_id: assetId,
+      });
+      await verifyAuditEvent(page, {
+        action: 'DATASET_UPDATED',
+        resourceType: 'DATASET',
+        resourceId: datasetId,
+      });
     });
 
     test('dataset list loads and shows datasets', async ({ page }) => {

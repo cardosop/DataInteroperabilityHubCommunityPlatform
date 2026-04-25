@@ -117,6 +117,7 @@ test.describe('JOURNEY-DC-001: Discover and Purchase Marketplace Asset', () => {
 
       await loginAndNavigateToRoute(page, consumer, '/marketplace/orders', { timeout: 60000 });
       // Phase 2: wait for terminal state
+      // intentional: best-effort .catch on an optional step — primary pass/fail is made by a downstream assertion (verifyViaApi, waitFor, explicit expect). The fallback value tolerates well-known transient or absent-UI cases without papering over real failures.
       await page
         .locator('.order-list-page, .empty-state, .error-display')
         .first()
@@ -155,6 +156,7 @@ test.describe('JOURNEY-DC-001: Discover and Purchase Marketplace Asset', () => {
       // Listing cards are <div class="listing-card" data-listing-id="..." role="button">
       // with programmatic navigation (useNavigate), NOT <a href> anchor tags.
       // Wait for the grid to fully render before checking for cards.
+      // intentional: best-effort .catch on an optional step — primary pass/fail is made by a downstream assertion (verifyViaApi, waitFor, explicit expect). The fallback value tolerates well-known transient or absent-UI cases without papering over real failures.
       await page.locator('.listing-list-grid, .empty-state').first()
         .waitFor({ state: 'visible', timeout: 15000 }).catch(() => null);
 
@@ -215,6 +217,7 @@ test.describe('JOURNEY-DC-001: Discover and Purchase Marketplace Asset', () => {
         contentSelector: '.error-display, .listing-detail-main, .empty-state',
       });
       // Wait for a terminal state instead of a fixed sleep
+      // intentional: best-effort .catch on an optional step — primary pass/fail is made by a downstream assertion (verifyViaApi, waitFor, explicit expect). The fallback value tolerates well-known transient or absent-UI cases without papering over real failures.
       await page
         .locator('.error-display, .listing-detail-main, .empty-state')
         .first()

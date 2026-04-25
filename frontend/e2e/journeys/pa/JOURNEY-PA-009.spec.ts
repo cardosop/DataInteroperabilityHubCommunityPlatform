@@ -29,6 +29,7 @@ test.describe('JOURNEY-PA-009: Manage Federated Assets', () => {
       let landed = false;
       for (const route of routes) {
         const routeTimeout = ['/mesh', '/mesh/topology'].includes(route) ? 60000 : 15000;
+        // intentional: best-effort .catch on an optional step — primary pass/fail is made by a downstream assertion (verifyViaApi, waitFor, explicit expect). The fallback value tolerates well-known transient or absent-UI cases without papering over real failures.
         await loginAndNavigateToRoute(page, paUser, route, {
           timeout: routeTimeout,
           contentSelector: '.mesh-domain-list-page, .topology-page, .federated-assets-page, .empty-state, .unavailable-page',
@@ -47,6 +48,7 @@ test.describe('JOURNEY-PA-009: Manage Federated Assets', () => {
       const accessToken = await page.evaluate(() => localStorage.getItem('access_token'));
       if (!accessToken) return;
 
+      // intentional: best-effort .catch on an optional step — primary pass/fail is made by a downstream assertion (verifyViaApi, waitFor, explicit expect). The fallback value tolerates well-known transient or absent-UI cases without papering over real failures.
       const meshResp = await page.request.get(`${API_BASE}/mesh/domains/?page_size=5`, {
         headers: { Authorization: `Bearer ${accessToken}` },
       }).catch(() => null);

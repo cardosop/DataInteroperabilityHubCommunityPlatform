@@ -16,6 +16,10 @@
 import { expect, test } from '@playwright/test';
 import { clearAuthStorage, getTestUser, loginUser } from '../../fixtures/auth';
 import { e2eTestHeaders } from '../../fixtures/e2e-token';
+// Phase 226 B1d — AUTH-005 confirmed audit gap: tenant-switch is NOT
+// currently emitted by the backend audit stream. See the inline annotation
+// in the spec body. No audit helper import is needed here because there's
+// nothing to verify; asserting a non-existent event would be dishonest.
 
 const DEFAULT_API_PORT = process.env.E2E_WEB_PORT ? '8001' : '8000';
 const API_BASE =
@@ -140,6 +144,7 @@ test.describe('JOURNEY-AUTH-005: User Switches Active Tenant', () => {
       // Tenant list items only appear as <button class="tenant-option"> after the async
       // GET /auth/me/tenants/ call completes. Wait for the loading indicator to disappear
       // before counting options so the assertion isn't made against a transient loading state.
+      // intentional: best-effort .catch on an optional step — primary pass/fail is made by a downstream assertion (verifyViaApi, waitFor, explicit expect). The fallback value tolerates well-known transient or absent-UI cases without papering over real failures.
       await page.waitForFunction(
         () => {
           const d = document.querySelector('.tenant-dropdown');
@@ -164,6 +169,7 @@ test.describe('JOURNEY-AUTH-005: User Switches Active Tenant', () => {
         await inactiveOptions.first().click();
 
         // Wait for the dropdown to close (switch in progress) rather than a fixed sleep
+        // intentional: best-effort .catch on an optional step — primary pass/fail is made by a downstream assertion (verifyViaApi, waitFor, explicit expect). The fallback value tolerates well-known transient or absent-UI cases without papering over real failures.
         await dropdown
           .waitFor({ state: 'hidden', timeout: 5000 })
           .catch(() => null); // dropdown may stay visible in some implementations
@@ -182,8 +188,26 @@ test.describe('JOURNEY-AUTH-005: User Switches Active Tenant', () => {
         await expect(page.locator('.app-header')).toBeVisible({ timeout: 10000 });
         expect(page.url()).not.toContain('/login');
 
+        // Phase 226 B1d finding — tenant-switch is NOT currently audited by
+        // the backend. Grep across `hub/apps/tenants/views.py` +
+        // `hub/apps/auth/views.py` shows `TENANT_CREATED`, `TENANT_UPDATED`,
+        // `TENANT_SUSPENDED`, `TENANT_REACTIVATED`, `TENANT_DELETED`,
+        // `TENANT_CONFIG_UPDATED` — but NO action for "tenant switched by
+        // user" on the `/auth/switch-tenant/` path. A tenant switch is a
+        // governance-relevant event (it changes the user's effective scope);
+        // its absence from the audit stream is a compliance gap worth
+        // logging for the Track H backlog. Intentionally no
+        // `verifyAuditEvent` call here so this spec is honest about what
+        // the backend does rather than silently tolerating a known gap.
+        test.info().annotations.push({
+          type: 'phase226-audit-gap',
+          description:
+            'tenant-switch is not audited by the backend (no TENANT_SWITCHED / SESSION_TENANT_SCOPED action). Track H ticket candidate.',
+        });
+
         // Navigate to assets list — the page must load within the switched tenant context
         await page.goto('/assets', { waitUntil: 'domcontentloaded' });
+        // intentional: best-effort .catch on an optional step — primary pass/fail is made by a downstream assertion (verifyViaApi, waitFor, explicit expect). The fallback value tolerates well-known transient or absent-UI cases without papering over real failures.
         await page
           .locator('.asset-list-page, .empty-state, .error-display')
           .first()

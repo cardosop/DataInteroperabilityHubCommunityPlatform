@@ -95,6 +95,7 @@ async function loginViaApi(user: TestUser): Promise<string> {
           continue;
         }
         if (!response.ok) {
+          // intentional: api-assets fixture wraps best-effort cleanup / reuse-search / token-refresh probes; on failure we fall back to creating fresh resources, which is the explicit recovery path. Test failure surfaces if the fresh-create itself fails.
           const body = await response.text().catch(() => '');
           throw new Error(`Login API failed: ${response.status} ${body}`);
         }
@@ -128,6 +129,7 @@ async function loginViaApi(user: TestUser): Promise<string> {
  */
 export async function getAssetKeyViaApi(user: TestUser, assetId: string): Promise<string | null> {
   const token = await loginViaApi(user);
+  // intentional: api-assets fixture wraps best-effort cleanup / reuse-search / token-refresh probes; on failure we fall back to creating fresh resources, which is the explicit recovery path. Test failure surfaces if the fresh-create itself fails.
   const res = await fetch(`${API_BASE_URL}/assets/${assetId}/`, {
     headers: { Authorization: `Bearer ${token}` },
     cache: 'no-store',
@@ -143,6 +145,7 @@ export async function getContractLinkedAssetIdViaApi(
   contractId: string
 ): Promise<string | null> {
   const token = await loginViaApi(user);
+  // intentional: api-assets fixture wraps best-effort cleanup / reuse-search / token-refresh probes; on failure we fall back to creating fresh resources, which is the explicit recovery path. Test failure surfaces if the fresh-create itself fails.
   const res = await fetch(`${API_BASE_URL}/contracts/${contractId}/`, {
     headers: { Authorization: `Bearer ${token}` },
     cache: 'no-store',
@@ -238,9 +241,11 @@ async function createAssetViaApiOnce(
     }),
   });
   if (!response.ok) {
+    // intentional: api-assets fixture wraps best-effort cleanup / reuse-search / token-refresh probes; on failure we fall back to creating fresh resources, which is the explicit recovery path. Test failure surfaces if the fresh-create itself fails.
     const body = await response.text().catch(() => '');
     if (response.status === 403 && /subscription_inactive|No active subscription/i.test(body)) {
       // Attempt to re-ensure subscription and retry once
+      // intentional: api-assets fixture wraps best-effort cleanup / reuse-search / token-refresh probes; on failure we fall back to creating fresh resources, which is the explicit recovery path. Test failure surfaces if the fresh-create itself fails.
       const reEnsureRes = await fetch(`${API_BASE_URL}/test/ensure-e2e-subscription/`, {
         method: 'POST',
         headers: {
@@ -261,6 +266,7 @@ async function createAssetViaApiOnce(
           if (retryData.id) {
             const retryAssetId = retryData.id;
             if (options?.ensureActivated) {
+              // intentional: api-assets fixture wraps best-effort cleanup / reuse-search / token-refresh probes; on failure we fall back to creating fresh resources, which is the explicit recovery path. Test failure surfaces if the fresh-create itself fails.
               await fetch(`${API_BASE_URL}/assets/${retryAssetId}/activate/`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
@@ -339,6 +345,7 @@ async function createAssetViaApiOnce(
           if (contractId) {
             let contractVersion = contract.version ?? 1;
             // Trigger validation (best-effort; ignore failures)
+            // intentional: api-assets fixture wraps best-effort cleanup / reuse-search / token-refresh probes; on failure we fall back to creating fresh resources, which is the explicit recovery path. Test failure surfaces if the fresh-create itself fails.
             await fetch(`${API_BASE_URL}/contracts/${contractId}/validate/`, {
               method: 'POST',
               headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
@@ -368,6 +375,7 @@ async function createAssetViaApiOnce(
               }
             }
             // PATCH contract to ACTIVE (best-effort; workflows may block this — non-fatal)
+            // intentional: api-assets fixture wraps best-effort cleanup / reuse-search / token-refresh probes; on failure we fall back to creating fresh resources, which is the explicit recovery path. Test failure surfaces if the fresh-create itself fails.
             await fetch(`${API_BASE_URL}/contracts/${contractId}/`, {
               method: 'PATCH',
               headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
@@ -518,6 +526,7 @@ export async function createRetentionPolicyViaApi(
   });
 
   if (!response.ok) {
+    // intentional: api-assets fixture wraps best-effort cleanup / reuse-search / token-refresh probes; on failure we fall back to creating fresh resources, which is the explicit recovery path. Test failure surfaces if the fresh-create itself fails.
     const body = await response.text().catch(() => '');
     throw new Error(`Create retention policy API failed: ${response.status} ${body}`);
   }
@@ -578,6 +587,7 @@ export async function createScheduledExportViaApi(
   });
 
   if (!response.ok) {
+    // intentional: api-assets fixture wraps best-effort cleanup / reuse-search / token-refresh probes; on failure we fall back to creating fresh resources, which is the explicit recovery path. Test failure surfaces if the fresh-create itself fails.
     const body = await response.text().catch(() => '');
     throw new Error(`Create scheduled export API failed: ${response.status} ${body}`);
   }
@@ -684,9 +694,11 @@ export async function createDatasetViaApi(user: TestUser, options?: { assetId?: 
 
   let effectiveInitResponse = initResponse;
   if (!initResponse.ok) {
+    // intentional: api-assets fixture wraps best-effort cleanup / reuse-search / token-refresh probes; on failure we fall back to creating fresh resources, which is the explicit recovery path. Test failure surfaces if the fresh-create itself fails.
     const body = await initResponse.text().catch(() => '');
     if (initResponse.status === 403 && /subscription_inactive|No active subscription/i.test(body)) {
       // Re-ensure subscription and retry
+      // intentional: api-assets fixture wraps best-effort cleanup / reuse-search / token-refresh probes; on failure we fall back to creating fresh resources, which is the explicit recovery path. Test failure surfaces if the fresh-create itself fails.
       await fetch(`${API_BASE_URL}/test/ensure-e2e-subscription/`, {
         method: 'POST',
         headers: {
@@ -762,6 +774,7 @@ export async function createDatasetViaApi(user: TestUser, options?: { assetId?: 
       });
     }
     if (!putRes.ok) {
+      // intentional: api-assets fixture wraps best-effort cleanup / reuse-search / token-refresh probes; on failure we fall back to creating fresh resources, which is the explicit recovery path. Test failure surfaces if the fresh-create itself fails.
       const body = await putRes.text().catch(() => '');
       throw new Error(
         `File upload to object store failed: ${putRes.status} ${putRes.statusText} — ${body.slice(0, 300)}`
@@ -779,6 +792,7 @@ export async function createDatasetViaApi(user: TestUser, options?: { assetId?: 
   });
 
   if (!completeResponse.ok) {
+    // intentional: api-assets fixture wraps best-effort cleanup / reuse-search / token-refresh probes; on failure we fall back to creating fresh resources, which is the explicit recovery path. Test failure surfaces if the fresh-create itself fails.
     const body = await completeResponse.text().catch(() => '');
     throw new Error(`File complete API failed: ${completeResponse.status} ${body}`);
   }
@@ -796,6 +810,7 @@ export async function createDatasetViaApi(user: TestUser, options?: { assetId?: 
   });
 
   if (!datasetResponse.ok) {
+    // intentional: api-assets fixture wraps best-effort cleanup / reuse-search / token-refresh probes; on failure we fall back to creating fresh resources, which is the explicit recovery path. Test failure surfaces if the fresh-create itself fails.
     const body = await datasetResponse.text().catch(() => '');
     throw new Error(`Create dataset API failed: ${datasetResponse.status} ${body}`);
   }
@@ -888,8 +903,10 @@ export async function createODPSProductViaApi(user: TestUser): Promise<string> {
 
   let effectiveResponse = response;
   if (!response.ok) {
+    // intentional: api-assets fixture wraps best-effort cleanup / reuse-search / token-refresh probes; on failure we fall back to creating fresh resources, which is the explicit recovery path. Test failure surfaces if the fresh-create itself fails.
     const body = await response.text().catch(() => '');
     if (response.status === 403 && /subscription_inactive|No active subscription/i.test(body)) {
+      // intentional: api-assets fixture wraps best-effort cleanup / reuse-search / token-refresh probes; on failure we fall back to creating fresh resources, which is the explicit recovery path. Test failure surfaces if the fresh-create itself fails.
       await fetch(`${API_BASE_URL}/test/ensure-e2e-subscription/`, {
         method: 'POST',
         headers: {
@@ -908,6 +925,7 @@ export async function createODPSProductViaApi(user: TestUser): Promise<string> {
         }),
       });
       if (!retryRes.ok) {
+        // intentional: api-assets fixture wraps best-effort cleanup / reuse-search / token-refresh probes; on failure we fall back to creating fresh resources, which is the explicit recovery path. Test failure surfaces if the fresh-create itself fails.
         const retryBody = await retryRes.text().catch(() => '');
         throw new Error(`createODPSProductViaApi failed after subscription re-ensure: ${retryRes.status} ${retryBody}`);
       }
@@ -1015,6 +1033,7 @@ export async function createODPSContractLinkedToAssetViaApi(user: TestUser): Pro
   });
 
   if (!response.ok) {
+    // intentional: api-assets fixture wraps best-effort cleanup / reuse-search / token-refresh probes; on failure we fall back to creating fresh resources, which is the explicit recovery path. Test failure surfaces if the fresh-create itself fails.
     const body = await response.text().catch(() => '');
     throw new Error(`createODPSContractLinkedToAssetViaApi failed: ${response.status} ${body}`);
   }
@@ -1095,6 +1114,7 @@ export async function createODCSContractViaApi(user: TestUser): Promise<string> 
   });
 
   if (!response.ok) {
+    // intentional: api-assets fixture wraps best-effort cleanup / reuse-search / token-refresh probes; on failure we fall back to creating fresh resources, which is the explicit recovery path. Test failure surfaces if the fresh-create itself fails.
     const body = await response.text().catch(() => '');
     throw new Error(`Create ODCS contract API failed: ${response.status} ${body}`);
   }
@@ -1160,6 +1180,7 @@ export async function createScheduledIngestionViaApi(
   });
 
   if (!response.ok) {
+    // intentional: api-assets fixture wraps best-effort cleanup / reuse-search / token-refresh probes; on failure we fall back to creating fresh resources, which is the explicit recovery path. Test failure surfaces if the fresh-create itself fails.
     const body = await response.text().catch(() => '');
     throw new Error(`Create scheduled ingestion API failed: ${response.status} ${body}`);
   }

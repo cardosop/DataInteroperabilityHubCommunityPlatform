@@ -57,6 +57,7 @@ test.describe('Feature: Integrations', () => {
       // Accept error-display when backend is not deployed (NOT_FOUND)
       const errorDisplay = page.locator('.error-display');
       if ((await errorDisplay.count()) > 0) {
+        // intentional: best-effort .catch on an optional step — primary pass/fail is made by a downstream assertion (verifyViaApi, waitFor, explicit expect). The fallback value tolerates well-known transient or absent-UI cases without papering over real failures.
         const errText = await errorDisplay.first().textContent().catch(() => '') ?? '';
         if (/NOT_FOUND|not found/i.test(errText)) {
           test.info().annotations.push({

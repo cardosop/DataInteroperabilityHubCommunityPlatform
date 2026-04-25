@@ -23,6 +23,7 @@ test.describe('JOURNEY-DC-013: Use Asset Recommendations', () => {
       // Listener MUST be attached before navigation: the listings GET completes during
       // loginAndNavigateToRoute. A post-hoc waitForResponse waits for a second request that
       // never fires → full timeout → test budget exceeded → "page closed" during expect.
+      // intentional: best-effort .catch on an optional step — primary pass/fail is made by a downstream assertion (verifyViaApi, waitFor, explicit expect). The fallback value tolerates well-known transient or absent-UI cases without papering over real failures.
       const listingsSettled = page
         .waitForResponse(
           (r) =>

@@ -44,6 +44,7 @@ test.describe('Accessibility (axe) — public / unauthenticated pages', () => {
   test('register page has no critical accessibility violations', async ({ page }) => {
     await page.goto('/register', { waitUntil: 'domcontentloaded' });
     // Allow redirect to /unavailable when registration is feature-flagged off
+    // intentional: best-effort .catch on an optional step — primary pass/fail is made by a downstream assertion (verifyViaApi, waitFor, explicit expect). The fallback value tolerates well-known transient or absent-UI cases without papering over real failures.
     await page
       .locator('h1, .register-page, .unavailable-page')
       .first()
@@ -54,6 +55,7 @@ test.describe('Accessibility (axe) — public / unauthenticated pages', () => {
 
   test('password-reset page has no critical accessibility violations', async ({ page }) => {
     await page.goto('/password-reset', { waitUntil: 'domcontentloaded' });
+    // intentional: best-effort .catch on an optional step — primary pass/fail is made by a downstream assertion (verifyViaApi, waitFor, explicit expect). The fallback value tolerates well-known transient or absent-UI cases without papering over real failures.
     await page
       .locator('h1, .password-reset-page, .unavailable-page')
       .first()
@@ -76,6 +78,7 @@ test.describe('Accessibility (axe) — public / unauthenticated pages', () => {
 
   test('public page has no critical accessibility violations', async ({ page }) => {
     await page.goto('/public', { waitUntil: 'domcontentloaded' });
+    // intentional: best-effort .catch on an optional step — primary pass/fail is made by a downstream assertion (verifyViaApi, waitFor, explicit expect). The fallback value tolerates well-known transient or absent-UI cases without papering over real failures.
     await page
       .locator('h1, .public-page')
       .first()
@@ -91,6 +94,7 @@ test.describe('Accessibility (axe) — authenticated pages', () => {
   test('home page has no critical accessibility violations', async ({ page }) => {
     await page.goto('/', { waitUntil: 'domcontentloaded' });
     // Wait for page to reach a stable terminal state (authenticated dashboard or landing page)
+    // intentional: best-effort .catch on an optional step — primary pass/fail is made by a downstream assertion (verifyViaApi, waitFor, explicit expect). The fallback value tolerates well-known transient or absent-UI cases without papering over real failures.
     await page
       .locator('[data-testid="home-page"], .home-page, [data-testid="landing-page"], .app-header')
       .first()

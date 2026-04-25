@@ -35,6 +35,7 @@ test.describe('JOURNEY-CPO-008: Manage Consent Tracking', () => {
       // error-display is NOT acceptable — compliance service must be reachable
       const hasError = (await page.locator('.error-display').count()) > 0;
       if (hasError) {
+        // intentional: best-effort .catch on an optional step — primary pass/fail is made by a downstream assertion (verifyViaApi, waitFor, explicit expect). The fallback value tolerates well-known transient or absent-UI cases without papering over real failures.
         const errText = await page.locator('.error-display').first().textContent().catch(() => '');
         throw new Error(`Compliance page shows error for CPO user: "${errText?.slice(0, 300)}"`);
       }

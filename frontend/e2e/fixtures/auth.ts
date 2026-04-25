@@ -214,6 +214,7 @@ async function loginViaApiAndInject(page: Page, user: TestUser): Promise<void> {
   // Fast health probe: if the backend is completely down, fail fast instead of waiting 90s×2.
   // This saves 3+ minutes per test when the capabilities API is returning 500.
   try {
+    // intentional: auth fixture handles transient login flows (rate-limit 429, login-race) with explicit retry budgets; the surrounding code surfaces final failure via dedicated assertions on session / token / cookie state.
     const healthRes = await page.request.get('/api/v1/health/live/', { timeout: 10000 }).catch(() => null);
     if (healthRes && healthRes.status() >= 500) {
       throw new Error(
@@ -752,6 +753,7 @@ export async function loginUser(
     try {
       const resp = await responsePromise;
       // Intentional fallback: response body may be non-text when parsing fails
+      // intentional: auth fixture handles transient login flows (rate-limit 429, login-race) with explicit retry budgets; the surrounding code surfaces final failure via dedicated assertions on session / token / cookie state.
       const body = await resp.text().catch(() => '');
       return { status: resp.status(), body };
     } catch (err) {

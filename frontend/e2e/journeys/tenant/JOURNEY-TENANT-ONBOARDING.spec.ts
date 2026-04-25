@@ -79,6 +79,7 @@ test.describe('Organization Creation (Platform Admin)', () => {
     ]).catch(() => 'timeout' as const);
 
     if (result === 'error') {
+      // intentional: best-effort .catch on an optional step — primary pass/fail is made by a downstream assertion (verifyViaApi, waitFor, explicit expect). The fallback value tolerates well-known transient or absent-UI cases without papering over real failures.
       const errText = await page.locator('.error-display').first().textContent().catch(() => '');
       test.skip(true, `Create org API failed: ${(errText ?? '').slice(0, 150)}`);
       return;
@@ -99,6 +100,7 @@ test.describe('Organization Creation (Platform Admin)', () => {
       await page.goto('/onboard-org', { waitUntil: 'domcontentloaded', baseURL });
       // Wait for SPA to settle — should redirect to /login (RootRoute auth gate)
       // or show 404 (if route matched inside RootRoute's catch-all)
+      // intentional: best-effort .catch on an optional step — primary pass/fail is made by a downstream assertion (verifyViaApi, waitFor, explicit expect). The fallback value tolerates well-known transient or absent-UI cases without papering over real failures.
       await page
         .locator('text=/not found|404/i, [data-testid="landing-page"]')
         .first()
@@ -116,6 +118,7 @@ test.describe('Organization Creation (Platform Admin)', () => {
   test('landing page does NOT have Create organization link', async ({ page }) => {
     await clearAuthStorage(page);
     await page.goto('/', { waitUntil: 'domcontentloaded' });
+    // intentional: best-effort .catch on an optional step — primary pass/fail is made by a downstream assertion (verifyViaApi, waitFor, explicit expect). The fallback value tolerates well-known transient or absent-UI cases without papering over real failures.
     await page
       .locator('[data-testid="landing-page"], .landing-page')
       .first()

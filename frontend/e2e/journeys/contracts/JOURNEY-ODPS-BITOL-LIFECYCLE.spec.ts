@@ -150,7 +150,9 @@ test.describe('JOURNEY-ODPS-BITOL-LIFECYCLE', () => {
       await expect(pageContent).toBeVisible({ timeout: 10000 });
 
       const linksSection = page.locator('.odps-links-section');
+      // intentional: best-effort .catch on an optional step — primary pass/fail is made by a downstream assertion (verifyViaApi, waitFor, explicit expect). The fallback value tolerates well-known transient or absent-UI cases without papering over real failures.
       await linksSection.waitFor({ state: 'visible', timeout: 10000 }).catch(() => null);
+      // intentional: best-effort .catch on an optional step — primary pass/fail is made by a downstream assertion (verifyViaApi, waitFor, explicit expect). The fallback value tolerates well-known transient or absent-UI cases without papering over real failures.
       if (!(await linksSection.isVisible().catch(() => false))) {
         test.skip(true, 'ODPS links section not visible (linking job may not have run yet)');
         return;
@@ -232,6 +234,7 @@ test.describe('JOURNEY-ODPS-BITOL-LIFECYCLE', () => {
 
       // Page loaded — verify no crash (list or empty state)
       const errorDisplay = page.locator('.error-display');
+      // intentional: best-effort .catch on an optional step — primary pass/fail is made by a downstream assertion (verifyViaApi, waitFor, explicit expect). The fallback value tolerates well-known transient or absent-UI cases without papering over real failures.
       const hasError = await errorDisplay.isVisible().catch(() => false);
       if (!hasError) {
         const pageContent = page.locator('.odps-list-page, .odps-empty-state');

@@ -124,6 +124,7 @@ test.describe('JOURNEY-DPO-013: Configure Data Mesh Domain', () => {
       if (resp && resp.status() === 403) {
         // 403 means the user lacks TENANT_ADMIN role — this is a role/permission boundary test;
         // the UI should show an error display, not a crash.
+        // intentional: best-effort .catch on an optional step — primary pass/fail is made by a downstream assertion (verifyViaApi, waitFor, explicit expect). The fallback value tolerates well-known transient or absent-UI cases without papering over real failures.
         const body = await resp.text().catch(() => '');
         const hasErrorUI = (await page.locator('.error-display, [role="alert"]').count()) > 0;
         if (hasErrorUI) {
@@ -136,6 +137,7 @@ test.describe('JOURNEY-DPO-013: Configure Data Mesh Domain', () => {
         );
       }
       if (resp && resp.status() >= 400) {
+        // intentional: best-effort .catch on an optional step — primary pass/fail is made by a downstream assertion (verifyViaApi, waitFor, explicit expect). The fallback value tolerates well-known transient or absent-UI cases without papering over real failures.
         const body = await resp.text().catch(() => '');
         throw new Error(`Mesh domain creation failed: ${resp.status()} ${body.slice(0, 200)}`);
       }

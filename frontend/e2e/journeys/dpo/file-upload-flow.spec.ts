@@ -68,6 +68,7 @@ test.describe('File Upload Flow', () => {
           // Rate limited - parse retry-after from error message
           let retryAfter = 5; // Default wait time
           try {
+            // intentional: best-effort .catch on an optional step — primary pass/fail is made by a downstream assertion (verifyViaApi, waitFor, explicit expect). The fallback value tolerates well-known transient or absent-UI cases without papering over real failures.
             const responseBody = await response.json().catch(() => ({}));
             const message = responseBody.message || '';
             const retryMatch = message.match(/retry after (\d+) seconds?/i);
@@ -102,6 +103,7 @@ test.describe('File Upload Flow', () => {
         }
 
         // Check if it's a rate limit error from console
+        // intentional: best-effort .catch on an optional step — primary pass/fail is made by a downstream assertion (verifyViaApi, waitFor, explicit expect). The fallback value tolerates well-known transient or absent-UI cases without papering over real failures.
         const consoleErrors = await page
           .evaluate(() => {
             return Array.from(document.querySelectorAll('.error-message, .error-display'))
