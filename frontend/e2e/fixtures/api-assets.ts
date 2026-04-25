@@ -435,6 +435,106 @@ async function createAssetViaApiOnce(
 }
 
 /**
+ * Clean up old E2E test assets to avoid `plan_limit_exceeded` for max_assets.
+ *
+ * Why this exists: prior runs (especially Asset Activation / Asset Creation
+ * specs) accumulate assets on the staging tenant. Each `forceNew: true`
+ * call leaves a row, and there's no per-test teardown for UI-created assets.
+ * Once the tenant's plan cap is hit, every asset-creating test fails with
+ * `Failed to create asset / Plan limit exceeded for max_assets`.
+ *
+ * Conservative strategy:
+ *   - Only consider assets whose `key` matches the test-prefix patterns
+ *     (`e2e-*`, `test-*`) — production data is never touched.
+ *   - Only delete assets older than `maxAgeMs` (default 10 minutes) so a
+ *     parallel worker's freshly-created asset is safe.
+ *   - Best-effort: list/delete failures are logged and continue. Tests
+ *     that still hit plan limits after this runs surface real backend
+ *     state, not test-cleanup gaps.
+ *
+ * Returns counts so the caller can decide whether to retry the op that
+ * triggered the cleanup.
+ */
+export async function cleanupOldE2EAssets(
+  user: TestUser,
+  options: { maxAgeMs?: number; pageSize?: number } = {},
+): Promise<{ deleted: number; skipped: number; pages: number }> {
+  const { maxAgeMs = 10 * 60 * 1000, pageSize = 100 } = options;
+  const cutoffMs = Date.now() - maxAgeMs;
+  const token = await loginViaApi(user);
+
+  let deleted = 0;
+  let skipped = 0;
+  let pages = 0;
+
+  // ordering=created_at (ascending) so we visit oldest first — most likely
+  // to be deletable, and the loop bails when we hit assets newer than cutoff.
+  let url: string | null =
+    `${API_BASE_URL}/assets/?page_size=${pageSize}&ordering=created_at`;
+  while (url !== null) {
+    pages++;
+    const listRes = await fetch(url, {
+      method: 'GET',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}`,
+      },
+    });
+    if (!listRes.ok) break;
+    const data = (await listRes.json().catch(() => ({}))) as {
+      results?: Array<{ id?: string; key?: string; created_at?: string }>;
+      next?: string | null;
+    };
+    const items: Array<{ id?: string; key?: string; created_at?: string }> =
+      Array.isArray(data) ? data : data.results ?? [];
+    for (const a of items) {
+      if (!a.id || !a.key || !a.created_at) {
+        skipped++;
+        continue;
+      }
+      // Test prefixes match what create helpers + test specs use:
+      //  - createAssetViaApi → "e2e-publish-..."
+      //  - asset-creation-flow.spec → "e2e-asset-..."
+      //  - onboarding-checklist.spec → "e2e-checklist-..."
+      //  - generic prefix "test-" used by some legacy specs
+      const isTestKey = a.key.startsWith('e2e-') || a.key.startsWith('test-');
+      if (!isTestKey) {
+        skipped++;
+        continue;
+      }
+      const created = new Date(a.created_at).getTime();
+      if (Number.isNaN(created) || created > cutoffMs) {
+        skipped++;
+        continue;
+      }
+      try {
+        const delRes = await fetch(`${API_BASE_URL}/assets/${a.id}/`, {
+          method: 'DELETE',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${token}`,
+          },
+        });
+        if (delRes.ok || delRes.status === 404) {
+          deleted++;
+        } else {
+          skipped++;
+        }
+      } catch {
+        // intentional: cleanup is best-effort. If a single delete fails
+        // (transient 5xx, FK conflict from in-flight related rows, etc.),
+        // we move on and let the test surface a real plan_limit if it still
+        // can't create. Throwing here would mask the real test failure.
+        skipped++;
+      }
+    }
+    url = data.next ?? null;
+  }
+
+  return { deleted, skipped, pages };
+}
+
+/**
  * Clean up old E2E scheduled exports to avoid plan limit issues.
  * Deletes scheduled exports with names starting with "e2e-se-".
  * Use before tests that need to create a new scheduled export.

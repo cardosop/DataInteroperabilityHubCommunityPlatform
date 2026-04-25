@@ -10,20 +10,29 @@
  */
 
 import { expect, test } from '@playwright/test';
-import { createAssetViaApi } from '../../fixtures/api-assets';
+import { cleanupOldE2EAssets, createAssetViaApi } from '../../fixtures/api-assets';
 import { clearAuthStorage, getTestUser } from '../../fixtures/auth';
 // Phase 226 B1a — dual-channel verification on lifecycle transitions.
 import { verifyViaApi } from '../../fixtures/verifyViaApi';
 import { verifyAuditEvent } from '../../fixtures/verifyAuditEvent';
 import {
   assertNonExistentIdShowsError,
-  ensureAssetActivationPrerequisites,
   loginAndNavigateToRoute,
   waitForLoadingComplete,
 } from '../../fixtures/helpers';
 
-test.describe('JOURNEY-DPO-003: Manage Asset Lifecycle', () => {
+test.describe('JOURNEY-DPO-003: Manage Asset Lifecycle @critical', () => {
   test.setTimeout(120000);
+
+  // Drain orphaned e2e-* assets older than 10 min. The retire test requires
+  // a fresh ACTIVE asset (forceNew + ensureActivated); the activation chain
+  // creates contract+dataset+normalize rows which all count against plan
+  // limits. Without periodic cleanup the staging tenant hits max_assets and
+  // createAssetViaApi fails before the UI test even starts.
+  test.beforeAll(async () => {
+    const user = await getTestUser();
+    await cleanupOldE2EAssets(user);
+  });
 
   test.describe('Success', () => {
     test('assets list loads with lifecycle status', async ({ page }) => {
@@ -73,13 +82,26 @@ test.describe('JOURNEY-DPO-003: Manage Asset Lifecycle', () => {
     });
 
     test('asset can be retired: ACTIVE → RETIRED lifecycle transition', async ({ page }) => {
-      // Requires an ACTIVE asset. Always create a FRESH asset (forceNew:true) — never reuse
-      // an existing ACTIVE asset. Reusing a shared asset causes a race condition when chromium
-      // and visible workers run in parallel: both grab the same ACTIVE asset and one retires it
-      // before the other reaches the retire step (chromium skip / visible 409 conflict error).
+      // Root-cause performance fix: the legacy flow created a DRAFT asset
+      // then activated it via the UI, costing 4-5 full-page navigations
+      // (~15-20s each on remote staging) before the retire step even ran.
+      // That pushed the test past the 120s budget on every run. The test's
+      // scope is specifically the UI-driven RETIRE transition — creating
+      // the asset already-ACTIVE via the API helper's `ensureActivated`
+      // option is equivalent for our purpose and saves ~60-80s. The UI
+      // activation path is separately covered by asset-activation-flow.spec.ts.
+      //
+      // forceNew:true guarantees a unique asset per run so parallel workers
+      // never race on the same row's status.
+      // Bumped budget to 180s: even with API-side activation, the activation
+      // chain (asset + contract + dataset + normalize) on remote staging
+      // can run 30-60s; the subsequent UI navigation + retire button
+      // sequence + verifyAuditEvent poll budget brings us close to 120s.
+      // 180s leaves headroom without masking real slowdowns (still throws
+      // loudly if the test goes past 3 min).
+      test.setTimeout(180000);
       const testUser = await getTestUser();
-      // forceNew:true guarantees a unique DRAFT asset for this test run.
-      const assetId = await createAssetViaApi(testUser, { forceNew: true });
+      const assetId = await createAssetViaApi(testUser, { forceNew: true, ensureActivated: true });
 
       await loginAndNavigateToRoute(page, testUser, `/assets/${assetId}`, {
         timeout: 60000,
@@ -89,55 +111,19 @@ test.describe('JOURNEY-DPO-003: Manage Asset Lifecycle', () => {
         throw new Error('Unexpected redirect to login on asset detail');
       }
 
-      // Check the asset's current status
+      // Confirm the asset arrived in ACTIVE — the API helper guarantees it,
+      // but assert anyway so a regression in activation-prereq seeding
+      // surfaces at the exact step where it matters rather than as a
+      // mystery retire failure downstream.
       const statusBadge = page.locator('.asset-detail-page .status-badge, .status-badge').first();
       await expect(statusBadge).toBeVisible({ timeout: 15000 });
       const statusText = (await statusBadge.textContent()) ?? '';
-
-      // If asset is DRAFT (API activation didn't work), try activating via UI
       if (!statusText.includes('ACTIVE')) {
-        await ensureAssetActivationPrerequisites(page, assetId);
-        // Re-navigate via loginAndNavigateToRoute to ensure auth tokens survive the reload.
-        // A plain page.reload() loses in-memory tokens if the auth store hasn't reinitialized.
-        await loginAndNavigateToRoute(page, testUser, `/assets/${assetId}`, {
-          timeout: 60000,
-          contentSelector: '.asset-detail-page, .asset-detail-content, .error-display',
-        });
-
-        const activateBtn = page.locator(
-          'button:has-text("Activate"), button:has-text("Activate Asset")'
+        // Don't hide a real activation-helper regression with test.skip.
+        throw new Error(
+          `Expected ACTIVE asset after createAssetViaApi({ensureActivated:true}), got '${statusText.trim()}'. ` +
+            `Inspect hub/apps/assets activation logs for this tenant/plan.`
         );
-        if ((await activateBtn.count()) === 0) {
-          test.skip(true, `Asset is ${statusText.trim()} and no Activate button found: retirement requires ACTIVE.`);
-          return;
-        }
-        const actRespPromise = page.waitForResponse(
-          (resp) => resp.url().includes('/assets/') && resp.url().includes('/activate/'),
-          { timeout: 60000 }
-        );
-        await activateBtn.first().click();
-        // intentional: tolerates a fixture-helper failure whose recovery is documented in the helper; the helper raises only on terminal failure after its own retry budget.
-        const actResp = await actRespPromise.catch(() => null);
-        if (!actResp || actResp.status() !== 200) {
-          test.skip(
-            true,
-            `UI activation returned ${actResp?.status() ?? 'timeout'}: retirement requires ACTIVE.`
-          );
-          return;
-        }
-        await page.waitForTimeout(2000);
-        await loginAndNavigateToRoute(page, testUser, `/assets/${assetId}`, {
-          timeout: 60000,
-          contentSelector: '.asset-detail-page, .asset-detail-content, .error-display',
-        });
-
-        const activatedBadge = page.locator('.asset-detail-page .status-badge, .status-badge').first();
-        // intentional: tolerates a detached/removed element while extracting text for a diagnostic message; the surrounding throw/expect below this catch is the primary failure path.
-        const activatedStatus = (await activatedBadge.textContent().catch(() => '')) ?? '';
-        if (!activatedStatus.includes('ACTIVE')) {
-          test.skip(true, `Asset still not ACTIVE after UI activation attempt (status: "${activatedStatus.trim()}").`);
-          return;
-        }
       }
 
       // Click the Retire button (may be in a dropdown or status select)

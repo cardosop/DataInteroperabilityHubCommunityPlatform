@@ -28,13 +28,21 @@ test.describe('Contract Creation Flow', () => {
 
     test('invalid ODPS (missing schema.fields) shows error', async ({ page }) => {
       const testUser = await getTestUser();
-      await loginAndNavigateToRoute(page, testUser, '/odps/upload', {
+      // Phase 211 reshape: `/odps/upload` now redirects to `/contracts/create`
+      // (see frontend/src/app/routes/routes.tsx:876-890). The ODPS paste flow
+      // lives under the "Raw Upload" tab of the mode selector; autodetection
+      // of an ODPS payload still routes to the products/workflow endpoint.
+      await loginAndNavigateToRoute(page, testUser, '/contracts/create', {
         timeout: 60000,
-        contentSelector: 'textarea#odps-content, textarea, .odps-upload-page, .error-display',
+        contentSelector: '.contract-create-page__mode-selector, textarea#odps-content, textarea, .error-display',
       });
       if (page.url().includes('/login')) {
         throw new Error('Unexpected redirect to login');
       }
+      // Activate Raw Upload mode so the JSON-paste textarea is mounted.
+      const rawModeTab = page.locator('button[role="tab"]:has-text("Raw Upload")');
+      await expect(rawModeTab).toBeVisible({ timeout: 10000 });
+      await rawModeTab.click();
       const contentTextarea = page.locator('textarea#odps-content, textarea').first();
       await expect(contentTextarea).toBeVisible({ timeout: 10000 });
       // odps-invalid-missing-schema.json: contract.spec without schema.fields
@@ -56,7 +64,11 @@ test.describe('Contract Creation Flow', () => {
       };
       await contentTextarea.fill(JSON.stringify(invalidOdps));
       await page.waitForTimeout(500);
-      const submitButton = page.locator('button:has-text("Create ODPS Product")').first();
+      // Raw Upload mode uses "Create Contract" as the submit label
+      // (ContractCreatePage.tsx:350). The old "Create ODPS Product" label
+      // was removed in Phase 211 — mode detection on the server routes ODPS
+      // payloads to the workflow endpoint regardless of the button label.
+      const submitButton = page.locator('button:not([role="tab"]):has-text("Create Contract")').first();
       await expect(submitButton).toBeVisible({ timeout: 5000 });
       await submitButton.click();
       await page.waitForTimeout(8000);
@@ -98,53 +110,46 @@ test.describe('Contract Creation Flow', () => {
       (await emptyStateAction.count()) > 0 &&
       (await emptyStateAction.first().isVisible());
 
-    if (hasEmptyState && !hasCreateButton) {
-      // Empty state - check if there's an action button
-      if (hasEmptyStateAction) {
-        await expect(emptyStateAction.first()).toBeVisible({ timeout: 10000 });
-        await emptyStateAction.first().click();
-        await page.waitForTimeout(1000);
-      } else {
-        // Navigate directly to ODPS upload (contracts are created via ODPS)
-        await page.goto('/odps/upload');
-        await waitForLoadingComplete(page);
-      }
+    // Phase 211 reshape: contract creation is now a single unified page at
+    // `/contracts/create` with a mode selector (ODCS / ODPS Data Product /
+    // Raw Upload). `/odps/upload` is a kept-alive redirect that lands here.
+    // Either from list-page CTA or direct nav, we want to end up at
+    // `/contracts/create` and select Raw Upload for the JSON paste flow.
+    if (hasEmptyState && !hasCreateButton && hasEmptyStateAction) {
+      await expect(emptyStateAction.first()).toBeVisible({ timeout: 10000 });
+      await emptyStateAction.first().click();
+      await page.waitForTimeout(1000);
     } else if (hasCreateButton) {
-      // List page with create button
       await expect(createButton.first()).toBeVisible({ timeout: 10000 });
       await createButton.first().click();
       await page.waitForTimeout(1000);
-    } else {
-      // Fallback: click ODPS in sidebar to reach upload (client-side nav)
-      const odpsLink = page.locator('.app-sidebar .nav-link').filter({ hasText: 'ODPS' }).first();
-      await odpsLink.click();
-      await page.waitForLoadState('domcontentloaded');
-      await waitForLoadingComplete(page, { timeout: 20000 });
-      const uploadBtn = page.locator('button:has-text("Create ODPS Product"), button:has-text("Create Your First")').first();
-      if ((await uploadBtn.count()) > 0) {
-        await uploadBtn.click();
-        await page.waitForLoadState('domcontentloaded');
-        await page.waitForTimeout(1000);
-      }
-      // If still on /odps (list), navigate directly to upload
-      if (page.url().includes('/odps') && !page.url().includes('/odps/upload')) {
-        await page.goto('/odps/upload');
-        await waitForLoadingComplete(page);
-      }
+    }
+    // If we didn't land on the create page (no CTA, or CTA led elsewhere),
+    // navigate directly — this is not a UX validation, the earlier list
+    // test already covers that entry point.
+    if (!page.url().includes('/contracts/create')) {
+      await page.goto('/contracts/create');
+      await waitForLoadingComplete(page);
     }
 
-    // Wait for navigation - button now navigates to /odps/upload (or redirect to login if auth failed)
     if (page.url().includes('/login')) {
       throw new Error('Unexpected redirect to login after contracts page - auth may have failed');
     }
-    await expect(page).toHaveURL(/\/odps\/upload/, { timeout: 15000 });
+    await expect(page).toHaveURL(/\/contracts\/create/, { timeout: 15000 });
     await waitForLoadingComplete(page);
 
-    // Fill ODPS upload form - find textarea for contract content (id="odps-content")
-    // ODPS format requires: schema (string URL), version, product.details, product.dataSchema
+    // Activate Raw Upload mode — matches the pre-reshape textarea-paste
+    // workflow. Backend mode detection still routes ODPS payloads to the
+    // async product-creation workflow via useCreateODPSProduct.
+    const rawModeTab = page.locator('button[role="tab"]:has-text("Raw Upload")');
+    await expect(rawModeTab).toBeVisible({ timeout: 10000 });
+    await rawModeTab.click();
+
+    // Fill ODPS JSON payload. ODPS format requires: schema (string URL),
+    // version, product.details, product.dataSchema.
     const contentTextarea = page.locator('textarea#odps-content, textarea').first();
     await expect(contentTextarea).toBeVisible({ timeout: 10000 });
-    await     contentTextarea.fill(
+    await contentTextarea.fill(
       JSON.stringify({
         schema: 'https://opendataproducts.org/schema/v4.1',
         version: '4.1',
@@ -186,10 +191,14 @@ test.describe('Contract Creation Flow', () => {
     // Wait a bit for form to update
     await page.waitForTimeout(500);
 
-    // Submit - button text is "Create ODPS Product"
-    const submitButton = page.locator('button:has-text("Create ODPS Product")').first();
+    // Phase 211: Raw Upload mode submit label is "Create Contract"
+    // (ContractCreatePage.tsx:350). Backend detects ODPS payload + routes
+    // to async workflow endpoint; the button label reflects the mode, not
+    // the payload type. `:not([role="tab"])` filter excludes the "Raw Upload"
+    // tab from matching `:has-text("Create...")` ambiguity.
+    const submitButton = page.locator('button:not([role="tab"]):has-text("Create Contract")').first();
     await expect(submitButton).toBeVisible({ timeout: 10000 });
-    await expect(submitButton).toBeEnabled({ timeout: 5000 }); // Wait for button to be enabled (content must be filled)
+    await expect(submitButton).toBeEnabled({ timeout: 5000 });
     await submitButton.click();
 
     // Wait for API response (success or error)
@@ -223,8 +232,9 @@ test.describe('Contract Creation Flow', () => {
       await expect(
         page.locator('h1, .workflow-status, .status, [data-testid="workflow-status"]').first()
       ).toBeVisible({ timeout: 10000 });
-    } else if (finalUrl.includes('/odps/upload')) {
-      // Still on upload page — check for error display
+    } else if (finalUrl.includes('/contracts/create') || finalUrl.includes('/odps/upload')) {
+      // Phase 211: stayed on /contracts/create (or backward-compat /odps/upload
+      // which redirects there). Check for inline error display before failing.
       const errorDisplay = page.locator('.error-display');
       if ((await errorDisplay.count()) > 0 && (await errorDisplay.first().isVisible())) {
         const errorText = await errorDisplay.first().textContent() ?? '';

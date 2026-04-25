@@ -7,6 +7,7 @@
 import { randomUUID } from 'node:crypto';
 import { expect, test } from '@playwright/test';
 import {
+  cleanupOldE2EAssets,
   createAssetViaApi,
   createODCSContractViaApi,
   getContractLinkedAssetIdViaApi,
@@ -22,6 +23,18 @@ import { verifyAuditEvent } from '../../fixtures/verifyAuditEvent';
 
 test.describe('Onboarding Checklist', () => {
   test.setTimeout(180000);
+
+  // Drain orphaned e2e-* assets older than 10 min. Several tests in this
+  // spec create fresh assets via the UI form (each gets an `e2e-checklist-*`
+  // key). UI-created rows aren't tracked by the createdResources registry,
+  // so they accumulate and eventually trip max_assets — at which point the
+  // form returns the plan-limit error and stays on /assets/create with no
+  // checklist rendered (the failure pattern we observed: "[onboarding-
+  // checklist]" never visible after submit).
+  test.beforeAll(async () => {
+    const user = await getTestUser();
+    await cleanupOldE2EAssets(user);
+  });
 
   test('should display onboarding checklist on a DRAFT asset', async ({ page }) => {
     const testUser = await getTestUser();
@@ -67,11 +80,17 @@ test.describe('Onboarding Checklist', () => {
     await expect(checklist).toBeVisible({ timeout: 15000 });
 
     const progress = page.locator('[data-testid="onboarding-progress"]');
-    await expect(progress).toContainText('1/6', { timeout: 10000 });
+    // Phase 222.x reshape: a new "3. Validate & Normalize Contract" step was
+    // inserted between Attach Contract and Upload Dataset (see
+    // OnboardingChecklist.tsx getSteps — 7 entries: create-asset,
+    // attach-contract, validate-contract, upload-dataset, run-dq,
+    // run-compliance, activate). Progress on a fresh DRAFT asset is 1/7
+    // (only the auto-completed "Create Asset" step counts).
+    await expect(progress).toContainText('1/7', { timeout: 10000 });
 
-    // Verify all 6 steps are rendered
+    // Verify all 7 steps are rendered
     const steps = page.locator('[data-testid="onboarding-steps"] li');
-    await expect(steps).toHaveCount(6, { timeout: 10000 });
+    await expect(steps).toHaveCount(7, { timeout: 10000 });
 
     // Step 1 should be completed
     const step1 = page.locator('[data-testid="onboarding-step-create-asset"]');

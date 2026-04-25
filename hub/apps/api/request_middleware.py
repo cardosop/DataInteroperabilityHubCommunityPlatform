@@ -39,8 +39,21 @@ class RequestIDMiddleware:
         return response
 
     def process_request(self, request):
-        """Generate request ID if not present"""
-        request_id = request.headers.get("X-Request-ID", str(uuid.uuid4()))
+        """Capture or generate the request correlation identifier.
+
+        Honors `X-Request-ID` (canonical, used by API clients) and
+        `X-Correlation-ID` (frontend tracing convention — both names are
+        listed as equivalent in CORS_ALLOW_HEADERS at settings.py:1537-1538).
+        Precedence: `X-Request-ID` wins if both are present so existing
+        callers' contracts are unchanged. The frontend's E2E correlation
+        guard sends `X-Correlation-ID`; without this fall-through it would
+        observe every API response as missing the echo it expects.
+        """
+        request_id = (
+            request.headers.get("X-Request-ID")
+            or request.headers.get("X-Correlation-ID")
+            or str(uuid.uuid4())
+        )
         request.id = request_id
         request.request_id = request_id
 
@@ -55,9 +68,17 @@ class RequestIDMiddleware:
         return None
 
     def process_response(self, request, response):
-        """Add request ID to response headers"""
+        """Echo the request ID under both header names.
+
+        `X-Request-ID` is the canonical platform header. `X-Correlation-ID`
+        is added so the frontend's tracing/E2E-guard convention has a single
+        round-trip pair: anything the caller sends under either name comes
+        back under both names. The two values are identical because
+        `process_request` resolves them to the same `request.request_id`.
+        """
         if hasattr(request, "request_id"):
             response["X-Request-ID"] = request.request_id
+            response["X-Correlation-ID"] = request.request_id
 
         # Add tenant_id and user_id to context if available
         if hasattr(request, "tenant") and request.tenant:

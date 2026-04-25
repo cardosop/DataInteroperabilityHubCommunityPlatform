@@ -5,6 +5,7 @@
 
 import { randomUUID } from 'node:crypto';
 import { expect, test } from '@playwright/test';
+import { cleanupOldE2EAssets } from '../../fixtures/api-assets';
 import { clearAuthStorage, getTestUser } from '../../fixtures/auth';
 import { hasLoginPrompt, loginAndNavigateToRoute, waitForLoadingComplete } from '../../fixtures/helpers';
 import { verifyViaApi } from '../../fixtures/verifyViaApi';
@@ -12,6 +13,18 @@ import { verifyAuditEvent } from '../../fixtures/verifyAuditEvent';
 
 test.describe('Asset Creation Flow', () => {
   test.setTimeout(120000);
+
+  // Drain orphaned e2e-* assets older than 10 min before this spec's
+  // tests run. The staging tenant has a `max_assets` plan cap; without
+  // this hook we hit `plan_limit_exceeded` after ~50 accumulated runs
+  // and every UI-create test fails. Conservative threshold (>10 min old)
+  // keeps concurrent workers' fresh assets safe. Best-effort: any failure
+  // here is silently absorbed by cleanupOldE2EAssets — tests that still
+  // hit plan_limit afterward surface a real backend-state issue.
+  test.beforeAll(async () => {
+    const user = await getTestUser();
+    await cleanupOldE2EAssets(user);
+  });
 
   test.describe('Failure', () => {
     test('unauthenticated access to assets create redirects to login', async ({ page }) => {
@@ -29,19 +42,21 @@ test.describe('Asset Creation Flow', () => {
     });
   });
 
-  test('"I have data to upload" redirects to dataset create with create_new mode', async ({ page }) => {
+  test('/datasets/create?linkMode=create_new pre-selects the create-new radio', async ({ page }) => {
+    // Phase 211 replaced the two-button flow selector on `/assets/create`
+    // (old `[data-testid="flow-i-have-data"]`) with a unified form that
+    // has inline "+ Add data file" / "+ Add contract" collapsibles. The
+    // button-click redirect is gone, but the `linkMode=create_new` URL
+    // parameter on DatasetCreatePage is still a public surface — it's
+    // deep-linked from outside the SPA and the server-side docs reference
+    // it. This test guards the URL-parameter → radio-state wiring that
+    // unit tests in DatasetCreatePage.test.tsx exercise with mocked props
+    // but not end-to-end through React Router.
     const testUser = await getTestUser();
-    await loginAndNavigateToRoute(page, testUser, '/assets/create', {
+    await loginAndNavigateToRoute(page, testUser, '/datasets/create?linkMode=create_new', {
       timeout: 60000,
-      contentSelector: '.asset-create-page, .error-display, h1',
+      contentSelector: '[data-testid="flow-create-new"], .dataset-create-page, .error-display, h1',
     });
-    await waitForLoadingComplete(page);
-
-    const iHaveDataButton = page.locator('[data-testid="flow-i-have-data"]');
-    await expect(iHaveDataButton).toBeVisible({ timeout: 10000 });
-    await iHaveDataButton.click();
-
-    await expect(page).toHaveURL(/\/datasets\/create\?linkMode=create_new/, { timeout: 10000 });
     await waitForLoadingComplete(page);
 
     const createNewRadio = page.locator('[data-testid="flow-create-new"]');

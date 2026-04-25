@@ -61,11 +61,69 @@ class RequestIDMiddlewareTest(TestCase):
         """Test that middleware adds request ID to response headers"""
         request = self.factory.get("/api/v1/assets/")
         request.request_id = "test-request-id-123"
-        
+
         response = HttpResponse()
         response = self.middleware.process_response(request, response)
-        
+
         self.assertEqual(response['X-Request-ID'], "test-request-id-123")
+
+    def test_uses_existing_correlation_id_when_request_id_absent(self):
+        """X-Correlation-ID is honored when X-Request-ID isn't sent.
+
+        Frontend convention sends X-Correlation-ID; the middleware should
+        adopt it so a single round-trip pair exists. Verified via the
+        public contract (response headers) rather than the dynamically-
+        attached `request.request_id` attribute.
+        """
+        existing_id = "e2e-1234567890abcdef"
+        request = self.factory.get(
+            "/api/v1/assets/", HTTP_X_CORRELATION_ID=existing_id
+        )
+
+        response = self.middleware(request)
+
+        self.assertEqual(response['X-Correlation-ID'], existing_id)
+        self.assertEqual(response['X-Request-ID'], existing_id)
+
+    def test_request_id_wins_over_correlation_id_when_both_present(self):
+        """Precedence rule: X-Request-ID is the canonical header.
+
+        If both names appear on the same request, X-Request-ID is used so
+        existing callers' contracts (server logs, structlog request_id,
+        echoed header) don't change behavior in mixed-client environments.
+        Verified end-to-end through the middleware's public response.
+        """
+        request_id = str(uuid.uuid4())
+        correlation_id = "e2e-secondary"
+        request = self.factory.get(
+            "/api/v1/assets/",
+            HTTP_X_REQUEST_ID=request_id,
+            HTTP_X_CORRELATION_ID=correlation_id,
+        )
+
+        response = self.middleware(request)
+
+        self.assertEqual(response['X-Request-ID'], request_id)
+        self.assertEqual(response['X-Correlation-ID'], request_id)
+        self.assertNotEqual(response['X-Request-ID'], correlation_id)
+
+    def test_response_echoes_both_header_names(self):
+        """Both X-Request-ID and X-Correlation-ID are echoed.
+
+        Driven through the full middleware call to exercise the same
+        request → response pipeline production traffic uses; avoids the
+        legacy `request.request_id = ...` direct-attribute setup which
+        bypasses process_request's normalization.
+        """
+        existing_id = "test-id-9876"
+        request = self.factory.get(
+            "/api/v1/assets/", HTTP_X_REQUEST_ID=existing_id
+        )
+
+        response = self.middleware(request)
+
+        self.assertEqual(response['X-Request-ID'], existing_id)
+        self.assertEqual(response['X-Correlation-ID'], existing_id)
     
     def test_binds_request_id_to_structlog(self):
         """Test that middleware binds request ID to structlog context"""

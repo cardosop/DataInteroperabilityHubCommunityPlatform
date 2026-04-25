@@ -41,6 +41,10 @@ import * as path from 'node:path';
 import { randomBytes } from 'node:crypto';
 
 import { isBenignConsoleError } from './console-utils';
+import {
+  createRegistry as createCreatedResourcesRegistry,
+  type CreatedResourcesRegistry,
+} from './createdResources';
 
 type ServerError = { url: string; status: number };
 
@@ -56,15 +60,42 @@ export interface EvaluateGuardOptions {
 
 // ------------------------- correlation-ID guard (Phase 226 B4) -------------
 //
-// Platform guarantee: every API response echoes back the request's
-// `X-Correlation-ID` so incident forensics can join request → response →
-// audit → log. The guard generates a fresh ID per request (or reads the
-// client's if it already set one), captures the response header, and
-// flags mismatches + missing headers. Runs on every spec using
-// `guardedTest`. Env-var kill switch `E2E_DISABLE_CORRELATION_GUARD=true`
-// disables the whole guard without reverting the fixture.
+// Platform guarantee: every **backend API** response echoes back the
+// request's `X-Correlation-ID` so incident forensics can join request →
+// response → audit → log. The guard generates a fresh ID per test (set
+// via setExtraHTTPHeaders so every outbound request carries it), observes
+// every API response, and flags mismatches + missing echoes. Runs on
+// every spec using `guardedTest`. Env-var kill switch
+// `E2E_DISABLE_CORRELATION_GUARD=true` disables the whole guard without
+// reverting the fixture.
+//
+// Scope: the listener is filtered to API responses (paths starting with
+// `/api/v1/`). Static assets (Vite-built `/static/*` JS/CSS), third-party
+// CDN (Google Fonts), SPA HTML route shells (`/login`, `/register`), and
+// the unprefixed `/health/` liveness probe physically cannot echo a custom
+// request header — checking them would dominate the buffer with false
+// positives without surfacing real backend bugs. The guard's invariant is
+// about the Django API, so the URL filter narrows to that surface.
 
 const CORRELATION_HEADER = 'x-correlation-id';
+
+/**
+ * True when `url` is a backend API response that the correlation-id
+ * platform guarantee applies to. Match by pathname so the helper works
+ * across the local proxied path (`https://localhost:5173/api/v1/...`),
+ * the staging direct path (`https://api.stagingmeshant-internal.example.com/api/v1/...`),
+ * and the staging frontend-proxied path (`https://stagingmeshant-internal.example.com/api/v1/...`).
+ * Static asset paths (`/static/...`), HTML routes (`/login`, `/register`),
+ * and third-party origins (Google Fonts) all return false.
+ */
+export function isApiUrlForCorrelationGuard(url: string): boolean {
+  try {
+    const parsed = new URL(url);
+    return parsed.pathname.startsWith('/api/v1/');
+  } catch {
+    return false;
+  }
+}
 
 export type CorrelationMismatch = { url: string; sent: string; echoed: string };
 export type CorrelationMissing = { url: string; sent: string };
@@ -181,8 +212,8 @@ function appendFailureArtifact(params: {
     // We intentionally swallow the write failure — if we can't persist the
     // artifact, throwing in teardown is still the primary signal. Don't want
     // the test harness itself to break because the runner filesystem is
-    // read-only, etc.
-    // eslint-disable-next-line no-console
+    // read-only, etc. (`no-console` rule not currently enabled in the e2e
+    // config; the prior eslint-disable comment was flagged as unused.)
     console.warn(
       `[guardedTest] Could not persist failure artifact: ${(err as Error).message}`,
     );
@@ -194,6 +225,18 @@ export const test = base.extend<{
   /** Auto-fixture: activates on every spec that imports `test` from this
    * file, even if the spec does not destructure `{ correlation }`. */
   correlation: CorrelationBuffer;
+  /**
+   * Phase 226 E2 — auto-fixture per-test registry of resources created
+   * by UI flows (or any code path that doesn't already use the
+   * `cleanup` fixture from `test-data-cleanup.ts`). Specs call
+   * `createdResources.track({ type, id, owner })` immediately after a
+   * UI form submit returns the new id (e.g. parsed out of a 302
+   * Location header or read from the URL after the redirect). Auto-
+   * teardown after the test body completes — failures surface as
+   * test annotations so they're visible in the HTML report without
+   * masking the original test failure.
+   */
+  createdResources: CreatedResourcesRegistry;
 }>({
   guard: async ({ page }, use, testInfo) => {
     const buffer: GuardBuffer = {
@@ -263,6 +306,11 @@ export const test = base.extend<{
       await page.setExtraHTTPHeaders({ [CORRELATION_HEADER]: testScopedId });
 
       page.on('response', (res) => {
+        // Scope: only backend API responses. See isApiUrlForCorrelationGuard
+        // — static assets and third-party CDN responses cannot echo a custom
+        // request header and would otherwise dominate the buffer with false
+        // positives.
+        if (!isApiUrlForCorrelationGuard(res.url())) return;
         const req = res.request();
         const reqHeaders = req.headers();
         const sent = findHeaderCaseInsensitive(reqHeaders, CORRELATION_HEADER);
@@ -307,6 +355,37 @@ export const test = base.extend<{
         problems.length === 1 ? '' : 's'
       }:\n${problems.join('\n')}`,
     );
+  }, { auto: true }],
+
+  // --------- 226.E2 — createdResources auto-fixture ----------------------
+  //
+  // Auto-flushes after the test body completes (success OR failure). A
+  // teardown failure surfaces as a `cleanup-failed` annotation, NEVER as
+  // a thrown error from this fixture — throwing here would mask the
+  // primary failure (if the test failed) or convert a leak into a green-
+  // to-red flip (if the test passed but a single resource 401'd on
+  // re-login).
+  createdResources: [async ({}, use, testInfo) => {
+    const registry = createCreatedResourcesRegistry();
+    await use(registry);
+    let result;
+    try {
+      result = await registry.flush();
+    } catch (err) {
+      testInfo.annotations.push({
+        type: 'cleanup-failed',
+        description: `createdResources auto-flush threw: ${(err as Error).message}`,
+      });
+      return;
+    }
+    if (result.failures.length > 0) {
+      testInfo.annotations.push({
+        type: 'cleanup-failed',
+        description:
+          `createdResources teardown encountered ${result.failures.length} failure(s):\n` +
+          result.failures.join('\n'),
+      });
+    }
   }, { auto: true }],
 });
 

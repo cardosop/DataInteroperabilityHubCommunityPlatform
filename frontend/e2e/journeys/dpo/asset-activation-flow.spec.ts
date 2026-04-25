@@ -5,6 +5,7 @@
 
 import { randomUUID } from 'node:crypto';
 import { expect, test } from '@playwright/test';
+import { cleanupOldE2EAssets } from '../../fixtures/api-assets';
 import { clearAuthStorage, getTestUser } from '../../fixtures/auth';
 // Phase 226 B1a — dual-channel verification on the activate mutation.
 import { verifyViaApi } from '../../fixtures/verifyViaApi';
@@ -18,6 +19,15 @@ import {
 
 test.describe('Asset Activation Flow', () => {
   test.setTimeout(120000);
+
+  // Drain orphaned e2e-* assets older than 10 min before this spec's tests
+  // run. Activation tests create + activate fresh assets; they're the most
+  // sensitive to `plan_limit_exceeded` because each happy-path run leaves a
+  // row that can't be auto-cleaned (UI-created, no per-test teardown).
+  test.beforeAll(async () => {
+    const user = await getTestUser();
+    await cleanupOldE2EAssets(user);
+  });
   // Activation requires a chain of backend calls (contract create → validate → normalize → ACTIVE),
   // which can fail transiently under load (403, timeout). 1 retry for this describe block only.
   test.describe.configure({ retries: 1 });

@@ -11,7 +11,7 @@
  */
 
 import { expect, test } from '../../fixtures/test-data-cleanup';
-import { createAssetViaApi, getAssetKeyViaApi } from '../../fixtures/api-assets';
+import { cleanupOldE2EAssets, createAssetViaApi, getAssetKeyViaApi } from '../../fixtures/api-assets';
 import { clearAuthStorage, getTestUser } from '../../fixtures/auth';
 import {
   assertNonExistentIdShowsError,
@@ -43,12 +43,22 @@ const COMPLIANCE_POLL_TIMEOUT_MS = (() => {
   return isRemoteApiTarget() ? 180_000 : 90_000;
 })();
 
-test.describe('JOURNEY-DPO-001: Onboard New Asset via Data-First Flow', () => {
+test.describe('JOURNEY-DPO-001: Onboard New Asset via Data-First Flow @critical', () => {
   // Per-test timeouts: the complete journey needs 15 min; Failure/Edge tests need less.
   // Setting at describe level caused subsequent tests to exhaust the global budget.
   // 1 retry: the complete journey (asset→file→dataset→contract→activate) chains many backend
   // calls and is sensitive to transient load. Other DPO tests use global retries (0 locally).
   test.describe.configure({ retries: 1 });
+
+  // Drain orphaned e2e-* assets older than 10 min. The complete-journey test
+  // creates an asset via UI which can't be auto-cleaned (no per-test teardown
+  // for UI-created rows). Without this, accumulated rows trip the staging
+  // tenant's `max_assets` plan cap and the redirect-to-detail-page step
+  // never fires (the create POST returns the plan-limit error instead).
+  test.beforeAll(async () => {
+    const user = await getTestUser();
+    await cleanupOldE2EAssets(user);
+  });
 
   test.describe('Success', () => {
     // Longest journey: applies to Success tests only (Failure/Edge keep default budget).
@@ -65,10 +75,20 @@ test.describe('JOURNEY-DPO-001: Onboard New Asset via Data-First Flow', () => {
       const testUser = await getTestUser();
       await loginAndNavigateToRoute(page, testUser, '/assets', {
         timeout: 60000,
-        contentSelector: '.asset-list-page, .empty-state, .error-display, h1',
+        // Phase 226.F1.b — list-page wrapper is now testid'd
+        // ([data-testid="asset-list-page"]); CSS class kept for layout.
+        contentSelector:
+          '[data-testid="asset-list-page"], [data-testid="empty-state"], [data-testid="error-display"], h1',
       });
       await page.waitForTimeout(2000);
 
+      // The list page CTA is intentionally still a `:has-text("Create
+      // Asset")` lookup because the same label appears as both a
+      // header button and an empty-state-action — the React components
+      // for those buttons don't share a single testid (would need a
+      // separate F1.b pass to add `asset-list-create-cta`). Keeping the
+      // text-based locator here is an honest gap, NOT a regression
+      // from the F1.b migration.
       const createButton = page
         .locator('button:has-text("Create Asset")')
         .or(page.locator('.empty-state-action:has-text("Create Asset")'));
@@ -76,17 +96,27 @@ test.describe('JOURNEY-DPO-001: Onboard New Asset via Data-First Flow', () => {
       await createButton.first().click();
 
       await expect(page).toHaveURL(/\/assets\/create/, { timeout: 10000 });
-      await page.waitForSelector('input[id="asset-key"]', { timeout: 10000 });
+      // Phase 226.F1.b — the create-form fields are now testid'd; keep the
+      // existing `input[id="..."]` selectors as a parallel anchor so the
+      // wait still succeeds on builds without F1.b deployed (zero-risk
+      // migration).
+      await page.waitForSelector(
+        '[data-testid="asset-create-key"], input[id="asset-key"]',
+        { timeout: 10000 },
+      );
       // Phase 213.E — prefix MUST start with `e2e-` so the orphan reaper script can sweep
       // the row if per-test cleanup fails (worker crash, expired token, etc.). The reaper
       // matches `Asset.key__istartswith='e2e-'` AND `created_at < cutoff`.
       const assetKey = `e2e-test-asset-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
-      await page.fill('input[id="asset-key"]', assetKey);
-      await page.fill('input[id="asset-name"]', 'Test Asset');
-      await page.fill('textarea[id="asset-description"]', 'Test asset description');
-      await page.selectOption('select[id="asset-visibility"]', 'INTERNAL');
+      // Use getByTestId where available; the `id` attribute is also kept by
+      // React, so falling back via `or(...)` keeps the spec runnable on
+      // older builds that pre-date F1.b's component testids.
+      await page.getByTestId('asset-create-key').or(page.locator('input[id="asset-key"]')).fill(assetKey);
+      await page.getByTestId('asset-create-name').or(page.locator('input[id="asset-name"]')).fill('Test Asset');
+      await page.getByTestId('asset-create-description').or(page.locator('textarea[id="asset-description"]')).fill('Test asset description');
+      await page.getByTestId('asset-create-visibility').or(page.locator('select[id="asset-visibility"]')).selectOption('INTERNAL');
 
-      const submitButton = page.locator('button:has-text("Create Asset")');
+      const submitButton = page.getByTestId('asset-create-submit');
       await submitButton.waitFor({ timeout: 10000 });
       await submitButton.click();
 
@@ -110,10 +140,17 @@ test.describe('JOURNEY-DPO-001: Onboard New Asset via Data-First Flow', () => {
       // Phase 213.C — track the UI-created asset for per-test teardown.
       cleanup.track({ type: 'asset', id: assetId, owner: testUser });
 
-      await page.waitForSelector('.asset-detail-page, .asset-detail-content', { timeout: 35000 });
-      const assetHeading = page.locator('.asset-detail-page h1, .asset-detail-content h1').first();
+      await page.waitForSelector(
+        '[data-testid="asset-detail-page"], .asset-detail-content',
+        { timeout: 35000 },
+      );
+      const assetHeading = page
+        .locator('[data-testid="asset-detail-page"] h1, .asset-detail-content h1')
+        .first();
       await expect(assetHeading).toContainText('Test Asset', { timeout: 10000 });
-      await expect(page.locator('.asset-detail-page .status-badge').first()).toContainText('DRAFT');
+      await expect(
+        page.locator('[data-testid="asset-detail-page"] .status-badge').first(),
+      ).toContainText('DRAFT');
 
       // Phase 226 B1a — dual-channel post-create verification (UC-AM-001).
       await verifyViaApi(page, `/api/v1/assets/${assetId}/`, {
@@ -129,7 +166,8 @@ test.describe('JOURNEY-DPO-001: Onboard New Asset via Data-First Flow', () => {
       // Step 2: Create Dataset (with file upload when dropzone present)
       await navigateToRouteFromApp(page, '/datasets/create', {
         timeout: 90000,
-        contentSelector: '.dataset-create-page, .file-upload, .error-display, form, h1',
+        contentSelector:
+          '[data-testid="dataset-create-page"], [data-testid="file-upload"], [data-testid="error-display"], form, h1',
         user: testUser,
       });
       await page.waitForTimeout(2000);
@@ -138,9 +176,11 @@ test.describe('JOURNEY-DPO-001: Onboard New Asset via Data-First Flow', () => {
       let datasetId = '';
       let fileUploadSucceeded = false;
 
-      const dropzone = page.locator('.file-upload-dropzone');
+      const dropzone = page.getByTestId('file-upload-dropzone');
       if ((await dropzone.count()) > 0) {
-        const datasetFileInput = page.locator('.file-upload-dropzone input[type="file"]');
+        const datasetFileInput = page
+          .getByTestId('file-upload-dropzone')
+          .locator('input[type="file"]');
         if ((await datasetFileInput.count()) > 0) {
           let uploadSuccess = false;
           let uploadRetries = 0;
@@ -185,15 +225,24 @@ test.describe('JOURNEY-DPO-001: Onboard New Asset via Data-First Flow', () => {
               }
             }
 
-            // Wait for success or error UI
+            // Wait for success or error UI. The dropzone now exposes
+            // a `data-upload-state` attribute (idle/dragging/uploading/
+            // success) so a single CSS selector covers every success
+            // indicator without depending on legacy class suffixes.
             await page
               .locator(
-                '.file-upload-success, .file-upload-dropzone.upload-success, .upload-success, .dataset-create-page .upload-success, .file-upload .error-display, .dataset-create-page .error-display'
+                '[data-testid="file-upload-dropzone"][data-upload-state="success"], ' +
+                  '.file-upload-success, .upload-success, ' +
+                  '[data-testid="file-upload"] [data-testid="error-display"], ' +
+                  '[data-testid="dataset-create-page"] [data-testid="error-display"]',
               )
               .first()
               .waitFor({ state: 'visible', timeout: 45000 });
 
-            const uploadError = page.locator('.file-upload .error-display, .dataset-create-page .error-display');
+            const uploadError = page.locator(
+              '[data-testid="file-upload"] [data-testid="error-display"], ' +
+                '[data-testid="dataset-create-page"] [data-testid="error-display"]',
+            );
             // intentional: JOURNEY-DPO-001 onboarding journey tolerates well-known 429s during the multi-step asset-create chain; final state assertions use verifyViaApi / verifyAuditEvent.
             if (await uploadError.isVisible().catch(() => false)) {
               // intentional: JOURNEY-DPO-001 onboarding journey tolerates well-known 429s during the multi-step asset-create chain; final state assertions use verifyViaApi / verifyAuditEvent.
@@ -234,7 +283,7 @@ test.describe('JOURNEY-DPO-001: Onboard New Asset via Data-First Flow', () => {
         }
       }
 
-      if (fileUploadSucceeded || (await page.locator('.file-upload-dropzone').count()) === 0) {
+      if (fileUploadSucceeded || (await page.getByTestId('file-upload-dropzone').count()) === 0) {
         // Proceed with dataset creation (either upload succeeded or no file dropzone)
         const assetIdInput = page.locator('input[placeholder*="Asset ID"]');
         if ((await assetIdInput.count()) > 0) {
