@@ -53,6 +53,7 @@ function getAlternateApiBase(currentBase: string): string | null {
       }
     }
   } catch {
+    // intentional: api-assets fixture wraps best-effort cleanup / reuse-search lookups; failure here means we fall back to creating fresh resources, not that the test should fail.
     // ignore
   }
   return null;
@@ -379,6 +380,7 @@ async function createAssetViaApiOnce(
         // If contract creation failed (workflows disabled, plan limits), proceed without contracts.
         // Asset activation may still succeed (some backends allow activation without contracts).
       } catch {
+        // intentional: api-assets fixture wraps best-effort cleanup / reuse-search lookups; failure here means we fall back to creating fresh resources, not that the test should fail.
         // Best-effort fallback failed entirely — proceed to activation anyway
       }
     }
@@ -463,6 +465,7 @@ export async function cleanupOldScheduledExports(user: TestUser): Promise<void> 
           },
         });
       } catch {
+        // intentional: api-assets fixture wraps best-effort cleanup / reuse-search lookups; failure here means we fall back to creating fresh resources, not that the test should fail.
         // Ignore deletion errors - continue cleaning up others
       }
     }

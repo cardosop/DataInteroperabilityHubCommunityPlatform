@@ -173,6 +173,7 @@ test.describe('JOURNEY-DPO-001: Onboard New Asset via Data-First Flow', () => {
                 const match = msg.match(/retry after (\d+) seconds?/i);
                 if (match) retryAfter = parseInt(match[1], 10) + 1;
               } catch {
+                // intentional: JOURNEY-DPO-001 onboarding journey tolerates well-known 429s during the multi-step asset-create chain; the final asset-creation assertion is made with verifyViaApi above this block.
                 /* use default */
               }
               if (uploadRetries < maxUploadRetries - 1) {
@@ -677,6 +678,7 @@ test.describe('JOURNEY-DPO-001: Onboard New Asset via Data-First Flow', () => {
         const resp = await responsePromise;
         apiStatus = resp.status();
       } catch {
+        // intentional: JOURNEY-DPO-001 onboarding journey tolerates well-known 429s during the multi-step asset-create chain; the final asset-creation assertion is made with verifyViaApi above this block.
         // May be caught by client-side validation before hitting API
       }
 

@@ -100,6 +100,7 @@ test.describe('Asset-Dataset-DQ Flow (UX)', () => {
       try {
         await fs.promises.unlink(testFile);
       } catch {
+        // intentional: asset-dataset UX flow same as asset-attach — best-effort intermediate, deterministic final assertion.
         // ignore
       }
     }

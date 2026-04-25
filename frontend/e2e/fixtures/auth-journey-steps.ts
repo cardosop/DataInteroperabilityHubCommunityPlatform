@@ -329,6 +329,7 @@ export async function runJOURNEY_AUTH_003_Success(page: Page): Promise<void> {
     const probe = await fetch(`${MAILHOG_BASE_URL}/api/v2/messages?limit=1`);
     if (probe.ok) mailhogReachable = true;
   } catch {
+    // intentional: auth-journey shared step uses best-effort waits on optional UI elements; primary auth-success assertion is in the calling spec.
     // ignore
   }
   if (!mailhogReachable) {

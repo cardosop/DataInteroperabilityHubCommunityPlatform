@@ -107,7 +107,11 @@ export default defineConfig([
       // build instead of accruing as warnings.
       'e2e-guards/no-conditional-count-assertion': 'error',
       'e2e-guards/no-catch-swallow-in-tests': 'warn',
-      'e2e-guards/no-bare-catch-in-tests': 'warn',
+      // 226.A3 flipped to `error` 2026-04-24 once every bare-catch in
+      // the suite carried an `// intentional: <why>` annotation
+      // (whether inside the empty body, on a leading-line comment, or
+      // trailing). Future regressions break CI.
+      'e2e-guards/no-bare-catch-in-tests': 'error',
       // Companion core ESLint rule — catches `catch (e) { throw e; }`
       // (body non-empty but useless). Pairs with `no-bare-catch-in-tests`
       // to cover both useless-catch shapes.

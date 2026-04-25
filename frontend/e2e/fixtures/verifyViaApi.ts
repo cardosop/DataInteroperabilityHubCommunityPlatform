@@ -120,6 +120,7 @@ export async function verifyViaApi<T extends object>(
     try {
       text = await res.text();
     } catch {
+      // intentional: verifyViaApi tolerates the missing-body / non-JSON content cases when computing diagnostic preview text; the actual pass/fail decision is made on `res.ok()` + `matchBody`.
       /* ignore — some responses have no body */
     }
     throw new Error(
@@ -144,4 +145,106 @@ export async function verifyViaApi<T extends object>(
     );
   }
   return body;
+}
+
+// ----------------------------------------------------------- Phase 226 PR B2
+//
+// Negative-path helpers. Needed because "UI doesn't show the resource" is
+// UI-only coverage; to prove a real resource is actually absent or forbidden
+// we have to ask the API and distinguish 404 (gone / never existed),
+// 403 (forbidden by RBAC), 401 (session invalid — different bug class), and
+// any other status that is neither the expected absence nor a 2xx.
+//
+// `classifyAbsenceStatus` is the pure logic split out for unit tests in
+// `_guards.spec.ts`. Keeping it separate matches the `matchBody` pattern
+// above and lets the full tree of branches be verified without a browser.
+
+export type AbsenceClassification =
+  | 'absent' // 404 — the resource is not there
+  | 'forbidden' // 403 — RBAC/policy says no
+  | 'unauthorized' // 401 — session invalid, not an RBAC answer
+  | 'visible' // 2xx — resource IS visible, contradicts absent/forbidden
+  | 'server-error' // 5xx — never acceptable, real bug
+  | 'unexpected-redirect' // 3xx — should not happen on an API endpoint
+  | 'other-client-error'; // 4xx not in the set above (e.g. 400, 429)
+
+/**
+ * Pure classifier for an HTTP status code from a resource-GET probe.
+ * Exposed so `_guards.spec.ts` can unit-test every branch.
+ */
+export function classifyAbsenceStatus(status: number): AbsenceClassification {
+  if (status === 404) return 'absent';
+  if (status === 403) return 'forbidden';
+  if (status === 401) return 'unauthorized';
+  if (status >= 200 && status < 300) return 'visible';
+  if (status >= 500) return 'server-error';
+  if (status >= 300 && status < 400) return 'unexpected-redirect';
+  return 'other-client-error';
+}
+
+export interface VerifyAbsenceOptions {
+  /** Override the auth extraction. Rarely needed; used by `_guards.spec.ts`. */
+  authHeaderOverride?: Record<string, string>;
+}
+
+/**
+ * Assert that the resource at `endpoint` returns 404 ("not there").
+ *
+ * Use for cross-tenant isolation checks: the resource exists in tenant A,
+ * and from tenant B's session `/api/v1/<resource>/<id>/` must return 404
+ * (NOT 403 — 403 would leak existence, which is itself a bug).
+ */
+export async function verifyViaApiAbsent(
+  page: Page,
+  endpoint: string,
+  options: VerifyAbsenceOptions = {},
+): Promise<void> {
+  const headers = await extractBearerHeaders(page, options.authHeaderOverride);
+  const res = await page.request.get(endpoint, { headers });
+  const classification = classifyAbsenceStatus(res.status());
+
+  if (classification === 'absent') return;
+
+  let bodyPreview = '';
+  try {
+    bodyPreview = (await res.text()).slice(0, 400);
+  } catch {
+    // intentional: verifyViaApi tolerates the missing-body / non-JSON content cases when computing diagnostic preview text; the actual pass/fail decision is made on `res.ok()` + `matchBody`.
+    /* ignore */
+  }
+  throw new Error(
+    `verifyViaApiAbsent: GET ${endpoint} returned ${res.status()} ` +
+      `(${classification}). Expected 404 (absent). Body preview: ${bodyPreview}`,
+  );
+}
+
+/**
+ * Assert that the resource at `endpoint` returns 403 ("forbidden by policy").
+ *
+ * Use for RBAC checks: persona X sees the resource, persona Y is rejected by
+ * the policy layer. 403 is the expected signal; 404 would mean the resource
+ * is hidden by tenancy or simply gone, which is a different assertion.
+ */
+export async function verifyViaApiForbidden(
+  page: Page,
+  endpoint: string,
+  options: VerifyAbsenceOptions = {},
+): Promise<void> {
+  const headers = await extractBearerHeaders(page, options.authHeaderOverride);
+  const res = await page.request.get(endpoint, { headers });
+  const classification = classifyAbsenceStatus(res.status());
+
+  if (classification === 'forbidden') return;
+
+  let bodyPreview = '';
+  try {
+    bodyPreview = (await res.text()).slice(0, 400);
+  } catch {
+    // intentional: verifyViaApi tolerates the missing-body / non-JSON content cases when computing diagnostic preview text; the actual pass/fail decision is made on `res.ok()` + `matchBody`.
+    /* ignore */
+  }
+  throw new Error(
+    `verifyViaApiForbidden: GET ${endpoint} returned ${res.status()} ` +
+      `(${classification}). Expected 403 (forbidden). Body preview: ${bodyPreview}`,
+  );
 }

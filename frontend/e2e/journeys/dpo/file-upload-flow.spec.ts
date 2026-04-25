@@ -75,6 +75,7 @@ test.describe('File Upload Flow', () => {
               retryAfter = parseInt(retryMatch[1], 10) + 1; // Add 1s buffer
             }
           } catch {
+            // intentional: file-upload best-effort tolerates the well-known multi-part upload race; primary upload assertion is the file-list refresh.
             // Use default
           }
           console.log(

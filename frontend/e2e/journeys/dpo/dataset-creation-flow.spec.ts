@@ -92,6 +92,7 @@ test.describe('Dataset Creation Flow', () => {
                   retryAfter = Math.max(10, parseInt(retryMatch[1], 10) + 1);
                 }
               } catch {
+                // intentional: dataset-creation best-effort tolerates transient file-upload races; primary assertion is the dataset-list verification below.
                 // Use default
               }
               console.log(

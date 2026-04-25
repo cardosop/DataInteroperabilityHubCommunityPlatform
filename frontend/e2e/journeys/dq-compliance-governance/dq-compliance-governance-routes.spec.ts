@@ -169,6 +169,7 @@ test.describe('DQ, Compliance, Governance routes', () => {
           acceptRedirectToLogin: true,
         });
       } catch {
+        // intentional: DQ/compliance/governance routes test page-level navigation only; per-route content failures surface in the URL/heading assertions above.
         // Redirect to login is the expected outcome
       }
       expect(page.url()).toContain('/login');

@@ -29,6 +29,7 @@ function getAlternateApiBase(currentBase: string): string | null {
       }
     }
   } catch {
+    // intentional: global-setup is best-effort: backend warmup / port-probe / seeding side effects must NOT fail the entire test run on transient errors. The first real test that needs the backend will surface any genuine outage with a clear locator/wait failure.
     // ignore
   }
   return null;
@@ -48,6 +49,18 @@ async function globalSetup(config: FullConfig) {
   // Ensure test-results exists to reduce ENOENT artifact race (Playwright trace/video writes)
   const outputDir = config.outputDir ?? path.join(process.cwd(), 'test-results');
   fs.mkdirSync(outputDir, { recursive: true });
+
+  // Pure-unit-only runs (e.g. `_guards.spec.ts`) exercise side-effect-free helper
+  // logic and do not talk to the backend. Forcing them to wait through the API
+  // health-check + docker exec seeding turns a 5-second suite into a 30-second
+  // failure when the stack is down. Honor a documented opt-out so those runs
+  // can succeed against just the browser. Tests that DO use the network still
+  // fail loudly on their own when the API is missing — this only short-circuits
+  // setup work, not test-time correctness.
+  if (process.env.E2E_SKIP_GLOBAL_SETUP === '1') {
+    console.log('ℹ️  E2E_SKIP_GLOBAL_SETUP=1 — skipping API health check + seeding (pure-unit run)');
+    return;
+  }
 
   let API_BASE_URL = getDefaultApiBase();
   const maxRetries = 15;
@@ -73,6 +86,7 @@ async function globalSetup(config: FullConfig) {
       'utf8'
     );
   } catch {
+    // intentional: global-setup is best-effort: backend warmup / port-probe / seeding side effects must NOT fail the entire test run on transient errors. The first real test that needs the backend will surface any genuine outage with a clear locator/wait failure.
     // ignore
   }
 
@@ -186,12 +200,15 @@ async function globalSetup(config: FullConfig) {
                     'utf8'
                   );
                 } catch {
+                  // intentional: global-setup is best-effort: backend warmup / port-probe / seeding side effects must NOT fail the entire test run on transient errors. The first real test that needs the backend will surface any genuine outage with a clear locator/wait failure.
                   // Marker is optional; workers fall back to HTTP ensure
                 }
               } catch {
+                // intentional: global-setup is best-effort: backend warmup / port-probe / seeding side effects must NOT fail the entire test run on transient errors. The first real test that needs the backend will surface any genuine outage with a clear locator/wait failure.
                 // Ignore - command may not exist or subscription setup may fail
               }
             } catch {
+              // intentional: global-setup is best-effort: backend warmup / port-probe / seeding side effects must NOT fail the entire test run on transient errors. The first real test that needs the backend will surface any genuine outage with a clear locator/wait failure.
               // Ignore if docker/command unavailable (e.g. CI uses different container name)
             }
           }

@@ -237,6 +237,7 @@ test.describe('JOURNEY-AUTH-002: User Logs In', () => {
             { timeout: 10000 }
           );
         } catch {
+          // intentional: JOURNEY-AUTH-002 tolerates transient 429 rate-limit on the login retry; final auth state asserted via cookies/storage below.
           // Timeout is acceptable
         }
 

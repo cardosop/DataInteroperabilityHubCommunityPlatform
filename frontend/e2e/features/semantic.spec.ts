@@ -80,6 +80,7 @@ test.describe('Feature: Semantic', () => {
       try {
         await waitForAppMainReady(page, { timeout: 30000, acceptRedirectToLogin: true });
       } catch {
+        // intentional: semantic spec tolerates capability-flag-gated route redirects (/semantic → /unavailable on MVP_MODE); URL assertion below covers either path.
         // route gated or login redirect
       }
       if (!page.url().includes('/semantic')) {

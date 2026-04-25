@@ -57,6 +57,7 @@ export async function assertFailureRedirect(
   try {
     await page.waitForURL(combinedPattern, { timeout: options.timeout ?? 15000 });
   } catch {
+    // intentional: journey-helpers wraps optional-route navigation; on failure the calling spec falls back to direct goto and re-asserts via its own content selectors.
     // URL didn't match — fall through to assertion which will produce a clear error message
   }
   const url = page.url();

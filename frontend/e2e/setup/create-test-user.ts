@@ -70,6 +70,7 @@ function getAlternateApiBase(currentBase: string): string | null {
       }
     }
   } catch {
+    // intentional: test-user setup retries against rate-limited / cold backends. Each catch is part of an explicit retry/backoff loop that surfaces final failure separately.
     // ignore
   }
   return null;
@@ -323,6 +324,7 @@ export async function ensureTestUser(): Promise<TestUser> {
         _cachedDefaultUser = user;
         return user;
       } catch {
+        // intentional: test-user setup retries against rate-limited / cold backends. Each catch is part of an explicit retry/backoff loop that surfaces final failure separately.
         // Fall through to rethrow original
       }
     }
@@ -612,6 +614,7 @@ export async function ensureConsumerTestUser(): Promise<TestUser> {
         _cachedConsumerUser = user;
         return user;
       } catch {
+        // intentional: test-user setup retries against rate-limited / cold backends. Each catch is part of an explicit retry/backoff loop that surfaces final failure separately.
         // Fall through to rethrow original
       }
     }
@@ -767,6 +770,7 @@ async function runEnsureE2EUserRoles(): Promise<boolean> {
       await new Promise((r) => setTimeout(r, 2000)); // Allow DB to settle
       return true;
     } catch {
+      // intentional: test-user setup retries against rate-limited / cold backends. Each catch is part of an explicit retry/backoff loop that surfaces final failure separately.
       // Try next container
     }
   }

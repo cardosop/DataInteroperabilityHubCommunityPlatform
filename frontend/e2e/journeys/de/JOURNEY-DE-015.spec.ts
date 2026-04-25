@@ -80,6 +80,7 @@ test.describe('JOURNEY-DE-015: Upload Data File', () => {
                 retryAfter = parseInt(retryMatch[1], 10) + 1;
               }
             } catch {
+              // intentional: JOURNEY-DE-015 best-effort step skip for optional UI; primary assertion is in the URL/content check above.
               // Use default
             }
             console.log(

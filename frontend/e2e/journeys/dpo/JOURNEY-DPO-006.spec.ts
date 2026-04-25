@@ -77,6 +77,7 @@ test.describe('JOURNEY-DPO-006: Manage Marketplace Listings', () => {
         seededListingId = await createListingViaApi(testUser, activeAssetId);
         await publishListingViaApi(testUser, seededListingId).catch(() => null);
       } catch {
+        // intentional: JOURNEY-DPO-006 best-effort route-step skips for missing optional UI elements; primary assertion is the URL/heading check above.
         // Non-fatal: will fall back to direct navigation if listingId was captured, or skip
       }
 

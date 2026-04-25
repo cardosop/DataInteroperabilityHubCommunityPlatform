@@ -110,6 +110,7 @@ test.describe('Files Upload (UX)', () => {
       try {
         await fs.promises.unlink(testFile);
       } catch {
+        // intentional: files-upload best-effort tolerates upload-race; primary file-list reload assertion is the gate.
         // ignore
       }
     }

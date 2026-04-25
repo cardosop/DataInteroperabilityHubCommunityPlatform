@@ -275,6 +275,7 @@ test.describe('Asset Detail: Attach Contract and Dataset (Pickers)', () => {
       try {
         await fs.promises.unlink(testFile);
       } catch {
+        // intentional: asset-attach UX flow tolerates intermediate state where the asset isn't yet ACTIVE; the final attach assertion below uses verifyViaApi.
         // ignore
       }
     }

@@ -243,6 +243,7 @@ test.describe('Phase 7.5 — FEATURES Gap Closure', () => {
         try {
           await firstEditable.fill('e2e-test-value');
         } catch {
+          // intentional: phase7.5 is flagged @deprecated under 226.E1 and queued for deletion under 226.E5 once Track D coverage lands. Bare catches here mark legacy fall-through patterns whose replacements live in the new D1-D4 specs; they're preserved with explicit justification rather than silently removed.
           /* Optional: tenant config field may be readonly or not editable */
         }
         const saveBtn = page
@@ -339,6 +340,7 @@ test.describe('Phase 7.5 — FEATURES Gap Closure', () => {
     try {
       hasCreateDQ = (await createDQBtn.count()) > 0 && (await createDQBtn.isVisible());
     } catch {
+      // intentional: phase7.5 is flagged @deprecated under 226.E1 and queued for deletion under 226.E5 once Track D coverage lands. Bare catches here mark legacy fall-through patterns whose replacements live in the new D1-D4 specs; they're preserved with explicit justification rather than silently removed.
       /* Create DQ button not visible — may be 403 or capability gated */
     }
     if (!hasCreateDQ) {
@@ -365,6 +367,7 @@ test.describe('Phase 7.5 — FEATURES Gap Closure', () => {
       hasCreateCompliance =
         (await createComplianceBtn.count()) > 0 && (await createComplianceBtn.isVisible());
     } catch {
+      // intentional: phase7.5 is flagged @deprecated under 226.E1 and queued for deletion under 226.E5 once Track D coverage lands. Bare catches here mark legacy fall-through patterns whose replacements live in the new D1-D4 specs; they're preserved with explicit justification rather than silently removed.
       /* Create compliance button not visible — may be 403 or capability gated */
     }
     if (!hasCreateCompliance) {
@@ -471,6 +474,7 @@ test.describe('Phase 7.5 — FEATURES Gap Closure', () => {
       try {
         await page.waitForLoadState('networkidle');
       } catch {
+        // intentional: phase7.5 is flagged @deprecated under 226.E1 and queued for deletion under 226.E5 once Track D coverage lands. Bare catches here mark legacy fall-through patterns whose replacements live in the new D1-D4 specs; they're preserved with explicit justification rather than silently removed.
         /* networkidle may timeout on slow networks; domcontentloaded suffices */
       }
     } else {
@@ -485,6 +489,7 @@ test.describe('Phase 7.5 — FEATURES Gap Closure', () => {
         try {
           await page.waitForLoadState('networkidle');
         } catch {
+          // intentional: phase7.5 is flagged @deprecated under 226.E1 and queued for deletion under 226.E5 once Track D coverage lands. Bare catches here mark legacy fall-through patterns whose replacements live in the new D1-D4 specs; they're preserved with explicit justification rather than silently removed.
           /* networkidle may timeout on slow networks; domcontentloaded suffices */
         }
       }
@@ -683,6 +688,7 @@ test.describe('Phase 7.5 — FEATURES Gap Closure', () => {
     try {
       rowVisible = await rowWithFile.first().isVisible();
     } catch {
+      // intentional: phase7.5 is flagged @deprecated under 226.E1 and queued for deletion under 226.E5 once Track D coverage lands. Bare catches here mark legacy fall-through patterns whose replacements live in the new D1-D4 specs; they're preserved with explicit justification rather than silently removed.
       /* Row not yet visible */
     }
     for (let attempt = 0; !rowVisible && attempt < maxAttempts; attempt++) {
@@ -697,6 +703,7 @@ test.describe('Phase 7.5 — FEATURES Gap Closure', () => {
         try {
           await page.waitForSelector('.file-list-table, .empty-state', { timeout: 15000 });
         } catch {
+          // intentional: phase7.5 is flagged @deprecated under 226.E1 and queued for deletion under 226.E5 once Track D coverage lands. Bare catches here mark legacy fall-through patterns whose replacements live in the new D1-D4 specs; they're preserved with explicit justification rather than silently removed.
           /* Optional: table may not be present yet */
         }
         await waitForLoadingComplete(page, { timeout: 15000 });
@@ -704,6 +711,7 @@ test.describe('Phase 7.5 — FEATURES Gap Closure', () => {
       try {
         rowVisible = await rowWithFile.first().isVisible();
       } catch {
+        // intentional: phase7.5 is flagged @deprecated under 226.E1 and queued for deletion under 226.E5 once Track D coverage lands. Bare catches here mark legacy fall-through patterns whose replacements live in the new D1-D4 specs; they're preserved with explicit justification rather than silently removed.
         /* Row not yet visible */
       }
     }
@@ -724,12 +732,14 @@ test.describe('Phase 7.5 — FEATURES Gap Closure', () => {
       try {
         await page.waitForSelector('.file-list-table, .empty-state', { timeout: 15000 });
       } catch {
+        // intentional: phase7.5 is flagged @deprecated under 226.E1 and queued for deletion under 226.E5 once Track D coverage lands. Bare catches here mark legacy fall-through patterns whose replacements live in the new D1-D4 specs; they're preserved with explicit justification rather than silently removed.
         /* Optional: table may not be present yet */
       }
       await waitForLoadingComplete(page, { timeout: 15000 });
       try {
         rowVisible = await rowWithFile.first().isVisible();
       } catch {
+        // intentional: phase7.5 is flagged @deprecated under 226.E1 and queued for deletion under 226.E5 once Track D coverage lands. Bare catches here mark legacy fall-through patterns whose replacements live in the new D1-D4 specs; they're preserved with explicit justification rather than silently removed.
         /* Row not yet visible */
       }
       // Paginate through pages (20 per page) to find the file
@@ -740,6 +750,7 @@ test.describe('Phase 7.5 — FEATURES Gap Closure', () => {
         try {
           nextEnabled = hasNext && (await nextBtn.first().isDisabled()) === false;
         } catch {
+          // intentional: phase7.5 is flagged @deprecated under 226.E1 and queued for deletion under 226.E5 once Track D coverage lands. Bare catches here mark legacy fall-through patterns whose replacements live in the new D1-D4 specs; they're preserved with explicit justification rather than silently removed.
           /* Next button state unknown */
         }
         if (!hasNext || !nextEnabled) break;
@@ -748,6 +759,7 @@ test.describe('Phase 7.5 — FEATURES Gap Closure', () => {
         try {
           rowVisible = await rowWithFile.first().isVisible();
         } catch {
+          // intentional: phase7.5 is flagged @deprecated under 226.E1 and queued for deletion under 226.E5 once Track D coverage lands. Bare catches here mark legacy fall-through patterns whose replacements live in the new D1-D4 specs; they're preserved with explicit justification rather than silently removed.
           /* Row not yet visible */
         }
       }
@@ -764,6 +776,7 @@ test.describe('Phase 7.5 — FEATURES Gap Closure', () => {
     try {
       await rowLoc.scrollIntoViewIfNeeded();
     } catch {
+      // intentional: phase7.5 is flagged @deprecated under 226.E1 and queued for deletion under 226.E5 once Track D coverage lands. Bare catches here mark legacy fall-through patterns whose replacements live in the new D1-D4 specs; they're preserved with explicit justification rather than silently removed.
       /* Optional: scroll may fail if element not in viewport */
     }
     await expect(rowLoc).toBeVisible({ timeout: 25000 });
@@ -889,6 +902,7 @@ test.describe('Phase 7.5 — FEATURES Gap Closure', () => {
       try {
         await downloadPromise;
       } catch {
+        // intentional: phase7.5 is flagged @deprecated under 226.E1 and queued for deletion under 226.E5 once Track D coverage lands. Bare catches here mark legacy fall-through patterns whose replacements live in the new D1-D4 specs; they're preserved with explicit justification rather than silently removed.
         /* Optional: download may not trigger depending on browser behavior */
       }
       // Download may or may not trigger depending on browser behavior
@@ -965,6 +979,7 @@ test.describe('Phase 7.5 — FEATURES Gap Closure', () => {
         try {
           await triggerPromise;
         } catch {
+          // intentional: phase7.5 is flagged @deprecated under 226.E1 and queued for deletion under 226.E5 once Track D coverage lands. Bare catches here mark legacy fall-through patterns whose replacements live in the new D1-D4 specs; they're preserved with explicit justification rather than silently removed.
           /* Optional: trigger response may timeout if service unavailable */
         }
         // Just verify page didn't crash
@@ -1050,6 +1065,7 @@ test.describe('Phase 7.5 — FEATURES Gap Closure', () => {
     try {
       await queryPromise;
     } catch {
+      // intentional: phase7.5 is flagged @deprecated under 226.E1 and queued for deletion under 226.E5 once Track D coverage lands. Bare catches here mark legacy fall-through patterns whose replacements live in the new D1-D4 specs; they're preserved with explicit justification rather than silently removed.
       /* Optional: SPARQL response may timeout if service unavailable */
     }
 
@@ -1166,6 +1182,7 @@ test.describe('Phase 7.5 — FEATURES Gap Closure', () => {
     try {
       await submitPromise;
     } catch {
+      // intentional: phase7.5 is flagged @deprecated under 226.E1 and queued for deletion under 226.E5 once Track D coverage lands. Bare catches here mark legacy fall-through patterns whose replacements live in the new D1-D4 specs; they're preserved with explicit justification rather than silently removed.
       /* Optional: schema-matching response may timeout if service unavailable */
     }
 
@@ -1256,6 +1273,7 @@ test.describe('Phase 7.5 — FEATURES Gap Closure', () => {
         { timeout: 20000 }
       );
     } catch {
+      // intentional: phase7.5 is flagged @deprecated under 226.E1 and queued for deletion under 226.E5 once Track D coverage lands. Bare catches here mark legacy fall-through patterns whose replacements live in the new D1-D4 specs; they're preserved with explicit justification rather than silently removed.
       /* Optional: webhooks list API may have already completed */
     }
     await page.waitForTimeout(2000);
@@ -1268,6 +1286,7 @@ test.describe('Phase 7.5 — FEATURES Gap Closure', () => {
     try {
       rowVisible = await rowWithName.isVisible();
     } catch {
+      // intentional: phase7.5 is flagged @deprecated under 226.E1 and queued for deletion under 226.E5 once Track D coverage lands. Bare catches here mark legacy fall-through patterns whose replacements live in the new D1-D4 specs; they're preserved with explicit justification rather than silently removed.
       /* Row not yet visible */
     }
     if (!rowVisible) {
@@ -1275,6 +1294,7 @@ test.describe('Phase 7.5 — FEATURES Gap Closure', () => {
       try {
         rowVisible = await rowWithName.isVisible();
       } catch {
+        // intentional: phase7.5 is flagged @deprecated under 226.E1 and queued for deletion under 226.E5 once Track D coverage lands. Bare catches here mark legacy fall-through patterns whose replacements live in the new D1-D4 specs; they're preserved with explicit justification rather than silently removed.
         /* Row not yet visible */
       }
     }
@@ -1288,6 +1308,7 @@ test.describe('Phase 7.5 — FEATURES Gap Closure', () => {
       try {
         rowVisible = await rowWithName.isVisible();
       } catch {
+        // intentional: phase7.5 is flagged @deprecated under 226.E1 and queued for deletion under 226.E5 once Track D coverage lands. Bare catches here mark legacy fall-through patterns whose replacements live in the new D1-D4 specs; they're preserved with explicit justification rather than silently removed.
         /* Row not yet visible */
       }
     }
@@ -1309,6 +1330,7 @@ test.describe('Phase 7.5 — FEATURES Gap Closure', () => {
     try {
       errVisible = await errEl.isVisible();
     } catch {
+      // intentional: phase7.5 is flagged @deprecated under 226.E1 and queued for deletion under 226.E5 once Track D coverage lands. Bare catches here mark legacy fall-through patterns whose replacements live in the new D1-D4 specs; they're preserved with explicit justification rather than silently removed.
       /* Error element state unknown */
     }
     if (errVisible) {
@@ -1316,6 +1338,7 @@ test.describe('Phase 7.5 — FEATURES Gap Closure', () => {
       try {
         msg = (await errEl.textContent()) || '';
       } catch {
+        // intentional: phase7.5 is flagged @deprecated under 226.E1 and queued for deletion under 226.E5 once Track D coverage lands. Bare catches here mark legacy fall-through patterns whose replacements live in the new D1-D4 specs; they're preserved with explicit justification rather than silently removed.
         /* Could not get error text */
       }
       throw new Error(`Webhook detail showed error (API/404): ${msg.slice(0, 300)}`);

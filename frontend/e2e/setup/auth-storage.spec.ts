@@ -108,6 +108,7 @@ test.describe('Auth storage setup', () => {
           encoding: 'utf8',
         });
       } catch {
+        // intentional: auth-storage setup tolerates the well-known rate-limit-reset path failures; the actual storage write below this block is the assertion that matters.
         // Ignore if docker/command unavailable
       }
     }
@@ -161,6 +162,7 @@ test.describe('Auth storage setup', () => {
       try {
         apiAuth = await loginViaApi(user.email, user.password);
       } catch {
+        // intentional: auth-storage setup tolerates the well-known rate-limit-reset path failures; the actual storage write below this block is the assertion that matters.
         // API unavailable; will retry UI below
       }
       if (apiAuth) {

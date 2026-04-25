@@ -98,6 +98,7 @@ async function pollRunUntilTerminal(
   try {
     await page.request.post(`${PREFECT_INTEGRATION_URL.replace(/\/$/, '')}/status/sync`, { timeout: 5000 }).catch(() => {});
   } catch {
+    // intentional: scheduled-ingestion journey same shape as scheduled-export — best-effort skips on optional UI/state branches.
     // Ignore status sync errors - continue polling
   }
 
@@ -115,6 +116,7 @@ async function pollRunUntilTerminal(
         await page.waitForTimeout(2000);
         lastStatusSync = Date.now();
       } catch {
+        // intentional: scheduled-ingestion journey same shape as scheduled-export — best-effort skips on optional UI/state branches.
         // Ignore status sync errors - continue polling
       }
     }
@@ -137,6 +139,7 @@ async function pollRunUntilTerminal(
     // Wait longer for sync to process and database to update
     await page.waitForTimeout(3000);
   } catch {
+    // intentional: scheduled-ingestion journey same shape as scheduled-export — best-effort skips on optional UI/state branches.
     // Ignore status sync errors
   }
 

@@ -205,7 +205,12 @@ export async function placeOrderViaApi(
           options?.cleanup?.track({ type: 'order', id: errData.order_id, owner: consumerUser });
           return errData.order_id;
         }
-      } catch { /* fall through to throw */ }
+      } catch {
+        // intentional: api-marketplace fixture wraps best-effort
+        // listing reuse — failure means we create fresh, not test
+        // failure. The throw below this block surfaces final failure
+        // when the order genuinely cannot be placed.
+      }
     }
     throw new Error(`placeOrderViaApi failed: ${resp.status} ${body}`);
   }

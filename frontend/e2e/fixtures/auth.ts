@@ -140,6 +140,7 @@ function getAlternateApiBase(currentBase: string): string | null {
       }
     }
   } catch {
+    // intentional: auth fixture has explicit retry budgets for the well-known transient failures (rate-limit 429, login-race); the surrounding code surfaces final failure via explicit assertions.
     // ignore
   }
   return null;
@@ -191,6 +192,7 @@ async function syncPageWithApiAuth(page: Page, apiAuth: ApiAuth): Promise<void> 
         },
       ]);
     } catch {
+      // intentional: auth fixture has explicit retry budgets for the well-known transient failures (rate-limit 429, login-race); the surrounding code surfaces final failure via explicit assertions.
       // Cookie injection is best-effort; localStorage refresh still enables authService.refresh
     }
   }
@@ -974,6 +976,7 @@ export async function loginUser(
         apiAuth
       );
     } catch {
+      // intentional: auth fixture has explicit retry budgets for the well-known transient failures (rate-limit 429, login-race); the surrounding code surfaces final failure via explicit assertions.
       // API login failed — auth may break on next page.goto() but don't block
       // the current test; the UI login already succeeded.
     }

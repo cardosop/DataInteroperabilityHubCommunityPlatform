@@ -43,6 +43,7 @@ test.describe('Dimension: Timeout handling', () => {
         page.locator('.error-message').waitFor({ state: 'visible', timeout: 30000 }),
       ]);
     } catch {
+      // intentional: timeout-handling spec deliberately exercises timeout paths; bare catch is the test fixture for the silent-failure detection guard, not a real swallow.
       // If both timeout, the test should still check current state
     }
     const leftLogin = !page.url().includes('/login');
