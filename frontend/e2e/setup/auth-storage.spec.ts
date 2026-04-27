@@ -9,6 +9,7 @@ import { expect, test, type APIRequestContext } from '@playwright/test';
 import * as fs from 'fs';
 import * as path from 'path';
 import { getTestUser, gotoWithRetry, loginViaApi } from '../fixtures/auth';
+import { e2eTestHeaders } from '../fixtures/e2e-token';
 
 /** Wait for app shell after auth; allows up to 30s for capabilities and fetchUser. */
 async function waitForAppShell(page: import('@playwright/test').Page): Promise<boolean> {
@@ -98,10 +99,71 @@ test.describe('Auth storage setup', () => {
     await waitUntilFrontendAcceptsHttp(request, base, 60_000);
 
     // Reset auth rate limits so login and fetchUser succeed (avoids 429 after prior runs).
-    // Skip for remote targets — rate limit reset is handled by staging-post-deploy or kubectl exec in CI.
+    //
+    // Two paths — same result:
+    //
+    //   * Local docker: invoke the management command directly via `docker exec`.
+    //   * Remote (staging): POST /api/v1/test/reset-e2e-auth-rate-limits/ with the
+    //     X-E2E-Token shared-secret header. The endpoint mirrors the management
+    //     command (clears the auth-category Redis keys) and is gated by
+    //     @require_e2e_token + ENVIRONMENT in (test, staging) — same security
+    //     boundary as the other ensure_e2e_* endpoints. Cycle 7 surfaced the
+    //     gap: the previous "skip for remote targets" branch left staging's
+    //     per-tenant auth limiter accumulating across the 287-test MVP suite,
+    //     and 27 of 30 final failures were "Rate limit exceeded for tenant
+    //     (auth). Please retry after N minutes/hours." A pre-flight reset
+    //     fixes this without weakening any rate-limit guarantees in production
+    //     (the endpoint returns 404 outside test/staging/debug).
     const baseHost = base ? new URL(base).hostname : 'localhost';
     const isRemoteTarget = baseHost !== 'localhost' && baseHost !== '127.0.0.1';
-    if (!isRemoteTarget) {
+    const apiBase =
+      process.env.E2E_API_BASE_URL ||
+      (process.env.VITE_PROXY_TARGET
+        ? `${process.env.VITE_PROXY_TARGET.replace(/\/$/, '')}/api/v1`
+        : null) ||
+      `${base.replace(/\/$/, '')}/api/v1`;
+    if (isRemoteTarget) {
+      try {
+        const resetRes = await request.post(
+          `${apiBase}/test/reset-e2e-auth-rate-limits/`,
+          { headers: e2eTestHeaders(), timeout: 15_000 },
+        );
+        if (resetRes.ok()) {
+          const body = (await resetRes.json().catch(() => ({}))) as {
+            cleared?: number;
+          };
+          const cleared = body.cleared ?? 0;
+          // eslint-disable-next-line no-console
+          console.log(
+            `🔄 reset_e2e_auth_rate_limits: cleared ${cleared} key(s) on ${apiBase}`,
+          );
+        } else if (resetRes.status() === 404) {
+          // 404 = endpoint not deployed yet OR X-E2E-Token mismatch. Both are
+          // operator-fixable but should not block the suite from starting;
+          // the per-test 429 fallback in loginViaApi will paper over light
+          // rate-limit pressure even without the upfront reset.
+          // eslint-disable-next-line no-console
+          console.warn(
+            `⚠️  reset_e2e_auth_rate_limits: 404 from ${apiBase} — ` +
+              `endpoint not deployed or E2E_TEST_SECRET mismatch. Tests will run ` +
+              `but may hit auth rate limits if the limiter is already triggered.`,
+          );
+        } else {
+          // eslint-disable-next-line no-console
+          console.warn(
+            `⚠️  reset_e2e_auth_rate_limits: HTTP ${resetRes.status()} from ${apiBase}`,
+          );
+        }
+      } catch (err) {
+        // intentional: auth-storage setup tolerates the well-known rate-limit-reset path failures; the actual storage write below this block is the assertion that matters.
+        // eslint-disable-next-line no-console
+        console.warn(
+          `⚠️  reset_e2e_auth_rate_limits: request failed — ${
+            err instanceof Error ? err.message : String(err)
+          }`,
+        );
+      }
+    } else {
       try {
         const { execSync } = await import('child_process');
         execSync('docker exec hub-test-api python hub/manage.py reset_e2e_auth_rate_limits', {

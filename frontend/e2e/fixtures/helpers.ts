@@ -392,14 +392,14 @@ export async function waitForAppMainReady(
           'Ensure loginUser completed successfully before calling this helper.'
       );
     }
-    // /403, /unavailable, and /coming-soon are top-level routes without .app-main; page is ready when we reach them
+    // /403, /unavailable, and /coming-soon are top-level routes without .app-main, [data-testid="app-main"]; page is ready when we reach them
     if (url.includes('/403') || url.includes('/unavailable') || url.includes('/coming-soon')) {
       await safeWait(500);
       return;
     }
-    // CapabilityRoute renders .unavailable-page in-place (at the current URL, not /unavailable)
-    // when the capability is disabled. This is a terminal state — no .app-main will ever appear.
-    const hasUnavailablePage = await page.locator('.unavailable-page').count();
+    // CapabilityRoute renders .unavailable-page, [data-testid="unavailable-page"] in-place (at the current URL, not /unavailable)
+    // when the capability is disabled. This is a terminal state — no .app-main, [data-testid="app-main"] will ever appear.
+    const hasUnavailablePage = await page.locator('.unavailable-page, [data-testid="unavailable-page"]').count();
     if (hasUnavailablePage > 0) {
       await safeWait(500);
       return;
@@ -416,15 +416,15 @@ export async function waitForAppMainReady(
     // intentional: helpers shared by many specs wrap optional UI/probe steps; failure here means the higher-level locator/waitFor in the calling spec surfaces the error with a useful selector message rather than a swallowed network rejection.
     const ready = await page
       .evaluate((sel: string | undefined) => {
-        const main = document.querySelector('.app-main');
+        const main = document.querySelector('.app-main, [data-testid="app-main"]');
         if (!main) return false;
-        // When route-specific selector provided, wait for it to appear inside .app-main
+        // When route-specific selector provided, wait for it to appear inside .app-main, [data-testid="app-main"]
         if (sel) {
           const el = main.querySelector(sel);
           if (el) return true;
           return false;
         }
-        // No contentSelector: wait for loading indicators inside .app-main to disappear.
+        // No contentSelector: wait for loading indicators inside .app-main, [data-testid="app-main"] to disappear.
         // This ensures API calls have completed before the test proceeds.
         // Covers both LoadingSpinner component and ListPageSkeleton placeholder.
         const loading =
@@ -444,7 +444,7 @@ export async function waitForAppMainReady(
   }
 
   // Main loop timed out. The auth store has a 60s safety timeout that races with our loop.
-  // When both are ~60s, the auth store may resolve (redirect to /login or show .app-main)
+  // When both are ~60s, the auth store may resolve (redirect to /login or show .app-main, [data-testid="app-main"])
   // in the same frame our loop ends. Wait up to 20s more for the page to reach a terminal
   // state — this covers the auth safety timeout race condition without blindly increasing
   // the main loop timeout.
@@ -464,14 +464,14 @@ export async function waitForAppMainReady(
       currentUrl.includes('/coming-soon')
     )
       return;
-    if ((await page.locator('.app-main').count()) > 0) return;
-    if ((await page.locator('.unavailable-page').count()) > 0) return;
+    if ((await page.locator('.app-main, [data-testid="app-main"]').count()) > 0) return;
+    if ((await page.locator('.unavailable-page, [data-testid="unavailable-page"]').count()) > 0) return;
     // Still in auth loading state — keep waiting
     await safeWait(500);
   }
 
   throw new Error(
-    `waitForAppMainReady: .app-main not ready within ${timeout + POST_TIMEOUT_GRACE_MS}ms. ` +
+    `waitForAppMainReady: .app-main, [data-testid="app-main"] not ready within ${timeout + POST_TIMEOUT_GRACE_MS}ms. ` +
       `URL: ${page.url()}`
   );
 }
@@ -578,68 +578,68 @@ const ROUTE_NAV_LABELS: Record<string, string> = {
  * Matches page shell (including loading state) so we don't block on slow APIs.
  */
 const ROUTE_CONTENT_SELECTORS: Record<string, string> = {
-  '/audit': '.audit-event-list-page, .audit-list-filters, .empty-state, .error-display',
-  '/mesh': '.mesh-domain-list-page, .error-display, .empty-state',
-  '/mesh/create': '.mesh-domain-create-page, .error-display',
-  '/mesh/topology': '.topology-visualization, .error-display',
-  '/contracts': '.contract-list-page, .empty-state, .error-display',
-  '/odps': '.odps-list-page, .odps-empty-state, .error-display, #email',
+  '/audit': '.audit-event-list-page, [data-testid="audit-event-list-page"], .audit-list-filters, .empty-state, [data-testid="empty-state"], .error-display, [data-testid="error-display"]',
+  '/mesh': '.mesh-domain-list-page, .error-display, [data-testid="error-display"], .empty-state, [data-testid="empty-state"]',
+  '/mesh/create': '.mesh-domain-create-page, .error-display, [data-testid="error-display"]',
+  '/mesh/topology': '.topology-visualization, .error-display, [data-testid="error-display"]',
+  '/contracts': '.contract-list-page, [data-testid="contract-list-page"], .empty-state, [data-testid="empty-state"], .error-display, [data-testid="error-display"]',
+  '/odps': '.odps-list-page, .odps-empty-state, .error-display, [data-testid="error-display"], #email',
   // No .loading-spinner-container: CommunitiesTab shows LoadingSpinner until API returns; matching it
   // would signal "ready" before .communities-tab renders.
   '/communities':
-    '.communities-page, .communities-tab, .unavailable-page, .error-display, .empty-state, .app-main',
+    '.communities-page, .communities-tab, .unavailable-page, [data-testid="unavailable-page"], .error-display, [data-testid="error-display"], .empty-state, [data-testid="empty-state"], .app-main, [data-testid="app-main"]',
   '/compliance':
-    '.compliance-run-list-page, .empty-state, .error-display, .unavailable-page, #email',
-  '/assets': '.asset-list-page, .empty-state, .error-display',
-  '/dq': '.dq-run-list-page, .empty-state, .error-display, #email',
+    '.compliance-run-list-page, [data-testid="compliance-run-list-page"], .empty-state, [data-testid="empty-state"], .error-display, [data-testid="error-display"], .unavailable-page, [data-testid="unavailable-page"], #email',
+  '/assets': '.asset-list-page, [data-testid="asset-list-page"], .empty-state, [data-testid="empty-state"], .error-display, [data-testid="error-display"]',
+  '/dq': '.dq-run-list-page, .empty-state, [data-testid="empty-state"], .error-display, [data-testid="error-display"], #email',
   '/webhooks':
-    '.webhook-list-page, .empty-state, .error-display',
-  '/search': '.search-page, .loading-spinner-container, .error-display, .app-main',
+    '.webhook-list-page, .empty-state, [data-testid="empty-state"], .error-display, [data-testid="error-display"]',
+  '/search': '.search-page, .loading-spinner-container, .error-display, [data-testid="error-display"], .app-main, [data-testid="app-main"]',
   '/ai/search':
-    '.ai-search-page, .unavailable-page, .loading-spinner-container, .error-display, .app-main',
+    '.ai-search-page, .unavailable-page, [data-testid="unavailable-page"], .loading-spinner-container, .error-display, [data-testid="error-display"], .app-main, [data-testid="app-main"]',
   '/settings/sessions':
-    '.session-list-page, .session-list-table, .session-list-empty, .error-display, h1',
+    '.session-list-page, .session-list-table, .session-list-empty, .error-display, [data-testid="error-display"], h1',
   '/settings/api-keys':
-    '.auth-api-key-list-page, .unavailable-page, .error-display, h1',
+    '.auth-api-key-list-page, .unavailable-page, [data-testid="unavailable-page"], .error-display, [data-testid="error-display"], h1',
   '/observability':
-    '.observability-page, [data-testid="observability-page"], .loading-spinner-container, .error-display, .unavailable-page',
-  '/developer': '.developer-portal-page, .developer-page, .unavailable-page, .loading-spinner-container, .app-main',
+    '.observability-page, [data-testid="observability-page"], .loading-spinner-container, .error-display, [data-testid="error-display"], .unavailable-page, [data-testid="unavailable-page"]',
+  '/developer': '.developer-portal-page, .developer-page, .unavailable-page, [data-testid="unavailable-page"], .loading-spinner-container, .app-main, [data-testid="app-main"]',
   '/virtualization':
-    '.virtual-dataset-list-page, .virtual-dataset-list-header, .empty-state, .error-display',
-  '/baas': '.baas-page, .unavailable-page, .loading-spinner-container, .app-main',
-  '/ml': '.ml-page, .unavailable-page, .loading-spinner-container, .app-main',
+    '.virtual-dataset-list-page, [data-testid="virtual-dataset-list-page"], .virtual-dataset-list-header, .empty-state, [data-testid="empty-state"], .error-display, [data-testid="error-display"]',
+  '/baas': '.baas-page, .unavailable-page, [data-testid="unavailable-page"], .loading-spinner-container, .app-main, [data-testid="app-main"]',
+  '/ml': '.ml-page, .unavailable-page, [data-testid="unavailable-page"], .loading-spinner-container, .app-main, [data-testid="app-main"]',
   '/integrations/connections':
-    '.connection-list-page, .marketplace-connection-list-page, .empty-state, .error-display, h1',
+    '.connection-list-page, .marketplace-connection-list-page, .empty-state, [data-testid="empty-state"], .error-display, [data-testid="error-display"], h1',
   '/jobs':
-    '.job-list-page, .empty-state, .error-display, h1',
+    '.job-list-page, .empty-state, [data-testid="empty-state"], .error-display, [data-testid="error-display"], h1',
   '/scheduled-ingestions':
-    '.scheduled-ingestion-list-page, [data-testid="scheduled-ingestion-list-page"], .empty-state, .error-display, h1',
+    '.scheduled-ingestion-list-page, [data-testid="scheduled-ingestion-list-page"], .empty-state, [data-testid="empty-state"], .error-display, [data-testid="error-display"], h1',
   '/ai/schema-matching':
-    '[data-testid="schema-matching-page"], .schema-matching-page, .unavailable-page, h1',
+    '[data-testid="schema-matching-page"], .schema-matching-page, .unavailable-page, [data-testid="unavailable-page"], h1',
   '/files':
-    '.file-list-page, .empty-state, .error-display, h1',
+    '.file-list-page, .empty-state, [data-testid="empty-state"], .error-display, [data-testid="error-display"], h1',
   '/datasets/create':
-    '.dataset-create-page, .file-upload, .loading-spinner-container, form, h1',
+    '.dataset-create-page, [data-testid="dataset-create-page"], .file-upload, [data-testid="file-upload"], .loading-spinner-container, form, h1',
   '/scheduled-exports':
-    '.scheduled-export-list-page, .empty-state, .error-display, h1',
+    '.scheduled-export-list-page, .empty-state, [data-testid="empty-state"], .error-display, [data-testid="error-display"], h1',
   // No .loading-spinner-container: lazy Suspense uses LoadingSpinner first, then ListPageSkeleton
   // without listing shells; matching the spinner would make "ready" true too early.
   '/marketplace':
-    '[data-testid="listing-list-page"], .listing-list-page, .listing-list-grid, .empty-state, .error-display',
+    '[data-testid="listing-list-page"], .listing-list-page, .listing-list-grid, [data-testid="listing-list-grid"], .empty-state, [data-testid="empty-state"], .error-display, [data-testid="error-display"]',
   '/marketplace/orders':
-    '.order-list-page, .empty-state, .error-display',
+    '.order-list-page, .empty-state, [data-testid="empty-state"], .error-display, [data-testid="error-display"]',
   '/marketplace/entitlements':
-    '.entitlement-list-page, .empty-state, .error-display',
+    '.entitlement-list-page, .empty-state, [data-testid="empty-state"], .error-display, [data-testid="error-display"]',
   '/marketplace/publish':
-    '.listing-publish-page, .listing-publish-form, form, h1',
+    '.listing-publish-page, [data-testid="listing-publish-page"], .listing-publish-form, form, h1',
   '/governance':
-    '.governance-access-request-list-page, .governance-create-page, .error-display, h1',
+    '.governance-access-request-list-page, .governance-create-page, .error-display, [data-testid="error-display"], h1',
   '/semantic':
-    '[data-testid="semantic-page"], .semantic-page, .unavailable-page, .error-display, .app-main',
+    '[data-testid="semantic-page"], .semantic-page, .unavailable-page, [data-testid="unavailable-page"], .error-display, [data-testid="error-display"], .app-main, [data-testid="app-main"]',
   '/transformation':
-    '.transformation-pipeline-list-page, .unavailable-page, .error-display, .app-main',
+    '.transformation-pipeline-list-page, .unavailable-page, [data-testid="unavailable-page"], .error-display, [data-testid="error-display"], .app-main, [data-testid="app-main"]',
   '/integrations/connections/create':
-    '.marketplace-connection-create-page, .connection-create-page, .error-display, .loading-spinner-container, form',
+    '.marketplace-connection-create-page, .connection-create-page, .error-display, [data-testid="error-display"], .loading-spinner-container, form',
 };
 
 /**
@@ -650,55 +650,55 @@ function resolveRouteContentSelector(route: string, override?: string): string |
   if (override) return override;
   if (ROUTE_CONTENT_SELECTORS[route]) return ROUTE_CONTENT_SELECTORS[route];
   if (/^\/marketplace\/listings\/[^/]+$/.test(route)) {
-    return '.listing-detail-page, .listing-detail-main, .error-display';
+    return '.listing-detail-page, .listing-detail-main, [data-testid="listing-detail-main"], .error-display, [data-testid="error-display"]';
   }
   if (/^\/marketplace\/entitlements\/[^/]+$/.test(route)) {
-    return '.entitlement-detail-page, .entitlement-detail-main, .error-display';
+    return '.entitlement-detail-page, .entitlement-detail-main, .error-display, [data-testid="error-display"]';
   }
   if (/^\/virtualization\/create$/.test(route)) {
-    return '.virtual-dataset-create-page, .error-display, form, h1';
+    return '.virtual-dataset-create-page, .error-display, [data-testid="error-display"], form, h1';
   }
   if (/^\/virtualization\/[^/]+$/.test(route)) {
-    return '.virtual-dataset-detail-page, .error-display';
+    return '.virtual-dataset-detail-page, .error-display, [data-testid="error-display"]';
   }
   if (/^\/mesh\/create$/.test(route)) {
-    return '.mesh-domain-create-page, .error-display, form';
+    return '.mesh-domain-create-page, .error-display, [data-testid="error-display"], form';
   }
   if (/^\/mesh\/[^/]+$/.test(route) && !route.startsWith('/mesh/topology')) {
-    return '.mesh-domain-detail-page, .error-display';
+    return '.mesh-domain-detail-page, .error-display, [data-testid="error-display"]';
   }
   if (/^\/transformation\/pipelines\/[^/]+$/.test(route)) {
-    return '.transformation-detail-page, .unavailable-page, .error-display';
+    return '.transformation-detail-page, .unavailable-page, [data-testid="unavailable-page"], .error-display, [data-testid="error-display"]';
   }
   if (/^\/jobs\/[^/]+$/.test(route)) {
-    return '.job-detail-page, .error-display';
+    return '.job-detail-page, .error-display, [data-testid="error-display"]';
   }
   if (
     /^\/integrations\/connections\/[^/]+$/.test(route) &&
     route !== '/integrations/connections/create'
   ) {
-    return '.marketplace-connection-detail-page, .error-display';
+    return '.marketplace-connection-detail-page, [data-testid="marketplace-connection-detail-page"], .error-display, [data-testid="error-display"]';
   }
   if (route === '/odps/upload') {
-    return '.odps-upload-page, .error-display, form, h1';
+    return '.odps-upload-page, .error-display, [data-testid="error-display"], form, h1';
   }
   if (/^\/odps\/[^/]+$/.test(route)) {
-    return '.odps-detail-page, .error-display';
+    return '.odps-detail-page, .error-display, [data-testid="error-display"]';
   }
   if (/^\/dq\/runs\/[^/]+$/.test(route)) {
-    return '.dq-run-detail-page, .error-display';
+    return '.dq-run-detail-page, .error-display, [data-testid="error-display"]';
   }
   if (/^\/compliance\/runs\/[^/]+$/.test(route)) {
-    return '.compliance-run-detail-page, .error-display';
+    return '.compliance-run-detail-page, [data-testid="compliance-run-detail-page"], .error-display, [data-testid="error-display"]';
   }
   if (/^\/scheduled-ingestions\/[^/]+$/.test(route)) {
-    return '[data-testid="scheduled-ingestion-detail-page"], .scheduled-ingestion-detail-page, .error-display';
+    return '[data-testid="scheduled-ingestion-detail-page"], .scheduled-ingestion-detail-page, .error-display, [data-testid="error-display"]';
   }
   if (/^\/contracts\/[^/]+\/edit$/.test(route)) {
-    return '.contract-editor-page, .error-display';
+    return '.contract-editor-page, .error-display, [data-testid="error-display"]';
   }
   if (/^\/contracts\/[^/]+\/link-odps$/.test(route)) {
-    return '.odps-link-page, .error-display';
+    return '.odps-link-page, .error-display, [data-testid="error-display"]';
   }
   return undefined;
 }
@@ -717,7 +717,7 @@ function resolveRouteContentSelector(route: string, override?: string): string |
 // Eliminates the 10-line boilerplate pattern repeated in every route-smoke test.
 
 interface NavigateOrSkipOptions {
-  /** CSS selector for expected page content (NOT .error-display — that's a failure). */
+  /** CSS selector for expected page content (NOT .error-display, [data-testid="error-display"] — that's a failure). */
   contentSelector?: string;
   /** waitForAppMainReady timeout in ms (default 60000). */
   timeout?: number;
@@ -742,7 +742,7 @@ interface NavigateOrSkipResult {
  *   - Redirected to /login (auth expired)
  *   - Redirected to /403 (role-gated, when allow403 is true)
  *
- * Does NOT accept .error-display as a ready state — callers must handle errors explicitly.
+ * Does NOT accept .error-display, [data-testid="error-display"] as a ready state — callers must handle errors explicitly.
  */
 export async function navigateOrSkip(
   page: Page,
@@ -955,7 +955,7 @@ async function runNavToRoute(
       // Publish Listing appears after marketplace page loads (listings API)
       const publishBtn = page
         .locator('button:has-text("Publish Listing")')
-        .or(page.locator('.empty-state-action:has-text("Publish Listing")'));
+        .or(page.locator('[data-testid="empty-state-action"]:has-text("Publish Listing")'));
       try {
         await publishBtn.first().waitFor({ state: 'visible', timeout: 25000 });
         await publishBtn.first().click();
@@ -982,7 +982,7 @@ async function runNavToRoute(
       await page.waitForTimeout(2000);
       const createBtn = page
         .locator('button:has-text("Create Domain")')
-        .or(page.locator('.empty-state-action:has-text("Create Domain")'));
+        .or(page.locator('[data-testid="empty-state-action"]:has-text("Create Domain")'));
       try {
         await createBtn.first().waitFor({ state: 'visible', timeout: 15000 });
         await createBtn.first().click();
@@ -1009,7 +1009,7 @@ async function runNavToRoute(
       await page.waitForTimeout(2000);
       const createBtn = page
         .locator('button:has-text("Create Dataset")')
-        .or(page.locator('.empty-state-action:has-text("Create Dataset")'))
+        .or(page.locator('[data-testid="empty-state-action"]:has-text("Create Dataset")'))
         .or(page.locator('button:has-text("Create Virtual Dataset")'));
       try {
         await createBtn.first().waitFor({ state: 'visible', timeout: 15000 });
@@ -1056,7 +1056,7 @@ async function runNavToRoute(
       await page.waitForTimeout(1000);
       const createBtn = page
         .locator('button:has-text("Create Asset")')
-        .or(page.locator('.empty-state-action:has-text("Create Asset")'));
+        .or(page.locator('[data-testid="empty-state-action"]:has-text("Create Asset")'));
       if ((await createBtn.count()) > 0) {
         await createBtn.first().click();
         await page.waitForLoadState('domcontentloaded');
@@ -1091,16 +1091,30 @@ async function runNavToRoute(
     }
   }
 
-  // /assets/:id: go to assets, wait for list API, then click asset link (avoids goto auth race)
+  // /assets/:id: go to assets, wait for list API, then click asset link (avoids goto auth race).
+  //
+  // Two valid outcomes:
+  //   1. Row found in the list → click it (client-side nav, fastest, no auth race)
+  //   2. Row absent (paginated past, soft-deleted, OR intentionally non-existent UUID
+  //      as in the /assets/00000000-... 404-error spec) → direct goto so the URL
+  //      ends up at /assets/:id (NOT stuck on /assets where the sidebar click left us).
+  //
+  // The earlier implementation relied on implicit fall-through to the bottom-of-function
+  // direct-goto fallback; that path is reached, but the broad contentSelector in the
+  // calling spec (e.g. matching `h1`) caused waitForAppMainReady to return on the
+  // still-rendered AssetListPage heading before the SPA finished re-mounting on the
+  // new URL — leaving page.url() at /assets and breaking assertNonExistentIdShowsError.
+  // Mirroring the explicit fallback in navigateToRouteFromApp (line ~1571) keeps the
+  // two entry points consistent and removes the silent-pass failure mode.
   const assetsIdMatch = route.match(/^\/assets\/([^/]+)$/);
   if (assetsIdMatch) {
     const assetId = assetsIdMatch[1];
     const assetsLabel = ROUTE_NAV_LABELS['/assets'];
     const assetsLink = page.locator('.app-sidebar .nav-link').filter({ hasText: assetsLabel }).first();
+    let doneViaSidebar = false;
     if ((await assetsLink.count()) > 0) {
       const listTimeout = options.timeout ?? 60000;
       const apiWait = startRouteDataApiWait(page, '/assets', listTimeout);
-      let doneViaSidebar = false;
       try {
         // Bounded wait: after long journeys an overlay or layout shift can block the sidebar
         // link indefinitely; fall through to injectTokens + goto below.
@@ -1108,7 +1122,25 @@ async function runNavToRoute(
         await page.waitForLoadState('domcontentloaded');
         if (apiWait) await apiWait;
         await page.waitForTimeout(1000);
-        const assetRow = page.locator(`.asset-list-page tr[data-asset-id="${assetId}"]`).first();
+        // CRITICAL — selector must scope `tr[data-asset-id]` strictly inside
+        // the asset-list-page container. The previous form
+        //   `.asset-list-page, [data-testid="asset-list-page"] tr[data-asset-id="..."]`
+        // is parsed by CSS as a comma-separated alt: "any element with class
+        // .asset-list-page OR any descendant tr[data-asset-id]". When the bad
+        // UUID has no matching row, the FIRST alt (the list page container)
+        // still matches — `assetRow.count() > 0` returned true, then
+        // `assetRow.click()` clicked the container, which Playwright forwards
+        // to its first interactive descendant (a real asset row). The test
+        // ended up navigating to a real asset's detail page, and
+        // `assertNonExistentIdShowsError` correctly flagged it as
+        // "the detail page rendered SUCCESSFULLY for a nil UUID".
+        // The fix nests the locators: `.asset-list-page` first, then
+        // `tr[data-asset-id="..."]` inside, so a missing row genuinely
+        // produces count=0 and the helper falls through to the direct goto.
+        const assetRow = page
+          .locator('.asset-list-page, [data-testid="asset-list-page"]')
+          .locator(`tr[data-asset-id="${assetId}"]`)
+          .first();
         if ((await assetRow.count()) > 0) {
           await assetRow.click();
           await page.waitForLoadState('domcontentloaded');
@@ -1120,8 +1152,20 @@ async function runNavToRoute(
         // intentional: helpers shared by many specs wrap optional UI/probe steps; failure here means the higher-level locator/waitFor in the calling spec surfaces the error with a useful selector message rather than a swallowed network rejection.
         if (apiWait) await apiWait.catch(() => null);
       }
-      if (doneViaSidebar) return;
     }
+    if (doneViaSidebar) return;
+    // Row absent — direct goto. Inject fresh tokens (full-page navigation resets
+    // JS context), then goto + wait. The explicit goto here (rather than relying
+    // on the function's bottom fallback) ensures page.url() reflects the requested
+    // /assets/:id even when an over-broad contentSelector would otherwise resolve
+    // waitForAppMainReady against the previous AssetListPage DOM.
+    const fallbackTimeout = options.timeout ?? 30000;
+    const fallbackApiWait = startRouteDataApiWait(page, route, fallbackTimeout);
+    await injectTokensBeforeGotoForUser(page, user);
+    await gotoWithRetry(page, route);
+    if (fallbackApiWait) await fallbackApiWait;
+    await waitForAppMainReady(page, waitOptions);
+    return;
   }
 
   // /datasets/create: go to datasets first, wait for list API, then click Create Dataset
@@ -1138,7 +1182,7 @@ async function runNavToRoute(
       await waitForLoadingComplete(page, { timeout: 20000 });
       const createBtn = page
         .locator('button:has-text("Create Dataset")')
-        .or(page.locator('.empty-state-action:has-text("Create Dataset")'));
+        .or(page.locator('[data-testid="empty-state-action"]:has-text("Create Dataset")'));
       try {
         await createBtn.first().waitFor({ state: 'visible', timeout: 15000 });
       } catch {
@@ -1193,7 +1237,7 @@ async function runNavToRoute(
       await page.waitForTimeout(2000);
       const createBtn = page
         .locator('button:has-text("Create Connection")')
-        .or(page.locator('.empty-state-action:has-text("Create Connection")'))
+        .or(page.locator('[data-testid="empty-state-action"]:has-text("Create Connection")'))
         .or(page.locator('button:has-text("Create Marketplace Connection")'));
       if ((await createBtn.count()) > 0) {
         await createBtn.first().click();
@@ -1381,7 +1425,7 @@ export async function navigateToRouteFromApp(
       await page.waitForTimeout(3000);
       const publishBtn = page
         .locator('button:has-text("Publish Listing")')
-        .or(page.locator('.empty-state-action:has-text("Publish Listing")'));
+        .or(page.locator('[data-testid="empty-state-action"]:has-text("Publish Listing")'));
       try {
         await publishBtn.first().waitFor({ state: 'visible', timeout: 25000 });
         await publishBtn.first().click();
@@ -1405,7 +1449,7 @@ export async function navigateToRouteFromApp(
       await page.waitForTimeout(2000);
       const createBtn = page
         .locator('button:has-text("Create Domain")')
-        .or(page.locator('.empty-state-action:has-text("Create Domain")'));
+        .or(page.locator('[data-testid="empty-state-action"]:has-text("Create Domain")'));
       if ((await createBtn.count()) > 0) {
         await createBtn.first().click();
         await page.waitForLoadState('domcontentloaded');
@@ -1439,7 +1483,7 @@ export async function navigateToRouteFromApp(
       await page.waitForTimeout(2000);
       const createBtn = page
         .locator('button:has-text("Create Dataset")')
-        .or(page.locator('.empty-state-action:has-text("Create Dataset")'))
+        .or(page.locator('[data-testid="empty-state-action"]:has-text("Create Dataset")'))
         .or(page.locator('button:has-text("Create Virtual Dataset")'));
       if ((await createBtn.count()) > 0) {
         await createBtn.first().click();
@@ -1456,7 +1500,7 @@ export async function navigateToRouteFromApp(
       await assetsLink.click();
       await page.waitForLoadState('domcontentloaded');
       await page.waitForTimeout(1000);
-      const createBtn = page.locator('button:has-text("Create Asset")').or(page.locator('.empty-state-action:has-text("Create Asset")'));
+      const createBtn = page.locator('button:has-text("Create Asset")').or(page.locator('[data-testid="empty-state-action"]:has-text("Create Asset")'));
       if ((await createBtn.count()) > 0) {
         await createBtn.first().click();
         await page.waitForLoadState('domcontentloaded');
@@ -1476,7 +1520,7 @@ export async function navigateToRouteFromApp(
       await page.waitForTimeout(2000);
       if (apiWait) await apiWait;
       await waitForLoadingComplete(page, { timeout: 20000 });
-      const createBtn = page.locator('button:has-text("Create Dataset")').or(page.locator('.empty-state-action:has-text("Create Dataset")'));
+      const createBtn = page.locator('button:has-text("Create Dataset")').or(page.locator('[data-testid="empty-state-action"]:has-text("Create Dataset")'));
       try {
         await createBtn.first().waitFor({ state: 'visible', timeout: 15000 });
       } catch {
@@ -1528,7 +1572,7 @@ export async function navigateToRouteFromApp(
       await page.waitForTimeout(2000);
       const createBtn = page
         .locator('button:has-text("Create Connection")')
-        .or(page.locator('.empty-state-action:has-text("Create Connection")'))
+        .or(page.locator('[data-testid="empty-state-action"]:has-text("Create Connection")'))
         .or(page.locator('button:has-text("Create Marketplace Connection")'));
       if ((await createBtn.count()) > 0) {
         await createBtn.first().click();
@@ -1554,7 +1598,16 @@ export async function navigateToRouteFromApp(
         await page.waitForLoadState('domcontentloaded');
         if (apiWait) await apiWait; // Wait for assets list API so row is available (avoids goto auth race)
         await page.waitForTimeout(1000);
-        const assetRow = page.locator(`.asset-list-page tr[data-asset-id="${aid}"]`).first();
+        // Selector must scope `tr[data-asset-id]` strictly INSIDE the
+        // .asset-list-page container — see the matching block in
+        // runNavToRoute for the full root-cause analysis. Comma-separated
+        // alternates would let the page container match when the row is
+        // absent, then click() would forward to the first interactive
+        // descendant — a real asset row, not the requested id.
+        const assetRow = page
+          .locator('.asset-list-page, [data-testid="asset-list-page"]')
+          .locator(`tr[data-asset-id="${aid}"]`)
+          .first();
         if ((await assetRow.count()) > 0) {
           await assetRow.click();
           await page.waitForLoadState('domcontentloaded');
@@ -1827,16 +1880,16 @@ export async function cleanupTestData(
  * Prevents false positives where API returns 2xx but frontend shows error.
  *
  * For success tests: API must return 2xx AND frontend must show success content
- * (no .error-display, no error message). Use as first verification after navigation.
+ * (no .error-display, [data-testid="error-display"], no error message). Use as first verification after navigation.
  *
  * @param options.apiResponsePromise - Promise from page.waitForResponse() started BEFORE
  *   navigation. Caller must create this before goto so we capture the initial load response.
  *   Example: const p = page.waitForResponse(r => r.url().includes('contracts'));
  *            await page.goto('/contracts'); ... await assertSuccessfulLoad(page, { apiResponsePromise: p, ... });
  * @param options.successContentSelector - CSS selector(s) for expected success content.
- *   Comma-separated for multiple alternatives (e.g. '.contract-list-page, .empty-state').
+ *   Comma-separated for multiple alternatives (e.g. '.contract-list-page, [data-testid="contract-list-page"], .empty-state, [data-testid="empty-state"]').
  *   Empty state is valid success when API returned 2xx with empty data.
- * @param options.rejectErrorDisplay - When true (default), fails if .error-display is visible.
+ * @param options.rejectErrorDisplay - When true (default), fails if .error-display, [data-testid="error-display"] is visible.
  *   Set false only for tests that expect mixed success/error states.
  */
 export async function assertSuccessfulLoad(
@@ -1871,16 +1924,16 @@ export async function assertSuccessfulLoad(
   if (rejectErrorDisplay) {
     await page.waitForTimeout(1500); // Allow error UI to render if API failed
     const errorCount =
-      (await page.locator('.error-display').count()) +
-      (await page.locator('.error-display-title').count());
+      (await page.locator('.error-display, [data-testid="error-display"]').count()) +
+      (await page.locator('.error-display-title, [data-testid="error-display-title"]').count());
     const errorText = await page
-      .locator('.error-display, .error-display-title, [role="alert"]')
+      .locator('.error-display, [data-testid="error-display"], .error-display-title, [data-testid="error-display-title"], [role="alert"]')
       .filter({ hasText: /failed|error|404|500|forbidden|not found/i })
       .count();
     if (errorCount > 0 || errorText > 0) {
       // intentional: helpers shared by many specs wrap optional UI/probe steps; failure here means the higher-level locator/waitFor in the calling spec surfaces the error with a useful selector message rather than a swallowed network rejection.
       const snippet = await page
-        .locator('.error-display, .error-display-title')
+        .locator('.error-display, [data-testid="error-display"], .error-display-title, [data-testid="error-display-title"]')
         .first()
         .textContent()
         .catch(() => '');
@@ -1999,7 +2052,7 @@ export async function verifyFailureScenario(
   // Verify error message on page when provided
   if (expectedError.message) {
     const messageSelector =
-      expectedError.selector ?? '.app-main, .error-display, [role="alert"], body';
+      expectedError.selector ?? '.app-main, [data-testid="app-main"], .error-display, [data-testid="error-display"], [role="alert"], body';
     await assertContainsText(page, messageSelector, expectedError.message);
   }
 
@@ -2041,7 +2094,7 @@ export async function waitForAssetDropdownOptions(
  * Assert that navigating to a detail page with a non-existent ID shows a 404-style error.
  *
  * Valid outcomes:
- *   1. `.error-display` is visible AND `.error-display-message` contains "not found" text  ← PRIMARY
+ *   1. `.error-display, [data-testid="error-display"]` is visible AND `.error-display-message, [data-testid="error-display-message"]` contains "not found" text  ← PRIMARY
  *   2. Redirected to `/login` (user not authenticated)
  *   3. Redirected to `/403` or forbidden page (user lacks permission)
  *
@@ -2050,10 +2103,10 @@ export async function waitForAssetDropdownOptions(
  *      original assertion trivially true regardless of what the page shows. REMOVED.
  *   ❌ `stillLoading` — a stuck spinner means the API never responded; NOT a 404 boundary. REMOVED.
  *   ❌ `hasEmptyState` — empty state means the resource type works but has no data; NOT a 404. REMOVED.
- *   ❌ Generic `.error-display` without "not found" text — network errors and 500s must NOT pass. REMOVED.
+ *   ❌ Generic `.error-display, [data-testid="error-display"]` without "not found" text — network errors and 500s must NOT pass. REMOVED.
  *
  * @param detailContentSelector  CSS selector(s) for the expected success content
- *   (e.g. '.asset-detail-page'). Included in the initial waitForSelector ONLY as a timing aid
+ *   (e.g. '.asset-detail-page, [data-testid="asset-detail-page"]'). Included in the initial waitForSelector ONLY as a timing aid
  *   to let the page settle — it is NOT used as a fallback passing condition.
  * @param waitAfterLoad  Extra ms after the page settles, to allow error UI to finish rendering.
  * @param selectorTimeout  Timeout (ms) for the initial waitForSelector to reach any terminal state.
@@ -2088,13 +2141,13 @@ export async function assertNonExistentIdShowsError(
   // The detail content selector is included only to avoid a blank-page timeout situation —
   // if the page somehow rendered the content we do NOT accept it as passing (see below).
   const waitSelector =
-    '.error-display, .error-display-title, #email, [data-testid="forbidden-page"]' +
+    '.error-display, [data-testid="error-display"], .error-display-title, [data-testid="error-display-title"], #email, [data-testid="forbidden-page"]' +
     (detailContentSelector ? `, ${detailContentSelector}` : '');
 
   await page.waitForSelector(waitSelector, { timeout: selectorTimeout }).catch(() => {
     throw new Error(
       `assertNonExistentIdShowsError: page did not reach a terminal state within ${selectorTimeout}ms.\n` +
-        `Expected .error-display, a login redirect, or detail content.\n` +
+        `Expected .error-display, [data-testid="error-display"], a login redirect, or detail content.\n` +
         `URL: ${page.url()}\n` +
         `Selector waited for: ${waitSelector}`
     );
@@ -2114,10 +2167,10 @@ export async function assertNonExistentIdShowsError(
   // ── Check what the page actually rendered ────────────────────────────────
 
   const hasErrorDisplay =
-    (await page.locator('.error-display').count()) > 0 ||
-    (await page.locator('.error-display-title').count()) > 0;
+    (await page.locator('.error-display, [data-testid="error-display"]').count()) > 0 ||
+    (await page.locator('.error-display-title, [data-testid="error-display-title"]').count()) > 0;
 
-  // Scope to .error-display-message (the <p> under the title) — NOT the full page.
+  // Scope to .error-display-message, [data-testid="error-display-message"] (the <p> under the title) — NOT the full page.
   // "failed to load" intentionally omitted: it appears in the hardcoded <h3> title for
   // EVERY error type (404, 500, network down), making it useless as a discriminator.
   // Only the message element contains text that is specific to 404 responses.
@@ -2125,7 +2178,7 @@ export async function assertNonExistentIdShowsError(
   // within tenant isolation to prevent UUID enumeration attacks.
   const hasNotFoundText =
     (await page
-      .locator('.error-display-message')
+      .locator('.error-display-message, [data-testid="error-display-message"]')
       .filter({
         hasText: /not found|could not be found|does not exist|404|403|forbidden|No .* matches the given query|Request failed with status (?:404|403)/i,
       })
@@ -2137,7 +2190,7 @@ export async function assertNonExistentIdShowsError(
     // Check what IS on the page to give an actionable error
     const hasStillLoading =
       (await page.locator('.loading-spinner, .loading-spinner-container').count()) > 0;
-    const hasEmptyState = (await page.locator('.empty-state').count()) > 0;
+    const hasEmptyState = (await page.locator('.empty-state, [data-testid="empty-state"]').count()) > 0;
     const hasDetailContent = detailContentSelector
       ? (await page.locator(detailContentSelector).count()) > 0
       : false;
@@ -2165,24 +2218,24 @@ export async function assertNonExistentIdShowsError(
       );
     }
     throw new Error(
-      `assertNonExistentIdShowsError: no .error-display visible for nil UUID.\n` +
+      `assertNonExistentIdShowsError: no .error-display, [data-testid="error-display"] visible for nil UUID.\n` +
         `Expected a "not found" error to be shown.\n` +
         `URL: ${url}`
     );
   }
 
   // Error display IS shown — verify it is a "not found" type, not a network/500 error.
-  // A network error or 500 server error would also show .error-display, but those indicate
+  // A network error or 500 server error would also show .error-display, [data-testid="error-display"], but those indicate
   // infrastructure problems, not a correctly handled 404. They must NOT make this test pass.
   if (!hasNotFoundText) {
     // intentional: helpers shared by many specs wrap optional UI/probe steps; failure here means the higher-level locator/waitFor in the calling spec surfaces the error with a useful selector message rather than a swallowed network rejection.
     const errorText = await page
-      .locator('.error-display, .error-display-title')
+      .locator('.error-display, [data-testid="error-display"], .error-display-title, [data-testid="error-display-title"]')
       .first()
       .textContent()
       .catch(() => '');
     throw new Error(
-      `assertNonExistentIdShowsError: .error-display is visible but the error text does NOT indicate "not found".\n` +
+      `assertNonExistentIdShowsError: .error-display, [data-testid="error-display"] is visible but the error text does NOT indicate "not found".\n` +
         `Actual error: "${errorText?.slice(0, 300) ?? 'N/A'}"\n` +
         `This may be a network error, 500 server error, or auth failure — NOT a valid 404 boundary.\n` +
         `URL: ${url}`
@@ -2428,15 +2481,15 @@ export async function ensureAssetActivationPrerequisites(
 /**
  * Assert that a list page loaded successfully.
  *
- * - Throws if `.error-display` is visible — a broken/errored page is NEVER a success.
- * - Waits for the specific list-page component or `.empty-state` to become visible.
+ * - Throws if `.error-display, [data-testid="error-display"]` is visible — a broken/errored page is NEVER a success.
+ * - Waits for the specific list-page component or `.empty-state, [data-testid="empty-state"]` to become visible.
  *   An empty state is a valid success: the backend returned 2xx with zero results.
  *
- * NOTE: Do NOT include `.error-display` in `listPageSelector`. If you need to allow
+ * NOTE: Do NOT include `.error-display, [data-testid="error-display"]` in `listPageSelector`. If you need to allow
  * error states, use `assertSuccessfulLoad` with `rejectErrorDisplay: false` instead.
  *
  * @param listPageSelector Comma-separated CSS selectors for the list page + empty state.
- *   Example: '.order-list-page, .empty-state'
+ *   Example: '.order-list-page, .empty-state, [data-testid="empty-state"]'
  */
 export async function assertListPageLoads(
   page: Page,
@@ -2465,7 +2518,7 @@ export async function assertListPageLoads(
   //
   // By racing both selectors together, the waitFor resolves as soon as the page reaches
   // any terminal state — whether that's a valid list/empty-state or an error display.
-  const errorSelector = '.error-display, .error-display-title';
+  const errorSelector = '.error-display, [data-testid="error-display"], .error-display-title, [data-testid="error-display-title"]';
   const combinedSelector = `${listPageSelector}, ${errorSelector}`;
 
   try {
@@ -2515,12 +2568,12 @@ export async function assertListPageLoads(
 
   // Check which branch won the race: error state or success state?
   const errorCount =
-    (await page.locator('.error-display').count()) +
-    (await page.locator('.error-display-title').count());
+    (await page.locator('.error-display, [data-testid="error-display"]').count()) +
+    (await page.locator('.error-display-title, [data-testid="error-display-title"]').count());
   if (errorCount > 0) {
     // intentional: helpers shared by many specs wrap optional UI/probe steps; failure here means the higher-level locator/waitFor in the calling spec surfaces the error with a useful selector message rather than a swallowed network rejection.
     const errText = (await page
-      .locator('.error-display, .error-display-title')
+      .locator('.error-display, [data-testid="error-display"], .error-display-title, [data-testid="error-display-title"]')
       .first()
       .textContent()
       .catch(() => '')) ?? '';
@@ -2546,16 +2599,16 @@ export async function assertListPageLoads(
  *
  * Valid outcomes:
  *   1. The specific feature page rendered (capability enabled, user has role)
- *   2. `.unavailable-page` rendered (capability disabled)
+ *   2. `.unavailable-page, [data-testid="unavailable-page"]` rendered (capability disabled)
  *   3. URL redirected to `/403` or `/login`
  *
  * Invalid outcomes (will throw):
- *   - `.error-display` is visible — this is a service crash, not a gating outcome
- *   - `.app-main` alone — the generic app shell tells us nothing about page content
+ *   - `.error-display, [data-testid="error-display"]` is visible — this is a service crash, not a gating outcome
+ *   - `.app-main, [data-testid="app-main"]` alone — the generic app shell tells us nothing about page content
  *
  * @param featurePageSelector Comma-separated selectors for the feature page component.
- *   Do NOT include `.app-main` or `.error-display`.
- *   Example: '.developer-page, .unavailable-page'
+ *   Do NOT include `.app-main, [data-testid="app-main"]` or `.error-display, [data-testid="error-display"]`.
+ *   Example: '.developer-page, .unavailable-page, [data-testid="unavailable-page"]'
  */
 export async function assertCapabilityGatedPageLoads(
   page: Page,
@@ -2572,9 +2625,9 @@ export async function assertCapabilityGatedPageLoads(
   // Eliminates the previous static 800ms window that missed slow-responding API errors and
   // produced misleading "element not found" timeouts instead of actionable error messages.
   //
-  // The featurePageSelector passed by callers must include '.unavailable-page' so that
+  // The featurePageSelector passed by callers must include '.unavailable-page, [data-testid="unavailable-page"]' so that
   // capability-disabled redirects (CapabilityRoute → /unavailable) are also captured.
-  const errorSelector = '.error-display, .error-display-title';
+  const errorSelector = '.error-display, [data-testid="error-display"], .error-display-title, [data-testid="error-display-title"]';
   const combinedSelector = `${featurePageSelector}, ${errorSelector}`;
 
   await page
@@ -2592,12 +2645,12 @@ export async function assertCapabilityGatedPageLoads(
 
   // Check which branch won the race: crash/error state or valid feature/gating state?
   const errorCount =
-    (await page.locator('.error-display').count()) +
-    (await page.locator('.error-display-title').count());
+    (await page.locator('.error-display, [data-testid="error-display"]').count()) +
+    (await page.locator('.error-display-title, [data-testid="error-display-title"]').count());
   if (errorCount > 0) {
     // intentional: helpers shared by many specs wrap optional UI/probe steps; failure here means the higher-level locator/waitFor in the calling spec surfaces the error with a useful selector message rather than a swallowed network rejection.
     const errText = await page
-      .locator('.error-display, .error-display-title')
+      .locator('.error-display, [data-testid="error-display"], .error-display-title, [data-testid="error-display-title"]')
       .first()
       .textContent()
       .catch(() => '');
@@ -2662,16 +2715,46 @@ export async function switchTenantViaUI(
   await expect(dropdown.first()).toBeVisible({ timeout: 8000 });
 
   // Wait for tenant list to load.
-  // Timeout raised from 15s to 30s: the dropdown fetches /auth/me/tenants/ to populate
-  // the list. Under parallel E2E load, this API call can take 15-25s to respond.
-  await page.waitForFunction(
-    (name) => {
-      const menu = document.querySelector('.tenant-dropdown, [data-testid="tenant-dropdown"], [role="menu"]');
-      return menu && menu.textContent?.includes(name);
-    },
-    tenantName,
-    { timeout: 30000 }
-  );
+  //
+  // The dropdown renders from cached /auth/me/tenants/ data on open. When the
+  // secondary tenant was just created via ensure-e2e-tenant-switch-setup
+  // milliseconds ago (the multi-tenancy-isolation spec's flow), the cache may
+  // still hold a pre-creation list — the dropdown opens, shows only the
+  // primary tenant, and the waitForFunction below times out at 30 s waiting
+  // for a name that won't appear until the cache refetches.
+  //
+  // Fixed via a close-and-reopen retry: if the target name doesn't appear in
+  // 12 s, close the dropdown (Escape), wait briefly to let any pending
+  // /auth/me/tenants/ XHR settle, then reopen — the second open re-mounts
+  // the dropdown which triggers a fresh tenant fetch. Two attempts (24 s
+  // total) handle the cache-staleness case without raising the overall
+  // budget. If the name still isn't there after two attempts, fall through
+  // to the original 30 s wait so the existing diagnostic surfaces unchanged.
+  const tenantPredicate = (name: string) => {
+    const menu = document.querySelector(
+      '.tenant-dropdown, [data-testid="tenant-dropdown"], [role="menu"]'
+    );
+    return !!menu && !!menu.textContent?.includes(name);
+  };
+  let appeared = false;
+  for (let attempt = 0; attempt < 2 && !appeared; attempt++) {
+    try {
+      await page.waitForFunction(tenantPredicate, tenantName, { timeout: 12000 });
+      appeared = true;
+    } catch {
+      // Close the dropdown so the SPA's open-handler will refetch tenants.
+      // intentional: dropdown close-and-reopen is a defensive refetch — the surrounding waitForFunction below this branch is the canonical assertion.
+      await page.keyboard.press('Escape').catch(() => undefined);
+      await page.waitForTimeout(500);
+      await switcherButton.first().click();
+      await expect(dropdown.first()).toBeVisible({ timeout: 8000 });
+    }
+  }
+  if (!appeared) {
+    // Final wait with the full original budget so the existing 30 s diagnostic
+    // path produces the same TimeoutError shape the calling specs expect.
+    await page.waitForFunction(tenantPredicate, tenantName, { timeout: 30000 });
+  }
 
   // Click the target tenant option
   const tenantOption = dropdown.first().locator(
@@ -2739,7 +2822,17 @@ export async function triggerDQRunViaUI(
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   options?: { datasetId?: string }
 ): Promise<{ runId: string; httpStatus: number }> {
-  await page.goto('/dq');
+  // Use gotoWithRetry (instead of bare page.goto) so transient Chromium net
+  // errors retry instead of propagating. Cycle 7 surfaced this: a Wi-Fi /
+  // VPN blip during the long-running DPO-001 journey produced
+  // `net::ERR_NETWORK_CHANGED at https://stagingmeshant-internal.example.com/dq` here,
+  // and the error escaped the `triggerDQRunViaUI` helper into the
+  // higher-level catch which then re-threw "DQ run UI step failed". The
+  // gotoWithRetry retry loop matches the regex extended in Fix 13
+  // (auth.ts:isConnectionError) — Chromium's net::ERR_NETWORK_CHANGED /
+  // ERR_NETWORK_IO_SUSPENDED / ERR_INTERNET_DISCONNECTED — so the next
+  // attempt usually succeeds when the network state recovers.
+  await gotoWithRetry(page, '/dq');
   await page.waitForLoadState('domcontentloaded');
 
   if (page.url().includes('/login')) {
@@ -2909,7 +3002,7 @@ export async function triggerComplianceScanViaUI(
 
   // Wait for list page to fully load (not just the loading spinner)
   await page.waitForSelector(
-    '.compliance-run-list-page, .empty-state',
+    '.compliance-run-list-page, [data-testid="compliance-run-list-page"], .empty-state, [data-testid="empty-state"]',
     { timeout: 45000 }
   );
 
@@ -3061,9 +3154,27 @@ export async function uploadODPSContractViaUI(
     // asynchronously) and the submit button to become enabled. The previous
     // fixed 1s wait was insufficient — file read + spec detection can take
     // longer on staging with large payloads.
-    const submitBtn = page.locator(
-      'button:has-text("Create Contract"), button[type="submit"]:has-text("Create"), button:has-text("Upload"), button:has-text("Create ODPS"), button[type="submit"]:has-text("Submit"), button:has-text("Submit ODPS")'
-    );
+    //
+    // SUBMIT-BUTTON SELECTOR — must EXCLUDE `role="tab"` buttons.
+    // ContractCreatePage renders a `[role="tablist"]` of three mode-toggle
+    // buttons at the top of the form: "ODCS Contract", "ODPS Data Product",
+    // and "Raw Upload" (frontend/src/features/contracts/components/
+    // ContractCreatePage.tsx:209-237). The previous over-broad match
+    // `button:has-text("Upload")` ALSO matched the "Raw Upload" tab button —
+    // and because the tab appears in DOM order BEFORE the real submit button,
+    // `.first()` selected the tab. Clicking the tab silently switched modes
+    // without firing a POST; the helper then waited 90 s for a creation
+    // response that would never come, surfacing as `Button text: "Raw Upload"
+    // (mutation already resolved — likely network error swallowed by catch
+    // block)`. The actual submit button text is "Create Contract" (raw +
+    // odcs modes) or "Create Data Product" (odps-form mode); neither uses
+    // the bare word "Upload". Drop that match and exclude `[role="tab"]`
+    // explicitly so future tab additions can't reintroduce the same bug.
+    const submitBtn = page
+      .locator('button:not([role="tab"])')
+      .filter({
+        hasText: /^Create Contract$|^Create ODPS$|^Create Data Product$|^Submit ODPS$|^Submit$/i,
+      });
     if ((await submitBtn.count()) === 0) continue;
 
     // Wait for button to become enabled (file content processed, hasContent=true)
@@ -3330,7 +3441,7 @@ export async function approveAccessRequestViaUI(
   }
 
   await page.waitForSelector(
-    '.governance-access-requests-page, .access-requests-list, .empty-state, .error-display',
+    '.governance-access-requests-page, .access-requests-list, .empty-state, [data-testid="empty-state"], .error-display, [data-testid="error-display"]',
     { timeout: 15000 }
   );
 
