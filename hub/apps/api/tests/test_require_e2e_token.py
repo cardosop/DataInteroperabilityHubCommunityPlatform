@@ -90,19 +90,26 @@ class RequireE2ETokenDecoratorGateTest(TestCase):
         )
 
 
-class AllFourE2EViewsCarryTheDecoratorTest(TestCase):
+class AllFiveE2EViewsCarryTheDecoratorTest(TestCase):
     """
-    Post-condition check: every ensure_e2e_* view has the decorator applied.
+    Post-condition check: every test-only e2e view has the decorator applied.
 
     DRF's ``@api_view`` rewrites the symbol into a ``WrappedAPIView.as_view()``
     class-based view, which obscures the inner ``_require_e2e_token = True``
     marker at runtime. Rather than wrestle with DRF internals, we parse the
-    source file via ``ast`` and verify each of the four view definitions
-    literally carries the ``@require_e2e_token`` decorator in its decorator
-    list. This is the true post-condition and is resilient to DRF changes.
+    source file via ``ast`` and verify each view definition literally carries
+    the ``@require_e2e_token`` decorator in its decorator list. This is the
+    true post-condition and is resilient to DRF changes.
+
+    Updated 2026-04-27 (cycle 7): ``reset_e2e_auth_rate_limits`` added so the
+    staging E2E runner can clear the per-tenant auth limiter pre-flight
+    instead of accumulating 429s across the 287-test MVP suite. The new view
+    is ``AllowAny`` (the limiter blocks the very logins needed to authenticate),
+    so the only security boundary is the X-E2E-Token shared-secret gate —
+    making this post-condition test load-bearing.
     """
 
-    def test_all_four_e2e_views_have_the_decorator(self):
+    def test_all_e2e_views_have_the_decorator(self):
         import ast
         import inspect
 
@@ -113,6 +120,7 @@ class AllFourE2EViewsCarryTheDecoratorTest(TestCase):
             "ensure_e2e_subscription",
             "ensure_e2e_tenant_switch_setup",
             "ensure_e2e_users",
+            "reset_e2e_auth_rate_limits",
         }
 
         tree = ast.parse(inspect.getsource(views_module))

@@ -672,3 +672,83 @@ def ensure_e2e_users(request):
         {"ok": True, "users_processed": len(processed), "emails": processed},
         status=200,
     )
+
+
+@extend_schema(exclude=True, tags=["API"])
+@api_view(["POST"])
+@permission_classes([AllowAny])
+@require_e2e_token
+def reset_e2e_auth_rate_limits(request):
+    """
+    E2E-only: clear the auth-category Redis rate-limit keys.
+
+    POST /api/v1/test/reset-e2e-auth-rate-limits/
+
+    The MVP test suite (287 tests, 1 worker, ~3 h on staging) cumulatively
+    fires hundreds of /auth/login/ requests via UI form login + API login
+    fallbacks. Staging's per-tenant auth rate limiter eventually trips with
+    increasingly long retry-after windows (observed up to 3 h on the
+    cycle-7 staging run), and there is no recovery path inside the test
+    runner itself — the limiter blocks the very calls needed to authenticate.
+
+    This endpoint mirrors ``manage.py reset_e2e_auth_rate_limits`` (which
+    only works for local docker via ``docker exec``) but exposes the reset
+    to the test runner over HTTP so external runs against staging can
+    self-heal between suites without requiring kubectl access.
+
+    Safety guards (in this order):
+      1. ``@require_e2e_token`` rejects anything without the
+         ``X-E2E-Token: <E2E_TEST_SECRET>`` header — the same shared-secret
+         gate the other ``ensure_e2e_*`` endpoints use, so production has no
+         way to invoke this even if it somehow got mounted.
+      2. ``[AllowAny]`` is intentional and necessary — the entire problem
+         this solves is that the test runner CANNOT authenticate (rate
+         limit blocks /auth/login/). Demanding ``IsAuthenticated`` would
+         create a chicken-and-egg lockout. Same justification as
+         ``ensure_e2e_users`` above.
+      3. ENVIRONMENT must be ``test`` / ``staging`` / DEBUG — production
+         deployments return 404 like every other ``test/`` endpoint.
+
+    Returns ``{"ok": True, "cleared": <count>, "pattern": <str>}`` so the
+    caller can log how many keys were cleared (a non-zero count confirms
+    the limiter was active; zero means the suite started in a clean state).
+    """
+    from django.conf import settings
+
+    if not (
+        getattr(settings, "ENVIRONMENT", "") in ("test", "staging") or settings.DEBUG
+    ):
+        raise NotFound("Resource not found")
+
+    try:
+        from hub.apps.core.redis_pools import get_redis_cache_pool
+        from hub.apps.rate_limiting.utils import EndpointCategory
+        import redis
+
+        pool = get_redis_cache_pool()
+        client = redis.Redis(connection_pool=pool, decode_responses=True)
+    except Exception as exc:
+        # Redis unavailable is a real platform incident, not a test bug.
+        # Surface explicitly so the runner can decide whether to abort the
+        # suite or continue with degraded conditions.
+        return Response(
+            {
+                "ok": False,
+                "error": "redis_unavailable",
+                "detail": str(exc)[:300],
+            },
+            status=503,
+        )
+
+    pattern = f"*:{EndpointCategory.AUTH}:*"
+    # `scan_iter` is non-blocking; safe under load. The number of auth
+    # rate-limit keys is bounded by the number of distinct tenants/users
+    # that have logged in within the limiter's window, so the iteration is
+    # O(active-tenants), not O(all-redis-keys).
+    keys = list(client.scan_iter(match=pattern))
+    if keys:
+        client.delete(*keys)
+    return Response(
+        {"ok": True, "cleared": len(keys), "pattern": pattern},
+        status=200,
+    )

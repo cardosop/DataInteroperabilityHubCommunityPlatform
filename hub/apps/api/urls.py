@@ -11,7 +11,10 @@ from .views import (
     ensure_e2e_subscription,
     ensure_e2e_tenant_switch_setup,
     ensure_e2e_users,
+    reset_e2e_auth_rate_limits,
 )
+# Phase 226 G11 — E2E-only webhook sink endpoint.
+from .webhook_sink_views import webhook_sink
 
 # Non-MVP areas remain mounted so URLconf is stable across Django settings reloads
 # (e.g. tests using @override_settings). When MVP_MODE is True, access is blocked
@@ -60,6 +63,14 @@ urlpatterns = [
     path("test/ensure-e2e-invitation-token/", ensure_e2e_invitation_token, name="ensure-e2e-invitation-token"),
     path("test/ensure-e2e-tenant-switch-setup/", ensure_e2e_tenant_switch_setup, name="ensure-e2e-tenant-switch-setup"),
     path("test/ensure-e2e-users/", ensure_e2e_users, name="ensure-e2e-users"),
+    # Cycle-7 (staging): pre-flight rate-limit reset for long E2E runs.
+    # Remote runner equivalent of `manage.py reset_e2e_auth_rate_limits` —
+    # required because the per-tenant auth limiter accumulates over the
+    # 287-test MVP suite and only the local docker path had a reset hook.
+    path("test/reset-e2e-auth-rate-limits/", reset_e2e_auth_rate_limits, name="reset-e2e-auth-rate-limits"),
+    # Phase 226 G11 — E2E webhook sink. Receives inbound POSTs from the
+    # WebhookDeliveryService so specs can assert delivery + payload shape.
+    path("test/webhook-sink/<str:sink_id>/", webhook_sink, name="webhook-sink"),
     re_path(
         r"^(?!auth/|tenants/|users/|audit/|files/|datasets/|jobs/|contracts/|assets/|dq/|compliance/|semantic/|marketplace/|scheduled-ingestions/|scheduled-exports/|search/|developer/|webhooks/|events/|mesh/|virtualization/|integrations/|baas/|ml/|billing/|platform/|versioning/|workflows/|transformation/|notifications/|governance/|test/).*$",
         api_not_found,
