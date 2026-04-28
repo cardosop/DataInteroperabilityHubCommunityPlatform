@@ -127,7 +127,45 @@ function isRateLimitError(error: unknown): boolean {
 
 function isTransientServerError(error: unknown): boolean {
   const msg = String((error as Error)?.message ?? '');
-  return /deadlock|lock timeout|statement timeout|too many connections|500.*deadlock|REGISTRATION_FAILED|registration failed|SERVICE_UNAVAILABLE|INTERNAL_ERROR/i.test(msg);
+  return /deadlock|lock timeout|statement timeout|too many connections|500.*deadlock|REGISTRATION_FAILED|registration failed|SERVICE_UNAVAILABLE|INTERNAL_ERROR|HTTP 5\d\d/i.test(msg);
+}
+
+/**
+ * Pure: classify a login response's HTTP status into a retry decision.
+ *
+ *   * `ok`           — 2xx, login succeeded.
+ *   * `rate-limit`   — 429. Retry with a longer delay (the limiter window
+ *                     is wider than the connection-retry window).
+ *   * `server-error` — 5xx. Treated as transient: API pod restart, pgbouncer
+ *                     pool exhaustion, downstream timeout. Retry with the
+ *                     same backoff as connection errors. The 14:10 UTC
+ *                     2026-04-28 run failed 29 logins to a 503 burst on
+ *                     `/auth/login/` — they all surfaced as "login failed"
+ *                     (same generic error as wrong-password) because this
+ *                     branch wasn't classified before. Now they retry.
+ *   * `client-error` — 4xx other than 429 (401 / 403 / 404 / 422 ...).
+ *                     A real auth failure — wrong password, missing user,
+ *                     locked account. Returning null lets the caller
+ *                     attempt the registration fallback before giving up.
+ *   * `unknown`      — anything else (e.g. 1xx / 3xx). Conservatively
+ *                     treated as a real failure to avoid masking malformed
+ *                     responses.
+ *
+ * Exported for unit-testing in `_guards.spec.ts`.
+ */
+export type LoginResponseClass =
+  | 'ok'
+  | 'rate-limit'
+  | 'server-error'
+  | 'client-error'
+  | 'unknown';
+
+export function classifyLoginResponse(status: number): LoginResponseClass {
+  if (status >= 200 && status < 300) return 'ok';
+  if (status === 429) return 'rate-limit';
+  if (status >= 500 && status < 600) return 'server-error';
+  if (status >= 400 && status < 500) return 'client-error';
+  return 'unknown';
 }
 
 /** Run fn with retries on transient connection errors, rate limits, and deadlocks */
@@ -186,21 +224,49 @@ export async function ensureTestUser(): Promise<TestUser> {
   const name = 'E2E Test User';
 
   const runWithBase = async (baseUrl: string): Promise<TestUser> => {
-    let loginResult = await withRetry(async () => {
-      const loginResponse = await fetch(`${baseUrl}/auth/login/`, {
+    // Capture the most-recent non-retryable login response for the final
+    // error message — without it, every failure surfaces as the same
+    // generic "login failed" string and reviewers cannot tell 401 (wrong
+    // password) from 503 (transient infra) from 404 (user missing). The
+    // 2026-04-28 14:10 UTC run lost 29 tests to a 503 burst that looked
+    // identical to a real auth failure in the report.
+    let lastFailureDiagnostic = '';
+    const tryLogin = async (label: string): Promise<TestUser | null> => {
+      const resp = await fetch(`${baseUrl}/auth/login/`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email, password }),
       });
-      if (loginResponse.ok) {
-        console.log('✅ Test user exists and can login');
+      const cls = classifyLoginResponse(resp.status);
+      if (cls === 'ok') {
+        console.log(`✅ ${label}: login OK`);
         return { email, password, name } as TestUser;
       }
-      if (loginResponse.status === 429) {
-        throw new Error('Rate limited (429); will retry');
+      if (cls === 'rate-limit') {
+        // 429 — retry via withRetry's rate-limit branch.
+        throw new Error(`Rate limited (429); will retry — ${label}`);
       }
+      if (cls === 'server-error') {
+        // 5xx is transient (API restart / pgbouncer pool / downstream).
+        // Throw a typed error so withRetry's `isTransientServerError`
+        // branch fires and we get the same backoff as connection errors.
+        const preview = (await resp.text().catch(() => '')).slice(0, 200);
+        throw new Error(
+          `HTTP ${resp.status} on /auth/login/ (transient server error); will retry — ${label}. Body: ${preview}`,
+        );
+      }
+      // 4xx / unknown — capture for the final diagnostic, return null so
+      // the caller can attempt the registration-fallback path before
+      // giving up.
+      const preview = (await resp.text().catch(() => '')).slice(0, 200);
+      lastFailureDiagnostic = `HTTP ${resp.status} (${cls}). Body: ${preview}`;
       return null;
-    }, 'Test user login');
+    };
+
+    let loginResult = await withRetry(
+      () => tryLogin('Test user login'),
+      'Test user login',
+    );
 
     if (!loginResult && _isRemoteApi) {
       // Remote API: docker exec is unavailable but self-registration IS.
@@ -213,25 +279,15 @@ export async function ensureTestUser(): Promise<TestUser> {
       if (registered) {
         // Wait for DB to propagate, then retry login
         await new Promise((r) => setTimeout(r, 3000));
-        loginResult = await withRetry(async () => {
-          const resp = await fetch(`${baseUrl}/auth/login/`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ email, password }),
-          });
-          if (resp.ok) {
-            console.log('✅ Test user login OK after re-registration');
-            return { email, password, name } as TestUser;
-          }
-          if (resp.status === 429) {
-            throw new Error('Rate limited (429); will retry');
-          }
-          return null;
-        }, 'Test user login (after re-register)');
+        loginResult = await withRetry(
+          () => tryLogin('Test user login (after re-register)'),
+          'Test user login (after re-register)',
+        );
       }
       if (!loginResult) {
         throw new Error(
-          `Test user '${email}' login failed on remote API (${baseUrl}).\n` +
+          `Test user '${email}' login failed on remote API (${baseUrl}). ` +
+            `Last response: ${lastFailureDiagnostic || '(no response — all attempts threw)'}\n` +
             'On deployed environments, test users must be pre-seeded. Run:\n' +
             '  kubectl exec -n hub-staging deploy/hub-staging-api -- python hub/manage.py ensure_e2e_user_roles\n' +
             'Or set E2E_ADMIN_EMAIL / E2E_ADMIN_PASSWORD to an existing user.'

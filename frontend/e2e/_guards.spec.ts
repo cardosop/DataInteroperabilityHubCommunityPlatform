@@ -44,6 +44,7 @@ import {
   buildMailhogRequestHeaders,
   isMailhogProxyUrl,
 } from './fixtures/auth-journey-steps';
+import { classifyLoginResponse } from './setup/create-test-user';
 import {
   canonicalIriFor,
   classifyDereferenceResponse,
@@ -629,6 +630,41 @@ test.describe('isMailhogProxyUrl — pure URL bucketing', () => {
   test('non-localhost LAN URL → true (defensive: still treat as proxy)', () => {
     expect(isMailhogProxyUrl('http://10.0.0.5:8025')).toBe(true);
     expect(isMailhogProxyUrl('http://my-mailhog:8025')).toBe(true);
+  });
+});
+
+test.describe('classifyLoginResponse — pure HTTP-status bucketing', () => {
+  test('200/204 → ok', () => {
+    expect(classifyLoginResponse(200)).toBe('ok');
+    expect(classifyLoginResponse(204)).toBe('ok');
+  });
+
+  test('429 → rate-limit (caller retries with longer delay)', () => {
+    expect(classifyLoginResponse(429)).toBe('rate-limit');
+  });
+
+  test('5xx → server-error (caller retries — transient infra)', () => {
+    // The 2026-04-28 staging run lost 29 tests to a 503 burst that looked
+    // identical to wrong-password before this classifier landed.
+    expect(classifyLoginResponse(500)).toBe('server-error');
+    expect(classifyLoginResponse(502)).toBe('server-error');
+    expect(classifyLoginResponse(503)).toBe('server-error');
+    expect(classifyLoginResponse(504)).toBe('server-error');
+  });
+
+  test('4xx (other than 429) → client-error (real auth failure, no retry)', () => {
+    expect(classifyLoginResponse(400)).toBe('client-error');
+    expect(classifyLoginResponse(401)).toBe('client-error');
+    expect(classifyLoginResponse(403)).toBe('client-error');
+    expect(classifyLoginResponse(404)).toBe('client-error');
+    expect(classifyLoginResponse(422)).toBe('client-error');
+  });
+
+  test('1xx / 3xx / weird → unknown (conservative — fail loud)', () => {
+    expect(classifyLoginResponse(100)).toBe('unknown');
+    expect(classifyLoginResponse(301)).toBe('unknown');
+    expect(classifyLoginResponse(0)).toBe('unknown');
+    expect(classifyLoginResponse(999)).toBe('unknown');
   });
 });
 

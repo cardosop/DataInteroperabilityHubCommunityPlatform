@@ -222,40 +222,83 @@ test.describe('Multi-Tenancy Isolation (UI-verified)', () => {
       expect(restoredName).toContain(setup.primary_tenant_name);
 
       // Navigate to the asset directly — should load without error.
+      // Wait explicitly for the GET /assets/<id>/ response so we know
+      // the backend round-trip with the post-switch tenant context has
+      // completed before asserting on the rendered state. Without this,
+      // a busy-staging slow response can stretch past `expect.toBeVisible`'s
+      // window with no useful diagnostic ("element not found" only).
+      const assetDetailFetch = page.waitForResponse(
+        (resp) => resp.url().includes(`/assets/${assetId}`) && resp.request().method() === 'GET',
+        { timeout: 30_000 },
+      );
       await page.goto(`/assets/${assetId}`);
+      const assetResp = await assetDetailFetch.catch(() => null);
       await page.waitForLoadState('domcontentloaded');
 
-      // In the primary tenant the asset detail MUST be visible.
+      // In the primary tenant the asset detail MUST be visible. The page
+      // can settle into THREE states after navigation:
       //
-      // Use Playwright's auto-retrying `expect(locator).toBeVisible(...)`
-      // matcher rather than a fire-and-forget `waitForSelector + count()` pair.
-      // Three reasons:
+      //   * Asset detail rendered → expected (selector visible).
+      //   * ErrorDisplay rendered → tenant-isolation guard misfired,
+      //     auth lost, or backend 4xx/5xx. AssetDetailPage.tsx renders
+      //     this when `error || !asset` OR when
+      //     `asset.tenant !== effectiveTenantId`.
+      //   * URL forced to /login → auth state lost mid-test (rare,
+      //     surfaces under multi-hour suite runs).
       //
-      //   1. After `switchTenantViaUI`, React-Query invalidates per-tenant
-      //      caches and the asset detail must be re-fetched with the new auth
-      //      context. On a busy staging the round-trip occasionally exceeds
-      //      the previous 15 s ceiling; the auto-retry semantics absorb that
-      //      tail latency without changing the contract.
-      //   2. `count() > 0` is a snapshot of "does the selector exist *right
-      //      now*"; a negative result on a slow render gives a misleading
-      //      `Expected: true / Received: false` with no info on what was on
-      //      the page. `toBeVisible` waits for the element to actually paint
-      //      AND emits a clean diagnostic on failure ("element not visible
-      //      after Nms; current URL: …").
-      //   3. The previous code used `waitForSelector(...).catch(() => null)`
-      //      (a silent timeout swallow) followed by an `expect`. That meant
-      //      a slow render and a real isolation regression both surfaced as
-      //      the same generic `false === true` failure — the new shape pins
-      //      the actual state.
+      // Race all three so the failure diagnostic names the actual outcome
+      // rather than the generic "element not found in 30 s". This converts
+      // a cryptic timeout into one of:
+      //   - "Asset detail rendered ErrorDisplay (URL=…, asset GET status=…)"
+      //   - "Page redirected to /login — auth lost"
+      //   - The expected positive assertion.
       const detailLocator = page.locator(
         '.asset-detail-content, .asset-detail-page, [data-testid="asset-detail-page"]',
       );
-      await expect(detailLocator.first()).toBeVisible({ timeout: 30_000 });
-
-      // Must NOT show an error-display for the primary tenant's own asset.
       const errorLocator = page.locator(
         '.error-display, [data-testid="error-display"]',
       );
+      const detailVisible = detailLocator
+        .first()
+        .waitFor({ state: 'visible', timeout: 30_000 })
+        .then(() => 'detail' as const);
+      const errorVisible = errorLocator
+        .first()
+        .waitFor({ state: 'visible', timeout: 30_000 })
+        .then(() => 'error' as const);
+      const loginRedirect = page
+        .waitForURL(/\/login/, { timeout: 30_000 })
+        .then(() => 'login' as const);
+      const outcome = await Promise.race([detailVisible, errorVisible, loginRedirect]).catch(
+        () => 'timeout' as const,
+      );
+
+      if (outcome === 'error') {
+        const errText = await errorLocator.first().textContent().catch(() => '');
+        throw new Error(
+          `JOURNEY-MULTI-TENANCY step 5: AssetDetailPage rendered ErrorDisplay after switch ` +
+            `back to primary tenant. URL=${page.url()}; ` +
+            `asset GET status=${assetResp?.status() ?? 'no-response'}; ` +
+            `error text="${(errText ?? '').trim().slice(0, 200)}". ` +
+            `Likely tenant-store race (effectiveTenantId not yet equal to primary on the GET) ` +
+            `or backend 4xx/5xx for /assets/${assetId}.`,
+        );
+      }
+      if (outcome === 'login') {
+        throw new Error(
+          `JOURNEY-MULTI-TENANCY step 5: page redirected to /login after switching back ` +
+            `to primary tenant. URL=${page.url()}. Auth state lost mid-test.`,
+        );
+      }
+      if (outcome === 'timeout') {
+        throw new Error(
+          `JOURNEY-MULTI-TENANCY step 5: neither asset-detail-page, error-display, nor /login ` +
+            `appeared within 30 s after navigating to /assets/${assetId}. URL=${page.url()}; ` +
+            `asset GET status=${assetResp?.status() ?? 'no-response'}.`,
+        );
+      }
+
+      // Positive path — must NOT also show an error-display for the primary tenant's asset.
       await expect(errorLocator.first()).toBeHidden({ timeout: 5_000 });
     }
   );

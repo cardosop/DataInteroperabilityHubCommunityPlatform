@@ -1,5 +1,5 @@
 {
-  "capturedAt": "2026-04-25T13:00:15.515Z",
+  "capturedAt": "2026-04-28T16:42:20.769Z",
   "source": "https://api.stagingmeshant-internal.example.com/api/v1/openapi.json",
   "apiVersion": "1.0.0",
   "openapi": "3.0.3",
@@ -8,5 +8,5 @@
     "operations": 376,
     "components": 307
   },
-  "shapeHash": "0193ef099a80ffe08964a3caaec9e318762589cf2881a51666f8e439071ddee8"
+  "shapeHash": "e676499e615797d80f76f37456a2ee37c24d5b2cfc361f42db7e356ba6bbad8e"
 }
