@@ -96,7 +96,8 @@ export function ListingDetailPage() {
             { label: listing.title || 'Listing' },
           ]}
         />
-        <div className="listing-detail-main">
+        {/* Phase 226.F1.b — testid for stable e2e selector. */}
+        <div className="listing-detail-main" data-testid="listing-detail-main">
           <div className="listing-section">
             <h2>Description</h2>
             <p>{listing.long_description || listing.description || 'No description available'}</p>

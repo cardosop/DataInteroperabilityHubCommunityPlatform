@@ -46,6 +46,58 @@ from datetime import datetime, timezone
 SKIP_EVENTS_DIR_NAME = "test-results"
 SKIP_EVENTS_FILE_NAME = "skip-events.jsonl"
 
+# Canonical skip-reason prefix for the Phase 226.H bug-fix bandwidth gate.
+#
+# This MUST match the constant of the same name in
+# `scripts/check_audit_bug_ledger.py`. The cross-validation test
+# `TestAuditBugSkipHelper.test_prefix_matches_canonical_source_of_truth`
+# in `scripts/tests/test_check_audit_bug_ledger.py` enforces parity, so
+# editing one without the other fails CI immediately.
+#
+# Test authors do NOT typically reference this constant directly —
+# `audit_bug_skip_reason()` below produces the canonical reason string.
+AUDIT_BUG_SKIP_REASON_PREFIX = "audit-exposed bug awaiting fix"
+
+# Bug ids in the ledger have the form `AUDIT-BUG-NNN`. We don't enforce
+# the numeric tail (it might evolve to `AUDIT-BUG-2026-001` etc.), but the
+# `AUDIT-BUG-` prefix is the contract that links a skip back to a row in
+# the ledger. Anything else is a typo and must fail loudly.
+_AUDIT_BUG_ID_PREFIX = "AUDIT-BUG-"
+
+
+def audit_bug_skip_reason(bug_id: str, detail: str | None = None) -> str:
+    """Build a canonical reason string for an audit-exposed-bug skip.
+
+    Use as::
+
+        if not_yet_fixed:
+            pytest.skip(audit_bug_skip_reason(
+                "AUDIT-BUG-001",
+                "tenant switch is not audited (backend gap)",
+            ))
+
+    The returned string starts with `AUDIT_BUG_SKIP_REASON_PREFIX`, which
+    is exactly the prefix the skip-counter is configured to recognise via
+    its `--category` flag. The bug id is included verbatim so the close
+    gate can correlate the skip with the ledger entry that owns it.
+
+    Empty/whitespace bug ids and ids missing the `AUDIT-BUG-` prefix are
+    rejected at construction time — silent typos here would silently
+    bypass the gate, which is the failure mode this whole sub-track
+    exists to kill.
+    """
+    if not isinstance(bug_id, str) or not bug_id.strip():
+        raise ValueError("bug_id must be a non-empty string")
+    bug_id = bug_id.strip()
+    if not bug_id.startswith(_AUDIT_BUG_ID_PREFIX):
+        raise ValueError(
+            f"bug_id must start with {_AUDIT_BUG_ID_PREFIX!r} "
+            f"to match the ledger format (got {bug_id!r})"
+        )
+    if detail:
+        return f"{AUDIT_BUG_SKIP_REASON_PREFIX}: {bug_id} — {detail}"
+    return f"{AUDIT_BUG_SKIP_REASON_PREFIX}: {bug_id}"
+
 
 def _artifact_path() -> pathlib.Path:
     """Resolve the skip-events artifact path.

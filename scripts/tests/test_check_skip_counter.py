@@ -176,3 +176,135 @@ class TestCLIEntrypoint:
         ])
         assert code == 0
         assert "No skip events found" in capsys.readouterr().out
+
+
+# ---------------------------------------------------------------------------
+# 226.H.gate — category-aware thresholds (audit-exposed bug awaiting fix)
+# ---------------------------------------------------------------------------
+
+
+class TestCategoryAwareThresholds:
+    """Category overrides: a recognised prefix is aggregated into one bucket
+    with its own threshold, while individual reasons not matching the prefix
+    keep the default per-reason threshold.
+
+    This is the 226.H.gate behaviour: `audit-exposed bug awaiting fix` is
+    allowed up to 15 % during the audit-landing cycle (a deliberate elevated
+    band), while every other skip reason still has to clear the much stricter
+    5 % per-reason gate.
+    """
+
+    def test_category_below_override_threshold_passes(self):
+        from collections import Counter
+        counts = Counter({
+            "audit-exposed bug awaiting fix: AUDIT-BUG-001": 5,
+            "audit-exposed bug awaiting fix: AUDIT-BUG-002": 3,
+        })
+        passed, msgs = check_thresholds(
+            counts,
+            total_tests=100,
+            threshold=0.05,
+            categories=[("audit-exposed bug awaiting fix", 0.15)],
+        )
+        # 8 / 100 = 8 % of total — over default 5 %, but under category 15 %.
+        assert passed is True
+        # The aggregated category line should be present and marked ok.
+        category_lines = [m for m in msgs if "[category]" in m]
+        assert len(category_lines) == 1
+        assert "[ok]" in category_lines[0]
+        assert "audit-exposed bug awaiting fix" in category_lines[0]
+
+    def test_category_above_override_threshold_fails(self):
+        from collections import Counter
+        counts = Counter({
+            "audit-exposed bug awaiting fix: AUDIT-BUG-001": 16,
+        })
+        passed, msgs = check_thresholds(
+            counts,
+            total_tests=100,
+            threshold=0.05,
+            categories=[("audit-exposed bug awaiting fix", 0.15)],
+        )
+        assert passed is False
+        category_lines = [m for m in msgs if "[category]" in m]
+        assert any("[FAIL]" in m for m in category_lines)
+
+    def test_individual_reasons_in_category_skip_default_threshold(self):
+        """A reason that matches a category prefix is *only* checked against
+        the category threshold — never against the default per-reason
+        threshold. Otherwise a 6 % single-bug skip rate would fail the 5 %
+        default even though it's well under the 15 % category band.
+        """
+        from collections import Counter
+        counts = Counter({
+            "audit-exposed bug awaiting fix: AUDIT-BUG-001": 6,  # 6 % > 5 %
+        })
+        passed, msgs = check_thresholds(
+            counts,
+            total_tests=100,
+            threshold=0.05,
+            categories=[("audit-exposed bug awaiting fix", 0.15)],
+        )
+        assert passed is True
+        # The individual reason still appears in the listing for visibility,
+        # but it's annotated as belonging to the category bucket so a reader
+        # doesn't waste time scrolling looking for the default-threshold
+        # comparison that doesn't apply here.
+        in_category_lines = [
+            m for m in msgs
+            if "audit-exposed bug awaiting fix: AUDIT-BUG-001" in m
+            and "[category-member]" in m
+        ]
+        assert len(in_category_lines) == 1
+
+    def test_non_category_reasons_still_use_default_threshold(self):
+        from collections import Counter
+        counts = Counter({
+            "audit-exposed bug awaiting fix: AUDIT-BUG-001": 5,  # under 15 %
+            "S3 not reachable": 6,  # over default 5 %
+        })
+        passed, msgs = check_thresholds(
+            counts,
+            total_tests=100,
+            threshold=0.05,
+            categories=[("audit-exposed bug awaiting fix", 0.15)],
+        )
+        assert passed is False
+        s3_lines = [m for m in msgs if "S3 not reachable" in m]
+        assert any("[FAIL]" in m for m in s3_lines)
+
+    def test_main_accepts_category_flag(self, tmp_path: Path, capsys):
+        """End-to-end via CLI: 16 audit-bug skips at 100 total = 16 %,
+        over the 15 % category threshold, so the build fails — but with
+        the *category* line marked failing rather than the (under default)
+        individual reason line."""
+        events = [
+            {"test": f"t{i}", "reason": f"audit-exposed bug awaiting fix: AUDIT-BUG-001 — case {i}"}
+            for i in range(16)
+        ]
+        _write_jsonl(tmp_path / "skip-events.jsonl", events)
+        code = main([
+            "--artifact-dir", str(tmp_path),
+            "--total-tests", "100",
+            "--threshold", "0.05",
+            "--category", "audit-exposed bug awaiting fix=0.15",
+        ])
+        assert code == 1
+        out = capsys.readouterr().out
+        assert "[category]" in out
+        assert "[FAIL]" in out
+
+    def test_main_category_flag_format_is_validated(self, tmp_path: Path, capsys):
+        # Malformed --category flag must fail cleanly, not silently degrade.
+        _write_jsonl(
+            tmp_path / "skip-events.jsonl",
+            [{"test": "t1", "reason": "x"}],
+        )
+        with pytest.raises(SystemExit) as exc:
+            main([
+                "--artifact-dir", str(tmp_path),
+                "--total-tests", "100",
+                "--threshold", "0.05",
+                "--category", "no-equals-sign",
+            ])
+        assert exc.value.code != 0

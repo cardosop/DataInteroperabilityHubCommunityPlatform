@@ -103,6 +103,29 @@ critical_journeys:
   - JOURNEY-EXPORT-001  # Create and Run Scheduled Export
   - JOURNEY-EXPORT-002  # Monitor and Troubleshoot Export Runs
 
+# MVP-scope decisions (Phase 226.G6)
+#
+# These flags drive the traceability gate's interpretation of capability-area
+# coverage. When a capability is in scope, missing tests = gate failure. When
+# out of scope, the traceability report tags affected specs `@post-mvp` and
+# does not count them against the threshold.
+#
+# Decisions — recorded 2026-04-25 (Phase 226.G6 resolution of OQ §6):
+#   ml_mvp_in_scope=false        → /ml routes are MvpGatedRoute-gated in
+#                                  frontend/src/app/routes/routes.tsx:1095-1180.
+#                                  ML training and inference specs ship under
+#                                  the @post-mvp tag and don't count against
+#                                  critical-coverage. Re-enable by flipping
+#                                  this flag + un-gating the routes.
+#   semantic_mvp_in_scope=true   → /semantic IS in MVP scope (per repo
+#                                  CLAUDE.md memory note: "/semantic is in-
+#                                  scope for MVP — do NOT gate it in sidebar/
+#                                  routes/backend"). SPARQL UI + URI lookup
+#                                  specs ship as critical.
+mvp_scope:
+  ml_mvp_in_scope: false
+  semantic_mvp_in_scope: true
+
 # Optional: coverage thresholds (used by --ci-mode when thresholds enabled)
 # Phase 1: report only; Phase 2: critical-list gate; Phase 3: coverage threshold
 thresholds:

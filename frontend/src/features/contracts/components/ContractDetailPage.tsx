@@ -127,7 +127,8 @@ export function ContractDetailPage() {
   const linkedAssetId = getContractLinkedAssetId(contract);
 
   return (
-    <div className="contract-detail-page">
+    // Phase 226.F1.b — testid for stable e2e selector.
+    <div className="contract-detail-page" data-testid="contract-detail-page">
       <div className="contract-detail-header">
         <Button onClick={() => navigate('/contracts')} variant="ghost">
           ← Back to Contracts

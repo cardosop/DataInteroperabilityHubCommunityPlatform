@@ -71,7 +71,7 @@ export function MarketplaceConnectionDetailPage() {
   }
 
   return (
-    <div className="marketplace-connection-detail-page">
+    <div className="marketplace-connection-detail-page" data-testid="marketplace-connection-detail-page">
       <div className="marketplace-connection-detail-header">
         <Button
  onClick={() => navigate('/integrations/connections')}

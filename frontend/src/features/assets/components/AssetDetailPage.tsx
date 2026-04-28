@@ -232,7 +232,9 @@ export function AssetDetailPage() {
   const isDraft = asset.status === 'DRAFT';
 
   return (
-    <div className="asset-detail-page">
+    // Phase 226.F1.b — data-testid added so e2e specs can locate the
+    // page reliably without depending on the CSS class name.
+    <div className="asset-detail-page" data-testid="asset-detail-page">
       <div className="asset-detail-header">
         <Button onClick={() => navigate('/assets')} variant="ghost">
           &larr; Back to Assets

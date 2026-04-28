@@ -56,7 +56,19 @@ export default defineConfig({
   // 2 workers locally: 4 workers saturate the backend login/capabilities endpoints causing
   // PostgreSQL statement timeouts and rate-limit cascades.  Batch scripts may override.
   // 1 worker for external targets: network latency + shared staging DB; avoid rate-limit cascades.
-  workers: isExternalTarget ? 1 : process.env.CI ? 1 : isVisibleRun ? 1 : 2,
+  // 1 worker when cookie-auth project is selected (Phase 226.F2): cookie-jar state is shared
+  // across Playwright contexts on the same browser, so parallel logins race the refresh cycle.
+  workers:
+    process.argv.includes('--project=chromium-cookie-auth') ||
+    process.env.PLAYWRIGHT_PROJECT === 'chromium-cookie-auth'
+      ? 1
+      : isExternalTarget
+        ? 1
+        : process.env.CI
+          ? 1
+          : isVisibleRun
+            ? 1
+            : 2,
   reporter: isVisibleRun
     ? [['list'], ['html'], ['json', { outputFile: 'test-results/results.json' }]]
     : [['html'], ['json', { outputFile: 'test-results/results.json' }]],
@@ -113,6 +125,41 @@ export default defineConfig({
           },
         ]
       : []),
+    // Phase 226.F4 — `dimensions` project lets contract / drift / network
+    // dimension specs run via the main config (`--project=dimensions`)
+    // without polluting the chromium project's storageState dependency.
+    // No setup-auth dependency: dimension specs hit the API directly.
+    {
+      name: 'dimensions',
+      testMatch: '**/dimensions/*.spec.ts',
+      use: { ...devices['Desktop Chrome'] },
+    },
+    // Phase 226.F2 — cookie-auth project. Forces the apiClient's
+    // `_cookieAuthMode` to true at construction (via VITE_COOKIE_AUTH=true,
+    // see frontend/src/shared/api/client.ts) so the auth + critical-path
+    // subset exercises the cookie code path end-to-end. Workers=1 because
+    // cookie-jar state is shared across Playwright contexts on the same
+    // browser; parallel mutation races the refresh cycle.
+    //
+    // testMatch is intentionally narrow: AUTH journeys + the four
+    // critical mutation paths (asset/dataset/contract/billing).
+    {
+      name: 'chromium-cookie-auth',
+      testMatch: [
+        '**/journeys/auth/**/*.spec.ts',
+        '**/journeys/dpo/JOURNEY-DPO-001.spec.ts',
+        '**/journeys/dpo/JOURNEY-DPO-002.spec.ts',
+        '**/journeys/dpo/JOURNEY-DPO-003.spec.ts',
+        '**/journeys/dc/JOURNEY-DC-001.spec.ts',
+        '**/journeys/de/JOURNEY-DE-001.spec.ts',
+        '**/journeys/ta/JOURNEY-TA-BILLING-UPGRADE.spec.ts',
+      ],
+      use: {
+        ...devices['Desktop Chrome'],
+        storageState: 'e2e/.auth/user.json',
+      },
+      dependencies: ['setup-auth'],
+    },
   ],
 
   // Skip Vite webServer when targeting an external deployment (staging/production).
@@ -139,6 +186,13 @@ export default defineConfig({
               'http://localhost:8000/api/v1',
             VITE_WS_ENABLED: 'false',
             VITE_E2E_TEST: 'true',
+            // Phase 226.F2 — propagate the cookie-auth flag into Vite so
+            // the apiClient pre-seeds `_cookieAuthMode` when the
+            // chromium-cookie-auth project runs. No-op when unset.
+            ...(process.argv.includes('--project=chromium-cookie-auth') ||
+            process.env.VITE_COOKIE_AUTH
+              ? { VITE_COOKIE_AUTH: process.env.VITE_COOKIE_AUTH ?? 'true' }
+              : {}),
           },
         },
       }),

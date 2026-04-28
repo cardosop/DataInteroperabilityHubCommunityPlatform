@@ -1,0 +1,66 @@
+{
+  "schema_version": 1,
+  "skip_reason_prefix": "audit-exposed bug awaiting fix",
+  "default_expiry_days": 14,
+  "process": {
+    "ticket_grace_period_hours": 48
+  },
+  "cycle": {
+    "name": "preprod01-audit-landing",
+    "started_at": "2026-04-24",
+    "residual_max": 3
+  },
+  "bugs": [
+    {
+      "id": "AUDIT-BUG-001",
+      "title": "TENANT_SWITCHED audit event is not emitted by the backend",
+      "ticket": "https://github.com/cardosop/DataInteroperabilityHub/issues/TBD-AUDIT-BUG-001",
+      "owner": "@cardosop",
+      "surfaced_by_pr": "Track 226.B1d (JOURNEY-AUTH-005)",
+      "surfaced_at": "2026-04-24T00:00:00Z",
+      "expiry": "2026-05-08",
+      "status": "open",
+      "skip_reason_examples": [
+        "audit-exposed bug awaiting fix: AUDIT-BUG-001 — tenant switch is not audited (no TENANT_SWITCHED action in hub/apps/tenants/views.py or hub/apps/auth/views.py)"
+      ],
+      "notes": "Grep-confirmed: only TENANT_CREATED/UPDATED/SUSPENDED/REACTIVATED/DELETED/CONFIG_UPDATED exist. A governance-relevant event that should emit an audit row but currently does not. Spec records this as a `phase226-audit-gap` annotation.",
+      "extensions": [],
+      "closed_at": null,
+      "closed_by_pr": null
+    },
+    {
+      "id": "AUDIT-BUG-002",
+      "title": "AuditEvent model has no `correlation_id` column",
+      "ticket": "https://github.com/cardosop/DataInteroperabilityHub/issues/TBD-AUDIT-BUG-002",
+      "owner": "@cardosop",
+      "surfaced_by_pr": "Track 226.B.review (B3 row-shape fix)",
+      "surfaced_at": "2026-04-24T00:00:00Z",
+      "expiry": "2026-05-08",
+      "status": "open",
+      "skip_reason_examples": [
+        "audit-exposed bug awaiting fix: AUDIT-BUG-002 — AuditEvent.correlation_id column missing; cross-channel verification cannot link request → audit row"
+      ],
+      "notes": "Backend AuditEventSerializer (hub/apps/audit/serializers.py:8-29) does not include `correlation_id`; the underlying model has no such column (hub/apps/audit/models.py:21-107). Blocks the full D123 cross-channel guarantee chain — B4 generates a correlation-id, B3 cannot yet cross-check it against the audit row. Fix: backend migration to add the column + propagate from request context.",
+      "extensions": [],
+      "closed_at": null,
+      "closed_by_pr": null
+    },
+    {
+      "id": "AUDIT-BUG-003",
+      "title": "Profile-update audit emission is inconsistent across tenants",
+      "ticket": "https://github.com/cardosop/DataInteroperabilityHub/issues/TBD-AUDIT-BUG-003",
+      "owner": "@cardosop",
+      "surfaced_by_pr": "Track 226.B.review (JOURNEY-AUTH-PROFILE)",
+      "surfaced_at": "2026-04-24T00:00:00Z",
+      "expiry": "2026-05-08",
+      "status": "open",
+      "skip_reason_examples": [
+        "audit-exposed bug awaiting fix: AUDIT-BUG-003 — PATCH /auth/me/ does not unconditionally emit a USER_UPDATED audit row"
+      ],
+      "notes": "Observed via `// noverify:` annotation in frontend/e2e/journeys/auth/JOURNEY-AUTH-PROFILE.spec.ts. Audit the PATCH /auth/me/ code path for unconditional `create_audit_event`. Likely a missing branch in hub/apps/users/views.py or the serializer.",
+      "extensions": [],
+      "closed_at": null,
+      "closed_by_pr": null
+    }
+  ]
+}

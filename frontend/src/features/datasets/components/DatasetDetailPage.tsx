@@ -76,7 +76,9 @@ export function DatasetDetailPage() {
   }
 
   return (
-    <div className="dataset-detail-page">
+    // Phase 226.F1.b — data-testid added so e2e specs can locate the
+    // page reliably without depending on the CSS class name.
+    <div className="dataset-detail-page" data-testid="dataset-detail-page">
       <div className="dataset-detail-header">
         <Button onClick={() => navigate('/datasets')} variant="ghost">
           ← Back to Datasets

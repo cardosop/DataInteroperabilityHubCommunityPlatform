@@ -101,7 +101,7 @@ export function ListingListPage() {
   } else {
     mainContent = (
       <>
-        <div className="listing-list-grid">
+        <div className="listing-list-grid" data-testid="listing-list-grid">
           {displayData.results.map((listing) => (
             <div
               key={listing.id}

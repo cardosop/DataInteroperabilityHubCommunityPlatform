@@ -118,7 +118,8 @@ export function ListingPublishPage() {
   };
 
   return (
-    <div className="listing-publish-page">
+    // Phase 226.F1.b — testid for stable e2e selector.
+    <div className="listing-publish-page" data-testid="listing-publish-page">
       <div className="listing-publish-header">
         <Button onClick={() => navigate('/marketplace')} variant="ghost">
           ← Back to Marketplace

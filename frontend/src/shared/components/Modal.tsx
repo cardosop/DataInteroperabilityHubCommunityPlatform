@@ -60,8 +60,11 @@ export function Modal({
   }
 
   return (
+    // Phase 226.F1.b — testids on overlay/content/close so e2e specs can
+    // open-close modals without `.locator('.modal-overlay')`.
     <div
       className="modal-overlay"
+      data-testid="modal-overlay"
       role="dialog"
       aria-modal="true"
       aria-labelledby="modal-title"
@@ -73,14 +76,26 @@ export function Modal({
         }
       }}
     >
-      <div className="modal-content" ref={containerRef as React.RefObject<HTMLDivElement>}>
+      <div
+        className="modal-content"
+        data-testid="modal-content"
+        ref={containerRef as React.RefObject<HTMLDivElement>}
+      >
         <div className="modal-header">
           <h2 id="modal-title">{title}</h2>
-          <button type="button" className="modal-close" onClick={onClose} aria-label="Close dialog">
+          <button
+            type="button"
+            className="modal-close"
+            onClick={onClose}
+            aria-label="Close dialog"
+            data-testid="modal-close"
+          >
             ×
           </button>
         </div>
-        <div className="modal-body">{children}</div>
+        <div className="modal-body" data-testid="modal-body">
+          {children}
+        </div>
       </div>
     </div>
   );

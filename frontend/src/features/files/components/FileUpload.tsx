@@ -108,9 +108,18 @@ export function FileUpload({
   const showSuccess = uploadSuccess && uploadProgress === 100;
 
   return (
-    <div className="file-upload">
+    // Phase 226.F1.b — data-testid on the wrapper + dropzone for stable
+    // e2e selectors. The dropzone testid carries the upload state in a
+    // suffix-free attribute so specs don't have to parse the className
+    // template (`getByTestId('file-upload-dropzone')` works regardless
+    // of dragging/uploading/success state).
+    <div className="file-upload" data-testid="file-upload">
       <div
         className={`file-upload-dropzone ${isDragging ? 'dragging' : ''} ${isUploading ? 'uploading' : ''} ${showSuccess ? 'upload-success' : ''}`}
+        data-testid="file-upload-dropzone"
+        data-upload-state={
+          showSuccess ? 'success' : isUploading ? 'uploading' : isDragging ? 'dragging' : 'idle'
+        }
         onDrop={handleDrop}
         onDragOver={handleDragOver}
         onDragLeave={handleDragLeave}

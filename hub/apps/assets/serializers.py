@@ -5,6 +5,8 @@ import re
 
 from rest_framework import serializers
 from .models import Asset, AssetStatus, AssetVisibility, DQStatus, ComplianceStatus
+# Phase 226 G7a — canonical IRI exposure for SDK + dereferenceability proofs.
+from hub.apps.semantic.iri import canonical_iri_for
 
 # Asset keys are user-facing tenant-scoped identifiers used in URLs, contract
 # bindings, and ODPS payloads. They must be lowercase alphanumeric with optional
@@ -28,6 +30,13 @@ class AssetSerializer(serializers.ModelSerializer):
     """Serializer for Asset model"""
     contract_id = serializers.SerializerMethodField()
     dataset_id = serializers.SerializerMethodField()
+    canonical_iri = serializers.SerializerMethodField(
+        help_text=(
+            "Canonical Linked Data IRI: {SEMANTIC_BASE_IRI}/id/asset/{id}. "
+            "Stable identifier for JSON-LD dereference, SPARQL queries, and "
+            "cross-system references. See Phase 226 G7a."
+        )
+    )
 
     class Meta:
         model = Asset
@@ -48,6 +57,7 @@ class AssetSerializer(serializers.ModelSerializer):
             'updated_at',
             'contract_id',
             'dataset_id',
+            'canonical_iri',
         ]
         read_only_fields = [
             'id',
@@ -60,6 +70,7 @@ class AssetSerializer(serializers.ModelSerializer):
             'updated_at',
             'contract_id',
             'dataset_id',
+            'canonical_iri',
         ]
 
     def get_contract_id(self, obj):
@@ -86,6 +97,15 @@ class AssetSerializer(serializers.ModelSerializer):
         except Exception:
             pass
         return None
+
+    def get_canonical_iri(self, obj) -> str:
+        """Phase 226 G7a — JSON-LD canonical IRI for this asset.
+
+        Dereferenceable as JSON-LD via the 303 handler at
+        `/api/v1/semantic/id/asset/{id}`. Always present on a persisted
+        Asset (id is a UUID set on save).
+        """
+        return canonical_iri_for("asset", obj.id)
 
 
 class AssetCreateSerializer(serializers.Serializer):

@@ -196,18 +196,20 @@ export function AssetCreatePage() {
   };
 
   return (
-    <div className="asset-create-page">
+    // Phase 226.F1.b — testid for stable e2e selector.
+    <div className="asset-create-page" data-testid="asset-create-page">
       <div className="asset-create-header">
         <Breadcrumbs items={BREADCRUMBS} />
         <h1>Create Asset</h1>
       </div>
 
-      <div className="asset-create-form">
+      <div className="asset-create-form" data-testid="asset-create-form">
         {/* Always-visible metadata */}
         <div className="form-group">
           <label htmlFor="asset-name">Name <span className="required">*</span></label>
           <input
             id="asset-name"
+            data-testid="asset-create-name"
             type="text"
             value={name}
             onChange={(e) => handleNameChange(e.target.value)}
@@ -220,6 +222,7 @@ export function AssetCreatePage() {
           <label htmlFor="asset-key">Key <span className="required">*</span></label>
           <input
             id="asset-key"
+            data-testid="asset-create-key"
             type="text"
             value={key}
             onChange={(e) => handleKeyChange(e.target.value)}
@@ -233,6 +236,7 @@ export function AssetCreatePage() {
           <label htmlFor="asset-description">Description</label>
           <textarea
             id="asset-description"
+            data-testid="asset-create-description"
             value={description}
             onChange={(e) => setDescription(e.target.value)}
             rows={3}
@@ -244,6 +248,7 @@ export function AssetCreatePage() {
           <label htmlFor="asset-domain">Domain</label>
           <input
             id="asset-domain"
+            data-testid="asset-create-domain"
             type="text"
             list="domain-suggestions"
             value={domain}
@@ -267,6 +272,7 @@ export function AssetCreatePage() {
           <label htmlFor="asset-visibility">Visibility</label>
           <select
             id="asset-visibility"
+            data-testid="asset-create-visibility"
             value={visibility}
             onChange={(e) => setVisibility(e.target.value as AssetVisibility)}
           >
@@ -346,6 +352,7 @@ export function AssetCreatePage() {
             variant="primary"
             onClick={handleSubmit}
             disabled={!name.trim() || !key.trim() || submitting}
+            data-testid="asset-create-submit"
           >
             {submitting ? 'Creating...' : 'Create Asset'}
           </Button>

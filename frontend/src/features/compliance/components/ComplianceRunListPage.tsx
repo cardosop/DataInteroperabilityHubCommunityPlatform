@@ -173,7 +173,8 @@ export function ComplianceRunListPage() {
   }
 
   return (
-    <div className="compliance-run-list-page">
+    // Phase 226.F1.b — testid for stable e2e selector.
+    <div className="compliance-run-list-page" data-testid="compliance-run-list-page">
       <div className="compliance-run-list-header">
         <h1>Compliance Runs</h1>
         <div className="compliance-run-list-header-actions">

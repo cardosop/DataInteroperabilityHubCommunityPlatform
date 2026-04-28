@@ -109,7 +109,10 @@ export function Header() {
   };
 
   return (
-    <header className="app-header" role="banner">
+    // Phase 226.F1.b — data-testid added so specs use a stable hook
+    // (`getByTestId('app-header')`) rather than the fragile
+    // `.locator('.app-header')` lookup.
+    <header className="app-header" role="banner" data-testid="app-header">
       <div className="header-content">
         <div className="header-left">
           {/* Phase 224.5 — mobile-only hamburger toggle for the sidebar overlay.

@@ -10,7 +10,8 @@ Usage in CI
     python scripts/check_skip_counter.py \\
         --artifact-dir test-results \\
         --total-tests 1671 \\
-        --threshold 0.05
+        --threshold 0.05 \\
+        --category "audit-exposed bug awaiting fix=0.15"
 
 Rationale
 ---------
@@ -26,6 +27,26 @@ rate AND a 4% semantic skip rate would both be tolerated; neither
 individually compromises the suite's signal, and using an aggregate
 threshold would miss the case where five different reasons each skip
 3% of tests (15% silent loss).
+
+Categories (Phase 226.H)
+------------------------
+A *category* is a recognised skip-reason prefix that should be treated
+as a single bucket for threshold purposes. The motivating use case is
+`audit-exposed bug awaiting fix`: during the audit-landing cycle this
+class of skip is expected to spike (and is allowed up to 15 % of the
+suite) while individual non-category reasons remain on the strict 5 %
+default. See `scripts/check_audit_bug_ledger.py` for the meta-track
+specification.
+
+When a reason matches a category prefix:
+  - it is *not* checked against the default per-reason threshold
+    (otherwise a single 6 % bug would fail the 5 % default even though
+    it sits well inside the 15 % category band);
+  - it contributes to one aggregated count compared against the
+    category's override threshold.
+
+The `[category-member]` annotation in the output makes the dual-bucket
+semantics explicit so a CI-log reader doesn't have to infer them.
 
 Design
 ------
@@ -71,17 +92,39 @@ def aggregate_skip_events(artifact_dir: Path) -> Counter[str]:
     return counter
 
 
+def _matching_category(
+    reason: str, categories: list[tuple[str, float]] | None
+) -> tuple[str, float] | None:
+    """Return the (prefix, threshold) tuple this reason belongs to, or None.
+
+    First-match wins; categories are scanned in the order the caller
+    supplied them, so the caller controls precedence when prefixes
+    overlap. (We don't expect overlap in practice — the skip-counter
+    consumer registers exactly one category per cycle.)
+    """
+    if not categories:
+        return None
+    for prefix, threshold in categories:
+        if reason.startswith(prefix):
+            return (prefix, threshold)
+    return None
+
+
 def check_thresholds(
     counts: "Counter[str] | dict[str, int]",
     *,
     total_tests: int,
     threshold: float,
+    categories: list[tuple[str, float]] | None = None,
 ) -> tuple[bool, list[str]]:
     """Return (passed, messages).
 
-    `passed=False` when any reason's count / total_tests > threshold.
-    `messages` always lists every reason with its percentage so the
-    full picture is visible in the CI log.
+    `passed=False` when:
+      - any non-category reason's count / total_tests > threshold, OR
+      - any category's aggregated count / total_tests > category_threshold.
+
+    `messages` always lists every reason and every category with their
+    percentages so the full picture is visible in the CI log.
 
     Accepts any mapping str → int; callers typically pass a Counter
     but a plain dict is fine — we sort by count descending ourselves
@@ -94,21 +137,82 @@ def check_thresholds(
         raise ValueError(
             f"threshold must be strictly between 0 and 1, got {threshold!r}"
         )
+    if categories:
+        for prefix, cat_threshold in categories:
+            if not (0 < cat_threshold < 1):
+                raise ValueError(
+                    f"category threshold must be strictly between 0 and 1, "
+                    f"got {cat_threshold!r} for prefix {prefix!r}"
+                )
 
     any_over = False
     messages: list[str] = []
+    category_totals: dict[str, int] = {}
+
     # Sort descending by count, then alphabetically for ties — deterministic
     # output regardless of whether callers pass a Counter or dict.
     ordered = sorted(counts.items(), key=lambda kv: (-kv[1], kv[0]))
     for reason, count in ordered:
         pct = count / total_tests
-        marker = "FAIL" if pct > threshold else "ok"
-        if pct > threshold:
+        match = _matching_category(reason, categories)
+        if match is None:
+            marker = "FAIL" if pct > threshold else "ok"
+            if pct > threshold:
+                any_over = True
+            messages.append(
+                f"  [{marker}] {count:5d} / {total_tests} ({pct:.1%}) — {reason}"
+            )
+        else:
+            prefix, _ = match
+            category_totals[prefix] = category_totals.get(prefix, 0) + count
+            messages.append(
+                f"  [category-member] {count:5d} / {total_tests} ({pct:.1%}) "
+                f"— {reason}"
+            )
+
+    # Render an aggregated [category] line per registered category, even
+    # if no events matched — silence on a configured category would hide
+    # whether the gate fired at all.
+    for prefix, cat_threshold in categories or []:
+        total = category_totals.get(prefix, 0)
+        pct = total / total_tests
+        marker = "FAIL" if pct > cat_threshold else "ok"
+        if pct > cat_threshold:
             any_over = True
         messages.append(
-            f"  [{marker}] {count:5d} / {total_tests} ({pct:.1%}) — {reason}"
+            f"  [category] [{marker}] {total:5d} / {total_tests} "
+            f"({pct:.1%}) — {prefix} (threshold {cat_threshold:.0%})"
         )
+
     return (not any_over), messages
+
+
+def _parse_category_arg(value: str) -> tuple[str, float]:
+    """Parse `prefix=threshold` into (prefix, threshold).
+
+    Validation is intentionally strict: a typo like `prefix:0.15` would
+    silently disable the category override otherwise.
+    """
+    if "=" not in value:
+        raise argparse.ArgumentTypeError(
+            f"--category must be 'PREFIX=THRESHOLD', got {value!r}"
+        )
+    prefix, _, raw_threshold = value.rpartition("=")
+    if not prefix:
+        raise argparse.ArgumentTypeError(
+            f"--category prefix must be non-empty in {value!r}"
+        )
+    try:
+        threshold = float(raw_threshold)
+    except ValueError as exc:
+        raise argparse.ArgumentTypeError(
+            f"--category threshold must be a number, got {raw_threshold!r}"
+        ) from exc
+    if not (0 < threshold < 1):
+        raise argparse.ArgumentTypeError(
+            f"--category threshold must be in (0, 1), got {threshold}"
+        )
+    return (prefix, threshold)
 
 
 def _build_arg_parser() -> argparse.ArgumentParser:
@@ -121,6 +225,20 @@ def _build_arg_parser() -> argparse.ArgumentParser:
         "--threshold", type=float, default=0.05,
         help="Per-reason fraction above which the build fails (default 0.05 = 5%%).",
     )
+    parser.add_argument(
+        "--category",
+        action="append",
+        default=[],
+        type=_parse_category_arg,
+        metavar="PREFIX=THRESHOLD",
+        help=(
+            "Register a category: any skip reason starting with PREFIX "
+            "is aggregated and checked against THRESHOLD instead of the "
+            "default per-reason threshold. May be passed multiple times. "
+            "Used by 226.H.gate to allow `audit-exposed bug awaiting fix` "
+            "up to 15 %% during the audit-landing cycle."
+        ),
+    )
     return parser
 
 
@@ -132,20 +250,29 @@ def main(argv: list[str] | None = None) -> int:
         return 0
 
     passed, messages = check_thresholds(
-        counts, total_tests=args.total_tests, threshold=args.threshold,
+        counts,
+        total_tests=args.total_tests,
+        threshold=args.threshold,
+        categories=args.category or None,
     )
-    print(
+    summary = (
         f"Skip-counter gate: {len(counts)} distinct reason(s), "
         f"threshold={args.threshold:.0%} of {args.total_tests} tests"
     )
+    if args.category:
+        cat_summary = ", ".join(
+            f"{p}={t:.0%}" for p, t in args.category
+        )
+        summary += f" — categories: {cat_summary}"
+    print(summary)
     for msg in messages:
         print(msg)
     if not passed:
         print(
             "\n::error title=Skip-counter gate::"
-            "At least one skip reason exceeded the per-reason threshold. "
-            "Either fix the underlying infra or raise --threshold with a "
-            "written justification."
+            "At least one skip reason or category exceeded its threshold. "
+            "Either fix the underlying infra/bug or raise the threshold "
+            "with a written justification."
         )
         return 1
     return 0

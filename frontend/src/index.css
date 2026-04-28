@@ -174,8 +174,14 @@
   --color-text: var(--color-neutral-900);
   --color-text-primary: var(--color-neutral-900);
   --color-text-secondary: var(--color-neutral-700);
-  --color-text-tertiary: var(--color-neutral-600);
-  --color-text-muted: var(--color-neutral-600);
+  /* Phase 226.F5 a11y fix — neutral-600 (#757575) on neutral-50 (#FAFAFA)
+   * computes to ~4.4:1 contrast, which fails WCAG 2 AA's 4.5:1 minimum
+   * for normal-size text. Bumped one shade to neutral-700 (#616161 →
+   * ~5.6:1) so every callsite of the "tertiary"/"muted" token meets AA
+   * without per-component overrides. Visually still distinguishable
+   * from primary (#212121) — same hierarchy, AA-compliant. */
+  --color-text-tertiary: var(--color-neutral-700);
+  --color-text-muted: var(--color-neutral-700);
   --color-text-inverse: #ffffff;
 
   /* Border Colors */

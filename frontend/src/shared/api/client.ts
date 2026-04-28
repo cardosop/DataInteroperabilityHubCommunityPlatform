@@ -216,6 +216,22 @@ export class ApiClient {
   constructor() {
     this._baseURL = API_BASE_URL;
     this._httpClient = new InternalHttpClient(this);
+    // Phase 226.F2 — pre-seed _cookieAuthMode from VITE_COOKIE_AUTH so the
+    // chromium-cookie-auth Playwright project exercises the cookie path
+    // before the first login response arrives. Hint only; the runtime
+    // detector at authService.ts:47-51 still updates this flag based on
+    // what login actually returns.
+    try {
+      const flag =
+        typeof import.meta !== 'undefined' && import.meta.env
+          ? (import.meta.env.VITE_COOKIE_AUTH as string | undefined)
+          : undefined;
+      if (flag === 'true' || flag === '1') {
+        this._cookieAuthMode = true;
+      }
+    } catch {
+      // intentional: import.meta may not be available in Jest/SSR; this constructor must NOT throw on legacy entry points. Cookie mode stays default-false in that case, runtime detector still updates it post-login.
+    }
   }
 
   /**

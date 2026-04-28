@@ -152,7 +152,7 @@ export function VirtualDatasetListPage() {
   }
 
   return (
-    <div className="virtual-dataset-list-page">
+    <div className="virtual-dataset-list-page" data-testid="virtual-dataset-list-page">
       <div className="virtual-dataset-list-header">
         <h1>Virtual Datasets</h1>
         <Button variant="primary" onClick={handleCreateDataset}>

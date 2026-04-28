@@ -173,6 +173,10 @@ class AssetViewSet(viewsets.ModelViewSet):
         }
         Requires DATA_PROVIDER or TENANT_ADMIN role. Views call AssetService only;
         business rules run in service.
+
+        Phase 226 G10b — HTTP ``Idempotency-Key`` is handled at the project
+        level by ``hub.apps.api.middleware.idempotency.IdempotencyMiddleware``
+        for every POST/PUT/PATCH on ``/api/v1/*``; no per-view wiring needed.
         """
         # Enforce role: only DATA_PROVIDER or TENANT_ADMIN can create assets
         user = request.user

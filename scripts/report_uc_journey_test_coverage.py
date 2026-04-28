@@ -40,6 +40,42 @@ def repo_root() -> Path:
     return script_dir.parent
 
 
+# Phase 226 E4 — restore the traceability gate after the docs reorg moved
+# USE_CASES.md / USER_JOURNEYS.md / TEST_TRACEABILITY.md under
+# `docs/deprecated-doc/`. Probe a tiered list of candidate locations so
+# the script is robust to a future restoration of the canonical
+# `docs/<file>.md` paths (or another move) without code change.
+USE_CASES_CANDIDATES = (
+    "docs/USE_CASES.md",
+    "docs/deprecated-doc/product-originals/USE_CASES.md",
+    "docs/deprecated-doc/feature-docs/USE_CASES.md",
+)
+USER_JOURNEYS_CANDIDATES = (
+    "docs/USER_JOURNEYS.md",
+    "docs/deprecated-doc/product-originals/USER_JOURNEYS.md",
+    "docs/deprecated-doc/feature-docs/USER_JOURNEYS.md",
+)
+TRACEABILITY_CANDIDATES = (
+    "docs/TEST_TRACEABILITY.md",
+    "docs/deprecated-doc/test-reports/TEST_TRACEABILITY.md",
+)
+
+
+def resolve_doc(root: Path, candidates: tuple[str, ...]) -> Path | None:
+    """Return the first existing path among `candidates`, or None.
+
+    Tiered probe: prefers the canonical `docs/<file>.md` path (returned
+    first if present) and falls back to the post-reorg
+    `docs/deprecated-doc/...` location automatically. None means the
+    caller should treat the doc as missing.
+    """
+    for rel in candidates:
+        p = root / rel
+        if p.is_file():
+            return p
+    return None
+
+
 def extract_uc_ids(use_cases_path: Path) -> list[str]:
     """Extract UC-* IDs from USE_CASES.md (lines like **ID**: UC-XXX)."""
     ids: list[str] = []
@@ -528,15 +564,28 @@ def main() -> int:
 
     root = repo_root()
     docs = root / "docs"
-    use_cases_path = docs / "USE_CASES.md"
-    user_journeys_path = docs / "USER_JOURNEYS.md"
-    traceability_path = docs / "TEST_TRACEABILITY.md"
+    # Phase 226 E4 — tiered path resolver. Probes the canonical
+    # `docs/<file>.md` location first, then falls back to
+    # `docs/deprecated-doc/...` so the script stays runnable after the
+    # docs reorg moved the source files. CLI override (--use-cases-path
+    # / --user-journeys-path) wins over the probe when present.
+    use_cases_path = resolve_doc(root, USE_CASES_CANDIDATES)
+    user_journeys_path = resolve_doc(root, USER_JOURNEYS_CANDIDATES)
+    traceability_path = resolve_doc(root, TRACEABILITY_CANDIDATES)
 
-    if not use_cases_path.is_file():
-        print("USE_CASES.md not found", file=sys.stderr)
+    if use_cases_path is None:
+        print(
+            "USE_CASES.md not found in any candidate location: "
+            + ", ".join(USE_CASES_CANDIDATES),
+            file=sys.stderr,
+        )
         return 1
-    if not user_journeys_path.is_file():
-        print("USER_JOURNEYS.md not found", file=sys.stderr)
+    if user_journeys_path is None:
+        print(
+            "USER_JOURNEYS.md not found in any candidate location: "
+            + ", ".join(USER_JOURNEYS_CANDIDATES),
+            file=sys.stderr,
+        )
         return 1
 
     uc_ids = extract_uc_ids(use_cases_path)
@@ -551,7 +600,13 @@ def main() -> int:
 
     broken_links: list[str] = []
     if args.audit_traceability or args.ci_mode:
-        if traceability_path.is_file():
+        # Phase 226 E4 — `traceability_path` is `Path | None` after the
+        # tiered resolver: None means TEST_TRACEABILITY.md was not found
+        # in any candidate location (canonical or deprecated-doc). The
+        # broken-links check is auxiliary, so silently skip the check
+        # when the doc is missing — do not fail the gate over an
+        # optional auxiliary input.
+        if traceability_path is not None and traceability_path.is_file():
             broken_links = audit_traceability(root, traceability_path)
 
     if args.ci_mode:

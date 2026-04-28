@@ -54,7 +54,12 @@
 .error-message {
   padding: var(--spacing-sm) var(--spacing-md);
   background-color: var(--color-error-50);
-  color: var(--color-error-700);
+  /* Phase 226.F5 a11y fix — color-error-700 (#D32F2F) on color-error-50
+   * (#FFEBEE) computes to ~4.38:1 contrast which fails WCAG 2 AA's
+   * 4.5:1 minimum for small text. Bumped to color-error-900 (#B71C1C →
+   * ~5.7:1) so the inline error toast stays visible to users with mild
+   * colour-vision impairment without losing its red "danger" tone. */
+  color: var(--color-error-900);
   border-radius: var(--border-radius-md);
   font-size: var(--font-size-sm);
 }
@@ -62,7 +67,9 @@
 .success-message {
   padding: var(--spacing-sm) var(--spacing-md);
   background-color: var(--color-success-50);
-  color: var(--color-success-700);
+  /* Phase 226.F5 — same a11y rationale as .error-message above; success-700
+   * + success-50 sits very close to the AA threshold on light themes. */
+  color: var(--color-success-900, var(--color-success-700));
   border-radius: var(--border-radius-md);
   font-size: var(--font-size-sm);
 }

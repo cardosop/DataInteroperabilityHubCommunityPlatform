@@ -47,10 +47,13 @@ export function ErrorDisplay({ error, title = 'An error occurred', onRetry }: Er
   );
 
   return (
-    <div className="error-display" role="alert">
+    // Phase 226.F1.b — data-testid added so e2e specs can use
+    // `getByTestId('error-display')` instead of the fragile
+    // `.locator('.error-display')` selector. Class kept for CSS.
+    <div className="error-display" role="alert" data-testid="error-display">
       <div className="error-display-icon">⚠️</div>
-      <h3 className="error-display-title">{title}</h3>
-      <p className="error-display-message">{errorMessage}</p>
+      <h3 className="error-display-title" data-testid="error-display-title">{title}</h3>
+      <p className="error-display-message" data-testid="error-display-message">{errorMessage}</p>
       {errorCode && (
         <p className="error-display-code">
           Error Code: <code>{errorCode}</code>
@@ -62,7 +65,12 @@ export function ErrorDisplay({ error, title = 'An error occurred', onRetry }: Er
         </p>
       )}
       {onRetry && (
-        <button className="error-display-retry" onClick={onRetry} type="button">
+        <button
+          className="error-display-retry"
+          onClick={onRetry}
+          type="button"
+          data-testid="error-display-retry"
+        >
           Retry
         </button>
       )}

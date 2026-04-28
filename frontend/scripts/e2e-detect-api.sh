@@ -190,13 +190,19 @@ elif curl -s --connect-timeout 5 http://localhost:8001/health/ > /dev/null 2>&1;
     sleep 30
   fi
   # Reset auth rate limits so setup and tests can log in (avoids 429 after many runs)
-  docker exec hub-test-api python hub/manage.py reset_e2e_auth_rate_limits 2>/dev/null || true
+  # Try both legacy `hub-test-api` and current `hub-test-api-mvp` container names
+  # (test stack was renamed when the MVP-mode build replaced the dual container layout).
+  docker exec hub-test-api python hub/manage.py reset_e2e_auth_rate_limits 2>/dev/null || \
+    docker exec hub-test-api-mvp python hub/manage.py reset_e2e_auth_rate_limits 2>/dev/null || true
   # Seed default plans so tenants can have subscriptions (required before ensure_e2e_user_roles assigns plans)
-  docker exec hub-test-api python hub/manage.py seed_default_plans 2>/dev/null || true
+  docker exec hub-test-api python hub/manage.py seed_default_plans 2>/dev/null || \
+    docker exec hub-test-api-mvp python hub/manage.py seed_default_plans 2>/dev/null || true
   # Ensure E2E persona users exist with roles (DPO, DC, TA, PA, AUD, CPO)
-  docker exec hub-test-api python hub/manage.py ensure_e2e_user_roles 2>/dev/null || true
+  docker exec hub-test-api python hub/manage.py ensure_e2e_user_roles 2>/dev/null || \
+    docker exec hub-test-api-mvp python hub/manage.py ensure_e2e_user_roles 2>/dev/null || true
   # Ensure E2E test tenants have active subscription (idempotent; no-op if user doesn't exist yet)
-  docker exec hub-test-api python hub/manage.py ensure_e2e_subscription 2>/dev/null || true
+  docker exec hub-test-api python hub/manage.py ensure_e2e_subscription 2>/dev/null || \
+    docker exec hub-test-api-mvp python hub/manage.py ensure_e2e_subscription 2>/dev/null || true
 
   # Start frontend dev server explicitly so Playwright has a reliable target.
   # Playwright's webServer with reuseExistingServer will reuse this if HTTP still answers.

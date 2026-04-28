@@ -16,4 +16,12 @@ interface ImportMetaEnv {
   readonly VITE_MVP_MODE?: string;
   /** Stripe.js publishable key (optional; billing UI) */
   readonly VITE_STRIPE_PUBLISHABLE_KEY?: string;
+  /**
+   * Phase 226.F2 — when "true" or "1", pre-seed the apiClient's
+   * `_cookieAuthMode` flag at construction so the cookie-auth
+   * Playwright project can force the cookie path before the first
+   * login response arrives. Hint only; the runtime detector still
+   * overrides this flag based on what login actually returns.
+   */
+  readonly VITE_COOKIE_AUTH?: string;
 }

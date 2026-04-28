@@ -64,7 +64,6 @@ const mvpTestMatch: string[] = [
   'features/datasets.spec.ts',
   'features/webhooks.spec.ts',
   'features/jobs.spec.ts',
-  'features/search.spec.ts',
   'features/semantic.spec.ts',
   'features/lineage.spec.ts',
   // Phase 226 — MVP feature gap closure: features available in staging but previously untested.
@@ -72,11 +71,24 @@ const mvpTestMatch: string[] = [
   'features/notifications.spec.ts',
   'features/home.spec.ts',
   'features/observability.spec.ts',
-  'features/data-mesh.spec.ts',
-  'features/virtualization.spec.ts',
-  'features/integrations.spec.ts',
   'features/versioning.spec.ts',
   'features/health.spec.ts',
+  // INTENTIONALLY OMITTED — features explicitly MVP-gated at:
+  //   * frontend/src/features/shell/utils/mvpNav.ts → NON_MVP_PATHS
+  //     (`/mesh`, `/virtualization`, `/integrations/connections`, `/search`)
+  //   * hub/apps/api/mvp_mode.py → MVP_GATED_RELATIVE_PREFIXES
+  //     (`mesh/`, `virtualization/`, `integrations/`, `search/`)
+  // Their *happy path* specs assert "feature works" which is false-by-design
+  // when MVP_MODE=true (route guard redirects to /coming-soon, backend returns
+  // 404). Including them in the MVP suite would produce 100% deterministic
+  // failures masquerading as flake. The full E2E suite (playwright.config.ts)
+  // still picks them up under non-MVP builds. To re-include here, first remove
+  // from the gate lists above and confirm the staging build deploys with
+  // MVP_MODE=false for the affected paths.
+  // 'features/data-mesh.spec.ts',
+  // 'features/virtualization.spec.ts',
+  // 'features/integrations.spec.ts',
+  // 'features/search.spec.ts',
   // Phase 226 — use-case tests promoted to MVP CI. Only tests verified passing on staging.
   // UC-AM-001, UC-CM-001, UC-DQ-001 removed: form selectors (#key, modal interactions)
   // don't match staging UI — need individual audit before re-promotion.
@@ -94,6 +106,11 @@ const mvpTestMatch: string[] = [
   'dimensions/rate-limit.spec.ts',
   'dimensions/timeout-handling.spec.ts',
   'dimensions/concurrent-operations.spec.ts',
+  // Phase 226.F4 — OpenAPI drift gate. Pure-logic helpers covered in
+  // _guards.spec.ts (canonicalize/hash/extractSchemaShape/diffShapes);
+  // this spec does the live-fetch + snapshot compare against the
+  // resolved API base.
+  'dimensions/openapi-drift.spec.ts',
   'cross-cutting/404-403-session.spec.ts',
   'cross-cutting/edge-cases-tests.spec.ts',
   'cross-cutting/failure-scenarios-tests.spec.ts',

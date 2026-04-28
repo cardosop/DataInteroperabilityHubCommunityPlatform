@@ -9,6 +9,8 @@ from drf_spectacular.utils import extend_schema_serializer, extend_schema_field,
 from drf_spectacular.types import OpenApiTypes
 from .models import Contract, ContractStatus, OriginalSpecType, OriginalFormat, SecurityAuditLog
 from .ref_resolver import ExternalRefHandling
+# Phase 226 G7a — canonical IRI exposure for SDK + dereferenceability proofs.
+from hub.apps.semantic.iri import canonical_iri_for
 
 
 class OwnerSerializer(serializers.Serializer):
@@ -452,6 +454,16 @@ class ContractSerializer(serializers.ModelSerializer):
             return None
         return str(obj.asset_id)
 
+    canonical_iri = serializers.SerializerMethodField(
+        help_text=(
+            "Canonical Linked Data IRI: {SEMANTIC_BASE_IRI}/id/contract/{id}. "
+            "Stable identifier for JSON-LD dereference. See Phase 226 G7a."
+        )
+    )
+
+    def get_canonical_iri(self, obj) -> str:
+        return canonical_iri_for("contract", obj.id)
+
     class Meta:
         model = Contract
         fields = [
@@ -500,7 +512,9 @@ class ContractSerializer(serializers.ModelSerializer):
             'pricing',
             'lineage',
             'quality_type',
-            'quality_specification'
+            'quality_specification',
+            # Phase 226 G7a — canonical Linked Data IRI
+            'canonical_iri',
         ]
         read_only_fields = [
             'id',
@@ -542,7 +556,9 @@ class ContractSerializer(serializers.ModelSerializer):
             'pricing',
             'lineage',
             'quality_type',
-            'quality_specification'
+            'quality_specification',
+            # Phase 226 G7a — canonical Linked Data IRI is computed, not writable
+            'canonical_iri',
         ]
 
     @staticmethod

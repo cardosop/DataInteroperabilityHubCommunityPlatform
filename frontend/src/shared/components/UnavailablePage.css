@@ -12,7 +12,13 @@
 }
 
 .unavailable-container h1 {
-  color: var(--color-warning-700);
+  /* Phase 226.F5 a11y fix — color-warning-700 (#F57C00) had ~3:1
+   * contrast against the page background (white), failing WCAG 2 AA's
+   * 4.5:1 threshold for normal text. Stepping to color-warning-800
+   * (#7D4200) brings the contrast to ~8.4:1, well above AA, while
+   * staying on-brand for the "warning" tone of the unavailable/
+   * coming-soon state. */
+  color: var(--color-warning-800);
   margin-bottom: var(--spacing-md);
 }
 

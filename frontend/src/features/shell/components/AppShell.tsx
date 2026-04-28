@@ -99,9 +99,16 @@ function ShellBody() {
     >
       <SkipLink />
       <Header />
-      <div className="app-body">
+      {/* Phase 226.F1.b — testid for stable e2e selector. */}
+      <div className="app-body" data-testid="app-body">
         <Sidebar />
-        <main className="app-main" role="main" id="main-content" tabIndex={-1}>
+        <main
+          className="app-main"
+          role="main"
+          id="main-content"
+          tabIndex={-1}
+          data-testid="app-main"
+        >
           <Outlet />
         </main>
       </div>

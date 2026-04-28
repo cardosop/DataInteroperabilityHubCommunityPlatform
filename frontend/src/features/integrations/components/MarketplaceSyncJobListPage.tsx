@@ -140,7 +140,7 @@ export function MarketplaceSyncJobListPage() {
   }
 
   return (
-    <div className="sync-job-list-page">
+    <div className="sync-job-list-page" data-testid="sync-job-list-page">
       <div className="sync-job-list-header">
         <h1>Marketplace Sync Jobs</h1>
         <Button variant="primary" onClick={handleCreateSyncJob}>

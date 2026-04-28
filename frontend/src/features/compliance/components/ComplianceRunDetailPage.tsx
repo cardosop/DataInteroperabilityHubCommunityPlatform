@@ -94,7 +94,7 @@ export function ComplianceRunDetailPage() {
   };
 
   return (
-    <div className="compliance-run-detail-page">
+    <div className="compliance-run-detail-page" data-testid="compliance-run-detail-page">
       <div className="compliance-run-detail-header">
         <Button onClick={() => navigate('/compliance')} variant="ghost">
           ← Back to Compliance Runs

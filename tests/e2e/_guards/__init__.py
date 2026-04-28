@@ -27,14 +27,18 @@ from ._captured_server_errors import (
     is_strict_mode,
 )
 from ._skip_counter import (
+    AUDIT_BUG_SKIP_REASON_PREFIX,
+    audit_bug_skip_reason,
     pytest_runtest_logreport,
     record_skip,
 )
 from ._two_tenants import two_tenants
 
 __all__ = [
+    "AUDIT_BUG_SKIP_REASON_PREFIX",
     "assert_audit_event",
     "assert_audit_event_eventually",
+    "audit_bug_skip_reason",
     "captured_server_errors",
     "detect_offending_records",
     "format_diagnostic",

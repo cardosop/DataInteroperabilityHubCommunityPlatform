@@ -308,3 +308,51 @@ class AssetSerializerTest(TestCase):
         if serializer.is_valid():
             with self.assertRaises(Exception):
                 serializer.save()
+
+    # ----- Phase 226 G7a — canonical_iri SerializerMethodField -----------
+
+    def test_asset_serializer_emits_canonical_iri_field(self):
+        """canonical_iri must be present on every serialized asset."""
+        from django.test import override_settings
+
+        with override_settings(SEMANTIC_BASE_IRI="https://meshant.io"):
+            serializer = AssetSerializer(self.asset)
+            data = dict(serializer.data)
+
+            self.assertIn("canonical_iri", data)
+            self.assertEqual(
+                data.get("canonical_iri"),
+                f"https://meshant.io/id/asset/{self.asset.id}",
+            )
+
+    def test_asset_canonical_iri_strips_base_trailing_slash(self):
+        """Trailing slash on SEMANTIC_BASE_IRI must not double up the IRI."""
+        from django.test import override_settings
+
+        with override_settings(SEMANTIC_BASE_IRI="https://meshant.io/"):
+            serializer = AssetSerializer(self.asset)
+            iri = dict(serializer.data).get("canonical_iri")
+            assert isinstance(iri, str)
+            self.assertNotIn("//id/", iri)
+            self.assertEqual(iri, f"https://meshant.io/id/asset/{self.asset.id}")
+
+    def test_asset_canonical_iri_is_read_only(self):
+        """Clients cannot write canonical_iri on update."""
+        # canonical_iri is in read_only_fields; passing it on input is silently
+        # ignored, not stored. AssetUpdateSerializer does not list it at all
+        # but the AssetSerializer itself must reject it as a writable field.
+        serializer = AssetSerializer(
+            self.asset,
+            data={"canonical_iri": "https://attacker.example/id/asset/00000000"},
+            partial=True,
+        )
+        # Validation passes (read-only fields are silently dropped, not errored)
+        # and the original value remains unchanged on the instance.
+        if serializer.is_valid():
+            instance = serializer.save() if serializer.instance is not None else None
+            if instance is not None:
+                # The persisted IRI is computed from the instance's id,
+                # not the inbound payload — attacker-controlled IRIs cannot
+                # land in the database.
+                refreshed = dict(AssetSerializer(instance).data)
+                self.assertNotIn("attacker.example", str(refreshed.get("canonical_iri", "")))

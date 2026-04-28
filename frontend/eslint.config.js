@@ -66,6 +66,26 @@ export default defineConfig([
       'no-restricted-syntax': 'off',
     },
   },
+  // Phase 226 E2/E6 — Two ESLint false-positives that fire on canonical
+  // Playwright fixture syntax:
+  //
+  //   * `react-hooks/rules-of-hooks`: the React-19-aware parser sees the
+  //     `use(value)` callback inside every `test.extend({ name: async
+  //     ({}, use) => { … await use(value) } })` and mistakes it for a
+  //     misused React `use()` hook.
+  //
+  //   * `no-empty-pattern`: the `({}, use, testInfo)` first argument is
+  //     the documented Playwright shape for "this fixture depends on no
+  //     parent fixtures". The destructured object is intentionally empty.
+  //
+  // Both are valid Playwright; disable across the e2e tree.
+  {
+    files: ['e2e/**/*.ts', 'e2e/**/*.tsx'],
+    rules: {
+      'react-hooks/rules-of-hooks': 'off',
+      'no-empty-pattern': 'off',
+    },
+  },
   // Custom E2E-spec guard rules. Plugin-style so every rule lives under
   // the `e2e-guards/` prefix and can be disabled per-site with a standard
   // `// eslint-disable-next-line e2e-guards/<rule-name>` comment.

@@ -3,6 +3,8 @@ Dataset Serializers
 """
 from rest_framework import serializers
 from .models import Dataset, SchemaVersion
+# Phase 226 G7a — canonical IRI exposure for SDK + dereferenceability proofs.
+from hub.apps.semantic.iri import canonical_iri_for
 
 
 class DatasetSerializer(serializers.ModelSerializer):
@@ -13,6 +15,16 @@ class DatasetSerializer(serializers.ModelSerializer):
     name: Read-only, computed from instance.file.name (not persisted).
     description: Not supported; Dataset model has no description field (not persisted).
     """
+
+    canonical_iri = serializers.SerializerMethodField(
+        help_text=(
+            "Canonical Linked Data IRI: {SEMANTIC_BASE_IRI}/id/dataset/{id}. "
+            "Stable identifier for JSON-LD dereference. See Phase 226 G7a."
+        )
+    )
+
+    def get_canonical_iri(self, obj) -> str:
+        return canonical_iri_for("dataset", obj.id)
 
     def to_representation(self, instance):
         data = super().to_representation(instance)
@@ -50,7 +62,8 @@ class DatasetSerializer(serializers.ModelSerializer):
             'is_current',
             'created_by',
             'created_at',
-            'updated_at'
+            'updated_at',
+            'canonical_iri',
         ]
         read_only_fields = [
             'id',
@@ -65,7 +78,8 @@ class DatasetSerializer(serializers.ModelSerializer):
             'is_current',
             'created_by',
             'created_at',
-            'updated_at'
+            'updated_at',
+            'canonical_iri',
         ]
 
 
