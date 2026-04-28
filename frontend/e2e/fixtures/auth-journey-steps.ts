@@ -123,9 +123,20 @@ interface MailHogMessage {
   MIME?: { Parts?: Array<{ Body?: string }> };
 }
 
-/** URL may be line-wrapped in email body (e.g. password-\\nreset). */
+/** URL may be line-wrapped in email body (e.g. password-\\nreset).
+ *
+ * The token separator is intentionally `[?#]`: the production email
+ * template at hub/apps/notifications/templates.py:129 uses `#token=`
+ * (fragment) so the token never travels to backend access logs or
+ * Referer headers — that's a deliberate security choice. The frontend
+ * page at PasswordResetConfirmPage.tsx accepts the token from EITHER
+ * `location.search` (`?token=`) OR `location.hash` (`#token=`), so a
+ * future template change to `?token=` would still work end-to-end.
+ * Matching both keeps the spec a faithful catch for whichever shape
+ * the email currently uses.
+ */
 const RESET_LINK_REGEX =
-  /https?:\/\/[^\s"']*auth\/password[\s\r\n-]*reset\/confirm\?token=[0-9a-fA-F-]{36}/;
+  /https?:\/\/[^\s"']*auth\/password[\s\r\n-]*reset\/confirm[?#]token=[0-9a-fA-F-]{36}/;
 
 function extractResetLinkFromMessage(item: MailHogMessage): string | null {
   const body =
@@ -137,7 +148,13 @@ function extractResetLinkFromMessage(item: MailHogMessage): string | null {
   const candidate = `${JSON.stringify(item?.Content ?? item?.MIME ?? {})}\n${body}`;
   const match = candidate.match(RESET_LINK_REGEX);
   if (!match?.[0]) return null;
-  return match[0].replace(/[\s\r\n-]*(?=reset\/confirm)/g, '-');
+  // Use `+` (not `*`): with the `g` flag, a zero-width match fires at every
+  // position where the lookahead succeeds, and substituting `-` for an
+  // empty match inserts a STRAY hyphen — turning the production URL
+  // `password-\r\nreset/confirm` into `password--reset/confirm` which 404s.
+  // `+` requires at least one wrapping char to consume, so the substitution
+  // only fires on the actual line-wrap and never on the join-point itself.
+  return match[0].replace(/[\s\r\n-]+(?=reset\/confirm)/g, '-');
 }
 
 function getToEmailFromMessage(item: MailHogMessage): string {
@@ -421,8 +438,24 @@ export async function runJOURNEY_AUTH_003_Success(page: Page): Promise<void> {
   // UI submit already triggered password reset and enqueued send_password_reset_email (job_low)
   const resetLink = await waitForPasswordResetEmail(email, 120_000);
   const url = new URL(resetLink);
-  const token = url.searchParams.get('token') ?? '';
-  const pathAndSearch = `/password-reset/confirm?token=${encodeURIComponent(token)}`;
+  // Token can live in either the query (`?token=`) or the fragment
+  // (`#token=`). Production currently uses fragment for security
+  // (fragments never reach the server / access logs / Referer headers);
+  // both forms are accepted by `PasswordResetConfirmPage.tsx`.
+  const fragmentParams = new URLSearchParams(url.hash.replace(/^#/, ''));
+  const token = url.searchParams.get('token') ?? fragmentParams.get('token') ?? '';
+  if (!token) {
+    throw new Error(
+      `JOURNEY-AUTH-003: could not extract token from reset link "${resetLink}". ` +
+        `Expected the token to live in either the URL query or fragment. ` +
+        `Verify hub/apps/notifications/templates.py emits one of those forms.`,
+    );
+  }
+  // Preserve the same separator the email used so we exercise the
+  // same client-side code path a real user would. The frontend reads
+  // both forms, but mirroring the email keeps coverage honest.
+  const separator = url.hash ? '#' : '?';
+  const pathAndSearch = `/password-reset/confirm${separator}token=${encodeURIComponent(token)}`;
   await page.goto(pathAndSearch, { waitUntil: 'domcontentloaded' });
   await page.waitForLoadState('domcontentloaded');
   const setPwHeading = page.getByRole('heading', { name: /Set a new password/i });
