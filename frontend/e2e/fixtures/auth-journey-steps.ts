@@ -386,9 +386,19 @@ export async function runJOURNEY_AUTH_001_Success(page: Page): Promise<void> {
 
 /** Run JOURNEY-AUTH-003 success: password reset request + confirm via email (requires MailHog) */
 export async function runJOURNEY_AUTH_003_Success(page: Page): Promise<void> {
+  // Reachability probe must mirror the spec-file probe at JOURNEY-AUTH-003.spec.ts:
+  // v1 (NOT v2) so the staging proxy at /api/v1/test/mailhog (which only exposes
+  // v1) succeeds; v2 list responses also omit Content.Body which would silently
+  // break the actual flow downstream. Auth header is sent only when targeting
+  // the staging proxy — local-dev MailHog has no auth.
+  const probeHeaders = isMailhogProxyUrl(MAILHOG_BASE_URL)
+    ? buildMailhogRequestHeaders(MAILHOG_BASE_URL, process.env.E2E_TEST_SECRET)
+    : {};
   let mailhogReachable = false;
   try {
-    const probe = await fetch(`${MAILHOG_BASE_URL}/api/v2/messages?limit=1`);
+    const probe = await fetch(`${MAILHOG_BASE_URL}/api/v1/messages`, {
+      headers: probeHeaders,
+    });
     if (probe.ok) mailhogReachable = true;
   } catch {
     // intentional: auth-journey shared step uses best-effort waits on optional UI elements; primary auth-success assertion is in the calling spec.
@@ -396,7 +406,9 @@ export async function runJOURNEY_AUTH_003_Success(page: Page): Promise<void> {
   }
   if (!mailhogReachable) {
     throw new Error(
-      `MailHog not reachable at ${MAILHOG_BASE_URL}. For full E2E: docker compose up -d mailhog, SMTP_HOST=mailhog SMTP_PORT=1025`
+      `MailHog not reachable at ${MAILHOG_BASE_URL}. ` +
+        `For local: docker compose up -d mailhog (then SMTP_HOST=mailhog SMTP_PORT=1025). ` +
+        `For staging: confirm MAILHOG_URL points at the proxy and X-E2E-Token is correct.`
     );
   }
   const email = uniqueEmail('e2e_pwreset');
