@@ -27,6 +27,18 @@ from hub.apps.gdpr.models import (
 logger = structlog.get_logger(__name__)
 
 
+# Version of the `user_data.json` envelope shape produced by
+# `_collect_user_data`. Bump on every breaking change to that envelope
+# (renamed key, removed key, changed semantics). Additive changes
+# (new keys, new resource types) do NOT need a bump — readers should
+# tolerate unknown keys.
+#
+# Format: semver. Consumers parsing the export should branch on the
+# major version. Documented as part of the GDPR Article 20 contract
+# (see OpenAPI schema for the export-data endpoint).
+GDPR_EXPORT_FORMAT_VERSION = "1.0.0"
+
+
 class DataPortabilityService(BaseService):
     """
     Service for data portability (GDPR Article 20).
@@ -170,6 +182,8 @@ class DataPortabilityService(BaseService):
             Dictionary containing all user data
         """
         data = {
+            "format_version": GDPR_EXPORT_FORMAT_VERSION,
+            "exported_at": timezone.now().isoformat(),
             "user_profile": {
                 "id": str(user.id),
                 "email": user.email,

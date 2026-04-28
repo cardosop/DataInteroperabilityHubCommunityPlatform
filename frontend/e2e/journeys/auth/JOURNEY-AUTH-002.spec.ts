@@ -12,7 +12,7 @@ import { expect, test } from '@playwright/test';
 import { clearAuthStorage, getTestUser, loginUser } from '../../fixtures/auth';
 import { assertVisible, waitForLoadingComplete } from '../../fixtures/helpers';
 
-test.describe('JOURNEY-AUTH-002: User Logs In', () => {
+test.describe('JOURNEY-AUTH-002: User Logs In @critical', () => {
   test.setTimeout(90000);
 
   /**
@@ -30,13 +30,39 @@ test.describe('JOURNEY-AUTH-002: User Logs In', () => {
     try {
       await loginUser(page, testUser, { useUiLogin: true });
     } catch (err) {
-      // When the API is completely down (ECONNREFUSED) the connection-retry logic in
-      // loginUser exhausts its 8 attempts × delay budget and can exceed the 180s test
-      // timeout. Skip the performance measurement in this case rather than reporting a
-      // misleading timeout failure.
+      // The performance assertion measures successful-login wall-clock. It is
+      // NOT a stability test for the network path. Three failure modes have
+      // appeared in practice that must be skipped (with diagnostic) rather
+      // than reported as "slow login":
+      //
+      //   1. API completely down (ECONNREFUSED): the per-attempt retry budget
+      //      in loginUser exhausts and we surface that as the loginUser error.
+      //   2. DNS / network flap mid-login (ERR_NAME_NOT_RESOLVED,
+      //      ERR_NETWORK_CHANGED, ERR_INTERNET_DISCONNECTED): Chromium lands
+      //      on chrome-error://… and the page.goto inside loginUser bails
+      //      with that net-error code — typically in a sub-1s window which
+      //      makes the failure look like an instant "login took 700ms" miss
+      //      rather than the infrastructure issue it actually is.
+      //   3. Page/context closure mid-login (e.g. previous test's parallel
+      //      worker stole the browser): same shape as (2) — fast failure,
+      //      not a true latency miss.
+      //
+      // Skip with the full diagnostic for any of these so on-call doesn't
+      // chase a phantom regression in login latency.
       const msg = String(err);
-      if (/ECONNREFUSED|connection refused|connection error/i.test(msg)) {
-        test.skip(true, `API connection refused during performance test — cannot measure login time. Error: ${msg.slice(0, 120)}`);
+      const transientNetwork = /ECONNREFUSED|ECONNRESET|connection refused|connection error|fetch failed|ERR_NAME_NOT_RESOLVED|ERR_NETWORK_CHANGED|ERR_INTERNET_DISCONNECTED|ERR_TIMED_OUT|ERR_CONNECTION_RESET|ERR_CONNECTION_CLOSED|ERR_CONNECTION_ABORTED/i.test(
+        msg,
+      );
+      const pageClosed = /Target.*closed|page has been closed|context.*closed|Execution context was destroyed|Not attached to an active page/i.test(
+        msg,
+      );
+      if (transientNetwork || pageClosed) {
+        test.skip(
+          true,
+          `Cannot measure login latency: transient infrastructure failure during the timed window. ` +
+            `Symptom: ${msg.slice(0, 200)}. ` +
+            `This skip is NOT a regression — the perf budget only applies to successful logins.`,
+        );
         return;
       }
       throw err;
@@ -72,7 +98,7 @@ test.describe('JOURNEY-AUTH-002: User Logs In', () => {
     }
 
     await expect(page).not.toHaveURL(/\/login/);
-    await assertVisible(page, '.app-header');
+    await assertVisible(page, '.app-header, [data-testid="app-header"]');
     await assertVisible(page, '.app-sidebar');
   });
 
@@ -170,7 +196,7 @@ test.describe('JOURNEY-AUTH-002: User Logs In', () => {
         }
         throw err;
       }
-      await expect(page.locator('.app-header')).toBeVisible({ timeout: 15000 });
+      await expect(page.locator('.app-header, [data-testid="app-header"]').first()).toBeVisible({ timeout: 15000 });
 
       // Open user menu — wait for .user-menu-trigger to be visible.
       // The trigger is inside {user && (...)} in Header.tsx, so it only renders once

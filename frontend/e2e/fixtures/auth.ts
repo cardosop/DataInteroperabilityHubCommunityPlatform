@@ -42,11 +42,27 @@ function isConnectionRefused(err: unknown): boolean {
   return code === 'ECONNREFUSED' || /ECONNREFUSED/i.test(msg) || /ECONNREFUSED/i.test(causeMsg);
 }
 
-/** True when error is a transient connection/network failure (try alternate port). */
+/** True when error is a transient connection/network failure (try alternate port).
+ *
+ * Covers two error families:
+ *   1. Node fetch errors: ECONNREFUSED / ECONNRESET / UND_ERR_SOCKET / "fetch failed"
+ *      — emitted by the API helper's fetch() calls (loginViaApi, etc.).
+ *   2. Chromium net errors from page.goto: ERR_NETWORK_CHANGED /
+ *      ERR_NETWORK_IO_SUSPENDED / ERR_INTERNET_DISCONNECTED / ERR_NAME_NOT_RESOLVED /
+ *      ERR_TIMED_OUT — emitted when the OS network state changes mid-navigation
+ *      (Wi-Fi reconnect, VPN flap, DHCP renewal, captive-portal interception, suspend/resume).
+ *
+ * Both families are SEMANTICALLY transient: the next attempt usually succeeds.
+ * The previous regex only covered family (1), so a Wi-Fi blip during a
+ * page.goto would surface as a hard test failure (family 2 errors don't match
+ * `ECONNRESET` etc. in the Playwright message). Adding the Chromium codes
+ * here makes gotoWithRetry's retry loop fire on them too, eliminating the
+ * test-flake bucket "ran during a network blip".
+ */
 function isConnectionError(err: unknown): boolean {
   const msg = String((err as Error)?.message ?? '');
   if (
-    /ECONNREFUSED|ERR_CONNECTION_REFUSED|CONNECTION_REFUSED|ECONNRESET|socket hang up|other side closed|fetch failed/i.test(
+    /ECONNREFUSED|ERR_CONNECTION_REFUSED|CONNECTION_REFUSED|ECONNRESET|socket hang up|other side closed|fetch failed|ERR_NETWORK_CHANGED|ERR_NETWORK_IO_SUSPENDED|ERR_INTERNET_DISCONNECTED|ERR_NAME_NOT_RESOLVED|ERR_TIMED_OUT|ERR_CONNECTION_RESET|ERR_CONNECTION_CLOSED|ERR_CONNECTION_ABORTED/i.test(
       msg
     )
   )
@@ -79,6 +95,64 @@ function isNavigationTimeout(err: unknown): boolean {
   // Only retry when the error is NOT from the overall test timeout (which includes "Test timeout").
   if (/Test timeout/i.test(msg)) return false;
   return /timeout.*exceeded|Timeout/i.test(msg);
+}
+
+/**
+ * True when `page.evaluate(() => localStorage.…)` throws because the page is
+ * on a Chromium internal error URL (`chrome-error://chromewebdata/`) — those
+ * pages are origin-isolated and Chromium throws
+ * `SecurityError: Failed to read the 'localStorage' property from 'Window':
+ *  Access is denied for this document`.
+ *
+ * Semantically this is a benign condition for `clearAuthStorage`: the chrome-
+ * error origin has its own (empty) storage partition, so from the test's
+ * perspective auth state is already absent. The next `page.goto(...)` will
+ * leave that origin and the real test target's storage will be re-initialized
+ * cleanly by the app.
+ *
+ * Exported so `_guards.spec.ts` can pin every branch with unit tests.
+ */
+export function isChromeErrorPageStorageAccessError(err: unknown): boolean {
+  const msg = String((err as Error)?.message ?? '');
+  return (
+    /SecurityError.*localStorage|Access is denied for this document|chrome-error/i.test(msg)
+  );
+}
+
+/**
+ * Pure helper: classify a `clearAuthStorage` failure into one of four buckets
+ * so the caller can decide whether to swallow, retry, or rethrow.
+ *
+ * Buckets:
+ *   - `transient-network`: ERR_NAME_NOT_RESOLVED / ERR_NETWORK_CHANGED /
+ *      ERR_INTERNET_DISCONNECTED / ECONNREFUSED / fetch failed. Storage is
+ *      effectively cleared (no successful response means no state was loaded);
+ *      next page.goto will re-initialize.
+ *   - `chrome-error-page`: SecurityError on a chrome-error://… page. Storage
+ *      is partition-isolated; from the test's perspective already cleared.
+ *   - `page-closed`: Page/context was closed mid-call (test timed out).
+ *      Cannot continue, but no further work is meaningful — caller returns.
+ *   - `timeout`: Navigation/reload timed out without page-closed. Storage was
+ *      cleared in the prior `page.evaluate()` step; reload was a "best-effort"
+ *      visual reset, not a precondition of cleanliness.
+ *   - `fatal`: anything else — caller must rethrow.
+ *
+ * Exported for unit testing in `_guards.spec.ts`. Pure: takes Error/unknown,
+ * returns string. No side effects, no I/O.
+ */
+export type ClearAuthStorageErrorBucket =
+  | 'transient-network'
+  | 'chrome-error-page'
+  | 'page-closed'
+  | 'timeout'
+  | 'fatal';
+
+export function classifyClearAuthStorageError(err: unknown): ClearAuthStorageErrorBucket {
+  if (isPageClosedError(err)) return 'page-closed';
+  if (isChromeErrorPageStorageAccessError(err)) return 'chrome-error-page';
+  if (isConnectionError(err)) return 'transient-network';
+  if (isNavigationTimeout(err)) return 'timeout';
+  return 'fatal';
 }
 
 /** Navigate with retry on connection errors and navigation timeouts. */
@@ -230,7 +304,7 @@ async function loginViaApiAndInject(page: Page, user: TestUser): Promise<void> {
   // With statement_timeout=120s in test DB, capabilities should load in <15s normally.
   // 45s shell wait allows for slow capabilities + token refresh under parallel load.
   const shellTimeout = 45000;
-  const shellLocator = page.locator('.app-header, .app-sidebar').first();
+  const shellLocator = page.locator('.app-sidebar, .app-header, [data-testid="app-header"]').first();
   // 2 attempts: worst case 45s + reload + 45s = ~95s (fits within 120s test timeout).
   for (let attempt = 0; attempt <= 1; attempt++) {
     try {
@@ -256,7 +330,7 @@ async function loginViaApiAndInject(page: Page, user: TestUser): Promise<void> {
         await new Promise((r) => setTimeout(r, 2000 * (attempt + 1)));
       } else {
         throw new Error(
-          `loginViaApiAndInject: App shell (.app-header, .app-sidebar) not visible within ${shellTimeout}ms after ${attempt + 1} attempts. ` +
+          `loginViaApiAndInject: App shell (.app-header, [data-testid="app-header"], .app-sidebar) not visible within ${shellTimeout}ms after ${attempt + 1} attempts. ` +
             `Capabilities API may be failing (500). URL: ${page.url()}. Original: ${(err as Error).message}`
         );
       }
@@ -455,13 +529,22 @@ export async function clearAuthStorage(page: Page): Promise<void> {
       localStorage.removeItem('active_tenant_id');
       sessionStorage.clear();
     }).catch((e) => {
-      const msg = String(e);
-      const pageClosed =
-        /Execution context was destroyed|Target closed|page has been closed|context or browser has been closed|Protocol error.*closed|Not attached to an active page/i.test(
-          msg
-        );
-      if (!pageClosed) throw e;
-      // Page/context closed during clear (e.g. test timeout); absorb - avoid cascading error
+      const bucket = classifyClearAuthStorageError(e);
+      // `page-closed`        → test already timed out; nothing useful left to do.
+      // `chrome-error-page`  → page landed on chrome-error://… after a network blip;
+      //                         that origin is partition-isolated, so localStorage on
+      //                         the real target is unreachable here AND already
+      //                         absent from the test's perspective. The next
+      //                         page.goto in the test body will leave the chrome-
+      //                         error origin and the app will re-initialize cleanly.
+      // `transient-network`  → the prior page.goto('/login') landed on chrome-error,
+      //                         which yields the same SecurityError shape on
+      //                         localStorage access. Same disposition as above.
+      // Anything else (`timeout` / `fatal`) is a real failure — rethrow.
+      if (bucket === 'page-closed' || bucket === 'chrome-error-page' || bucket === 'transient-network') {
+        return;
+      }
+      throw e;
     });
     // Intentional: clearCookies is best-effort; may fail if context closed during teardown
     await page.context().clearCookies().catch(() => {});
@@ -471,23 +554,58 @@ export async function clearAuthStorage(page: Page): Promise<void> {
     // (API calls, fonts, images). When auth init fires long-running /capabilities/ or
     // /auth/me/ requests on reload, 'load' never fires and the test timeout is consumed.
     // 'domcontentloaded' is sufficient: the DOM is ready and localStorage is cleared.
-    // Best-effort: if reload times out (Vite dev server overloaded under parallel E2E load),
-    // localStorage is already cleared — the next page.goto will re-initialize cleanly.
-    await page.reload({ waitUntil: 'domcontentloaded', timeout: 30000 }).catch((reloadErr) => {
-      const reloadMsg = String(reloadErr);
-      const isTimeout = /[Tt]imeout/.test(reloadMsg);
-      const isPageClosed =
-        /Target.*closed|page has been closed|context.*closed|Execution context was destroyed|Not attached to an active page/i.test(reloadMsg);
-      if (!isTimeout && !isPageClosed) throw reloadErr;
-      // Timeout or page-closed during reload — localStorage is already cleared, safe to continue
-    });
+    // Best-effort reload so the app re-initializes with empty storage
+    // (auth store + apiClient). Without it, apiClient keeps in-memory tokens
+    // and a 401 on confirm can trigger redirect.
+    //
+    // Failure modes that are SEMANTICALLY benign here (storage is already
+    // cleared by the page.evaluate step above; the reload was visual reset only):
+    //
+    //   * `timeout`            — Vite dev server / staging proxy overloaded.
+    //   * `page-closed`        — outer test already timed out.
+    //   * `transient-network`  — DNS flap / network change mid-reload (chrome
+    //                             lands on chrome-error://… until the next goto).
+    //
+    // For `transient-network` we attempt ONE retry after a short backoff
+    // before giving up: a typical staging Wi-Fi blip clears within ~1s, and a
+    // single second-chance reload converts what would otherwise be a hard
+    // test failure into a clean continuation. Beyond that, the next page.goto
+    // in the test body re-issues the request and Chromium clears the error
+    // page automatically — so we never need to keep retrying past the second
+    // attempt.
+    const reloadBudgetMs = 30_000;
+    const transientRetryBackoffMs = 1_000;
+    let firstReloadErr: unknown = null;
+    try {
+      await page.reload({ waitUntil: 'domcontentloaded', timeout: reloadBudgetMs });
+    } catch (reloadErr) {
+      firstReloadErr = reloadErr;
+      const bucket = classifyClearAuthStorageError(reloadErr);
+      if (bucket === 'transient-network') {
+        await new Promise((resolve) => setTimeout(resolve, transientRetryBackoffMs));
+        try {
+          await page.reload({ waitUntil: 'domcontentloaded', timeout: reloadBudgetMs });
+          firstReloadErr = null; // second attempt succeeded
+        } catch (retryErr) {
+          // Re-classify the second-attempt error so we drop into the same
+          // bucket logic below.
+          firstReloadErr = retryErr;
+        }
+      }
+    }
+    if (firstReloadErr !== null) {
+      const bucket = classifyClearAuthStorageError(firstReloadErr);
+      // Anything outside the known-benign set must rethrow so a genuine
+      // regression is not silently swallowed.
+      if (bucket === 'fatal') {
+        throw firstReloadErr;
+      }
+      // `timeout` / `page-closed` / `chrome-error-page` / `transient-network`
+      // → state was already cleared in the page.evaluate above; the next
+      //   page.goto in the caller will re-initialize the app cleanly.
+    }
   } catch (err) {
-    const msg = String(err);
-    const pageClosed =
-      /Target page, context or browser has been closed|page has been closed|Protocol error.*closed|closed during clear|Execution context was destroyed|Not attached to an active page/i.test(
-        msg
-      );
-    if (pageClosed) {
+    if (classifyClearAuthStorageError(err) === 'page-closed') {
       // Page/context closed (test timed out); absorb to avoid cascading error
       return;
     }
@@ -834,7 +952,7 @@ export async function loginUser(
       // Wait for error message or user profile to appear (element-based, not fixed timeout)
       try {
         await page
-          .locator('.error-message, .error-display, .app-header')
+          .locator('.error-message, .error-display, [data-testid="error-display"], .app-header, [data-testid="app-header"]')
           .first()
           .waitFor({ state: 'visible', timeout: 5000 })
           .catch(() => {});
@@ -859,7 +977,7 @@ export async function loginUser(
         // User profile written but navigation didn't happen - force navigation
         await gotoWithRetry(page, '/');
       } else {
-        const errorElement = page.locator('.error-message, .error-display');
+        const errorElement = page.locator('.error-message, .error-display, [data-testid="error-display"]');
         if ((await errorElement.count()) > 0) {
           const errorText = await errorElement.textContent();
           throw new Error(`Login failed: ${errorText}`);
@@ -918,11 +1036,11 @@ export async function loginUser(
   // Wait for app shell to be visible (header/sidebar) - allow 30s when capabilities are slow
   // Use .first() to avoid strict mode violation when both header and sidebar match
   try {
-    await expect(page.locator('.app-header, .app-sidebar').first()).toBeVisible({ timeout: 30000 });
+    await expect(page.locator('.app-sidebar, .app-header, [data-testid="app-header"]').first()).toBeVisible({ timeout: 30000 });
   } catch (err) {
     // If app shell not visible, check if we're still on login
     if (page.url().includes('/login')) {
-      const errorElement = page.locator('.error-message, .error-display');
+      const errorElement = page.locator('.error-message, .error-display, [data-testid="error-display"]');
       const errorCount = await errorElement.count();
       if (errorCount > 0) {
         const errorText = await errorElement.textContent();

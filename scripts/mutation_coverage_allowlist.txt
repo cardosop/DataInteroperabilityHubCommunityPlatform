@@ -1,0 +1,164 @@
+# Phase 226 PR B6 — mutation-coverage allow-list
+#
+# Format:
+#   <path/relative/to/repo-root>:<YYYY-MM-DD>:<reason>
+#
+# Entries grandfather pre-existing mutation-triggering specs that do not yet
+# have the required verifyViaApi + verifyAuditEvent pair within 30 lines.
+# Each entry MUST carry an expiry date; past-expiry entries fail CI in both
+# warning and blocking modes.
+#
+# OQ7 (2026-04-25) flipped the gate to hybrid-blocking: this list grandfathers
+# the pre-existing state, new specs must verify, and per-entry expiry forces
+# the list to shrink over time. Regenerate with:
+#
+#   node scripts/assert_mutation_coverage.cjs --update
+
+frontend/e2e/a11y/axe-interactive-states.spec.ts:2026-07-25:grandfathered by --update; replace with verifyViaApi + verifyAuditEvent before expiry
+frontend/e2e/cross-cutting/alternate-flows-failure.spec.ts:2026-07-25:grandfathered by --update; replace with verifyViaApi + verifyAuditEvent before expiry
+frontend/e2e/cross-cutting/failure-scenarios-tests.spec.ts:2026-07-25:grandfathered by --update; replace with verifyViaApi + verifyAuditEvent before expiry
+frontend/e2e/dimensions/cache-invalidation-matrix.spec.ts:2026-07-25:grandfathered by --update; replace with verifyViaApi + verifyAuditEvent before expiry
+frontend/e2e/dimensions/concurrent-operations.spec.ts:2026-07-25:grandfathered by --update; replace with verifyViaApi + verifyAuditEvent before expiry
+frontend/e2e/dimensions/correlation-id-propagation.spec.ts:2026-07-25:grandfathered by --update; replace with verifyViaApi + verifyAuditEvent before expiry
+frontend/e2e/dimensions/idempotency-asset-create.spec.ts:2026-07-25:grandfathered by --update; replace with verifyViaApi + verifyAuditEvent before expiry
+frontend/e2e/dimensions/idempotency-marketplace-purchase.spec.ts:2026-07-25:grandfathered by --update; replace with verifyViaApi + verifyAuditEvent before expiry
+frontend/e2e/dimensions/network-failures.spec.ts:2026-07-25:grandfathered by --update; replace with verifyViaApi + verifyAuditEvent before expiry
+frontend/e2e/dimensions/rate-limit.spec.ts:2026-07-25:grandfathered by --update; replace with verifyViaApi + verifyAuditEvent before expiry
+frontend/e2e/dimensions/tenant-isolation-matrix.spec.ts:2026-07-25:grandfathered by --update; replace with verifyViaApi + verifyAuditEvent before expiry
+frontend/e2e/dimensions/timeout-handling.spec.ts:2026-07-25:grandfathered by --update; replace with verifyViaApi + verifyAuditEvent before expiry
+frontend/e2e/features/asset-health-observability-gap.spec.ts:2026-07-25:grandfathered by --update; replace with verifyViaApi + verifyAuditEvent before expiry
+frontend/e2e/features/auth.spec.ts:2026-07-25:grandfathered by --update; replace with verifyViaApi + verifyAuditEvent before expiry
+frontend/e2e/features/contract-round-trip.spec.ts:2026-07-25:grandfathered by --update; replace with verifyViaApi + verifyAuditEvent before expiry
+frontend/e2e/features/governance-access-requests-gap.spec.ts:2026-07-25:grandfathered by --update; replace with verifyViaApi + verifyAuditEvent before expiry
+frontend/e2e/features/integrations-developer-baas-gap.spec.ts:2026-07-25:grandfathered by --update; replace with verifyViaApi + verifyAuditEvent before expiry
+frontend/e2e/features/lineage-files-audit-gap.spec.ts:2026-07-25:grandfathered by --update; replace with verifyViaApi + verifyAuditEvent before expiry
+frontend/e2e/features/lineage.spec.ts:2026-07-25:grandfathered by --update; replace with verifyViaApi + verifyAuditEvent before expiry
+frontend/e2e/features/profile-tenant-settings-gap.spec.ts:2026-07-25:grandfathered by --update; replace with verifyViaApi + verifyAuditEvent before expiry
+frontend/e2e/features/scheduled-semantic-schema-webhooks-gap.spec.ts:2026-07-25:grandfathered by --update; replace with verifyViaApi + verifyAuditEvent before expiry
+frontend/e2e/features/search-gap.spec.ts:2026-07-25:grandfathered by --update; replace with verifyViaApi + verifyAuditEvent before expiry
+frontend/e2e/features/semantic.spec.ts:2026-07-25:grandfathered by --update; replace with verifyViaApi + verifyAuditEvent before expiry
+frontend/e2e/features/social.spec.ts:2026-07-25:grandfathered by --update; replace with verifyViaApi + verifyAuditEvent before expiry
+frontend/e2e/features/webhook-delivery.spec.ts:2026-07-25:grandfathered by --update; replace with verifyViaApi + verifyAuditEvent before expiry
+frontend/e2e/journeys/JOURNEY-ERROR-BOUNDARY.spec.ts:2026-07-25:grandfathered by --update; replace with verifyViaApi + verifyAuditEvent before expiry
+frontend/e2e/journeys/admin-surface/invitation-flow.spec.ts:2026-07-25:grandfathered by --update; replace with verifyViaApi + verifyAuditEvent before expiry
+frontend/e2e/journeys/admin-surface/plan-limit-guard.spec.ts:2026-07-25:grandfathered by --update; replace with verifyViaApi + verifyAuditEvent before expiry
+frontend/e2e/journeys/admin-surface/role-management.spec.ts:2026-07-25:grandfathered by --update; replace with verifyViaApi + verifyAuditEvent before expiry
+frontend/e2e/journeys/admin-surface/sso-config-and-login-url.spec.ts:2026-07-25:grandfathered by --update; replace with verifyViaApi + verifyAuditEvent before expiry
+frontend/e2e/journeys/admin-surface/tenant-suspend.spec.ts:2026-07-25:grandfathered by --update; replace with verifyViaApi + verifyAuditEvent before expiry
+frontend/e2e/journeys/ai-ml-semantic/semantic-sparql-ui.spec.ts:2026-07-25:grandfathered by --update; replace with verifyViaApi + verifyAuditEvent before expiry
+frontend/e2e/journeys/auth/JOURNEY-AUTH-001.spec.ts:2026-07-25:grandfathered by --update; replace with verifyViaApi + verifyAuditEvent before expiry
+frontend/e2e/journeys/auth/JOURNEY-AUTH-002.spec.ts:2026-07-25:grandfathered by --update; replace with verifyViaApi + verifyAuditEvent before expiry
+frontend/e2e/journeys/auth/JOURNEY-AUTH-003.spec.ts:2026-07-25:grandfathered by --update; replace with verifyViaApi + verifyAuditEvent before expiry
+frontend/e2e/journeys/auth/JOURNEY-AUTH-005.spec.ts:2026-07-25:grandfathered by --update; replace with verifyViaApi + verifyAuditEvent before expiry
+frontend/e2e/journeys/auth/JOURNEY-AUTH-007.spec.ts:2026-07-25:grandfathered by --update; replace with verifyViaApi + verifyAuditEvent before expiry
+frontend/e2e/journeys/auth/JOURNEY-AUTH-PRIVACY.spec.ts:2026-07-25:grandfathered by --update; replace with verifyViaApi + verifyAuditEvent before expiry
+frontend/e2e/journeys/auth/JOURNEY-AUTH-PROFILE.spec.ts:2026-07-25:grandfathered by --update; replace with verifyViaApi + verifyAuditEvent before expiry
+frontend/e2e/journeys/auth/JOURNEY-AUTH-REFRESH.spec.ts:2026-07-25:grandfathered by --update; replace with verifyViaApi + verifyAuditEvent before expiry
+frontend/e2e/journeys/cm/JOURNEY-CM-002.spec.ts:2026-07-25:grandfathered by --update; replace with verifyViaApi + verifyAuditEvent before expiry
+frontend/e2e/journeys/cm/JOURNEY-CM-004.spec.ts:2026-07-25:grandfathered by --update; replace with verifyViaApi + verifyAuditEvent before expiry
+frontend/e2e/journeys/contracts/JOURNEY-CONTRACT-V310-LIFECYCLE.spec.ts:2026-07-25:grandfathered by --update; replace with verifyViaApi + verifyAuditEvent before expiry
+frontend/e2e/journeys/contracts/JOURNEY-ODPS-BITOL-LIFECYCLE.spec.ts:2026-07-25:grandfathered by --update; replace with verifyViaApi + verifyAuditEvent before expiry
+frontend/e2e/journeys/cpo/JOURNEY-CPO-002.spec.ts:2026-07-25:grandfathered by --update; replace with verifyViaApi + verifyAuditEvent before expiry
+frontend/e2e/journeys/cpo/JOURNEY-CPO-003.spec.ts:2026-07-25:grandfathered by --update; replace with verifyViaApi + verifyAuditEvent before expiry
+frontend/e2e/journeys/cpo/JOURNEY-CPO-009.spec.ts:2026-07-25:grandfathered by --update; replace with verifyViaApi + verifyAuditEvent before expiry
+frontend/e2e/journeys/cpo/JOURNEY-CPO-GDPR-EXPORT-COMPLETE.spec.ts:2026-07-25:grandfathered by --update; replace with verifyViaApi + verifyAuditEvent before expiry
+frontend/e2e/journeys/cross-persona/dpo-dc-cpo-value-chain.spec.ts:2026-07-25:grandfathered by --update; replace with verifyViaApi + verifyAuditEvent before expiry
+frontend/e2e/journeys/cross-persona/engineer-contract-to-consumer.spec.ts:2026-07-25:grandfathered by --update; replace with verifyViaApi + verifyAuditEvent before expiry
+frontend/e2e/journeys/cross-persona/multi-tenancy-isolation.spec.ts:2026-07-25:grandfathered by --update; replace with verifyViaApi + verifyAuditEvent before expiry
+frontend/e2e/journeys/cross-persona/provider-to-consumer-purchase.spec.ts:2026-07-25:grandfathered by --update; replace with verifyViaApi + verifyAuditEvent before expiry
+frontend/e2e/journeys/dc/JOURNEY-DC-001.spec.ts:2026-07-25:grandfathered by --update; replace with verifyViaApi + verifyAuditEvent before expiry
+frontend/e2e/journeys/dc/JOURNEY-DC-002.spec.ts:2026-07-25:grandfathered by --update; replace with verifyViaApi + verifyAuditEvent before expiry
+frontend/e2e/journeys/dc/JOURNEY-DC-004.spec.ts:2026-07-25:grandfathered by --update; replace with verifyViaApi + verifyAuditEvent before expiry
+frontend/e2e/journeys/dc/JOURNEY-DC-005.spec.ts:2026-07-25:grandfathered by --update; replace with verifyViaApi + verifyAuditEvent before expiry
+frontend/e2e/journeys/dc/JOURNEY-DC-011.spec.ts:2026-07-25:grandfathered by --update; replace with verifyViaApi + verifyAuditEvent before expiry
+frontend/e2e/journeys/dc/JOURNEY-DC-012.spec.ts:2026-07-25:grandfathered by --update; replace with verifyViaApi + verifyAuditEvent before expiry
+frontend/e2e/journeys/destructive-actions/asset-delete.spec.ts:2026-07-25:grandfathered by --update; replace with verifyViaApi + verifyAuditEvent before expiry
+frontend/e2e/journeys/destructive-actions/contract-delete.spec.ts:2026-07-25:grandfathered by --update; replace with verifyViaApi + verifyAuditEvent before expiry
+frontend/e2e/journeys/destructive-actions/dq-alerting-rule-delete.spec.ts:2026-07-25:grandfathered by --update; replace with verifyViaApi + verifyAuditEvent before expiry
+frontend/e2e/journeys/destructive-actions/marketplace-listing-delete.spec.ts:2026-07-25:grandfathered by --update; replace with verifyViaApi + verifyAuditEvent before expiry
+frontend/e2e/journeys/destructive-actions/scheduled-export-delete.spec.ts:2026-07-25:grandfathered by --update; replace with verifyViaApi + verifyAuditEvent before expiry
+frontend/e2e/journeys/destructive-actions/scheduled-ingestion-delete.spec.ts:2026-07-25:grandfathered by --update; replace with verifyViaApi + verifyAuditEvent before expiry
+frontend/e2e/journeys/dev/JOURNEY-DEV-005.spec.ts:2026-07-25:grandfathered by --update; replace with verifyViaApi + verifyAuditEvent before expiry
+frontend/e2e/journeys/dmo/JOURNEY-DMO-001.spec.ts:2026-07-25:grandfathered by --update; replace with verifyViaApi + verifyAuditEvent before expiry
+frontend/e2e/journeys/dpo/JOURNEY-DPO-001.spec.ts:2026-07-25:grandfathered by --update; replace with verifyViaApi + verifyAuditEvent before expiry
+frontend/e2e/journeys/dpo/JOURNEY-DPO-002.spec.ts:2026-07-25:grandfathered by --update; replace with verifyViaApi + verifyAuditEvent before expiry
+frontend/e2e/journeys/dpo/JOURNEY-DPO-003.spec.ts:2026-07-25:grandfathered by --update; replace with verifyViaApi + verifyAuditEvent before expiry
+frontend/e2e/journeys/dpo/JOURNEY-DPO-005.spec.ts:2026-07-25:grandfathered by --update; replace with verifyViaApi + verifyAuditEvent before expiry
+frontend/e2e/journeys/dpo/JOURNEY-DPO-006.spec.ts:2026-07-25:grandfathered by --update; replace with verifyViaApi + verifyAuditEvent before expiry
+frontend/e2e/journeys/dpo/JOURNEY-DPO-010.spec.ts:2026-07-25:grandfathered by --update; replace with verifyViaApi + verifyAuditEvent before expiry
+frontend/e2e/journeys/dpo/JOURNEY-DPO-013.spec.ts:2026-07-25:grandfathered by --update; replace with verifyViaApi + verifyAuditEvent before expiry
+frontend/e2e/journeys/dpo/JOURNEY-DPO-015.spec.ts:2026-07-25:grandfathered by --update; replace with verifyViaApi + verifyAuditEvent before expiry
+frontend/e2e/journeys/dpo/JOURNEY-DPO-018.spec.ts:2026-07-25:grandfathered by --update; replace with verifyViaApi + verifyAuditEvent before expiry
+frontend/e2e/journeys/dpo/asset-activation-flow.spec.ts:2026-07-25:grandfathered by --update; replace with verifyViaApi + verifyAuditEvent before expiry
+frontend/e2e/journeys/dpo/asset-creation-flow.spec.ts:2026-07-25:grandfathered by --update; replace with verifyViaApi + verifyAuditEvent before expiry
+frontend/e2e/journeys/dpo/contract-asset-link.spec.ts:2026-07-25:grandfathered by --update; replace with verifyViaApi + verifyAuditEvent before expiry
+frontend/e2e/journeys/dpo/contract-creation-flow.spec.ts:2026-07-25:grandfathered by --update; replace with verifyViaApi + verifyAuditEvent before expiry
+frontend/e2e/journeys/dpo/dataset-creation-flow.spec.ts:2026-07-25:grandfathered by --update; replace with verifyViaApi + verifyAuditEvent before expiry
+frontend/e2e/journeys/dpo/onboarding-checklist.spec.ts:2026-07-25:grandfathered by --update; replace with verifyViaApi + verifyAuditEvent before expiry
+frontend/e2e/journeys/ds/JOURNEY-DS-003.spec.ts:2026-07-25:grandfathered by --update; replace with verifyViaApi + verifyAuditEvent before expiry
+frontend/e2e/journeys/ds/JOURNEY-DS-004.spec.ts:2026-07-25:grandfathered by --update; replace with verifyViaApi + verifyAuditEvent before expiry
+frontend/e2e/journeys/governance-retention/governance-retention-crud.spec.ts:2026-07-25:grandfathered by --update; replace with verifyViaApi + verifyAuditEvent before expiry
+frontend/e2e/journeys/guardrails/break-downstream-on-contract-change.spec.ts:2026-07-25:grandfathered by --update; replace with verifyViaApi + verifyAuditEvent before expiry
+frontend/e2e/journeys/guardrails/cascade-delete-confirmation.spec.ts:2026-07-25:grandfathered by --update; replace with verifyViaApi + verifyAuditEvent before expiry
+frontend/e2e/journeys/guardrails/fail-closed-enforcement-banner.spec.ts:2026-07-25:grandfathered by --update; replace with verifyViaApi + verifyAuditEvent before expiry
+frontend/e2e/journeys/guardrails/plan-limit-reached-modal.spec.ts:2026-07-25:grandfathered by --update; replace with verifyViaApi + verifyAuditEvent before expiry
+frontend/e2e/journeys/guardrails/rate-limit-toast-retry-after.spec.ts:2026-07-25:grandfathered by --update; replace with verifyViaApi + verifyAuditEvent before expiry
+frontend/e2e/journeys/lineage-depth/lineage-downstream-navigation.spec.ts:2026-07-25:grandfathered by --update; replace with verifyViaApi + verifyAuditEvent before expiry
+frontend/e2e/journeys/lineage-depth/lineage-graph-drill-through.spec.ts:2026-07-25:grandfathered by --update; replace with verifyViaApi + verifyAuditEvent before expiry
+frontend/e2e/journeys/lineage-depth/lineage-impact-analysis.spec.ts:2026-07-25:grandfathered by --update; replace with verifyViaApi + verifyAuditEvent before expiry
+frontend/e2e/journeys/lineage-depth/lineage-multi-hop-traversal.spec.ts:2026-07-25:grandfathered by --update; replace with verifyViaApi + verifyAuditEvent before expiry
+frontend/e2e/journeys/lineage-depth/lineage-upstream-navigation.spec.ts:2026-07-25:grandfathered by --update; replace with verifyViaApi + verifyAuditEvent before expiry
+frontend/e2e/journeys/lineage/JOURNEY-LINEAGE-VISUALIZATION.spec.ts:2026-07-25:grandfathered by --update; replace with verifyViaApi + verifyAuditEvent before expiry
+frontend/e2e/journeys/marketplace-dc/marketplace-checkout-stripe.spec.ts:2026-07-25:grandfathered by --update; replace with verifyViaApi + verifyAuditEvent before expiry
+frontend/e2e/journeys/marketplace/JOURNEY-MP-002.spec.ts:2026-07-25:grandfathered by --update; replace with verifyViaApi + verifyAuditEvent before expiry
+frontend/e2e/journeys/pa/JOURNEY-PA-001.spec.ts:2026-07-25:grandfathered by --update; replace with verifyViaApi + verifyAuditEvent before expiry
+frontend/e2e/journeys/pa/JOURNEY-PA-002.spec.ts:2026-07-25:grandfathered by --update; replace with verifyViaApi + verifyAuditEvent before expiry
+frontend/e2e/journeys/pa/JOURNEY-PA-003.spec.ts:2026-07-25:grandfathered by --update; replace with verifyViaApi + verifyAuditEvent before expiry
+frontend/e2e/journeys/pa/JOURNEY-PA-015.spec.ts:2026-07-25:grandfathered by --update; replace with verifyViaApi + verifyAuditEvent before expiry
+frontend/e2e/journeys/scheduled-export/JOURNEY-EXPORT-001.spec.ts:2026-07-25:grandfathered by --update; replace with verifyViaApi + verifyAuditEvent before expiry
+frontend/e2e/journeys/scheduled-export/JOURNEY-EXPORT-002.spec.ts:2026-07-25:grandfathered by --update; replace with verifyViaApi + verifyAuditEvent before expiry
+frontend/e2e/journeys/scheduled-export/scheduled-export-journey.spec.ts:2026-07-25:grandfathered by --update; replace with verifyViaApi + verifyAuditEvent before expiry
+frontend/e2e/journeys/scheduled-ingestion/scheduled-ingestion-journey.spec.ts:2026-07-25:grandfathered by --update; replace with verifyViaApi + verifyAuditEvent before expiry
+frontend/e2e/journeys/state-transitions/access-request-approve.spec.ts:2026-07-25:grandfathered by --update; replace with verifyViaApi + verifyAuditEvent before expiry
+frontend/e2e/journeys/state-transitions/access-request-deny.spec.ts:2026-07-25:grandfathered by --update; replace with verifyViaApi + verifyAuditEvent before expiry
+frontend/e2e/journeys/state-transitions/compliance-run-cancel.spec.ts:2026-07-25:grandfathered by --update; replace with verifyViaApi + verifyAuditEvent before expiry
+frontend/e2e/journeys/state-transitions/compliance-run-retry.spec.ts:2026-07-25:grandfathered by --update; replace with verifyViaApi + verifyAuditEvent before expiry
+frontend/e2e/journeys/state-transitions/retired-asset-reactivate-blocked.spec.ts:2026-07-25:grandfathered by --update; replace with verifyViaApi + verifyAuditEvent before expiry
+frontend/e2e/journeys/ta/JOURNEY-TA-001.spec.ts:2026-07-25:grandfathered by --update; replace with verifyViaApi + verifyAuditEvent before expiry
+frontend/e2e/journeys/ta/JOURNEY-TA-002.spec.ts:2026-07-25:grandfathered by --update; replace with verifyViaApi + verifyAuditEvent before expiry
+frontend/e2e/journeys/ta/JOURNEY-TA-008.spec.ts:2026-07-25:grandfathered by --update; replace with verifyViaApi + verifyAuditEvent before expiry
+frontend/e2e/journeys/ta/JOURNEY-TA-BILLING-UPGRADE.spec.ts:2026-07-25:grandfathered by --update; replace with verifyViaApi + verifyAuditEvent before expiry
+frontend/e2e/journeys/ta/JOURNEY-TA-TENANT-SETTINGS.spec.ts:2026-07-25:grandfathered by --update; replace with verifyViaApi + verifyAuditEvent before expiry
+frontend/e2e/journeys/ta/admin-user-edit.spec.ts:2026-07-25:grandfathered by --update; replace with verifyViaApi + verifyAuditEvent before expiry
+frontend/e2e/journeys/tenant/JOURNEY-TENANT-ONBOARDING.spec.ts:2026-07-25:grandfathered by --update; replace with verifyViaApi + verifyAuditEvent before expiry
+frontend/e2e/journeys/unified/full-asset-lifecycle.spec.ts:2026-07-25:grandfathered by --update; replace with verifyViaApi + verifyAuditEvent before expiry
+frontend/e2e/journeys/unified/unified-asset-creation.spec.ts:2026-07-25:grandfathered by --update; replace with verifyViaApi + verifyAuditEvent before expiry
+frontend/e2e/login-app-shell.spec.ts:2026-07-25:grandfathered by --update; replace with verifyViaApi + verifyAuditEvent before expiry
+frontend/e2e/phase2-catalog-journey.spec.ts:2026-07-25:grandfathered by --update; replace with verifyViaApi + verifyAuditEvent before expiry
+frontend/e2e/phase2b-activation-journey.spec.ts:2026-07-25:grandfathered by --update; replace with verifyViaApi + verifyAuditEvent before expiry
+frontend/e2e/phase2c-activation-with-dataset-journey.spec.ts:2026-07-25:grandfathered by --update; replace with verifyViaApi + verifyAuditEvent before expiry
+frontend/e2e/phase3-quality-gates.spec.ts:2026-07-25:grandfathered by --update; replace with verifyViaApi + verifyAuditEvent before expiry
+frontend/e2e/phase4-marketplace-journey.spec.ts:2026-07-25:grandfathered by --update; replace with verifyViaApi + verifyAuditEvent before expiry
+frontend/e2e/phase5-odps-journey.spec.ts:2026-07-25:grandfathered by --update; replace with verifyViaApi + verifyAuditEvent before expiry
+frontend/e2e/phase6-mesh-virtualization.spec.ts:2026-07-25:grandfathered by --update; replace with verifyViaApi + verifyAuditEvent before expiry
+frontend/e2e/phase7-social-ai-developer-baas-ml.spec.ts:2026-07-25:grandfathered by --update; replace with verifyViaApi + verifyAuditEvent before expiry
+frontend/e2e/setup/auth-storage.spec.ts:2026-07-25:grandfathered by --update; replace with verifyViaApi + verifyAuditEvent before expiry
+frontend/e2e/use-cases/assets/UC-AM-001.spec.ts:2026-07-25:grandfathered by --update; replace with verifyViaApi + verifyAuditEvent before expiry
+frontend/e2e/use-cases/assets/UC-AM-002.spec.ts:2026-07-25:grandfathered by --update; replace with verifyViaApi + verifyAuditEvent before expiry
+frontend/e2e/use-cases/auth/accept-invitation.spec.ts:2026-07-25:grandfathered by --update; replace with verifyViaApi + verifyAuditEvent before expiry
+frontend/e2e/use-cases/auth/tenant-switch.spec.ts:2026-07-25:grandfathered by --update; replace with verifyViaApi + verifyAuditEvent before expiry
+frontend/e2e/use-cases/contracts/UC-CM-001.spec.ts:2026-07-25:grandfathered by --update; replace with verifyViaApi + verifyAuditEvent before expiry
+frontend/e2e/use-cases/contracts/UC-CM-002.spec.ts:2026-07-25:grandfathered by --update; replace with verifyViaApi + verifyAuditEvent before expiry
+frontend/e2e/use-cases/dq/UC-DQ-001.spec.ts:2026-07-25:grandfathered by --update; replace with verifyViaApi + verifyAuditEvent before expiry
+frontend/e2e/use-cases/governance/UC-GOV-ADV-004.spec.ts:2026-07-25:grandfathered by --update; replace with verifyViaApi + verifyAuditEvent before expiry
+frontend/e2e/use-cases/integrations/UC-INT-002.spec.ts:2026-07-25:grandfathered by --update; replace with verifyViaApi + verifyAuditEvent before expiry
+frontend/e2e/use-cases/marketplace/UC-MKT-003.spec.ts:2026-07-25:grandfathered by --update; replace with verifyViaApi + verifyAuditEvent before expiry
+frontend/e2e/use-cases/marketplace/UC-MKT-ADV-001.spec.ts:2026-07-25:grandfathered by --update; replace with verifyViaApi + verifyAuditEvent before expiry
+frontend/e2e/use-cases/marketplace/UC-MKT-ADV-002.spec.ts:2026-07-25:grandfathered by --update; replace with verifyViaApi + verifyAuditEvent before expiry
+frontend/e2e/use-cases/ux/asset-attach-contract-dataset.spec.ts:2026-07-25:grandfathered by --update; replace with verifyViaApi + verifyAuditEvent before expiry
+frontend/e2e/use-cases/ux/asset-dataset-flow.spec.ts:2026-07-25:grandfathered by --update; replace with verifyViaApi + verifyAuditEvent before expiry
+frontend/e2e/use-cases/ux/dataset-edit.spec.ts:2026-07-25:grandfathered by --update; replace with verifyViaApi + verifyAuditEvent before expiry
+frontend/e2e/use-cases/ux/dq-compliance-access-request.spec.ts:2026-07-25:grandfathered by --update; replace with verifyViaApi + verifyAuditEvent before expiry
+frontend/e2e/use-cases/ux/files-upload.spec.ts:2026-07-25:grandfathered by --update; replace with verifyViaApi + verifyAuditEvent before expiry
+frontend/e2e/use-cases/ux/odps-asset-link.spec.ts:2026-07-25:grandfathered by --update; replace with verifyViaApi + verifyAuditEvent before expiry
+frontend/e2e/use-cases/ux/scheduled-export-retention-odps-link.spec.ts:2026-07-25:grandfathered by --update; replace with verifyViaApi + verifyAuditEvent before expiry

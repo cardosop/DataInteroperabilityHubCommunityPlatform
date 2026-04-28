@@ -7,6 +7,7 @@
 import { Page } from '@playwright/test';
 import type { TestUser } from '../setup/create-test-user';
 import { clearAuthStorage, loginUser, loginViaApi } from './auth';
+import { E2E_TOKEN_HEADER } from './e2e-token';
 
 // Node fetch needs absolute URL; align with auth.ts (VITE_API_BASE_URL can be relative)
 const DEFAULT_API_PORT = process.env.E2E_WEB_PORT ? '8001' : '8000';
@@ -18,6 +19,30 @@ const API_BASE_URL =
   (process.env.VITE_API_BASE_URL?.startsWith?.('http') ? process.env.VITE_API_BASE_URL : null) ||
   `http://localhost:${DEFAULT_API_PORT}/api/v1`;
 const MAILHOG_BASE_URL = process.env.MAILHOG_URL || 'http://localhost:8025';
+
+/** True when MAILHOG_BASE_URL points at a non-localhost host (i.e. the
+ * staging proxy). In that case the proxy is token-gated and we MUST
+ * send `X-E2E-Token`. Locally the MailHog container has no auth so we
+ * omit the header (sending it would only add noise to local request logs).
+ *
+ * Pure helper — exported so unit tests can pin the boundary.
+ */
+export function isMailhogProxyUrl(url: string): boolean {
+  return /^https?:\/\/(?!localhost|127\.|0\.0\.0\.0)/.test(url);
+}
+
+/** Build the header bag for a MailHog read. Pure: takes URL + token, returns
+ * a plain object suitable for `fetch(..., { headers })`.
+ */
+export function buildMailhogRequestHeaders(
+  url: string,
+  e2eTestSecret: string | undefined,
+): Record<string, string> {
+  if (!isMailhogProxyUrl(url)) return {};
+  const token = e2eTestSecret ?? '';
+  if (!token) return {};
+  return { [E2E_TOKEN_HEADER]: token };
+}
 
 const REGISTER_RETRIES = 4;
 const REGISTER_RETRY_DELAYS_MS = [2000, 4000, 6000];
@@ -139,45 +164,59 @@ function messageToMatches(item: MailHogMessage, toEmail: string): boolean {
   return getToEmailFromMessage(item).includes(toEmail);
 }
 
-/** Prefer v1 (full content); fallback to v2 list then fetch by id if needed. */
+/** Poll MailHog v1 for the password-reset email addressed to `toEmail`,
+ * returning the reset URL on success.
+ *
+ * Only the v1 list endpoint is used. The previous v2 fallback was
+ * silently broken: v2 list responses omit `Content.Body`, so the
+ * regex match never fired and the loop ran out the full timeout
+ * instead of producing a useful error. Drop the dead branch — the
+ * proxy at `/api/v1/test/mailhog/messages/` only exposes v1 anyway.
+ *
+ * On staging, `MAILHOG_BASE_URL` points at the token-gated Django
+ * proxy (`/api/v1/test/mailhog`). The X-E2E-Token header is added by
+ * `buildMailhogRequestHeaders` ONLY when the URL is non-localhost,
+ * so local-dev runs against a plain MailHog container still work
+ * unchanged.
+ */
 export async function waitForPasswordResetEmail(
   toEmail: string,
   timeoutMs = 60_000
 ): Promise<string> {
   const started = Date.now();
+  const headers = buildMailhogRequestHeaders(MAILHOG_BASE_URL, process.env.E2E_TEST_SECRET);
   while (Date.now() - started < timeoutMs) {
     try {
-      const v1Resp = await fetch(`${MAILHOG_BASE_URL}/api/v1/messages`);
-      if (v1Resp.ok) {
-        const v1Data = (await v1Resp.json()) as MailHogMessage[] | { items?: MailHogMessage[] };
-        const list: MailHogMessage[] = Array.isArray(v1Data)
-          ? v1Data
-          : ((v1Data as { items?: MailHogMessage[] })?.items ?? []);
-        for (const item of list) {
-          if (!messageToMatches(item, toEmail)) continue;
-          const link = extractResetLinkFromMessage(item);
-          if (link) return link;
-          if (item.ID) {
-            const detailResp = await fetch(`${MAILHOG_BASE_URL}/api/v1/messages/${item.ID}`);
-            if (detailResp.ok) {
-              const full = (await detailResp.json()) as MailHogMessage;
-              const fullLink = extractResetLinkFromMessage(full);
-              if (fullLink) return fullLink;
-            }
+      const v1Resp = await fetch(`${MAILHOG_BASE_URL}/api/v1/messages`, { headers });
+      if (!v1Resp.ok) {
+        // Surface non-200s loudly. Previously the v2 fallback masked
+        // a misconfigured proxy (e.g. token mismatch returning 404)
+        // as "no email yet"; now the test fails fast with diagnostics.
+        throw new Error(
+          `MailHog list returned HTTP ${v1Resp.status}. ` +
+            `URL: ${MAILHOG_BASE_URL}/api/v1/messages. ` +
+            `If targeting the staging proxy, verify E2E_TEST_SECRET matches ` +
+            `STAGING_E2E_TEST_SECRET on the staging deployment.`,
+        );
+      }
+      const v1Data = (await v1Resp.json()) as MailHogMessage[] | { items?: MailHogMessage[] };
+      const list: MailHogMessage[] = Array.isArray(v1Data)
+        ? v1Data
+        : ((v1Data as { items?: MailHogMessage[] })?.items ?? []);
+      for (const item of list) {
+        if (!messageToMatches(item, toEmail)) continue;
+        const link = extractResetLinkFromMessage(item);
+        if (link) return link;
+        if (item.ID) {
+          const detailResp = await fetch(
+            `${MAILHOG_BASE_URL}/api/v1/messages/${item.ID}`,
+            { headers },
+          );
+          if (detailResp.ok) {
+            const full = (await detailResp.json()) as MailHogMessage;
+            const fullLink = extractResetLinkFromMessage(full);
+            if (fullLink) return fullLink;
           }
-        }
-      } else {
-        const v2Resp = await fetch(`${MAILHOG_BASE_URL}/api/v2/messages?limit=50`);
-        if (!v2Resp.ok) throw new Error(`MailHog API HTTP ${v2Resp.status}`);
-        const v2Data = (await v2Resp.json()) as {
-          items?: MailHogMessage[];
-          messages?: MailHogMessage[];
-        };
-        const list = v2Data?.items ?? v2Data?.messages ?? [];
-        for (const item of list) {
-          if (!messageToMatches(item, toEmail)) continue;
-          const link = extractResetLinkFromMessage(item);
-          if (link) return link;
         }
       }
     } catch (e) {
@@ -209,11 +248,11 @@ export async function runJOURNEY_AUTH_004_Success(page: Page): Promise<void> {
 /**
  * Wait for register page to be ready (capabilities loaded).
  * RegistrationRoute shows LoadingSpinner for up to 30s; neither "Create account" nor
- * ".unavailable-page h1" exist during loading. Race: terminal state OR loading hidden.
+ * ".unavailable-page, [data-testid="unavailable-page"] h1" exist during loading. Race: terminal state OR loading hidden.
  */
 export async function waitForRegisterPageReady(page: Page, timeoutMs = 35_000): Promise<void> {
   const createHeading = page.getByRole('heading', { name: 'Create account' });
-  const unavailableHeading = page.locator('.unavailable-page h1');
+  const unavailableHeading = page.locator('.unavailable-page, [data-testid="unavailable-page"] h1');
   const loadingSpinner = page.locator('.loading-spinner-container');
 
   // Race: terminal state (register/unavailable) OR loading spinner disappears.
@@ -302,12 +341,12 @@ export async function runJOURNEY_AUTH_001_Success(page: Page): Promise<void> {
   // Wait for EITHER the redirect OR an error — don't wait 60s for a redirect that may never come.
   const postSubmit = await Promise.race([
     page.waitForURL((url) => url.pathname === '/login', { timeout: 60_000 }).then(() => 'redirect' as const),
-    page.locator('.error-message, .error-display').first().waitFor({ state: 'visible', timeout: 60_000 }).then(() => 'error' as const),
+    page.locator('.error-message, .error-display, [data-testid="error-display"]').first().waitFor({ state: 'visible', timeout: 60_000 }).then(() => 'error' as const),
   ]).catch(() => 'timeout' as const);
 
   if (postSubmit === 'error') {
     // intentional: auth journey steps wrap optional UI element waits; primary auth-success assertion is in the calling spec.
-    const errText = await page.locator('.error-message, .error-display').first().textContent().catch(() => '');
+    const errText = await page.locator('.error-message, .error-display, [data-testid="error-display"]').first().textContent().catch(() => '');
     throw new Error(`Registration failed — error shown on page: ${(errText ?? '').slice(0, 200)}`);
   }
   if (postSubmit === 'timeout') {
@@ -324,7 +363,7 @@ export async function runJOURNEY_AUTH_001_Success(page: Page): Promise<void> {
   }
   const user: TestUser = { email, password, name };
   await loginUser(page, user);
-  await page.locator('.app-header').waitFor({ state: 'visible', timeout: 10_000 });
+  await page.locator('.app-header, [data-testid="app-header"]').waitFor({ state: 'visible', timeout: 10_000 });
   await assertUserHasPersonalTenant(page, user);
 }
 
@@ -351,7 +390,7 @@ export async function runJOURNEY_AUTH_003_Success(page: Page): Promise<void> {
   await clearAuthStorage(page);
   await page.goto('/password-reset', { waitUntil: 'domcontentloaded' });
   const resetHeading = page.getByRole('heading', { name: /Reset password/i });
-  const unavailableHeading = page.locator('.unavailable-page h1');
+  const unavailableHeading = page.locator('.unavailable-page, [data-testid="unavailable-page"] h1');
   // intentional: auth journey steps wrap optional UI element waits; primary auth-success assertion is in the calling spec.
   await Promise.race([
     resetHeading.waitFor({ state: 'visible', timeout: 35_000 }),
@@ -393,12 +432,12 @@ export async function runJOURNEY_AUTH_003_Success(page: Page): Promise<void> {
   // to ~20s to restart, pushing total wait beyond 25s. 45s provides safe headroom.
   const formOrError = await Promise.race([
     setPwHeading.waitFor({ state: 'visible', timeout: 45_000 }).then(() => 'form'),
-    page.locator('.error-message, .error-display').filter({ hasText: /invalid|expired/i }).first()
+    page.locator('.error-message, .error-display, [data-testid="error-display"]').filter({ hasText: /invalid|expired/i }).first()
       .waitFor({ state: 'visible', timeout: 45_000 }).then(() => 'error'),
   ]).catch(() => 'timeout' as const);
   if (formOrError === 'error') {
     // intentional: auth journey steps wrap optional UI element waits; primary auth-success assertion is in the calling spec.
-    const errText = await page.locator('.error-message, .error-display').first().textContent().catch(() => '');
+    const errText = await page.locator('.error-message, .error-display, [data-testid="error-display"]').first().textContent().catch(() => '');
     throw new Error(
       `Token invalid or expired. ${errText}. Ensure MailHog is running and email was captured.`
     );
@@ -422,5 +461,5 @@ export async function runJOURNEY_AUTH_003_Success(page: Page): Promise<void> {
   await page.goto('/login', { waitUntil: 'domcontentloaded' });
   const user: TestUser = { email, password: newPassword, name };
   await loginUser(page, user);
-  await page.locator('.app-header').waitFor({ state: 'visible', timeout: 10_000 });
+  await page.locator('.app-header, [data-testid="app-header"]').waitFor({ state: 'visible', timeout: 10_000 });
 }

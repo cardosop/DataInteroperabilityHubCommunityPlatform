@@ -15,6 +15,8 @@ from .views import (
 )
 # Phase 226 G11 — E2E-only webhook sink endpoint.
 from .webhook_sink_views import webhook_sink
+# Phase 226 OQ-MailHog — E2E-only MailHog inbox proxy.
+from .mailhog_proxy_views import mailhog_message_detail, mailhog_messages_list
 
 # Non-MVP areas remain mounted so URLconf is stable across Django settings reloads
 # (e.g. tests using @override_settings). When MVP_MODE is True, access is blocked
@@ -71,6 +73,20 @@ urlpatterns = [
     # Phase 226 G11 — E2E webhook sink. Receives inbound POSTs from the
     # WebhookDeliveryService so specs can assert delivery + payload shape.
     path("test/webhook-sink/<str:sink_id>/", webhook_sink, name="webhook-sink"),
+    # Phase 226 OQ-MailHog — token-gated read-only proxy to the staging
+    # MailHog inbox. Required for JOURNEY-AUTH-003 to extract the
+    # password-reset token from the email body. Same E2E_TEST_SECRET
+    # gate as the rest of the test/* family.
+    path(
+        "test/mailhog/messages/",
+        mailhog_messages_list,
+        name="mailhog-list",
+    ),
+    path(
+        "test/mailhog/messages/<str:message_id>/",
+        mailhog_message_detail,
+        name="mailhog-detail",
+    ),
     re_path(
         r"^(?!auth/|tenants/|users/|audit/|files/|datasets/|jobs/|contracts/|assets/|dq/|compliance/|semantic/|marketplace/|scheduled-ingestions/|scheduled-exports/|search/|developer/|webhooks/|events/|mesh/|virtualization/|integrations/|baas/|ml/|billing/|platform/|versioning/|workflows/|transformation/|notifications/|governance/|test/).*$",
         api_not_found,

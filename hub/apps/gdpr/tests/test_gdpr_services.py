@@ -36,7 +36,11 @@ from hub.apps.gdpr.models import (
     ErasureRequest,
     ErasureRequestStatus,
 )
-from hub.apps.gdpr.services import DataPortabilityService, ErasureService
+from hub.apps.gdpr.services import (
+    GDPR_EXPORT_FORMAT_VERSION,
+    DataPortabilityService,
+    ErasureService,
+)
 from hub.apps.tenants.models import Tenant
 from hub.apps.users.models import UserStatus
 
@@ -186,6 +190,15 @@ class DataPortabilityServiceTest(TestCase):
         self.assertEqual(data["user_profile"]["id"], str(self.user.id))
         self.assertEqual(data["user_profile"]["email"], self.user.email)
         self.assertEqual(data["user_profile"]["display_name"], self.user.display_name)
+
+    def test_collect_user_data_pins_format_version(self):
+        # Pin the GDPR Article 20 envelope version. A breaking schema change
+        # (renamed/removed key, changed semantics) MUST bump
+        # GDPR_EXPORT_FORMAT_VERSION and update this assertion. Additive
+        # changes (new keys, new resource types) are fine without a bump.
+        data = self.service._collect_user_data(self.user)
+        self.assertEqual(data.get("format_version"), GDPR_EXPORT_FORMAT_VERSION)
+        self.assertIn("exported_at", data)
 
     def test_collect_user_data_includes_audit_events(self):
         """Test that _collect_user_data includes audit events"""

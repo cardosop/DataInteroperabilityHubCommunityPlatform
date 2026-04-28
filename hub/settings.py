@@ -1410,6 +1410,13 @@ SMTP_USE_SSL = env.bool("SMTP_USE_SSL", default=False)
 SMTP_FROM_EMAIL = env("SMTP_FROM_EMAIL", default=None)
 SMTP_FROM_NAME = env("SMTP_FROM_NAME", default=APP_NAME)
 
+# Phase 226 OQ-MailHog — in-cluster URL of the MailHog HTTP API.
+# Consumed ONLY by hub/apps/api/mailhog_proxy_views.py. Empty string
+# means "MailHog not deployed in this environment" — the proxy view
+# returns 503 in that case (and is closed-by-default in production via
+# is_e2e_environment + verify_e2e_token).
+MAILHOG_INTERNAL_URL = env("MAILHOG_INTERNAL_URL", default="")
+
 # Email Notification Settings
 EMAIL_JOB_NOTIFICATIONS_ENABLED = env.bool("EMAIL_JOB_NOTIFICATIONS_ENABLED", default=False)
 

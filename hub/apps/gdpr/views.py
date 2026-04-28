@@ -7,6 +7,7 @@ API views for data portability and erasure requests.
 import logging
 
 from django.db import transaction
+from drf_spectacular.utils import extend_schema
 from rest_framework import status, viewsets
 from rest_framework.decorators import action
 from rest_framework.permissions import IsAuthenticated
@@ -17,7 +18,11 @@ from hub.apps.core.services.base import NotFoundError
 from hub.apps.core.services.base import ValidationError as ServiceValidationError
 from hub.apps.gdpr.models import DataExportJob, ErasureRequest
 from hub.apps.gdpr.serializers import DataExportJobSerializer, ErasureRequestSerializer
-from hub.apps.gdpr.services import DataPortabilityService, ErasureService
+from hub.apps.gdpr.services import (
+    GDPR_EXPORT_FORMAT_VERSION,
+    DataPortabilityService,
+    ErasureService,
+)
 from hub.apps.tenants.request_tenant import get_request_tenant_id
 
 logger = logging.getLogger(__name__)
@@ -37,6 +42,26 @@ class DataExportJobViewSet(viewsets.ReadOnlyModelViewSet):
         """Filter queryset by user"""
         return DataExportJob.objects.filter(user=self.request.user)
 
+    @extend_schema(
+        description=(
+            "Request a GDPR Article 20 data export.\n\n"
+            "Returns a job descriptor whose `download_url` resolves to a ZIP "
+            "archive once `status == COMPLETED`. The archive layout is the "
+            "public contract for downstream consumers:\n\n"
+            "**Archive contents**\n"
+            "- `user_data.json` — JSON envelope (UTF-8). Top-level keys: "
+            "`format_version` (semver), `exported_at` (ISO-8601), "
+            "`user_profile`, `audit_events`, `assets`, `datasets`, `contracts`. "
+            "Additive changes (new keys, new resource types) are non-breaking; "
+            "renamed/removed keys or changed semantics bump the **major** "
+            f"component of `format_version` (currently `{GDPR_EXPORT_FORMAT_VERSION}`).\n"
+            "- `README.txt` — human-readable cover sheet.\n\n"
+            "Consumers should branch on the major version of `format_version` "
+            "and tolerate unknown keys. Encryption-at-rest of the archive is "
+            "out of scope for v1 — delivery is over HTTPS via short-lived "
+            "presigned URL."
+        ),
+    )
     @transaction.atomic
     @action(detail=False, methods=["post"], url_path="export-data")
     def export_data(self, request):
