@@ -822,9 +822,35 @@ export async function loginUser(
       if (attempt < 2) {
         await page.waitForTimeout(3000);
       } else {
-        const bodyText = await page.textContent('body');
-        console.log('Page body (first 500 chars):', bodyText?.substring(0, 500));
-        throw new Error(`Login page h1 not found. Page content: ${bodyText?.substring(0, 200)}`);
+        // Capture the page URL alongside the body so reviewers can
+        // distinguish:
+        //   * `chrome-error://chromewebdata/` — a transient network
+        //     failure during the goto (DNS / NETWORK_CHANGED / etc.);
+        //     `body.textContent` returns empty on chrome-error pages
+        //     because the origin is partition-isolated, so without the
+        //     URL the diagnostic looks like a real h1-missing bug.
+        //   * `https://staging.../login` — the page DID load but the
+        //     h1 is genuinely absent (a real frontend regression).
+        //   * Any other URL — auth state already redirected us
+        //     somewhere (e.g. /assets), and the previous logged-in
+        //     session wasn't cleared.
+        const url = page.url();
+        const bodyText = (await page.textContent('body').catch(() => '')) ?? '';
+        const onChromeError = url.startsWith('chrome-error://');
+        console.log(
+          `Login page h1 not found at URL=${url}. ` +
+            `${onChromeError
+              ? '(Chromium internal-error page — a transient network failure during navigation. ' +
+                'Body cannot be read on chrome-error origins.)'
+              : `Body (first 500 chars): ${bodyText.substring(0, 500)}`}`,
+        );
+        throw new Error(
+          `Login page h1 not found. URL=${url}. ` +
+            (onChromeError
+              ? 'Page is on a Chromium internal-error origin (network failure during goto); ' +
+                'no body content is reachable. Likely a transient DNS / NETWORK_CHANGED blip.'
+              : `Body content (first 200 chars): ${bodyText.substring(0, 200)}`),
+        );
       }
     }
   }
