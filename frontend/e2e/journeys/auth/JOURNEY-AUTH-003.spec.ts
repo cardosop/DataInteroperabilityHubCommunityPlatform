@@ -12,7 +12,11 @@
 
 import { expect, test } from '@playwright/test';
 import { clearAuthStorage } from '../../fixtures/auth';
-import { runJOURNEY_AUTH_003_Success } from '../../fixtures/auth-journey-steps';
+import {
+  buildMailhogRequestHeaders,
+  isMailhogProxyUrl,
+  runJOURNEY_AUTH_003_Success,
+} from '../../fixtures/auth-journey-steps';
 
 const MAILHOG_BASE_URL = process.env.MAILHOG_URL || 'http://localhost:8025';
 const WORKER_HEALTH_URL = process.env.WORKER_HEALTH_URL || 'http://localhost:8087/healthz';
@@ -50,26 +54,48 @@ test.describe('JOURNEY-AUTH-003: User Resets Password @critical', () => {
 
       let mailhogReachable = false;
       let workerReachable = false;
+      // Pre-build the read headers — when MAILHOG_BASE_URL points at the
+      // staging proxy (non-localhost), the probe MUST send X-E2E-Token or
+      // it will 404 even though MailHog is healthy. Local-dev MailHog has
+      // no auth so headers stay empty.
+      const probeHeaders = isMailhogProxyUrl(MAILHOG_BASE_URL)
+        ? buildMailhogRequestHeaders(MAILHOG_BASE_URL, process.env.E2E_TEST_SECRET)
+        : {};
       // Retry probes once — under parallel E2E load the first attempt can fail
       // with a transient connection error even though the services are healthy.
       for (let attempt = 0; attempt < 2 && !mailhogReachable; attempt++) {
         try {
-          const probe = await fetch(`${MAILHOG_BASE_URL}/api/v2/messages?limit=1`, {
+          // v1 (not v2): the staging proxy at /api/v1/test/mailhog only
+          // exposes v1 endpoints, and v2 list responses omit Content.Body
+          // anyway — the spec's actual flow uses v1 too.
+          const probe = await fetch(`${MAILHOG_BASE_URL}/api/v1/messages`, {
             signal: AbortSignal.timeout(5000),
+            headers: probeHeaders,
           });
           if (probe.ok) mailhogReachable = true;
         } catch {
           if (attempt === 0) await new Promise((r) => setTimeout(r, 2000));
         }
       }
-      for (let attempt = 0; attempt < 2 && !workerReachable; attempt++) {
-        try {
-          const workerProbe = await fetch(WORKER_HEALTH_URL, {
-            signal: AbortSignal.timeout(5000),
-          });
-          if (workerProbe.ok) workerReachable = true;
-        } catch {
-          if (attempt === 0) await new Promise((r) => setTimeout(r, 2000));
+      // Worker reachability probe is meaningful only for local Docker setups
+      // where the worker exposes a per-pod /healthz on a fixed port. Against
+      // an external target (staging), the worker is in-cluster and not
+      // routable — but if MailHog is reachable AND emails arrive, that IS
+      // proof the worker is alive (no other process emits the password-reset
+      // SMTP traffic). Treat the worker probe as satisfied implicitly.
+      const isExternalTargetForWorker = isMailhogProxyUrl(MAILHOG_BASE_URL);
+      if (isExternalTargetForWorker) {
+        workerReachable = true;
+      } else {
+        for (let attempt = 0; attempt < 2 && !workerReachable; attempt++) {
+          try {
+            const workerProbe = await fetch(WORKER_HEALTH_URL, {
+              signal: AbortSignal.timeout(5000),
+            });
+            if (workerProbe.ok) workerReachable = true;
+          } catch {
+            if (attempt === 0) await new Promise((r) => setTimeout(r, 2000));
+          }
         }
       }
       // Skip when MailHog is unavailable. The success path MUST intercept the

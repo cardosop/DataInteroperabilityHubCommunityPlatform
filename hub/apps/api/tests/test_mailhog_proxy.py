@@ -44,8 +44,10 @@ _E2E_SETTINGS: dict[str, Any] = dict(
     MAILHOG_INTERNAL_URL="http://hub-staging-mailhog:8025",
 )
 
-LIST_URL = "/api/v1/test/mailhog/messages/"
-DETAIL_URL_TEMPLATE = "/api/v1/test/mailhog/messages/{}/"
+# URLs mirror MailHog's own URL grammar under the `/test/mailhog/` prefix
+# so specs written for direct MailHog work unchanged against the proxy.
+LIST_URL = "/api/v1/test/mailhog/api/v1/messages/"
+DETAIL_URL_TEMPLATE = "/api/v1/test/mailhog/api/v1/messages/{}/"
 UPSTREAM_LIST = "http://hub-staging-mailhog:8025/api/v1/messages"
 UPSTREAM_DETAIL = "http://hub-staging-mailhog:8025/api/v1/messages/{}"
 
@@ -329,7 +331,7 @@ class TestMessageIdValidation:
         # would return 503. We assert that the response is NOT 200 — the
         # crucial property is that no `..` ever reaches MailHog.
         res = client.get(
-            "/api/v1/test/mailhog/messages/../",
+            "/api/v1/test/mailhog/api/v1/messages/../",
             HTTP_X_E2E_TOKEN="proxy-test-secret",
         )
         # Whatever Django routes this to (LIST view → 503 since upstream

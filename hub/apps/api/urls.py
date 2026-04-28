@@ -77,15 +77,34 @@ urlpatterns = [
     # MailHog inbox. Required for JOURNEY-AUTH-003 to extract the
     # password-reset token from the email body. Same E2E_TEST_SECRET
     # gate as the rest of the test/* family.
+    #
+    # URL structure deliberately MIRRORS MailHog's own grammar
+    # (`/api/v1/messages` and `/api/v1/messages/<id>`) under the
+    # `/test/mailhog/` prefix. That way a spec written against direct
+    # MailHog (`MAILHOG_BASE_URL=http://localhost:8025`) works
+    # unchanged against the proxy (`MAILHOG_BASE_URL=https://api.staging.
+    # meshant-internal.example.com/api/v1/test/mailhog`) — no path-rewriting in the
+    # client code. Both with and without trailing slash are accepted
+    # because callers may construct either form.
     path(
-        "test/mailhog/messages/",
+        "test/mailhog/api/v1/messages",
         mailhog_messages_list,
         name="mailhog-list",
     ),
     path(
-        "test/mailhog/messages/<str:message_id>/",
+        "test/mailhog/api/v1/messages/",
+        mailhog_messages_list,
+        name="mailhog-list-slash",
+    ),
+    path(
+        "test/mailhog/api/v1/messages/<str:message_id>",
         mailhog_message_detail,
         name="mailhog-detail",
+    ),
+    path(
+        "test/mailhog/api/v1/messages/<str:message_id>/",
+        mailhog_message_detail,
+        name="mailhog-detail-slash",
     ),
     re_path(
         r"^(?!auth/|tenants/|users/|audit/|files/|datasets/|jobs/|contracts/|assets/|dq/|compliance/|semantic/|marketplace/|scheduled-ingestions/|scheduled-exports/|search/|developer/|webhooks/|events/|mesh/|virtualization/|integrations/|baas/|ml/|billing/|platform/|versioning/|workflows/|transformation/|notifications/|governance/|test/).*$",

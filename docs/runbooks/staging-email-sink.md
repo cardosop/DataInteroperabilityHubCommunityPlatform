@@ -13,8 +13,8 @@ The MailHog inbox is exposed to the test runner via a token-gated read-only
 proxy at:
 
 ```
-GET https://api.stagingmeshant-internal.example.com/api/v1/test/mailhog/messages/
-GET https://api.stagingmeshant-internal.example.com/api/v1/test/mailhog/messages/<id>/
+GET https://api.stagingmeshant-internal.example.com/api/v1/test/mailhog/api/v1/messages
+GET https://api.stagingmeshant-internal.example.com/api/v1/test/mailhog/api/v1/messages<id>/
 ```
 
 with `X-E2E-Token: $STAGING_E2E_TEST_SECRET`. **Production never deploys
@@ -107,11 +107,11 @@ kubectl -n hub-staging exec deploy/hub-staging-mailhog -- \
 ```bash
 export TOK="$STAGING_E2E_TEST_SECRET"
 curl -fsS -H "X-E2E-Token: $TOK" \
-    https://api.stagingmeshant-internal.example.com/api/v1/test/mailhog/messages/ \
+    https://api.stagingmeshant-internal.example.com/api/v1/test/mailhog/api/v1/messages \
     | jq '.items | length'
 
 curl -fsS -H "X-E2E-Token: $TOK" \
-    "https://api.stagingmeshant-internal.example.com/api/v1/test/mailhog/messages/<id>/" \
+    "https://api.stagingmeshant-internal.example.com/api/v1/test/mailhog/api/v1/messages<id>/" \
     | jq '.Content.Body'
 ```
 
