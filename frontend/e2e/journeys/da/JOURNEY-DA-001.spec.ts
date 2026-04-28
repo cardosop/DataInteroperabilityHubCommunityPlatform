@@ -24,7 +24,7 @@ import { expect, test } from '@playwright/test';
 import { clearAuthStorage, getTestUser, loginUser } from '../../fixtures/auth';
 import { assertNonExistentIdShowsError, loginAndNavigateToRoute } from '../../fixtures/helpers';
 
-test.describe('JOURNEY-DA-001: Create Transformation Pipeline', () => {
+test.describe('JOURNEY-DA-001: Create Transformation Pipeline @critical', () => {
   test.setTimeout(120000);
 
   test.describe('Success', () => {
@@ -33,18 +33,18 @@ test.describe('JOURNEY-DA-001: Create Transformation Pipeline', () => {
       await loginAndNavigateToRoute(page, testUser, '/transformation', {
         timeout: 60000,
         contentSelector:
-          '.transformation-pipeline-list-page, .empty-state, .error-display, .transformation-list-error-wrapper',
+          '.transformation-pipeline-list-page, .empty-state, [data-testid="empty-state"], .error-display, [data-testid="error-display"], .transformation-list-error-wrapper',
       });
       expect(page.url()).toContain('/transformation');
-      const hasError = (await page.locator('.error-display').count()) > 0;
+      const hasError = (await page.locator('.error-display, [data-testid="error-display"]').first().count()) > 0;
       if (hasError) {
         // intentional: tolerates a detached/removed element while extracting text for a diagnostic message; the surrounding throw/expect below this catch is the primary failure path.
-        const msg = await page.locator('.error-display').first().textContent().catch(() => '');
+        const msg = await page.locator('.error-display, [data-testid="error-display"]').first().first().textContent().catch(() => '');
         throw new Error(`Transformation pipelines list shows error instead of content: "${msg?.slice(0, 300)}"`);
       }
       const hasContent =
-        (await page.locator('.transformation-pipeline-list-page').count()) > 0 ||
-        (await page.locator('.empty-state').count()) > 0 ||
+        (await page.locator('.transformation-pipeline-list-page, [data-testid="transformation-pipeline-list-page"]').first().count()) > 0 ||
+        (await page.locator('.empty-state, [data-testid="empty-state"]').first().count()) > 0 ||
         (await page.locator('.transformation-list-error-wrapper').count()) > 0;
       expect(hasContent).toBe(true);
     });
@@ -76,7 +76,7 @@ test.describe('JOURNEY-DA-001: Create Transformation Pipeline', () => {
       await loginAndNavigateToRoute(page, testUser, '/transformation', {
         timeout: 60000,
         contentSelector:
-          '.transformation-pipeline-list-page, .empty-state, .error-display, .transformation-list-error-wrapper',
+          '.transformation-pipeline-list-page, .empty-state, [data-testid="empty-state"], .error-display, [data-testid="error-display"], .transformation-list-error-wrapper',
       });
       expect(page.url()).toContain('/transformation');
     });

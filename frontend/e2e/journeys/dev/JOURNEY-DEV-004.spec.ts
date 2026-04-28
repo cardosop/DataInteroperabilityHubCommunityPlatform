@@ -25,7 +25,7 @@ test.describe('JOURNEY-DEV-004: Set Up Webhooks', () => {
       const devUser = await getExternalDeveloperUser();
       await loginAndNavigateToRoute(page, devUser, '/webhooks', {
         timeout: 60000,
-        contentSelector: '.webhook-list-page, .empty-state, .error-display',
+        contentSelector: '.webhook-list-page, .empty-state, [data-testid="empty-state"], .error-display, [data-testid="error-display"]',
       });
       if (page.url().includes('/login') || page.url().includes('/403')) {
         expect(page.url()).toMatch(/\/login|\/403/);
@@ -35,8 +35,8 @@ test.describe('JOURNEY-DEV-004: Set Up Webhooks', () => {
       await waitForLoadingComplete(page, { timeout: 25000 });
       const hasContent =
         (await page.locator('.webhook-list-page, .webhook-list-header').count()) > 0 ||
-        (await page.locator('.empty-state').count()) > 0 ||
-        (await page.locator('.error-display').count()) > 0;
+        (await page.locator('.empty-state, [data-testid="empty-state"]').first().count()) > 0 ||
+        (await page.locator('.error-display, [data-testid="error-display"]').first().count()) > 0;
       expect(hasContent).toBe(true);
     });
   });
@@ -46,7 +46,7 @@ test.describe('JOURNEY-DEV-004: Set Up Webhooks', () => {
       const devUser = await getExternalDeveloperUser();
       await loginAndNavigateToRoute(page, devUser, '/webhooks', {
         timeout: 45000,
-        contentSelector: '.webhook-list-page, .empty-state, .error-display',
+        contentSelector: '.webhook-list-page, .empty-state, [data-testid="empty-state"], .error-display, [data-testid="error-display"]',
       });
       await page.goto('/webhooks/00000000-0000-0000-0000-000000000000');
       await page.waitForLoadState('domcontentloaded');
@@ -62,7 +62,7 @@ test.describe('JOURNEY-DEV-004: Set Up Webhooks', () => {
       const devUser = await getExternalDeveloperUser();
       await loginAndNavigateToRoute(page, devUser, '/webhooks', {
         timeout: 45000,
-        contentSelector: '.webhook-list-page, .empty-state, .error-display',
+        contentSelector: '.webhook-list-page, .empty-state, [data-testid="empty-state"], .error-display, [data-testid="error-display"]',
       });
       expect(
         page.url().includes('/webhooks') ||

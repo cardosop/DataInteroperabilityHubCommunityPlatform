@@ -13,7 +13,7 @@ import { expect, test } from '@playwright/test';
 import { getTestUser } from '../../fixtures/auth';
 import { loginAndNavigateToRoute, waitForLoadingComplete } from '../../fixtures/helpers';
 
-test.describe('JOURNEY-DPO-015: Create ODPS Product (Product-First Flow)', () => {
+test.describe('JOURNEY-DPO-015: Create ODPS Product (Product-First Flow) @critical', () => {
   test.setTimeout(90000);
 
   test.describe('Success', () => {
@@ -21,7 +21,7 @@ test.describe('JOURNEY-DPO-015: Create ODPS Product (Product-First Flow)', () =>
       const testUser = await getTestUser();
       await loginAndNavigateToRoute(page, testUser, '/odps/upload', {
         timeout: 60000,
-        contentSelector: '.odps-upload-page, .error-display',
+        contentSelector: '.odps-upload-page, .error-display, [data-testid="error-display"]',
       });
       test.skip(page.url().includes('/login'), 'Redirected to login');
       expect(page.url()).toContain('/odps');
@@ -31,7 +31,7 @@ test.describe('JOURNEY-DPO-015: Create ODPS Product (Product-First Flow)', () =>
       const testUser = await getTestUser();
       await loginAndNavigateToRoute(page, testUser, '/odps', {
         timeout: 60000,
-        contentSelector: '.odps-list-page, .odps-empty-state, .error-display',
+        contentSelector: '.odps-list-page, .odps-empty-state, .error-display, [data-testid="error-display"]',
       });
       test.skip(page.url().includes('/login'), 'Redirected to login');
       expect(page.url()).toContain('/odps');
@@ -50,7 +50,7 @@ test.describe('JOURNEY-DPO-015: Create ODPS Product (Product-First Flow)', () =>
         '/odps/00000000-0000-0000-0000-000000000000',
         {
           timeout: 60000,
-          contentSelector: '.error-display, .odps-detail-page, [role="alert"]',
+          contentSelector: '.error-display, [data-testid="error-display"], .odps-detail-page, [role="alert"]',
         }
       );
 
@@ -60,7 +60,7 @@ test.describe('JOURNEY-DPO-015: Create ODPS Product (Product-First Flow)', () =>
 
       // The error display must be present — not just "the success element is missing"
       const hasError =
-        (await page.locator('.error-display').count()) > 0 ||
+        (await page.locator('.error-display, [data-testid="error-display"]').first().count()) > 0 ||
         (await page.locator('[role="alert"]').count()) > 0;
       expect(hasError).toBe(true) /* acceptable states */;
     });
@@ -73,7 +73,7 @@ test.describe('JOURNEY-DPO-015: Create ODPS Product (Product-First Flow)', () =>
       const testUser = await getTestUser();
       await loginAndNavigateToRoute(page, testUser, '/odps/upload', {
         timeout: 60000,
-        contentSelector: '.odps-upload-page, .error-display',
+        contentSelector: '.odps-upload-page, .error-display, [data-testid="error-display"]',
       });
       await waitForLoadingComplete(page, { timeout: 30000 });
 
@@ -154,7 +154,7 @@ test.describe('JOURNEY-DPO-015: Create ODPS Product (Product-First Flow)', () =>
       await page.waitForTimeout(2000);
 
       if (resp && resp.status() >= 400 && resp.status() < 500) {
-        const errorDisplay = page.locator('.error-display, [role="alert"]');
+        const errorDisplay = page.locator('.error-display, [data-testid="error-display"], [role="alert"]');
         await expect(errorDisplay.first()).toBeVisible({ timeout: 8000 });
         return;
       }
@@ -164,7 +164,7 @@ test.describe('JOURNEY-DPO-015: Create ODPS Product (Product-First Flow)', () =>
       const hasSuccessContent =
         (await page.locator('.odps-detail-page, .odps-detail-main, .workflow-status').count()) > 0;
       const stayedOnUploadWithNoError =
-        finalUrl.includes('/odps/upload') && (await page.locator('.error-display').count()) === 0;
+        finalUrl.includes('/odps/upload') && (await page.locator('.error-display, [data-testid="error-display"]').first().count()) === 0;
       expect(navigatedAway || hasSuccessContent || stayedOnUploadWithNoError).toBe(true);
     });
   });

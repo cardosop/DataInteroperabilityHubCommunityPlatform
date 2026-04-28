@@ -44,11 +44,11 @@ test.describe('JOURNEY-DE-014: Create ODPS via API', () => {
       );
       // intentional: probes optional UI presence via a multi-line locator chain — the branch logic below handles both rendered and missing cases deterministically; absence is a legitimate tenant/role state.
       await page
-        .locator('.error-display, .odps-detail-main')
+        .locator('.odps-detail-main, .error-display, [data-testid="error-display"]')
         .first()
         .waitFor({ state: 'visible', timeout: 15000 })
         .catch(() => null);
-      const hasError = (await page.locator('.error-display').count()) > 0;
+      const hasError = (await page.locator('.error-display, [data-testid="error-display"]').first().count()) > 0;
       const noSuccessContent = (await page.locator('.odps-detail-main').count()) === 0;
       const onLogin = page.url().includes('/login');
       expect(hasError || noSuccessContent || onLogin).toBe(true) /* acceptable states */;

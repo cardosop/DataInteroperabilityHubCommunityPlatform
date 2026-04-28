@@ -29,13 +29,13 @@ test.describe('Integrations, Jobs, Scheduled Ingestion, Webhooks routes', () => 
   test.describe('Success', () => {
     test('integrations connections list loads', async ({ page }) => {
       const { ok } = await navigateOrSkip(page, '/integrations/connections', {
-        contentSelector: '.connection-list-page, .empty-state',
+        contentSelector: '.connection-list-page, .empty-state, [data-testid="empty-state"]',
 
       });
       if (!ok) return;
       expect(page.url()).toContain('/integrations/connections');
       try {
-        await assertListPageLoads(page, '.connection-list-page, .empty-state');
+        await assertListPageLoads(page, '.connection-list-page, .empty-state, [data-testid="empty-state"]');
       } catch (err) {
         if (String(err).includes('BACKEND_TIMEOUT')) {
           test.skip(true, 'Backend timeout under parallel E2E load');
@@ -47,13 +47,13 @@ test.describe('Integrations, Jobs, Scheduled Ingestion, Webhooks routes', () => 
 
     test('integrations sync-jobs list loads', async ({ page }) => {
       const { ok } = await navigateOrSkip(page, '/integrations/sync-jobs', {
-        contentSelector: '.sync-job-list-page, .empty-state',
+        contentSelector: '.sync-job-list-page, [data-testid="sync-job-list-page"], .empty-state, [data-testid="empty-state"]',
 
       });
       if (!ok) return;
       expect(page.url()).toContain('/integrations/sync-jobs');
       try {
-        await assertListPageLoads(page, '.sync-job-list-page, .empty-state');
+        await assertListPageLoads(page, '.sync-job-list-page, [data-testid="sync-job-list-page"], .empty-state, [data-testid="empty-state"]');
       } catch (err) {
         if (String(err).includes('BACKEND_TIMEOUT')) {
           test.skip(true, 'Backend timeout under parallel E2E load');
@@ -65,13 +65,13 @@ test.describe('Integrations, Jobs, Scheduled Ingestion, Webhooks routes', () => 
 
     test('integrations mappings list loads', async ({ page }) => {
       const { ok } = await navigateOrSkip(page, '/integrations/mappings', {
-        contentSelector: '.mapping-list-page, .empty-state',
+        contentSelector: '.mapping-list-page, .empty-state, [data-testid="empty-state"]',
 
       });
       if (!ok) return;
       expect(page.url()).toContain('/integrations/mappings');
       try {
-        await assertListPageLoads(page, '.mapping-list-page, .empty-state');
+        await assertListPageLoads(page, '.mapping-list-page, .empty-state, [data-testid="empty-state"]');
       } catch (err) {
         if (String(err).includes('BACKEND_TIMEOUT')) {
           test.skip(true, 'Backend timeout under parallel E2E load');
@@ -83,13 +83,13 @@ test.describe('Integrations, Jobs, Scheduled Ingestion, Webhooks routes', () => 
 
     test('jobs list loads', async ({ page }) => {
       const { ok } = await navigateOrSkip(page, '/jobs', {
-        contentSelector: '.job-list-page, .empty-state',
+        contentSelector: '.job-list-page, .empty-state, [data-testid="empty-state"]',
 
       });
       if (!ok) return;
       expect(page.url()).toContain('/jobs');
       try {
-        await assertListPageLoads(page, '.job-list-page, .empty-state');
+        await assertListPageLoads(page, '.job-list-page, .empty-state, [data-testid="empty-state"]');
       } catch (err) {
         if (String(err).includes('BACKEND_TIMEOUT')) {
           test.skip(true, 'Backend timeout under parallel E2E load');
@@ -101,13 +101,13 @@ test.describe('Integrations, Jobs, Scheduled Ingestion, Webhooks routes', () => 
 
     test('webhooks list loads', async ({ page }) => {
       const { ok } = await navigateOrSkip(page, '/webhooks', {
-        contentSelector: '.webhook-list-page, .empty-state',
+        contentSelector: '.webhook-list-page, .empty-state, [data-testid="empty-state"]',
 
       });
       if (!ok) return;
       expect(page.url()).toContain('/webhooks');
       try {
-        await assertListPageLoads(page, '.webhook-list-page, .empty-state');
+        await assertListPageLoads(page, '.webhook-list-page, .empty-state, [data-testid="empty-state"]');
       } catch (err) {
         if (String(err).includes('BACKEND_TIMEOUT')) {
           test.skip(true, 'Backend timeout under parallel E2E load');
@@ -137,7 +137,7 @@ test.describe('Integrations, Jobs, Scheduled Ingestion, Webhooks routes', () => 
         await waitForAppMainReady(page, {
           timeout: 60000,
           acceptRedirectToLogin: true,
-          contentSelector: '.error-display, .error-display-title, .job-detail-page',
+          contentSelector: '.error-display, [data-testid="error-display"], .error-display-title, [data-testid="error-display-title"], .job-detail-page',
         });
       } catch (_err) {
         if (page.url().includes('/login')) {
@@ -153,10 +153,10 @@ test.describe('Integrations, Jobs, Scheduled Ingestion, Webhooks routes', () => 
       await responsePromise;
 
       // intentional: probes optional UI presence — the branch logic below handles both rendered and missing cases deterministically; absence is a legitimate tenant/role state, not a test failure.
-      await page.locator('.error-display, .error-display-title, .job-detail-page')
+      await page.locator('.error-display, [data-testid="error-display"], .error-display-title, [data-testid="error-display-title"], .job-detail-page')
         .first().waitFor({ state: 'visible', timeout: 30000 }).catch(() => null);
 
-      const hasErrorDisplay = (await page.locator('.error-display, .error-display-title').count()) > 0;
+      const hasErrorDisplay = (await page.locator('.error-display, [data-testid="error-display"], .error-display-title, [data-testid="error-display-title"]').count()) > 0;
       // For a non-existent resource, any error state is valid: 404 "not found", API timeout,
       // network error, or generic failure. The test verifies the UI shows an error — the
       // exact error text depends on backend load and response time.
@@ -168,7 +168,7 @@ test.describe('Integrations, Jobs, Scheduled Ingestion, Webhooks routes', () => 
           return;
         }
       }
-      expect(hasErrorDisplay, 'Expected .error-display for non-existent resource').toBe(true);
+      expect(hasErrorDisplay, 'Expected .error-display, [data-testid="error-display"] for non-existent resource').toBe(true);
     });
   });
 
@@ -179,7 +179,7 @@ test.describe('Integrations, Jobs, Scheduled Ingestion, Webhooks routes', () => 
         await waitForAppMainReady(page, {
           timeout: 60000,
           acceptRedirectToLogin: true,
-          contentSelector: '.scheduled-ingestion-list-page, .empty-state, .error-display, .unavailable-page',
+          contentSelector: '.scheduled-ingestion-list-page, .empty-state, [data-testid="empty-state"], .error-display, [data-testid="error-display"], .unavailable-page, [data-testid="unavailable-page"]',
         });
       } catch (_err) {
         if (page.url().includes('/login')) {
@@ -197,8 +197,8 @@ test.describe('Integrations, Jobs, Scheduled Ingestion, Webhooks routes', () => 
       const on403 = url.includes('/403');
       const hasList = (await page.locator('.scheduled-ingestion-list-page').count()) > 0;
       const has403 = (await page.locator('text=/403|forbidden/i').count()) > 0;
-      const hasUnavailable = (await page.locator('.unavailable-page').count()) > 0;
-      const hasEmptyState = (await page.locator('.empty-state').count()) > 0;
+      const hasUnavailable = (await page.locator('.unavailable-page, [data-testid="unavailable-page"]').first().count()) > 0;
+      const hasEmptyState = (await page.locator('.empty-state, [data-testid="empty-state"]').first().count()) > 0;
       expect(onScheduled || on403).toBe(true) /* acceptable URL states */;
       // Terminal states only: list, empty state, 403 text, unavailable, or 403 redirect
       expect(hasList || hasEmptyState || has403 || hasUnavailable || on403).toBe(true) /* acceptable states */;

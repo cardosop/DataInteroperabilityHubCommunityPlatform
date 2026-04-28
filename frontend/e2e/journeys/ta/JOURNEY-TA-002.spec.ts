@@ -48,7 +48,7 @@ test.describe('JOURNEY-TA-002: Manage User Roles', () => {
           // Log in first to get a token
           await loginAndNavigateToRoute(page, adminUser, '/admin', {
             timeout: 60000,
-            contentSelector: '.admin-page',
+            contentSelector: '.admin-page, [data-testid="admin-page"]',
           });
         }
         const token = await page.evaluate(() => localStorage.getItem('access_token'));
@@ -192,10 +192,10 @@ test.describe('JOURNEY-TA-002: Manage User Roles', () => {
       }
 
       // Error display is NOT an acceptable outcome for an admin user on the admin page
-      const hasError = (await page.locator('.error-display').count()) > 0;
+      const hasError = (await page.locator('.error-display, [data-testid="error-display"]').first().count()) > 0;
       if (hasError) {
         // intentional: tolerates a detached/removed element while extracting text for a diagnostic message; the surrounding throw/expect below this catch is the primary failure path.
-        const errText = await page.locator('.error-display').first().textContent().catch(() => '');
+        const errText = await page.locator('.error-display, [data-testid="error-display"]').first().first().textContent().catch(() => '');
         // 403/permission errors are acceptable (user may not have full admin rights)
         if (!/403|forbidden|permission/i.test(errText ?? '')) {
           throw new Error(`Admin users page shows unexpected error: ${errText}`);
@@ -204,9 +204,9 @@ test.describe('JOURNEY-TA-002: Manage User Roles', () => {
 
       const hasUsersSection =
         (await page.locator('[data-testid="admin-users-section"]').count()) > 0 ||
-        (await page.locator('.admin-table').count()) > 0 ||
-        (await page.locator('.empty-state').count()) > 0 ||
-        (await page.locator('.admin-page').count()) > 0;
+        (await page.locator('.admin-table, [data-testid="admin-table"]').first().count()) > 0 ||
+        (await page.locator('.empty-state, [data-testid="empty-state"]').first().count()) > 0 ||
+        (await page.locator('.admin-page, [data-testid="admin-page"]').first().count()) > 0;
       expect(hasUsersSection).toBe(true) /* acceptable states */;
     });
   });
@@ -245,9 +245,9 @@ test.describe('JOURNEY-TA-002: Manage User Roles', () => {
       }
 
       const hasContent =
-        (await page.locator('.admin-table').count()) > 0 ||
-        (await page.locator('.empty-state').count()) > 0 ||
-        (await page.locator('.admin-page').count()) > 0;
+        (await page.locator('.admin-table, [data-testid="admin-table"]').first().count()) > 0 ||
+        (await page.locator('.empty-state, [data-testid="empty-state"]').first().count()) > 0 ||
+        (await page.locator('.admin-page, [data-testid="admin-page"]').first().count()) > 0;
       expect(hasContent).toBe(true) /* acceptable states */;
     });
   });

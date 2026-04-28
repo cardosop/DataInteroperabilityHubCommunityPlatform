@@ -31,7 +31,7 @@ test.describe('JOURNEY-PA-002: Manage Tenant Lifecycle', () => {
 
       await loginAndNavigateToRoute(page, paUser, '/admin', {
         timeout: 60000,
-        contentSelector: '.admin-page',
+        contentSelector: '.admin-page, [data-testid="admin-page"]',
       });
       if (page.url().includes('/403') || page.url().includes('/login')) {
         test.skip(true, 'Platform admin user does not have admin page access in this environment');
@@ -70,7 +70,7 @@ test.describe('JOURNEY-PA-002: Manage Tenant Lifecycle', () => {
 
       // Reload the admin page so the UI reflects the API state after cleanup
       await page.reload({ waitUntil: 'domcontentloaded' });
-      await page.waitForSelector('.admin-page', { timeout: 15000 });
+      await page.waitForSelector('.admin-page, [data-testid="admin-page"]', { timeout: 15000 });
 
       // Navigate to Tenants tab
       const tenantsTab = page.locator(
@@ -192,7 +192,7 @@ test.describe('JOURNEY-PA-002: Manage Tenant Lifecycle', () => {
       const paUser = await getPlatformAdminUser();
       await loginAndNavigateToRoute(page, paUser, '/admin', {
         timeout: 60000,
-        contentSelector: '.admin-page, [data-testid="forbidden-page"]',
+        contentSelector: '.admin-page, [data-testid="admin-page"], [data-testid="forbidden-page"]',
       });
       // Authenticated PA user: /login should not appear; /admin or /403 (role not assigned) are valid
       expect(page.url().includes('/admin') || page.url().includes('/403')).toBe(true);

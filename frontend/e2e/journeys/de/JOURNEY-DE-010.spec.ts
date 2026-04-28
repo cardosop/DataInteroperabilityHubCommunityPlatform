@@ -22,7 +22,7 @@ test.describe('JOURNEY-DE-010: Configure Connector for Data Source', () => {
       await loginAndNavigateToRoute(page, testUser, '/integrations/connections', {
         timeout: 120000,
         contentSelector:
-          '.connection-list-page, .marketplace-connection-list-page, .empty-state, .error-display',
+          '.connection-list-page, .marketplace-connection-list-page, .empty-state, [data-testid="empty-state"], .error-display, [data-testid="error-display"]',
       });
       if (page.url().includes('/login')) {
         expect(page.url()).toContain('/login');
@@ -36,7 +36,7 @@ test.describe('JOURNEY-DE-010: Configure Connector for Data Source', () => {
       await loginAndNavigateToRoute(page, testUser, '/integrations/connections/create', {
         timeout: 90000,
         contentSelector:
-          '.marketplace-connection-create-page, .connection-create-page, .marketplace-connection-create-form, .error-display',
+          '.marketplace-connection-create-page, .connection-create-page, .marketplace-connection-create-form, .error-display, [data-testid="error-display"]',
       });
       if (page.url().includes('/login')) {
         expect(page.url()).toContain('/login');
@@ -56,7 +56,7 @@ test.describe('JOURNEY-DE-010: Configure Connector for Data Source', () => {
         { timeout: 90000 }
       );
       await assertNonExistentIdShowsError(page, {
-        detailContentSelector: '.marketplace-connection-detail-page',
+        detailContentSelector: '.marketplace-connection-detail-page, [data-testid="marketplace-connection-detail-page"]',
         waitAfterLoad: 12000,
       });
     });
@@ -68,7 +68,7 @@ test.describe('JOURNEY-DE-010: Configure Connector for Data Source', () => {
       await loginAndNavigateToRoute(page, testUser, '/integrations/connections/create', {
         timeout: 60000,
         contentSelector:
-          '.marketplace-connection-create-page, .connection-create-page, .error-display',
+          '.marketplace-connection-create-page, .connection-create-page, .error-display, [data-testid="error-display"]',
       });
       if (page.url().includes('/login')) {
         expect(page.url()).toContain('/login');
@@ -79,7 +79,7 @@ test.describe('JOURNEY-DE-010: Configure Connector for Data Source', () => {
       const hasFormFields =
         (await page.locator('input, select, [role="combobox"]').count()) > 0 ||
         (await page.locator('.marketplace-connection-create-form').count()) > 0 ||
-        (await page.locator('.error-display').count()) > 0;
+        (await page.locator('.error-display, [data-testid="error-display"]').first().count()) > 0;
       expect(hasFormFields).toBe(true);
     });
   });

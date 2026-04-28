@@ -21,7 +21,7 @@ test.describe('JOURNEY-DEV-007: Build Custom Connector', () => {
       const devUser = await getExternalDeveloperUser();
       await loginAndNavigateToRoute(page, devUser, '/integrations/connections', {
         timeout: 90000,
-        contentSelector: '.connection-list-page, .empty-state, .error-display, .app-main',
+        contentSelector: '.connection-list-page, .empty-state, [data-testid="empty-state"], .error-display, [data-testid="error-display"], .app-main, [data-testid="app-main"]',
       });
       if (page.url().includes('/login') || page.url().includes('/403')) {
         expect(page.url()).toMatch(/\/login|\/403/);
@@ -34,7 +34,7 @@ test.describe('JOURNEY-DEV-007: Build Custom Connector', () => {
       const devUser = await getExternalDeveloperUser();
       await loginAndNavigateToRoute(page, devUser, '/integrations/connections/create', {
         timeout: 90000,
-        contentSelector: '.marketplace-connection-create-page, .app-main, .error-display',
+        contentSelector: '.marketplace-connection-create-page, .app-main, [data-testid="app-main"], .error-display, [data-testid="error-display"]',
       });
       if (page.url().includes('/login') || page.url().includes('/403')) {
         expect(page.url()).toMatch(/\/login|\/403/);
@@ -49,12 +49,12 @@ test.describe('JOURNEY-DEV-007: Build Custom Connector', () => {
       const devUser = await getExternalDeveloperUser();
       await loginAndNavigateToRoute(page, devUser, '/integrations/connections', {
         timeout: 90000,
-        contentSelector: '.connection-list-page, .empty-state, .error-display',
+        contentSelector: '.connection-list-page, .empty-state, [data-testid="empty-state"], .error-display, [data-testid="error-display"]',
       });
       await page.goto('/integrations/connections/00000000-0000-0000-0000-000000000000');
       await page.waitForLoadState('domcontentloaded');
       await assertNonExistentIdShowsError(page, {
-        detailContentSelector: '.marketplace-connection-detail-page',
+        detailContentSelector: '.marketplace-connection-detail-page, [data-testid="marketplace-connection-detail-page"]',
         waitAfterLoad: 8000,
       });
     });
@@ -65,7 +65,7 @@ test.describe('JOURNEY-DEV-007: Build Custom Connector', () => {
       const devUser = await getExternalDeveloperUser();
       await loginAndNavigateToRoute(page, devUser, '/integrations/connections', {
         timeout: 90000,
-        contentSelector: '.connection-list-page, .empty-state, .error-display',
+        contentSelector: '.connection-list-page, .empty-state, [data-testid="empty-state"], .error-display, [data-testid="error-display"]',
       });
       if (page.url().includes('/login') || page.url().includes('/403')) {
         expect(page.url()).toMatch(/\/login|\/403/);

@@ -16,7 +16,7 @@ import {
 
 const MAILHOG_BASE_URL = process.env.MAILHOG_URL || 'http://localhost:8025';
 
-test.describe('Auth UI closure — Visitor persona (no mocks)', () => {
+test.describe('Auth UI closure — Visitor persona (no mocks) @critical', () => {
   // AUTH-001: clearAuth → register (45s API) → login (60s) → verify shell (45s)
   // AUTH-003: register → password-reset → MailHog poll (120s) → confirm → login
   test.setTimeout(240_000);

@@ -25,7 +25,7 @@ test.describe('JOURNEY-CM-001: Manage Data Community', () => {
       await page.waitForLoadState('domcontentloaded');
       // intentional: probes optional UI presence via a multi-line locator chain — the branch logic below handles both rendered and missing cases deterministically; absence is a legitimate tenant/role state.
       await page
-        .locator('.communities-page, [data-testid="communities-page"], .unavailable-page')
+        .locator('.communities-page, [data-testid="communities-page"], .unavailable-page, [data-testid="unavailable-page"]')
         .first()
         .waitFor({ state: 'visible', timeout: 25000 })
         .catch(() => null);
@@ -37,15 +37,15 @@ test.describe('JOURNEY-CM-001: Manage Data Community', () => {
       }
 
       expect(url).toContain('/communities');
-      await expect(page.locator('.error-display')).not.toBeVisible();
+      await expect(page.locator('.error-display, [data-testid="error-display"]').first()).not.toBeVisible();
 
       // CM-001 specific: communities page must render its data-testid or class
       const hasCommunitiesPage =
         (await page.locator('.communities-page, [data-testid="communities-page"]').count()) > 0;
-      const hasEmptyState = (await page.locator('.empty-state').count()) > 0;
+      const hasEmptyState = (await page.locator('.empty-state, [data-testid="empty-state"]').first().count()) > 0;
       expect(
         hasCommunitiesPage || hasEmptyState,
-        'Expected .communities-page or .empty-state on /communities'
+        'Expected .communities-page or .empty-state, [data-testid="empty-state"] on /communities'
       ).toBe(true);
     });
   });
@@ -60,7 +60,7 @@ test.describe('JOURNEY-CM-001: Manage Data Community', () => {
       const onUnavailable = url.includes('/unavailable');
       const onLogin = url.includes('/login');
       const hasUnavailableContent =
-        (await page.locator('.unavailable-page, .error-display').count()) > 0;
+        (await page.locator('.unavailable-page, [data-testid="unavailable-page"], .error-display, [data-testid="error-display"]').count()) > 0;
       expect(on403 || onUnavailable || hasUnavailableContent || onLogin).toBe(true);
     });
   });

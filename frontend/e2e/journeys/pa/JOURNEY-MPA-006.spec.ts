@@ -21,7 +21,7 @@ test.describe('JOURNEY-MPA-006: Configure Advanced Marketplace Features', () => 
       await loginAsPersona(page, getPlatformAdminUser);
       await page.goto('/marketplace');
       await page.waitForLoadState('domcontentloaded');
-      await page.waitForSelector('.listing-list-page, .error-display, .empty-state', {
+      await page.waitForSelector('.listing-list-page, .error-display, [data-testid="error-display"], .empty-state, [data-testid="empty-state"]', {
         timeout: 65000,
       });
       if (page.url().includes('/login') || page.url().includes('/403')) {
@@ -35,7 +35,7 @@ test.describe('JOURNEY-MPA-006: Configure Advanced Marketplace Features', () => 
       await loginAsPersona(page, getPlatformAdminUser);
       await page.goto('/marketplace/publish');
       try {
-        await waitForAppMainReady(page, { timeout: 60000, contentSelector: '.listing-publish-page' });
+        await waitForAppMainReady(page, { timeout: 60000, contentSelector: '.listing-publish-page, [data-testid="listing-publish-page"]' });
       } catch (_err) {
         if (page.url().includes('/login') || page.url().includes('/403')) {
           expect(page.url()).toMatch(/\/login|\/403/);
@@ -53,8 +53,8 @@ test.describe('JOURNEY-MPA-006: Configure Advanced Marketplace Features', () => 
       await page.goto('/marketplace/listings/00000000-0000-0000-0000-000000000000');
       await page.waitForLoadState('domcontentloaded');
       await page.waitForTimeout(5000);
-      const hasError = (await page.locator('.error-display').count()) > 0;
-      const noSuccessContent = (await page.locator('.listing-detail-main').count()) === 0;
+      const hasError = (await page.locator('.error-display, [data-testid="error-display"]').first().count()) > 0;
+      const noSuccessContent = (await page.locator('.listing-detail-main, [data-testid="listing-detail-main"]').first().count()) === 0;
       const onLogin = page.url().includes('/login');
       expect(hasError || noSuccessContent || onLogin).toBe(true) /* acceptable states */;
     });

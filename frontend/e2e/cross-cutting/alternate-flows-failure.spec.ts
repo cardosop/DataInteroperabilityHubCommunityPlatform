@@ -19,7 +19,7 @@ test.describe('Alternate flows — failure (USE_CASES A1–An)', () => {
     const key = `e2e-dup-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
     await page.goto('/assets/create', { waitUntil: 'domcontentloaded' });
     try {
-      await waitForAppMainReady(page, { contentSelector: '.asset-create-page', timeout: 60000 });
+      await waitForAppMainReady(page, { contentSelector: '.asset-create-page, [data-testid="asset-create-page"]', timeout: 60000 });
     } catch (_err) {
       if (page.url().includes('/login')) {
         test.skip(true, 'Auth redirect during asset create — rate-limit or session issue');
@@ -49,7 +49,7 @@ test.describe('Alternate flows — failure (USE_CASES A1–An)', () => {
 
     await page.goto('/assets/create', { waitUntil: 'domcontentloaded' });
     try {
-      await waitForAppMainReady(page, { contentSelector: '.asset-create-page', timeout: 60000 });
+      await waitForAppMainReady(page, { contentSelector: '.asset-create-page, [data-testid="asset-create-page"]', timeout: 60000 });
     } catch (_err) {
       if (page.url().includes('/login')) {
         test.skip(true, 'Auth redirect during asset create — rate-limit or session issue');
@@ -64,7 +64,7 @@ test.describe('Alternate flows — failure (USE_CASES A1–An)', () => {
     await page.waitForTimeout(3000);
 
     const hasError =
-      (await page.locator('.error-display').count()) > 0 ||
+      (await page.locator('.error-display, [data-testid="error-display"]').first().count()) > 0 ||
       (await page.locator('text=/already exists|duplicate|400|unique/i').count()) > 0;
     const stillOnCreate = page.url().includes('/assets/create');
     expect(hasError || stillOnCreate).toBe(true) /* acceptable states */;

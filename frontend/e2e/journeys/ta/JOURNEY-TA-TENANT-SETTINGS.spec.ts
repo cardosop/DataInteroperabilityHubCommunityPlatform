@@ -56,7 +56,7 @@ test.describe('Phase 8.4: Tenant Admin Views Usage & Config', () => {
     await saveBtn.click();
     await page.waitForTimeout(2000);
 
-    const successMsg = page.locator('.tenant-settings-success');
+    const successMsg = page.locator('.tenant-settings-success, [data-testid="tenant-settings-success"]').first();
     await expect(successMsg).toBeVisible({ timeout: 5000 });
     await expect(successMsg).toContainText(/updated|success/i);
 
@@ -114,7 +114,7 @@ test.describe('Phase 8.4: Tenant Admin Views Usage & Config', () => {
     await saveBtn.click();
     await page.waitForTimeout(2000);
 
-    const successMsg = page.locator('.tenant-settings-success');
+    const successMsg = page.locator('.tenant-settings-success, [data-testid="tenant-settings-success"]').first();
     await expect(successMsg).toBeVisible({ timeout: 5000 });
 
     const newState = await trustSignalsCheckbox.isChecked();
@@ -154,7 +154,7 @@ test.describe('Phase 8.4: Tenant Admin Views Usage & Config', () => {
     await saveBtn.click();
     await page.waitForTimeout(2000);
 
-    const successMsg = page.locator('.tenant-settings-success');
+    const successMsg = page.locator('.tenant-settings-success, [data-testid="tenant-settings-success"]').first();
     await expect(successMsg).toBeVisible({ timeout: 10000 });
 
     const newState = await versioningCheckbox.isChecked();
@@ -194,7 +194,7 @@ test.describe('Phase 8.4: Tenant Admin Views Usage & Config', () => {
     await saveBtn.click();
     await page.waitForTimeout(2000);
 
-    const successMsg = page.locator('.tenant-settings-success');
+    const successMsg = page.locator('.tenant-settings-success, [data-testid="tenant-settings-success"]').first();
     await expect(successMsg).toBeVisible({ timeout: 10000 });
 
     const newState = await workflowsCheckbox.isChecked();

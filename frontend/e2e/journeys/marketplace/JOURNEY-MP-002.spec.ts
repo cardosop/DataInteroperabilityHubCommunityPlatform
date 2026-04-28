@@ -14,6 +14,14 @@ import { getTestUser } from '../../fixtures/auth';
 import { loginAndNavigateToRoute } from '../../fixtures/helpers';
 import { createAssetViaApi } from '../../fixtures/api-assets';
 import { verifyViaApi } from '../../fixtures/verifyViaApi';
+// Phase 226 G7 — semantic-IRI guarantee on the listing's underlying asset.
+// MarketplaceListing itself is not a semantic resource type, but publishing
+// it must keep the asset's JSON-LD dereference + SPARQL visibility intact.
+import { verifySemanticIri } from '../../fixtures/verifySemantic';
+// Phase 226 G8d — audit-trail guarantee on listing creation.
+import { verifyAuditEvent } from '../../fixtures/verifyAuditEvent';
+// Phase 226 G12 — search-index freshness on listing publish.
+import { verifySearchable } from '../../fixtures/verifySearchable';
 
 test.describe('JOURNEY-MP-002: Publish Asset to Marketplace', () => {
   test.setTimeout(120000);
@@ -23,7 +31,7 @@ test.describe('JOURNEY-MP-002: Publish Asset to Marketplace', () => {
       const testUser = await getTestUser();
       await loginAndNavigateToRoute(page, testUser, '/assets', {
         timeout: 60000,
-        contentSelector: '.asset-list-page, .empty-state, .error-display',
+        contentSelector: '.asset-list-page, [data-testid="asset-list-page"], .empty-state, [data-testid="empty-state"], .error-display, [data-testid="error-display"]',
       });
       expect(page.url()).toContain('/assets');
     });
@@ -32,7 +40,7 @@ test.describe('JOURNEY-MP-002: Publish Asset to Marketplace', () => {
       const testUser = await getTestUser();
       await loginAndNavigateToRoute(page, testUser, '/marketplace/publish', {
         timeout: 60000,
-        contentSelector: '.listing-publish-page',
+        contentSelector: '.listing-publish-page, [data-testid="listing-publish-page"]',
         acceptRedirectToLogin: true,
       });
       if (page.url().includes('/login') || page.url().includes('/403')) {
@@ -53,11 +61,11 @@ test.describe('JOURNEY-MP-002: Publish Asset to Marketplace', () => {
 
       await loginAndNavigateToRoute(page, testUser, '/marketplace/publish', {
         timeout: 60000,
-        contentSelector: '.listing-publish-page, .app-main',
+        contentSelector: '.listing-publish-page, [data-testid="listing-publish-page"], .app-main, [data-testid="app-main"]',
         acceptRedirectToLogin: true,
       });
       if (page.url().includes('/login') || page.url().includes('/403')) return;
-      if (!(await page.locator('.listing-publish-page').isVisible())) {
+      if (!(await page.locator('.listing-publish-page, [data-testid="listing-publish-page"]').first().isVisible())) {
         test.info().annotations.push({ type: 'note', description: 'Publish form not found — skipping form interaction' });
         return;
       }
@@ -115,7 +123,7 @@ test.describe('JOURNEY-MP-002: Publish Asset to Marketplace', () => {
           .waitForURL(/\/marketplace\/listings\/[a-fA-F0-9-]{36}$/, { timeout: 30000 })
           .then(() => 'navigated'),
         page
-          .waitForSelector('.error-display', { state: 'visible', timeout: 30000 })
+          .waitForSelector('.error-display, [data-testid="error-display"]', { state: 'visible', timeout: 30000 })
           .then(() => 'api-error'),
         page
           .waitForSelector('.error-message', { state: 'visible', timeout: 30000 })
@@ -141,10 +149,35 @@ test.describe('JOURNEY-MP-002: Publish Asset to Marketplace', () => {
           `/api/v1/marketplace/listings/${listingId}/`,
           (body: { asset_id?: string }) => body.asset_id === assetId,
         );
+
+        // Phase 226 G8d — audit row for the listing-create.
+        await verifyAuditEvent(page, {
+          action: 'LISTING_CREATED',
+          resourceType: 'LISTING',
+          resourceId: listingId,
+        });
+
+        // Phase 226 G7 — the listing's underlying asset must remain
+        // semantically dereferenceable. A regression in the 303 handler
+        // surfaces here even though the listing is the artifact under test.
+        await verifySemanticIri(page, 'asset', assetId, {
+          testInfo: test.info(),
+          skipSparqlOn: ({ status }) =>
+            status === 404 || status === 501 || status === 503,
+        });
+
+        // Phase 226 G12 — published listings must appear in the marketplace
+        // search index within 20 s of creation. Catches indexer regressions
+        // where the listing rendered in the UI but was unfindable via search.
+        await verifySearchable(page, {
+          resourceType: 'LISTING',
+          id: listingId,
+          key: listingId.slice(0, 8),
+        });
       } else if (resultType === 'api-error') {
         // Backend rejected the listing creation (e.g. duplicate, permission, plan limit)
         // intentional: tolerates a detached/removed element while extracting text for a diagnostic message; the surrounding throw/expect below this catch is the primary failure path.
-        const errText = await page.locator('.error-display').first().textContent().catch(() => '');
+        const errText = await page.locator('.error-display, [data-testid="error-display"]').first().first().textContent().catch(() => '');
         test.info().annotations.push({
           type: 'note',
           description: `Listing creation returned an API error: ${errText.slice(0, 200)}`,
@@ -173,14 +206,14 @@ test.describe('JOURNEY-MP-002: Publish Asset to Marketplace', () => {
       const testUser = await getTestUser();
       await loginAndNavigateToRoute(page, testUser, '/marketplace/publish', {
         timeout: 60000,
-        contentSelector: '.listing-publish-page, .empty-state',
+        contentSelector: '.listing-publish-page, [data-testid="listing-publish-page"], .empty-state, [data-testid="empty-state"]',
         acceptRedirectToLogin: true,
       });
       await page.waitForTimeout(1000);
       const onLogin = page.url().includes('/login');
       const onPublish = page.url().includes('/marketplace/publish');
       const hasContent =
-        (await page.locator('.listing-publish-page, .app-main, .empty-state').count()) > 0;
+        (await page.locator('.listing-publish-page, [data-testid="listing-publish-page"], .app-main, [data-testid="app-main"], .empty-state, [data-testid="empty-state"]').count()) > 0;
       expect(onLogin || (onPublish && hasContent)).toBe(true);
     });
   });
@@ -190,12 +223,12 @@ test.describe('JOURNEY-MP-002: Publish Asset to Marketplace', () => {
       const testUser = await getTestUser();
       await loginAndNavigateToRoute(page, testUser, '/assets', {
         timeout: 60000,
-        contentSelector: '.asset-list-page, .empty-state, .error-display',
+        contentSelector: '.asset-list-page, [data-testid="asset-list-page"], .empty-state, [data-testid="empty-state"], .error-display, [data-testid="error-display"]',
       });
       expect(page.url()).toContain('/assets');
       await loginAndNavigateToRoute(page, testUser, '/marketplace/publish', {
         timeout: 60000,
-        contentSelector: '.listing-publish-page, .empty-state, .error-display',
+        contentSelector: '.listing-publish-page, [data-testid="listing-publish-page"], .empty-state, [data-testid="empty-state"], .error-display, [data-testid="error-display"]',
       });
       expect(page.url()).toContain('/marketplace/publish');
     });

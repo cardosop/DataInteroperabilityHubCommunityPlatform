@@ -16,7 +16,7 @@ test.describe('Feature: Audit', () => {
       const auditorUser = await getAuditorUser();
       await loginAndNavigateToRoute(page, auditorUser, '/audit', {
         timeout: 60000,
-        contentSelector: '.audit-log-page, .audit-page, .empty-state, h1',
+        contentSelector: '.audit-log-page, .audit-page, .empty-state, [data-testid="empty-state"], h1',
         acceptRedirectToLogin: true,
       });
       if (page.url().includes('/login')) {
@@ -27,11 +27,11 @@ test.describe('Feature: Audit', () => {
       const url = page.url();
       expect(url).toMatch(/\/audit|\/403/);
 
-      // Success test must NOT accept .error-display
-      await expect(page.locator('.error-display')).not.toBeVisible();
+      // Success test must NOT accept .error-display, [data-testid="error-display"]
+      await expect(page.locator('.error-display, [data-testid="error-display"]').first()).not.toBeVisible();
       // Must render actual content — URL check alone does not prove the page loaded
       const hasContent =
-        (await page.locator('.audit-log-page, .audit-page, .empty-state, h1').count()) > 0;
+        (await page.locator('.audit-log-page, .audit-page, .empty-state, [data-testid="empty-state"], h1').count()) > 0;
       expect(hasContent).toBe(true);
     });
   });
@@ -43,7 +43,7 @@ test.describe('Feature: Audit', () => {
       const regularUser = await getTestUser();
       await loginAndNavigateToRoute(page, regularUser, '/audit', {
         timeout: 60000,
-        contentSelector: '.audit-log-page, .audit-page, .empty-state, .error-display, h1',
+        contentSelector: '.audit-log-page, .audit-page, .empty-state, [data-testid="empty-state"], .error-display, [data-testid="error-display"], h1',
         acceptRedirectToLogin: true,
       });
       if (page.url().includes('/login')) {
@@ -55,7 +55,7 @@ test.describe('Feature: Audit', () => {
       const on403 = url.includes('/403');
       const hasForbiddenText =
         (await page.locator('text=/forbidden|403|access denied|not authorized/i').count()) > 0;
-      const hasErrorDisplay = (await page.locator('.error-display').count()) > 0;
+      const hasErrorDisplay = (await page.locator('.error-display, [data-testid="error-display"]').first().count()) > 0;
 
       // If a regular user can see raw audit content, that's a permissions signal worth surfacing
       const hasUnrestrictedAuditContent =

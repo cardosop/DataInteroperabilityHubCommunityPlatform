@@ -22,7 +22,7 @@ test.describe('JOURNEY-DE-012: Create Custom Plugin', () => {
       await loginAndNavigateToRoute(page, testUser, '/developer', {
         timeout: 60000,
         contentSelector:
-          '.developer-portal-page, .developer-page, .unavailable-page, .error-display',
+          '.developer-portal-page, .developer-page, .unavailable-page, [data-testid="unavailable-page"], .error-display, [data-testid="error-display"]',
       });
       const onLogin = page.url().includes('/login');
       const on403 = page.url().includes('/403');
@@ -34,9 +34,9 @@ test.describe('JOURNEY-DE-012: Create Custom Plugin', () => {
       expect(onDeveloper).toBe(true);
       const hasContent =
         (await page.locator('.developer-portal-page, .developer-page').count()) > 0 ||
-        (await page.locator('.unavailable-page').count()) > 0;
+        (await page.locator('.unavailable-page, [data-testid="unavailable-page"]').first().count()) > 0;
       expect(hasContent).toBe(true);
-      await expect(page.locator('.error-display')).not.toBeVisible();
+      await expect(page.locator('.error-display, [data-testid="error-display"]').first()).not.toBeVisible();
     });
   });
 
@@ -57,7 +57,7 @@ test.describe('JOURNEY-DE-012: Create Custom Plugin', () => {
       await loginAndNavigateToRoute(page, testUser, '/developer', {
         timeout: 90000,
         contentSelector:
-          '.developer-portal-page, .developer-page, .unavailable-page, .error-display',
+          '.developer-portal-page, .developer-page, .unavailable-page, [data-testid="unavailable-page"], .error-display, [data-testid="error-display"]',
       });
       const url = page.url();
       expect(

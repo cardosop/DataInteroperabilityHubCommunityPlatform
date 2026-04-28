@@ -14,7 +14,7 @@ test.describe('Meshant Brand Display (Phase 29.0)', () => {
     await page.waitForLoadState('domcontentloaded');
     await page.waitForTimeout(2000);
 
-    const header = page.locator('.app-header');
+    const header = page.locator('.app-header, [data-testid="app-header"]').first();
     await expect(header).toBeVisible({ timeout: 15000 });
     await expect(header.locator('.app-title')).toContainText(E2E_APP_NAME);
   });

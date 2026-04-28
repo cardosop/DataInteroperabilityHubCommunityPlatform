@@ -14,7 +14,7 @@ import { createODCSContractViaApi } from '../../fixtures/api-assets';
 import { getTestUser } from '../../fixtures/auth';
 import { loginAndNavigateToRoute } from '../../fixtures/helpers';
 
-test.describe('JOURNEY-DPO-016: Link ODPS to ODCS Contract (Technical-First Flow)', () => {
+test.describe('JOURNEY-DPO-016: Link ODPS to ODCS Contract (Technical-First Flow) @critical', () => {
   test.setTimeout(90000);
 
   test.describe('Success', () => {
@@ -28,7 +28,7 @@ test.describe('JOURNEY-DPO-016: Link ODPS to ODCS Contract (Technical-First Flow
       try {
         await loginAndNavigateToRoute(page, testUser, `/contracts/${contractId}/link-odps`, {
           timeout: 60000,
-          contentSelector: '.odps-link-page, .error-display',
+          contentSelector: '.odps-link-page, .error-display, [data-testid="error-display"]',
         });
       } catch (navErr) {
         const msg = String(navErr);
@@ -44,7 +44,7 @@ test.describe('JOURNEY-DPO-016: Link ODPS to ODCS Contract (Technical-First Flow
       const onLinkOdps = page.url().includes('/link-odps');
       const onLogin = page.url().includes('/login');
       const on403 = page.url().includes('/403');
-      const hasContent = (await page.locator('.odps-link-page, .error-display').count()) > 0;
+      const hasContent = (await page.locator('.odps-link-page, .error-display, [data-testid="error-display"]').count()) > 0;
 
       // Must not silently pass with onLogin (which means auth failed)
       if (onLogin) {
@@ -70,7 +70,7 @@ test.describe('JOURNEY-DPO-016: Link ODPS to ODCS Contract (Technical-First Flow
         '/contracts/00000000-0000-0000-0000-000000000000/link-odps',
         {
           timeout: 60000,
-          contentSelector: '.error-display, .odps-link-page, [role="alert"], .not-found-page',
+          contentSelector: '.error-display, [data-testid="error-display"], .odps-link-page, [role="alert"], .not-found-page',
         }
       );
 
@@ -79,7 +79,7 @@ test.describe('JOURNEY-DPO-016: Link ODPS to ODCS Contract (Technical-First Flow
       }
 
       const hasExplicitError =
-        (await page.locator('.error-display').count()) > 0 ||
+        (await page.locator('.error-display, [data-testid="error-display"]').first().count()) > 0 ||
         (await page.locator('[role="alert"]').count()) > 0 ||
         (await page.locator('.not-found-page').count()) > 0;
       const on403 = page.url().includes('/403');
@@ -101,7 +101,7 @@ test.describe('JOURNEY-DPO-016: Link ODPS to ODCS Contract (Technical-First Flow
       }
       await loginAndNavigateToRoute(page, testUser, `/contracts/${contractId}/link-odps`, {
         timeout: 60000,
-        contentSelector: '.odps-link-page, .error-display',
+        contentSelector: '.odps-link-page, .error-display, [data-testid="error-display"]',
         acceptRedirectToLogin: true,
       });
       const url = page.url();

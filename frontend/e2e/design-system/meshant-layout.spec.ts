@@ -23,7 +23,7 @@ test.describe('Meshant Layout (Phase 29.0)', () => {
     await page.waitForTimeout(2000);
   });
 
-  test('.app-main is bounded and does not overflow on a wide viewport', async ({ page }) => {
+  test('.app-main, [data-testid="app-main"] is bounded and does not overflow on a wide viewport', async ({ page }) => {
     // Behavioral assertion: the content area must not be wider than the viewport,
     // and must have a max-width applied (not stretch infinitely).
     // NOTE: loginUser in beforeEach already navigated to '/' with the app shell visible.
@@ -32,9 +32,9 @@ test.describe('Meshant Layout (Phase 29.0)', () => {
     await page.setViewportSize({ width: 1920, height: 900 });
     // CSS reflows automatically on viewport change; wait briefly for layout to settle
     await page.waitForTimeout(500);
-    await page.waitForSelector('.app-main', { state: 'visible', timeout: 30000 });
+    await page.waitForSelector('.app-main, [data-testid="app-main"]', { state: 'visible', timeout: 30000 });
 
-    const { mainWidth, viewportWidth, hasMaxWidth } = await page.locator('.app-main').evaluate((el) => {
+    const { mainWidth, viewportWidth, hasMaxWidth } = await page.locator('.app-main, [data-testid="app-main"]').first().evaluate((el) => {
       const style = window.getComputedStyle(el);
       return {
         mainWidth: el.getBoundingClientRect().width,
@@ -55,10 +55,10 @@ test.describe('Meshant Layout (Phase 29.0)', () => {
     // Behavioral assertion: the sidebar and main content must coexist (not overlap or hide each other).
     // loginUser in beforeEach already navigated to '/' — app shell should be visible.
     await page.waitForSelector('.app-sidebar', { state: 'visible', timeout: 30000 });
-    await page.waitForSelector('.app-main', { state: 'visible', timeout: 30000 });
+    await page.waitForSelector('.app-main, [data-testid="app-main"]', { state: 'visible', timeout: 30000 });
 
     const sidebarBox = await page.locator('.app-sidebar').boundingBox();
-    const mainBox = await page.locator('.app-main').boundingBox();
+    const mainBox = await page.locator('.app-main, [data-testid="app-main"]').first().boundingBox();
 
     expect(sidebarBox).not.toBeNull();
     expect(mainBox).not.toBeNull();
@@ -82,10 +82,10 @@ test.describe('Meshant Layout (Phase 29.0)', () => {
     // loginUser in beforeEach already navigated to '/' — no reload needed.
     await page.setViewportSize({ width: 1600, height: 900 });
     await page.waitForTimeout(500); // CSS reflow after viewport change
-    await page.waitForSelector('.app-main', { state: 'visible', timeout: 30000 });
+    await page.waitForSelector('.app-main, [data-testid="app-main"]', { state: 'visible', timeout: 30000 });
 
     const { marginLeft, marginRight, mainWidth, viewportWidth } = await page
-      .locator('.app-main')
+      .locator('.app-main, [data-testid="app-main"]').first()
       .evaluate((el) => {
         const style = window.getComputedStyle(el);
         return {

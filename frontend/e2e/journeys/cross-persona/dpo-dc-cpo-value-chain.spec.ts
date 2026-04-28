@@ -40,7 +40,7 @@ const API_BASE =
   (process.env.VITE_API_BASE_URL?.startsWith('http') ? process.env.VITE_API_BASE_URL : null) ||
   `http://localhost:${DEFAULT_API_PORT}/api/v1`;
 
-test.describe('Cross-Persona Value Chain: DPO → DC → CPO', () => {
+test.describe('Cross-Persona Value Chain: DPO → DC → CPO @critical', () => {
   test.setTimeout(120000);
 
   test(
@@ -111,7 +111,7 @@ test.describe('Cross-Persona Value Chain: DPO → DC → CPO', () => {
       await loginAsPersona(page, getConsumerTestUser);
       await page.goto('/marketplace');
       await page.waitForLoadState('domcontentloaded');
-      await page.waitForSelector('.listing-list-page, .listing-list-grid, .empty-state, .error-display', {
+      await page.waitForSelector('.listing-list-page, .listing-list-grid, [data-testid="listing-list-grid"], .empty-state, [data-testid="empty-state"], .error-display, [data-testid="error-display"]', {
         timeout: 20000,
       });
 
@@ -214,7 +214,7 @@ test.describe('Cross-Persona Value Chain: DPO → DC → CPO', () => {
       await page.goto('/marketplace/entitlements');
       await page.waitForLoadState('domcontentloaded');
       await page.waitForSelector(
-        '.entitlement-list-page, .empty-state, .error-display',
+        '.entitlement-list-page, .empty-state, [data-testid="empty-state"], .error-display, [data-testid="error-display"]',
         { timeout: 20000 }
       );
 

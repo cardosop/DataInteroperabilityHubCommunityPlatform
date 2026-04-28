@@ -24,7 +24,7 @@ test.describe('Accessibility (axe) — core authenticated pages', () => {
       const user = await getTestUser();
       await loginAndNavigateToRoute(page, user, path, {
         timeout: 90000,
-        contentSelector: '.app-main, .loading-spinner, .empty-state',
+        contentSelector: '.app-main, [data-testid="app-main"], .loading-spinner, .empty-state, [data-testid="empty-state"]',
       });
 
       // Skip if redirected to login (auth not configured in this test env)
@@ -37,7 +37,7 @@ test.describe('Accessibility (axe) — core authenticated pages', () => {
       // instead of 'networkidle' which is unreliable (background WebSocket/polling
       // keeps network active, causing silent timeout via .catch(() => null)).
       await page.waitForLoadState('domcontentloaded');
-      await page.locator('.app-main, .empty-state, h1, [role="main"]')
+      await page.locator('.app-main, [data-testid="app-main"], .empty-state, [data-testid="empty-state"], h1, [role="main"]')
         .first()
         .waitFor({ state: 'visible', timeout: 15000 })
         .catch(() => {

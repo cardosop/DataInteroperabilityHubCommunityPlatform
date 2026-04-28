@@ -56,7 +56,7 @@ test.describe('Cross-Persona: Provider → Consumer Purchase', () => {
     await page.goto('/marketplace');
     await page.waitForLoadState('domcontentloaded');
     await page.waitForSelector(
-      '.listing-list-page, .listing-list-grid, .empty-state',
+      '.listing-list-page, .listing-list-grid, [data-testid="listing-list-grid"], .empty-state, [data-testid="empty-state"]',
       { timeout: 30000 }
     );
     test.skip(page.url().includes('/login'), 'DC auth redirect — infra issue');
@@ -118,19 +118,19 @@ test.describe('Cross-Persona: Provider → Consumer Purchase', () => {
     await page.goto('/marketplace/orders');
     await page.waitForLoadState('domcontentloaded');
     await page.waitForSelector(
-      '.order-list-page, .empty-state',
+      '.order-list-page, .empty-state, [data-testid="empty-state"]',
       { timeout: 30000 }
     );
     test.skip(page.url().includes('/login'), 'DPO auth redirect — infra issue');
     await waitForLoadingComplete(page, { timeout: 15000 });
 
     // D85: error-display is not acceptable in success verification
-    await expect(page.locator('.error-display')).not.toBeVisible({ timeout: 2000 });
+    await expect(page.locator('.error-display, [data-testid="error-display"]').first()).not.toBeVisible({ timeout: 2000 });
 
     // Verify orders page rendered (may or may not show THIS order depending on role scope)
     const hasOrdersPage =
       (await page.locator('.order-list-page').count()) > 0 ||
-      (await page.locator('.empty-state').count()) > 0 ||
+      (await page.locator('.empty-state, [data-testid="empty-state"]').first().count()) > 0 ||
       (await page.locator('table, [data-testid*="order"]').count()) > 0;
     expect(hasOrdersPage).toBe(true);
   });

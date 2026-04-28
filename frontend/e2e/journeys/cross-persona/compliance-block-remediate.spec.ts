@@ -78,18 +78,18 @@ test.describe('Cross-Persona: CPO Compliance Scan → DPO Review → CPO Re-scan
     await page.goto('/compliance');
     await page.waitForLoadState('domcontentloaded');
     await page.waitForSelector(
-      '.compliance-run-list-page, .empty-state',
+      '.compliance-run-list-page, [data-testid="compliance-run-list-page"], .empty-state, [data-testid="empty-state"]',
       { timeout: 30000 }
     );
     test.skip(page.url().includes('/login'), 'CPO auth redirect — infra issue');
     await waitForLoadingComplete(page, { timeout: 15000 });
 
     // D85: error-display is not acceptable in success verification
-    await expect(page.locator('.error-display')).not.toBeVisible({ timeout: 2000 });
+    await expect(page.locator('.error-display, [data-testid="error-display"]').first()).not.toBeVisible({ timeout: 2000 });
 
     const hasCompliancePage =
-      (await page.locator('.compliance-run-list-page').count()) > 0 ||
-      (await page.locator('.empty-state').count()) > 0;
+      (await page.locator('.compliance-run-list-page, [data-testid="compliance-run-list-page"]').first().count()) > 0 ||
+      (await page.locator('.empty-state, [data-testid="empty-state"]').first().count()) > 0;
     expect(hasCompliancePage).toBe(true);
 
     // ── Step 5: DPO views asset detail (compliance status should be visible) ──
@@ -97,16 +97,16 @@ test.describe('Cross-Persona: CPO Compliance Scan → DPO Review → CPO Re-scan
     await page.goto(`/assets/${assetId}`);
     await page.waitForLoadState('domcontentloaded');
     await page.waitForSelector(
-      '.asset-detail-page, .asset-detail-content',
+      '.asset-detail-content, .asset-detail-page, [data-testid="asset-detail-page"]',
       { timeout: 30000 }
     );
     test.skip(page.url().includes('/login'), 'DPO auth redirect — infra issue');
     await waitForLoadingComplete(page, { timeout: 15000 });
 
-    await expect(page.locator('.error-display')).not.toBeVisible({ timeout: 2000 });
+    await expect(page.locator('.error-display, [data-testid="error-display"]').first()).not.toBeVisible({ timeout: 2000 });
 
     const hasAssetDetail =
-      (await page.locator('.asset-detail-page, .asset-detail-content').count()) > 0;
+      (await page.locator('.asset-detail-content, .asset-detail-page, [data-testid="asset-detail-page"]').count()) > 0;
     expect(hasAssetDetail).toBe(true);
 
     // ── Step 6: CPO re-scans compliance (verifies scan can be repeated) ──
@@ -132,7 +132,7 @@ test.describe('Cross-Persona: CPO Compliance Scan → DPO Review → CPO Re-scan
     await page.goto('/compliance');
     await page.waitForLoadState('domcontentloaded');
     await page.waitForSelector(
-      '.compliance-run-list-page, .empty-state',
+      '.compliance-run-list-page, [data-testid="compliance-run-list-page"], .empty-state, [data-testid="empty-state"]',
       { timeout: 30000 }
     );
     if (page.url().includes('/login')) {
@@ -141,12 +141,12 @@ test.describe('Cross-Persona: CPO Compliance Scan → DPO Review → CPO Re-scan
     }
     await waitForLoadingComplete(page, { timeout: 15000 });
 
-    await expect(page.locator('.error-display')).not.toBeVisible({ timeout: 2000 });
+    await expect(page.locator('.error-display, [data-testid="error-display"]').first()).not.toBeVisible({ timeout: 2000 });
 
     // At minimum, the compliance page must render with content
     const hasContent =
-      (await page.locator('.compliance-run-list-page').count()) > 0 ||
-      (await page.locator('.empty-state').count()) > 0;
+      (await page.locator('.compliance-run-list-page, [data-testid="compliance-run-list-page"]').first().count()) > 0 ||
+      (await page.locator('.empty-state, [data-testid="empty-state"]').first().count()) > 0;
     expect(hasContent).toBe(true);
   });
 });

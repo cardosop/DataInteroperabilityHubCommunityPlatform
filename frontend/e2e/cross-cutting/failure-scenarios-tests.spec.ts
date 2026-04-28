@@ -35,12 +35,12 @@ test.describe('Failure Scenarios (real tests)', () => {
     // and a "Create Contract" submit button (not "Create ODPS Product").
     // For invalid content the button is still enabled (the form allows submit
     // and surfaces the backend validation error), so the test contract is
-    // exactly: submit invalid JSON → expect either an .error-display or to
+    // exactly: submit invalid JSON → expect either an .error-display, [data-testid="error-display"] or to
     // remain on the create page (no silent navigation to a success state).
     const user = await getTestUser();
     await loginAndNavigateToRoute(page, user, '/contracts/create', {
       timeout: 60000,
-      contentSelector: '.contract-create-page, textarea',
+      contentSelector: '.contract-create-page, [data-testid="contract-create-page"], textarea',
     });
     test.skip(page.url().includes('/login'), 'Auth redirect — rate-limit or session issue');
 
@@ -56,11 +56,11 @@ test.describe('Failure Scenarios (real tests)', () => {
     // Wait for the error state to render (backend validation responds 4xx).
     // intentional: failure-scenarios spec deliberately exercises error paths — most .catch() => null sites tolerate the EXPECTED failures the test is asserting on; the actual pass/fail comes from the response-status assertions later in each scenario.
     await page
-      .locator('.error-display')
+      .locator('.error-display, [data-testid="error-display"]').first()
       .first()
       .waitFor({ state: 'visible', timeout: 15000 })
       .catch(() => null);
-    const hasError = (await page.locator('.error-display').count()) > 0;
+    const hasError = (await page.locator('.error-display, [data-testid="error-display"]').first().count()) > 0;
     const stillOnCreate = page.url().includes('/contracts/create');
     // Must show an error OR remain on the create page (no silent success nav).
     expect(hasError || stillOnCreate).toBe(true);
@@ -68,7 +68,7 @@ test.describe('Failure Scenarios (real tests)', () => {
 
   test('non-existent resource shows 404 or error', async ({ page }) => {
     // Root cause of failures: Phase 1 was 45s, but the auth-store safety timeout (INIT_MAX_MS)
-    // is 60s.  Between 45s and 60s, auth is still loading, .app-main has not appeared, and the
+    // is 60s.  Between 45s and 60s, auth is still loading, .app-main, [data-testid="app-main"] has not appeared, and the
     // URL is /assets/:id (not /login), so Phase 2 sees no error and no login → assertion fails.
     // Fix: extend Phase 1 to 65s (> INIT_MAX_MS) and Phase 2 to 30s.
     const user = await getTestUser();
@@ -78,23 +78,23 @@ test.describe('Failure Scenarios (real tests)', () => {
     });
     await page.goto('/assets/00000000-0000-0000-0000-000000000000', { waitUntil: 'domcontentloaded' });
 
-    // Phase 1: Wait for auth init to complete.  .app-main appears only after ProtectedRoute
+    // Phase 1: Wait for auth init to complete.  .app-main, [data-testid="app-main"] appears only after ProtectedRoute
     // stops showing the loading spinner.  65s covers the worst-case auth init including the
     // 60s auth-store safety timeout (INIT_MAX_MS) which clears auth and redirects to /login.
     // intentional: failure-scenarios spec deliberately exercises error paths — most .catch() => null sites tolerate the EXPECTED failures the test is asserting on; the actual pass/fail comes from the response-status assertions later in each scenario.
-    await page.waitForSelector('.app-main', { timeout: 65000 }).catch(() => null);
+    await page.waitForSelector('.app-main, [data-testid="app-main"]', { timeout: 65000 }).catch(() => null);
     // D86: login redirect means auth failed — skip, don't pass green
     test.skip(page.url().includes('/login'), 'Auth failed — login redirect');
 
     // Phase 2: Auth is done.  Wait for the asset 404 error to render (API responds quickly).
-    // Also accept .asset-detail-page (the component may render before the 404 error resolves).
+    // Also accept .asset-detail-page, [data-testid="asset-detail-page"] (the component may render before the 404 error resolves).
     // intentional: failure-scenarios spec deliberately exercises error paths — most .catch() => null sites tolerate the EXPECTED failures the test is asserting on; the actual pass/fail comes from the response-status assertions later in each scenario.
     await page
-      .locator('.error-display, .error-display-title, .asset-detail-page')
+      .locator('.error-display, [data-testid="error-display"], .error-display-title, [data-testid="error-display-title"], .asset-detail-page, [data-testid="asset-detail-page"]')
       .first()
       .waitFor({ state: 'visible', timeout: 30000 })
       .catch(() => null);
-    const hasError = (await page.locator('.error-display').count()) > 0;
+    const hasError = (await page.locator('.error-display, [data-testid="error-display"]').first().count()) > 0;
     // Also check for "not found" text in the page (some detail pages show inline errors)
     const hasNotFoundText = (await page.getByText(/not found|does not exist|404/i).count()) > 0;
     expect(hasError || hasNotFoundText).toBe(true);
@@ -153,22 +153,22 @@ test.describe('Failure Scenarios (real tests)', () => {
       timeout: 90_000,
     });
 
-    // Phase 1: Wait for auth init to complete (.app-main indicates app shell is rendered).
+    // Phase 1: Wait for auth init to complete (.app-main, [data-testid="app-main"] indicates app shell is rendered).
     // 65s covers the worst-case auth init including the 60s auth-store safety timeout
     // (INIT_MAX_MS) which clears auth state and redirects to /login.
     // intentional: failure-scenarios spec deliberately exercises error paths — most .catch() => null sites tolerate the EXPECTED failures the test is asserting on; the actual pass/fail comes from the response-status assertions later in each scenario.
-    await page.waitForSelector('.app-main', { timeout: 65000 }).catch(() => null);
+    await page.waitForSelector('.app-main, [data-testid="app-main"]', { timeout: 65000 }).catch(() => null);
     if (page.url().includes('/login')) {
       test.skip(true, 'Auth session expired — redirected to /login before test could run');
       return;
     }
 
-    // D86: if .app-main never appeared (auth init timed out without redirect), the contract
+    // D86: if .app-main, [data-testid="app-main"] never appeared (auth init timed out without redirect), the contract
     // editor component never mounted and no API call was made.  Skip rather than false-fail.
     // intentional: failure-scenarios spec deliberately exercises error paths — most .catch() => null sites tolerate the EXPECTED failures the test is asserting on; the actual pass/fail comes from the response-status assertions later in each scenario.
-    const appMainVisible = await page.locator('.app-main').isVisible().catch(() => false);
+    const appMainVisible = await page.locator('.app-main, [data-testid="app-main"]').first().isVisible().catch(() => false);
     if (!appMainVisible) {
-      test.skip(true, 'Auth init: .app-main not visible (auth-store timeout or capabilities failure)');
+      test.skip(true, 'Auth init: .app-main, [data-testid="app-main"] not visible (auth-store timeout or capabilities failure)');
       return;
     }
 
@@ -184,7 +184,7 @@ test.describe('Failure Scenarios (real tests)', () => {
     // 30s covers worst-case retry + StrictMode double-mount restart.
     // intentional: failure-scenarios spec deliberately exercises error paths — most .catch() => null sites tolerate the EXPECTED failures the test is asserting on; the actual pass/fail comes from the response-status assertions later in each scenario.
     await page
-      .locator('.error-display, text=/not found|failed|404|403/i')
+      .locator('.error-display, [data-testid="error-display"], text=/not found|failed|404|403/i')
       .first()
       .waitFor({ state: 'visible', timeout: 30000 })
       .catch(() => null);
@@ -199,7 +199,7 @@ test.describe('Failure Scenarios (real tests)', () => {
       .catch(() => null);
 
     const hasError =
-      (await page.locator('.error-display').count()) > 0 ||
+      (await page.locator('.error-display, [data-testid="error-display"]').first().count()) > 0 ||
       (await page.locator('text=/not found|failed|404|403/i').count()) > 0;
     const onLogin = page.url().includes('/login');
     // Must show a real error — not just "the editor isn't there"
@@ -271,9 +271,9 @@ test.describe('Failure Scenarios (real tests)', () => {
     }
 
     // Phase 1: Wait for auth init to complete. 65s covers the auth-store safety timeout
-    // (INIT_MAX_MS=60s); either .app-main appears or /login redirect is caught.
+    // (INIT_MAX_MS=60s); either .app-main, [data-testid="app-main"] appears or /login redirect is caught.
     // intentional: failure-scenarios spec deliberately exercises error paths — most .catch() => null sites tolerate the EXPECTED failures the test is asserting on; the actual pass/fail comes from the response-status assertions later in each scenario.
-    await page.waitForSelector('.app-main', { timeout: 65000 }).catch(() => null);
+    await page.waitForSelector('.app-main, [data-testid="app-main"]', { timeout: 65000 }).catch(() => null);
     if (page.url().includes('/login')) {
       page.off('response', responseHandler);
       return;
@@ -291,12 +291,12 @@ test.describe('Failure Scenarios (real tests)', () => {
     // 15s provides headroom for any auth re-init remount that briefly hides AppShell.
     // intentional: failure-scenarios spec deliberately exercises error paths — most .catch() => null sites tolerate the EXPECTED failures the test is asserting on; the actual pass/fail comes from the response-status assertions later in each scenario.
     await page
-      .locator('.error-display, text=/failed|error|retry|service unavailable/i')
+      .locator('.error-display, [data-testid="error-display"], text=/failed|error|retry|service unavailable/i')
       .first()
       .waitFor({ state: 'visible', timeout: 15000 })
       .catch(() => null);
     const hasError =
-      (await page.locator('.error-display').count()) > 0 ||
+      (await page.locator('.error-display, [data-testid="error-display"]').first().count()) > 0 ||
       (await page.locator('text=/failed|error|retry|service unavailable/i').count()) > 0;
     const onLogin = page.url().includes('/login');
     // Must show a real error (not a stuck loading spinner) OR redirect to login if auth failed

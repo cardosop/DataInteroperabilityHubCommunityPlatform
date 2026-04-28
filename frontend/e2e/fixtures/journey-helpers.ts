@@ -72,7 +72,7 @@ export async function assertFailureRedirect(
  * Use for Edge dimension in journey specs.
  *
  * @param page - Playwright page
- * @param options.emptyStateSelector - Selector for empty state (default: .empty-state)
+ * @param options.emptyStateSelector - Selector for empty state (default: .empty-state, [data-testid="empty-state"])
  * @param options.orContentSelector - Alternative: success content when not empty
  * @param options.timeout - Max wait (default 30s)
  */
@@ -85,7 +85,7 @@ export async function assertEdgeBehavior(
   } = {}
 ): Promise<void> {
   const {
-    emptyStateSelector = '.empty-state',
+    emptyStateSelector = '.empty-state, [data-testid="empty-state"]',
     orContentSelector,
     timeout = 30000,
   } = options;
@@ -100,6 +100,6 @@ export async function assertEdgeBehavior(
     return;
   }
   // Fallback: page loaded without crash (no 500, no error display)
-  const hasError = (await page.locator('.error-display, text=/500|internal server error/i').count()) > 0;
+  const hasError = (await page.locator('.error-display, [data-testid="error-display"], text=/500|internal server error/i').count()) > 0;
   expect(hasError, 'Edge case: page should not show error display or 500').toBe(false);
 }

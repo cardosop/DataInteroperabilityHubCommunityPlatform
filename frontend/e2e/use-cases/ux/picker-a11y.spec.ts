@@ -64,7 +64,7 @@ test.describe('Resource Picker Accessibility (axe, authenticated)', () => {
     await loginAndNavigateToRoute(page, user, '/datasets/create?linkMode=existing', {
       timeout: 60000,
       contentSelector:
-        '.dataset-create-page, h1',
+        '.dataset-create-page, [data-testid="dataset-create-page"], h1',
     });
     await waitForLoadingComplete(page, { timeout: 15000 });
 

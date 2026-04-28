@@ -27,15 +27,15 @@ test.describe('JOURNEY-DE-013: Configure Data Mesh Domain', () => {
       expect(page.url()).toContain('/mesh');
       // intentional: probes optional UI presence via a multi-line locator chain — the branch logic below handles both rendered and missing cases deterministically; absence is a legitimate tenant/role state.
       await page
-        .locator('.mesh-domain-list-page, .mesh-domain-list-header, .empty-state, .error-display')
+        .locator('.mesh-domain-list-page, .mesh-domain-list-header, .empty-state, [data-testid="empty-state"], .error-display, [data-testid="error-display"]')
         .first()
         .waitFor({ state: 'visible', timeout: 20000 })
         .catch(() => null);
       const hasContent =
         (await page.locator('.mesh-domain-list-page').count()) > 0 ||
         (await page.locator('.mesh-domain-list-header').count()) > 0 ||
-        (await page.locator('.empty-state').count()) > 0 ||
-        (await page.locator('.error-display').count()) > 0 ||
+        (await page.locator('.empty-state, [data-testid="empty-state"]').first().count()) > 0 ||
+        (await page.locator('.error-display, [data-testid="error-display"]').first().count()) > 0 ||
         (await page.locator('h1:has-text("Mesh Domains")').count()) > 0;
       expect(hasContent).toBe(true) /* acceptable states */;
     });
@@ -62,13 +62,13 @@ test.describe('JOURNEY-DE-013: Configure Data Mesh Domain', () => {
       );
       // intentional: probes optional UI presence via a multi-line locator chain — the branch logic below handles both rendered and missing cases deterministically; absence is a legitimate tenant/role state.
       await page
-        .locator('.error-display, .mesh-domain-detail-page .mesh-domain-detail-content')
+        .locator('.error-display, [data-testid="error-display"], .mesh-domain-detail-page .mesh-domain-detail-content')
         .first()
         .waitFor({ state: 'visible', timeout: 60000 })
         .catch(() => null);
       const onLogin = page.url().includes('/login');
       const on403 = page.url().includes('/403');
-      const hasError = (await page.locator('.error-display').count()) > 0;
+      const hasError = (await page.locator('.error-display, [data-testid="error-display"]').first().count()) > 0;
       const noDetail =
         (await page.locator('.mesh-domain-detail-page .mesh-domain-detail-content').count()) === 0;
       expect(onLogin || on403 || hasError || noDetail).toBe(true) /* acceptable states */;

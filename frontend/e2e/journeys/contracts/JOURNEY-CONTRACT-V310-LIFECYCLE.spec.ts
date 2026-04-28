@@ -165,7 +165,7 @@ test.describe('JOURNEY-CONTRACT-V310-LIFECYCLE', () => {
       await loginUser(page, user);
 
       await page.goto(`/contracts/${contractId}`);
-      await page.waitForSelector('.contract-detail-page', { timeout: 30000 });
+      await page.waitForSelector('.contract-detail-page, [data-testid="contract-detail-page"]', { timeout: 30000 });
 
       const badge = page.locator('.spec-version-badge');
       await expect(badge).toBeVisible({ timeout: 10000 });
@@ -179,7 +179,7 @@ test.describe('JOURNEY-CONTRACT-V310-LIFECYCLE', () => {
       await loginUser(page, user);
 
       await page.goto(`/contracts/${contractId}`);
-      await page.waitForSelector('.contract-detail-page', { timeout: 30000 });
+      await page.waitForSelector('.contract-detail-page, [data-testid="contract-detail-page"]', { timeout: 30000 });
 
       // The v3.1.0 fixture has relationships — panel MUST show them
       const panel = page.locator('.relationships-panel');
@@ -201,7 +201,7 @@ test.describe('JOURNEY-CONTRACT-V310-LIFECYCLE', () => {
       await loginUser(page, user);
 
       await page.goto(`/contracts/${contractId}`);
-      await page.waitForSelector('.contract-detail-page', { timeout: 30000 });
+      await page.waitForSelector('.contract-detail-page, [data-testid="contract-detail-page"]', { timeout: 30000 });
 
       // Wait for relationship rows to render
       const rows = page.locator('.rel-row');
@@ -221,7 +221,7 @@ test.describe('JOURNEY-CONTRACT-V310-LIFECYCLE', () => {
       await loginUser(page, user);
 
       await page.goto(`/contracts/${contractId}`);
-      await page.waitForSelector('.contract-detail-page', { timeout: 30000 });
+      await page.waitForSelector('.contract-detail-page, [data-testid="contract-detail-page"]', { timeout: 30000 });
 
       // Open export modal
       await page.locator('button:has-text("Export")').click();
@@ -255,7 +255,7 @@ test.describe('JOURNEY-CONTRACT-V310-LIFECYCLE', () => {
       await loginUser(page, user);
 
       await page.goto(`/contracts/${contractId}`);
-      await page.waitForSelector('.contract-detail-page', { timeout: 30000 });
+      await page.waitForSelector('.contract-detail-page, [data-testid="contract-detail-page"]', { timeout: 30000 });
 
       await page.locator('button:has-text("Export")').click();
       await page.waitForSelector('.export-modal', { timeout: 5000 });
@@ -280,7 +280,7 @@ test.describe('JOURNEY-CONTRACT-V310-LIFECYCLE', () => {
       await loginUser(page, user);
 
       await page.goto(`/contracts/${contractId}`);
-      await page.waitForSelector('.contract-detail-page', { timeout: 30000 });
+      await page.waitForSelector('.contract-detail-page, [data-testid="contract-detail-page"]', { timeout: 30000 });
 
       await page.locator('button:has-text("Export")').click();
       await page.waitForSelector('.export-modal', { timeout: 5000 });
@@ -312,7 +312,7 @@ test.describe('JOURNEY-CONTRACT-V310-LIFECYCLE', () => {
 
       await page.goto('/contracts/00000000-0000-0000-0000-000000000000');
 
-      const errorDisplay = page.locator('.error-display');
+      const errorDisplay = page.locator('.error-display, [data-testid="error-display"]').first();
       await expect(errorDisplay).toBeVisible({ timeout: 30000 });
     });
   });
@@ -323,7 +323,7 @@ test.describe('JOURNEY-CONTRACT-V310-LIFECYCLE', () => {
       await loginUser(page, user);
 
       await page.goto(`/contracts/${contract302Id}`);
-      await page.waitForSelector('.contract-detail-page', { timeout: 30000 });
+      await page.waitForSelector('.contract-detail-page, [data-testid="contract-detail-page"]', { timeout: 30000 });
 
       // v3.0.2 has no relationships — panel must show empty state
       const panel = page.locator('.relationships-panel');

@@ -21,7 +21,7 @@ test.describe('JOURNEY-DEV-009: Integrate with Developer Portal', () => {
       const devUser = await getExternalDeveloperUser();
       await loginAndNavigateToRoute(page, devUser, '/developer', {
         timeout: 90000,
-        contentSelector: '.developer-portal-page, .app-main, .unavailable-page, .error-display',
+        contentSelector: '.developer-portal-page, .app-main, [data-testid="app-main"], .unavailable-page, [data-testid="unavailable-page"], .error-display, [data-testid="error-display"]',
       });
       const onDeveloper = page.url().includes('/developer');
       const onLogin = page.url().includes('/login');
@@ -32,37 +32,37 @@ test.describe('JOURNEY-DEV-009: Integrate with Developer Portal', () => {
       }
       expect(onDeveloper).toBe(true);
       const hasContent =
-        (await page.locator('.developer-portal-page, .app-main').count()) > 0;
+        (await page.locator('.developer-portal-page, .app-main, [data-testid="app-main"]').count()) > 0;
       expect(hasContent).toBe(true);
-      await expect(page.locator('.error-display')).not.toBeVisible();
+      await expect(page.locator('.error-display, [data-testid="error-display"]').first()).not.toBeVisible();
     });
 
     test('settings api-keys loads', async ({ page }) => {
       const devUser = await getExternalDeveloperUser();
       await loginAndNavigateToRoute(page, devUser, '/settings/api-keys', {
         timeout: 90000,
-        contentSelector: '.auth-api-key-list-page, .empty-state, .error-display',
+        contentSelector: '.auth-api-key-list-page, .empty-state, [data-testid="empty-state"], .error-display, [data-testid="error-display"]',
       });
       if (page.url().includes('/login') || page.url().includes('/403')) {
         test.skip(true, 'Auth/role gated — skipping success assertion');
         return;
       }
       expect(page.url()).toContain('/settings/api-keys');
-      await expect(page.locator('.error-display')).not.toBeVisible();
+      await expect(page.locator('.error-display, [data-testid="error-display"]').first()).not.toBeVisible();
     });
 
     test('webhooks list loads', async ({ page }) => {
       const devUser = await getExternalDeveloperUser();
       await loginAndNavigateToRoute(page, devUser, '/webhooks', {
         timeout: 90000,
-        contentSelector: '.webhook-list-page, .empty-state, .error-display',
+        contentSelector: '.webhook-list-page, .empty-state, [data-testid="empty-state"], .error-display, [data-testid="error-display"]',
       });
       if (page.url().includes('/login') || page.url().includes('/403')) {
         test.skip(true, 'Auth/role gated — skipping success assertion');
         return;
       }
       expect(page.url()).toContain('/webhooks');
-      await expect(page.locator('.error-display')).not.toBeVisible();
+      await expect(page.locator('.error-display, [data-testid="error-display"]').first()).not.toBeVisible();
     });
   });
 
@@ -71,7 +71,7 @@ test.describe('JOURNEY-DEV-009: Integrate with Developer Portal', () => {
       const devUser = await getExternalDeveloperUser();
       await loginAndNavigateToRoute(page, devUser, '/webhooks', {
         timeout: 90000,
-        contentSelector: '.webhook-list-page, .empty-state, .error-display',
+        contentSelector: '.webhook-list-page, .empty-state, [data-testid="empty-state"], .error-display, [data-testid="error-display"]',
       });
       await page.goto('/webhooks/00000000-0000-0000-0000-000000000000');
       await page.waitForLoadState('domcontentloaded');
@@ -88,7 +88,7 @@ test.describe('JOURNEY-DEV-009: Integrate with Developer Portal', () => {
       await loginAndNavigateToRoute(page, devUser, '/developer', {
         timeout: 90000,
         contentSelector:
-          '.developer-portal-page, .developer-page, .app-main, .unavailable-page',
+          '.developer-portal-page, .developer-page, .app-main, [data-testid="app-main"], .unavailable-page, [data-testid="unavailable-page"]',
       });
       expect(
         page.url().includes('/developer') ||

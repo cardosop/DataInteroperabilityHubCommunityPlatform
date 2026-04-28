@@ -21,13 +21,13 @@ test.describe('UC-ODPS-001: Create ODPS Product', () => {
       const user = await getTestUser();
       await loginAndNavigateToRoute(page, user, '/odps', {
         timeout: 60000,
-        contentSelector: '.odps-list-page, .empty-state',
+        contentSelector: '.odps-list-page, .empty-state, [data-testid="empty-state"]',
       });
       test.skip(page.url().includes('/login'), 'Redirected to login');
       expect(page.url()).toContain('/odps');
       const hasContent =
         (await page.locator('.odps-list-page').count()) > 0 ||
-        (await page.locator('.empty-state').count()) > 0;
+        (await page.locator('.empty-state, [data-testid="empty-state"]').first().count()) > 0;
       expect(hasContent).toBe(true);
     });
 
@@ -60,12 +60,12 @@ test.describe('UC-ODPS-001: Create ODPS Product', () => {
       const user = await getTestUser();
       await loginAndNavigateToRoute(page, user, '/odps', {
         timeout: 60000,
-        contentSelector: '.odps-list-page, .empty-state, .error-display',
+        contentSelector: '.odps-list-page, .empty-state, [data-testid="empty-state"], .error-display, [data-testid="error-display"]',
       });
       expect(page.url()).toContain('/odps');
       const hasContent =
         (await page.locator('.odps-list-page').count()) > 0 ||
-        (await page.locator('.empty-state').count()) > 0;
+        (await page.locator('.empty-state, [data-testid="empty-state"]').first().count()) > 0;
       expect(hasContent).toBe(true);
     });
   });

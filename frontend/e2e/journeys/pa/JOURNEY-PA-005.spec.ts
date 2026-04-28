@@ -25,7 +25,7 @@ test.describe('JOURNEY-PA-005: Manage Marketplace Configuration', () => {
         // intentional: best-effort .catch on an optional step — primary pass/fail is made by a downstream assertion (verifyViaApi, waitFor, explicit expect). The fallback value tolerates well-known transient or absent-UI cases without papering over real failures.
         await loginAndNavigateToRoute(page, paUser, route, {
           timeout: routeTimeout,
-          contentSelector: '.admin-page, .marketplace-config-page',
+          contentSelector: '.marketplace-config-page, .admin-page, [data-testid="admin-page"]',
         }).catch(() => null);
         if (page.url().includes('/403') || page.url().includes('/login')) continue;
         const hasConfig =
@@ -40,10 +40,10 @@ test.describe('JOURNEY-PA-005: Manage Marketplace Configuration', () => {
       }
 
       // Page renders without error
-      const hasError = (await page.locator('.error-display').count()) > 0;
+      const hasError = (await page.locator('.error-display, [data-testid="error-display"]').first().count()) > 0;
       if (hasError) {
         // intentional: tolerates a detached/removed element while extracting text for a diagnostic message; the surrounding throw/expect below this catch is the primary failure path.
-        const errText = await page.locator('.error-display').first().textContent().catch(() => '');
+        const errText = await page.locator('.error-display, [data-testid="error-display"]').first().first().textContent().catch(() => '');
         if (!/403|forbidden/i.test(errText ?? '')) {
           throw new Error(`Marketplace config page shows unexpected error: ${errText}`);
         }
@@ -68,7 +68,7 @@ test.describe('JOURNEY-PA-005: Manage Marketplace Configuration', () => {
       const paUser = await getPlatformAdminUser();
       await loginAndNavigateToRoute(page, paUser, '/marketplace', {
         timeout: 60000,
-        contentSelector: '.listing-list-page, .listing-list-grid, .empty-state, .error-display',
+        contentSelector: '.listing-list-page, .listing-list-grid, [data-testid="listing-list-grid"], .empty-state, [data-testid="empty-state"], .error-display, [data-testid="error-display"]',
       });
       expect(page.url()).toMatch(/\/marketplace|\/403|\/login/);
     });

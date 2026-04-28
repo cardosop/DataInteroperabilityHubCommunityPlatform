@@ -21,7 +21,7 @@ test.describe('JOURNEY-DS-005: Review Auto-Classification Results', () => {
       const testUser = await getTestUser();
       await loginAndNavigateToRoute(page, testUser, '/assets', {
         timeout: 60000,
-        contentSelector: '.asset-list-page, .empty-state, .error-display',
+        contentSelector: '.asset-list-page, [data-testid="asset-list-page"], .empty-state, [data-testid="empty-state"], .error-display, [data-testid="error-display"]',
       });
       expect(page.url()).toContain('/assets');
     });
@@ -31,16 +31,16 @@ test.describe('JOURNEY-DS-005: Review Auto-Classification Results', () => {
       await loginAndNavigateToRoute(page, testUser, '/compliance', {
         timeout: 60000,
         contentSelector:
-          '.compliance-run-list-page, .compliance-run-list-table, .empty-state, .error-display',
+          '.compliance-run-list-page, [data-testid="compliance-run-list-page"], .compliance-run-list-table, .empty-state, [data-testid="empty-state"], .error-display, [data-testid="error-display"]',
       });
       await page.waitForTimeout(3000);
       expect(page.url()).toContain('/compliance');
       const hasContent =
-        (await page.locator('.compliance-run-list-page').count()) > 0 ||
+        (await page.locator('.compliance-run-list-page, [data-testid="compliance-run-list-page"]').first().count()) > 0 ||
         (await page.locator('.compliance-run-list-table').count()) > 0 ||
-        (await page.locator('.empty-state').count()) > 0 ||
-        (await page.locator('.error-display').count()) > 0 ||
-        (await page.locator('.app-main').count()) > 0;
+        (await page.locator('.empty-state, [data-testid="empty-state"]').first().count()) > 0 ||
+        (await page.locator('.error-display, [data-testid="error-display"]').first().count()) > 0 ||
+        (await page.locator('.app-main, [data-testid="app-main"]').first().count()) > 0;
       expect(hasContent).toBe(true) /* acceptable states */;
     });
   });
@@ -53,7 +53,7 @@ test.describe('JOURNEY-DS-005: Review Auto-Classification Results', () => {
         acceptRedirectToLogin: true,
       });
       await page.waitForTimeout(3000);
-      const hasError = (await page.locator('.error-display').count()) > 0;
+      const hasError = (await page.locator('.error-display, [data-testid="error-display"]').first().count()) > 0;
       const onLogin = page.url().includes('/login');
       expect(hasError || onLogin).toBe(true) /* acceptable states */;
     });
@@ -71,13 +71,13 @@ test.describe('JOURNEY-DS-005: Review Auto-Classification Results', () => {
       const testUser = await getTestUser();
       await loginAndNavigateToRoute(page, testUser, '/assets', {
         timeout: 60000,
-        contentSelector: '.asset-list-page, .empty-state, .error-display',
+        contentSelector: '.asset-list-page, [data-testid="asset-list-page"], .empty-state, [data-testid="empty-state"], .error-display, [data-testid="error-display"]',
       });
       expect(page.url()).toContain('/assets');
       // Client-side nav avoids re-login auth race when already on protected page
       await navigateToRouteFromApp(page, '/compliance', {
         timeout: 60000,
-        contentSelector: '.compliance-run-list-page, .empty-state, .error-display',
+        contentSelector: '.compliance-run-list-page, [data-testid="compliance-run-list-page"], .empty-state, [data-testid="empty-state"], .error-display, [data-testid="error-display"]',
       });
       expect(page.url()).toContain('/compliance');
     });

@@ -22,35 +22,35 @@ test.describe('JOURNEY-DC-009: Join Data Community', () => {
       await loginAndNavigateToRoute(page, consumer, '/communities', {
         timeout: 90000,
         contentSelector:
-          '.communities-page, .communities-tab, .unavailable-page, .empty-state, .error-display',
+          '.communities-page, .communities-tab, .unavailable-page, [data-testid="unavailable-page"], .empty-state, [data-testid="empty-state"], .error-display, [data-testid="error-display"]',
       });
       // Phase 2: wait for loading spinner to resolve into a terminal state (spinner is transient)
       // intentional: probes optional UI presence via a multi-line locator chain — the branch logic below handles both rendered and missing cases deterministically; absence is a legitimate tenant/role state.
       await page
-        .locator('.communities-page, .communities-tab, .unavailable-page, .empty-state, .error-display')
+        .locator('.communities-page, .communities-tab, .unavailable-page, [data-testid="unavailable-page"], .empty-state, [data-testid="empty-state"], .error-display, [data-testid="error-display"]')
         .first()
         .waitFor({ state: 'visible', timeout: 20000 })
         .catch(() => null);
       const onLogin = page.url().includes('/login');
       const on403 = page.url().includes('/403');
       const onCommunities = page.url().includes('/communities');
-      // Spinner excluded from primary selectors; .app-main is a fallback when the capability
+      // Spinner excluded from primary selectors; .app-main, [data-testid="app-main"] is a fallback when the capability
       // is enabled but renders with a different CSS class (e.g., partial rollout / variant)
       const hasContent =
         (await page.locator('.communities-page').count()) > 0 ||
         (await page.locator('.communities-tab').count()) > 0 ||
-        (await page.locator('.unavailable-page').count()) > 0 ||
-        (await page.locator('.empty-state').count()) > 0 ||
-        (await page.locator('.error-display').count()) > 0 ||
+        (await page.locator('.unavailable-page, [data-testid="unavailable-page"]').first().count()) > 0 ||
+        (await page.locator('.empty-state, [data-testid="empty-state"]').first().count()) > 0 ||
+        (await page.locator('.error-display, [data-testid="error-display"]').first().count()) > 0 ||
         // app-main is always present once the route resolves — proves the shell rendered
-        (await page.locator('.app-main').count()) > 0;
+        (await page.locator('.app-main, [data-testid="app-main"]').first().count()) > 0;
       if (onLogin || on403) {
         test.skip(true, 'Auth/role gated — skipping success assertion');
         return;
       }
       expect(onCommunities).toBe(true);
       expect(hasContent).toBe(true);
-      await expect(page.locator('.error-display')).not.toBeVisible();
+      await expect(page.locator('.error-display, [data-testid="error-display"]').first()).not.toBeVisible();
     });
   });
 
@@ -71,7 +71,7 @@ test.describe('JOURNEY-DC-009: Join Data Community', () => {
       await loginAndNavigateToRoute(page, consumer, '/communities', {
         timeout: 90000,
         contentSelector:
-          '.communities-page, .communities-tab, .unavailable-page, .empty-state, .error-display',
+          '.communities-page, .communities-tab, .unavailable-page, [data-testid="unavailable-page"], .empty-state, [data-testid="empty-state"], .error-display, [data-testid="error-display"]',
       });
       const url = page.url();
       expect(

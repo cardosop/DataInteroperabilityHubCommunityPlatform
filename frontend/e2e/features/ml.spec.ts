@@ -10,7 +10,11 @@ import { expect, test } from '@playwright/test';
 import { getTestUser } from '../fixtures/auth';
 import { assertCapabilityGatedPageLoads, loginAndNavigateToRoute } from '../fixtures/helpers';
 
-test.describe('Feature: ML (capability-gated)', () => {
+// Phase 226.G6 — `ml_mvp_in_scope=false` (recorded in
+// docs/CRITICAL_UC_JOURNEY_IDS.yaml). The /ml route is MvpGatedRoute-gated;
+// these specs run for regression coverage but are tagged @post-mvp so the
+// traceability gate does not count them against critical-coverage.
+test.describe('Feature: ML (capability-gated) @post-mvp', () => {
   test.setTimeout(120000);
 
   test.describe('Success', () => {
@@ -18,11 +22,11 @@ test.describe('Feature: ML (capability-gated)', () => {
       const testUser = await getTestUser();
       await loginAndNavigateToRoute(page, testUser, '/ml', {
         timeout: 60000,
-        contentSelector: '.ml-page, .ml-model-list-page, .unavailable-page, .coming-soon-page, .error-display, h1',
+        contentSelector: '.ml-page, .ml-model-list-page, .unavailable-page, [data-testid="unavailable-page"], .coming-soon-page, .error-display, [data-testid="error-display"], h1',
       });
       await assertCapabilityGatedPageLoads(
         page,
-        '.ml-page, .ml-model-list-page, .unavailable-page, .coming-soon-page',
+        '.ml-page, .ml-model-list-page, .unavailable-page, [data-testid="unavailable-page"], .coming-soon-page',
         { timeout: 30000 }
       );
     });
@@ -45,7 +49,7 @@ test.describe('Feature: ML (capability-gated)', () => {
       const testUser = await getTestUser();
       await loginAndNavigateToRoute(page, testUser, '/ml', {
         timeout: 60000,
-        contentSelector: '.ml-page, .ml-model-list-page, .unavailable-page, .coming-soon-page, .error-display, h1',
+        contentSelector: '.ml-page, .ml-model-list-page, .unavailable-page, [data-testid="unavailable-page"], .coming-soon-page, .error-display, [data-testid="error-display"], h1',
       });
       if (page.url().includes('/login') || page.url().includes('/403')) return;
       const has500 = (await page.locator('text=/500|internal server error/i').count()) > 0;

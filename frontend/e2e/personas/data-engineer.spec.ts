@@ -24,7 +24,7 @@ import { test, expect } from '@playwright/test';
 import { waitForAppMainReady, waitForRoleGuardResolved } from '../fixtures/helpers';
 import { loginAsPersona, getTestUser } from '../fixtures/auth';
 
-test.describe('Persona RBAC: Data Engineer', () => {
+test.describe('Persona RBAC: Data Engineer @critical', () => {
   test.setTimeout(120000);
 
   test('DE can access /contracts', async ({ page }) => {
@@ -32,8 +32,8 @@ test.describe('Persona RBAC: Data Engineer', () => {
     await page.goto('/contracts');
     await waitForAppMainReady(page);
     expect(page.url()).toContain('/contracts');
-    await expect(page.locator('.app-main')).toBeVisible();
-    await expect(page.locator('.error-display')).not.toBeVisible({ timeout: 2000 });
+    await expect(page.locator('.app-main, [data-testid="app-main"]').first()).toBeVisible();
+    await expect(page.locator('.error-display, [data-testid="error-display"]').first()).not.toBeVisible({ timeout: 2000 });
   });
 
   test('DE sees scheduled-ingestion gated in MVP mode', async ({ page }) => {
@@ -42,7 +42,7 @@ test.describe('Persona RBAC: Data Engineer', () => {
     await waitForAppMainReady(page);
     // Scheduled ingestion is MVP-gated — expect unavailable/coming-soon page
     const url = page.url();
-    const hasUnavailable = (await page.locator('.unavailable-page').count()) > 0;
+    const hasUnavailable = (await page.locator('.unavailable-page, [data-testid="unavailable-page"]').first().count()) > 0;
     const isComingSoon = url.includes('/coming-soon') || url.includes('/unavailable');
     expect(
       hasUnavailable || isComingSoon,

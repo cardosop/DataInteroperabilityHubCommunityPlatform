@@ -30,13 +30,13 @@ test.describe('Asset Detail: Attach Contract and Dataset (Pickers)', () => {
     await loginAndNavigateToRoute(page, user, '/assets', {
       timeout: 60000,
       contentSelector:
-        '.asset-list-page, .empty-state, h1',
+        '.asset-list-page, [data-testid="asset-list-page"], .empty-state, [data-testid="empty-state"], h1',
     });
     await waitForLoadingComplete(page, { timeout: 30000 });
 
     const createBtn = page
       .locator('button:has-text("Create Asset")')
-      .or(page.locator('.empty-state-action:has-text("Create Asset")'));
+      .or(page.locator('[data-testid="empty-state-action"]:has-text("Create Asset")'));
     await expect(createBtn.first()).toBeVisible({ timeout: 15000 });
     await createBtn.first().click();
 
@@ -93,7 +93,7 @@ test.describe('Asset Detail: Attach Contract and Dataset (Pickers)', () => {
     await loginAndNavigateToRoute(page, user, '/assets', {
       timeout: 60000,
       contentSelector:
-        '.asset-list-page, .empty-state, h1',
+        '.asset-list-page, [data-testid="asset-list-page"], .empty-state, [data-testid="empty-state"], h1',
     });
     await waitForLoadingComplete(page, { timeout: 30000 });
 
@@ -103,7 +103,7 @@ test.describe('Asset Detail: Attach Contract and Dataset (Pickers)', () => {
       // Create an asset so we have one without contract
       const createBtn = page
         .locator('button:has-text("Create Asset")')
-        .or(page.locator('.empty-state-action:has-text("Create Asset")'));
+        .or(page.locator('[data-testid="empty-state-action"]:has-text("Create Asset")'));
       await expect(createBtn.first()).toBeVisible({ timeout: 15000 });
       await createBtn.first().click();
       await expect(page).toHaveURL(/\/assets\/create/, { timeout: 10000 });
@@ -166,11 +166,11 @@ test.describe('Asset Detail: Attach Contract and Dataset (Pickers)', () => {
     await loginAndNavigateToRoute(page, user, '/datasets/create', {
       timeout: 60000,
       contentSelector:
-        '.dataset-create-page, .file-upload, h1',
+        '.dataset-create-page, [data-testid="dataset-create-page"], .file-upload, [data-testid="file-upload"], h1',
     });
     await waitForLoadingComplete(page);
 
-    const dropzone = page.locator('.file-upload-dropzone');
+    const dropzone = page.locator('.file-upload-dropzone, [data-testid="file-upload-dropzone"]');
     if ((await dropzone.count()) === 0) {
       test.skip(true, 'File upload dropzone not rendered — precondition not met');
       return;
@@ -193,7 +193,7 @@ test.describe('Asset Detail: Attach Contract and Dataset (Pickers)', () => {
         // File upload goes to backend — may be slow; also accept error-display (backend unavailable)
         // intentional: treats promise rejection as a structured false — the caller's if/else below consumes the boolean without swallowing.
         const uploadDone = await page
-          .locator('.file-upload-success, .upload-success, .file-upload-error, .error-display')
+          .locator('.file-upload-success, .upload-success, .file-upload-error, .error-display, [data-testid="error-display"]')
           .first()
           .waitFor({ state: 'visible', timeout: 45000 })
           .then(() => true)
@@ -203,7 +203,7 @@ test.describe('Asset Detail: Attach Contract and Dataset (Pickers)', () => {
           return;
         }
         const hasUploadError =
-          (await page.locator('.file-upload-error, .error-display').count()) > 0 &&
+          (await page.locator('.file-upload-error, .error-display, [data-testid="error-display"]').count()) > 0 &&
           (await page.locator('.file-upload-success, .upload-success').count()) === 0;
         if (hasUploadError) {
           test.skip(true, 'File upload failed — backend may be unavailable; cannot test DatasetPicker attach flow');
@@ -231,7 +231,7 @@ test.describe('Asset Detail: Attach Contract and Dataset (Pickers)', () => {
 
       const createBtn = page
         .locator('button:has-text("Create Asset")')
-        .or(page.locator('.empty-state-action:has-text("Create Asset")'));
+        .or(page.locator('[data-testid="empty-state-action"]:has-text("Create Asset")'));
       await expect(createBtn.first()).toBeVisible({ timeout: 15000 });
       await createBtn.first().click();
 

@@ -10,7 +10,11 @@ import { expect, test } from '@playwright/test';
 import { getTestUser } from '../fixtures/auth';
 import { assertCapabilityGatedPageLoads, loginAndNavigateToRoute } from '../fixtures/helpers';
 
-test.describe('Feature: AI (capability-gated)', () => {
+// Phase 226.G6 — AI surfaces are MvpGatedRoute-gated alongside /ml. Since
+// `ml_mvp_in_scope=false` (docs/CRITICAL_UC_JOURNEY_IDS.yaml), AI specs are
+// tagged @post-mvp so the traceability gate does not count them against
+// critical-coverage. Re-tag when the AI capability flips back into MVP.
+test.describe('Feature: AI (capability-gated) @post-mvp', () => {
   test.setTimeout(120000);
 
   test.describe('Success', () => {
@@ -18,9 +22,9 @@ test.describe('Feature: AI (capability-gated)', () => {
       const testUser = await getTestUser();
       await loginAndNavigateToRoute(page, testUser, '/ai/search', {
         timeout: 60000,
-        contentSelector: '.ai-search-page, .unavailable-page, .coming-soon-page, .error-display, h1',
+        contentSelector: '.ai-search-page, .unavailable-page, [data-testid="unavailable-page"], .coming-soon-page, .error-display, [data-testid="error-display"], h1',
       });
-      await assertCapabilityGatedPageLoads(page, '.ai-search-page, .unavailable-page, .coming-soon-page', {
+      await assertCapabilityGatedPageLoads(page, '.ai-search-page, .unavailable-page, [data-testid="unavailable-page"], .coming-soon-page', {
         timeout: 30000,
       });
     });
@@ -43,11 +47,11 @@ test.describe('Feature: AI (capability-gated)', () => {
       const testUser = await getTestUser();
       await loginAndNavigateToRoute(page, testUser, '/ai/schema-matching', {
         timeout: 60000,
-        contentSelector: '.schema-matching-page, .unavailable-page, .coming-soon-page, .error-display, h1',
+        contentSelector: '.schema-matching-page, .unavailable-page, [data-testid="unavailable-page"], .coming-soon-page, .error-display, [data-testid="error-display"], h1',
       });
       await assertCapabilityGatedPageLoads(
         page,
-        '.schema-matching-page, .unavailable-page, .coming-soon-page',
+        '.schema-matching-page, .unavailable-page, [data-testid="unavailable-page"], .coming-soon-page',
         { timeout: 30000 }
       );
     });

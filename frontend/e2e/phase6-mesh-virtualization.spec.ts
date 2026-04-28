@@ -168,7 +168,7 @@ async function createOdbcVirtualDatasetAndExecute(): Promise<OdbcOutcome> {
   };
 }
 
-test.describe('Phase 6 Mesh + Virtualization', () => {
+test.describe('Phase 6 Mesh + Virtualization @deprecated', () => {
   test('mesh domains list loads and create flow works', async ({ page }) => {
     test.setTimeout(120000);
     await loginAsPersona(page, getTestUser);
@@ -176,17 +176,17 @@ test.describe('Phase 6 Mesh + Virtualization', () => {
 
     await loginAndNavigateToRoute(page, testUser, '/mesh', {
       timeout: 60000,
-      contentSelector: '.mesh-domain-list-page, .empty-state, .error-display, h1',
+      contentSelector: '.mesh-domain-list-page, .empty-state, [data-testid="empty-state"], .error-display, [data-testid="error-display"], h1',
     });
 
     await navigateToRouteFromApp(page, '/mesh/create', {
       timeout: 60000,
-      contentSelector: 'h1, .mesh-domain-create-page, .error-display, .unavailable-page, [data-testid="mesh-domain-create-page"]',
+      contentSelector: 'h1, .mesh-domain-create-page, .error-display, [data-testid="error-display"], .unavailable-page, [data-testid="unavailable-page"], [data-testid="mesh-domain-create-page"]',
     });
     // Capability-gated: may show Create form, 403, or unavailable message
     const on403 = page.url().includes('/403');
     const hasCreateHeading = (await page.getByRole('heading', { name: 'Create Mesh Domain' }).count()) > 0;
-    const hasUnavailable = (await page.locator('.unavailable-page, .error-display').count()) > 0;
+    const hasUnavailable = (await page.locator('.unavailable-page, [data-testid="unavailable-page"], .error-display, [data-testid="error-display"]').count()) > 0;
     expect(hasCreateHeading || on403 || hasUnavailable).toBe(true) /* acceptable states */;
     if (!hasCreateHeading) return;
 
@@ -213,7 +213,7 @@ test.describe('Phase 6 Mesh + Virtualization', () => {
       ).toBeVisible({ timeout: 10000 });
     } catch {
       await expect(
-        page.locator('.error-display, .error-message, [role="alert"]').first()
+        page.locator('.error-display, [data-testid="error-display"], .error-message, [role="alert"]').first()
       ).toContainText(/forbidden|not available|error|failed|403/i, { timeout: 5000 });
     }
   });
@@ -225,16 +225,16 @@ test.describe('Phase 6 Mesh + Virtualization', () => {
 
     await loginAndNavigateToRoute(page, testUser, '/mesh', {
       timeout: 60000,
-      contentSelector: '.mesh-domain-list-page, .topology-visualization, .empty-state, .error-display, h1',
+      contentSelector: '.mesh-domain-list-page, .topology-visualization, .empty-state, [data-testid="empty-state"], .error-display, [data-testid="error-display"], h1',
     });
     await navigateToRouteFromApp(page, '/mesh/topology', {
       timeout: 60000,
-      contentSelector: '.topology-visualization, .topology-header, .loading-spinner, .error-display, .unavailable-page, h2, main',
+      contentSelector: '.topology-visualization, .topology-header, .loading-spinner, .error-display, [data-testid="error-display"], .unavailable-page, [data-testid="unavailable-page"], h2, main',
       acceptRedirectToLogin: true,
     });
     if (page.url().includes('/login')) return;
     const topologyOrFallback = page.locator(
-      '.topology-visualization, .topology-header, .loading-spinner, .error-display, .unavailable-page, h2'
+      '.topology-visualization, .topology-header, .loading-spinner, .error-display, [data-testid="error-display"], .unavailable-page, [data-testid="unavailable-page"], h2'
     ).first();
     await expect(topologyOrFallback).toBeVisible({ timeout: 15000 });
 
@@ -251,20 +251,20 @@ test.describe('Phase 6 Mesh + Virtualization', () => {
     const testUser = await getTestUser();
     await loginAndNavigateToRoute(page, testUser, '/virtualization', {
       timeout: 60000,
-      contentSelector: '.virtual-dataset-list-page, .empty-state, .error-display, h1',
+      contentSelector: '.virtual-dataset-list-page, [data-testid="virtual-dataset-list-page"], .empty-state, [data-testid="empty-state"], .error-display, [data-testid="error-display"], h1',
       acceptRedirectToLogin: true,
     });
     if (page.url().includes('/login')) return;
 
     await navigateToRouteFromApp(page, '/virtualization/create', {
       timeout: 60000,
-      contentSelector: 'h1, .virtual-dataset-create-page, .error-display, .unavailable-page',
+      contentSelector: 'h1, .virtual-dataset-create-page, .error-display, [data-testid="error-display"], .unavailable-page, [data-testid="unavailable-page"]',
       acceptRedirectToLogin: true,
     });
     if (page.url().includes('/login')) return;
     const on403 = page.url().includes('/403');
     const hasCreateHeading = (await page.getByRole('heading', { name: /Create.*Virtual Dataset|Create Virtual Dataset/ }).count()) > 0;
-    const hasUnavailable = (await page.locator('.unavailable-page, .error-display').count()) > 0;
+    const hasUnavailable = (await page.locator('.unavailable-page, [data-testid="unavailable-page"], .error-display, [data-testid="error-display"]').count()) > 0;
     // Also accept redirect back to list — /virtualization/create may redirect if capability is gated
     const redirectedToList = !page.url().includes('/create') && page.url().includes('/virtualization');
     expect(hasCreateHeading || on403 || hasUnavailable || redirectedToList).toBe(true) /* acceptable states */;
@@ -298,7 +298,7 @@ test.describe('Phase 6 Mesh + Virtualization', () => {
     } catch {
       await expect(
         page
-          .locator('.virtual-dataset-create-page, .error-display, .error-message, [role="alert"]')
+          .locator('.virtual-dataset-create-page, .error-display, [data-testid="error-display"], .error-message, [role="alert"]')
           .first()
       ).toBeVisible({ timeout: 5000 });
     }
@@ -309,14 +309,14 @@ test.describe('Phase 6 Mesh + Virtualization', () => {
     const testUser = await getTestUser();
     await loginAndNavigateToRoute(page, testUser, '/virtualization', {
       timeout: 60000,
-      contentSelector: '.virtual-dataset-list-page, .empty-state, .error-display, h1',
+      contentSelector: '.virtual-dataset-list-page, [data-testid="virtual-dataset-list-page"], .empty-state, [data-testid="empty-state"], .error-display, [data-testid="error-display"], h1',
       acceptRedirectToLogin: true,
     });
     if (page.url().includes('/login')) return;
 
-    const hasRow = (await page.locator('.virtual-dataset-list-page table tbody tr').count()) > 0;
+    const hasRow = (await page.locator('.virtual-dataset-list-page, [data-testid="virtual-dataset-list-page"] table tbody tr').count()) > 0;
     if (hasRow) {
-      await page.locator('.virtual-dataset-list-page table tbody tr').first().click();
+      await page.locator('.virtual-dataset-list-page, [data-testid="virtual-dataset-list-page"] table tbody tr').first().click();
       await page
         .waitForURL((url) => /^\/virtualization\/[0-9a-f-]{36}$/i.test(new URL(url).pathname), {
           timeout: 10000,
@@ -340,7 +340,7 @@ test.describe('Phase 6 Mesh + Virtualization', () => {
 
     await waitForAppMainReady(page, {
       timeout: 60000,
-      contentSelector: '.virtual-dataset-detail-page, .loading-spinner, .error-display',
+      contentSelector: '.virtual-dataset-detail-page, .loading-spinner, .error-display, [data-testid="error-display"]',
     });
     await page.waitForSelector('.virtual-dataset-detail-page', {
       state: 'visible',
@@ -365,14 +365,14 @@ test.describe('Phase 6 Mesh + Virtualization', () => {
     const testUser = await getTestUser();
     await loginAndNavigateToRoute(page, testUser, '/virtualization', {
       timeout: 60000,
-      contentSelector: '.virtual-dataset-list-page, .empty-state, .error-display, h1',
+      contentSelector: '.virtual-dataset-list-page, [data-testid="virtual-dataset-list-page"], .empty-state, [data-testid="empty-state"], .error-display, [data-testid="error-display"], h1',
       acceptRedirectToLogin: true,
     });
     if (page.url().includes('/login')) return;
 
-    const hasRow = (await page.locator('.virtual-dataset-list-page table tbody tr').count()) > 0;
+    const hasRow = (await page.locator('.virtual-dataset-list-page, [data-testid="virtual-dataset-list-page"] table tbody tr').count()) > 0;
     if (hasRow) {
-      await page.locator('.virtual-dataset-list-page table tbody tr').first().click();
+      await page.locator('.virtual-dataset-list-page, [data-testid="virtual-dataset-list-page"] table tbody tr').first().click();
       await page
         .waitForURL((url) => /^\/virtualization\/[0-9a-f-]{36}$/i.test(new URL(url).pathname), {
           timeout: 10000,
@@ -419,7 +419,7 @@ test.describe('Phase 6 Mesh + Virtualization', () => {
     // intentional: treats promise rejection as a structured false — the caller's if/else below consumes the boolean without swallowing.
     const queryResultVisible = await page
       .locator(
-        '.progress-section, .results-section, .results-table, .error-section, .error-display, .query-execution-ui button:has-text("Cancel"), .query-execution-ui button:has-text("Executing")'
+        '.progress-section, .results-section, .results-table, .error-section, .error-display, [data-testid="error-display"], .query-execution-ui button:has-text("Cancel"), .query-execution-ui button:has-text("Executing")'
       )
       .first()
       .waitFor({ state: 'visible', timeout: 30000 })
@@ -494,7 +494,7 @@ test.describe('Phase 6 Mesh + Virtualization', () => {
     const testUser = await getTestUser();
     await loginAndNavigateToRoute(page, testUser, '/virtualization/create', {
       timeout: 60000,
-      contentSelector: 'h1, .virtual-dataset-create-page, .error-display, .unavailable-page',
+      contentSelector: 'h1, .virtual-dataset-create-page, .error-display, [data-testid="error-display"], .unavailable-page, [data-testid="unavailable-page"]',
       acceptRedirectToLogin: true,
     });
     if (page.url().includes('/login')) {
@@ -507,7 +507,7 @@ test.describe('Phase 6 Mesh + Virtualization', () => {
       // Create page not accessible (403 or capability-gated) — verify proper gating and pass
       const isGated =
         page.url().includes('/403') ||
-        (await page.locator('.unavailable-page, .error-display, .app-main').count()) > 0;
+        (await page.locator('.unavailable-page, [data-testid="unavailable-page"], .error-display, [data-testid="error-display"], .app-main, [data-testid="app-main"]').count()) > 0;
       expect(isGated).toBe(true) /* acceptable states */;
       return;
     }
@@ -561,7 +561,7 @@ test.describe('Phase 6 Mesh + Virtualization', () => {
     } catch {
       // Create failed to redirect — backend rejected ODBC or driver unavailable.
       // Verify the form still shows an error response (graceful degradation).
-      const hasErr = (await page.locator('.error-display, .error-message, [role="alert"]').count()) > 0;
+      const hasErr = (await page.locator('.error-display, [data-testid="error-display"], .error-message, [role="alert"]').count()) > 0;
       const stillOnCreate = page.url().includes('/virtualization/create');
       expect(hasErr || stillOnCreate).toBe(true) /* acceptable states */;
       return;
@@ -588,7 +588,7 @@ test.describe('Phase 6 Mesh + Virtualization', () => {
     // intentional: treats promise rejection as a structured false — the caller's if/else below consumes the boolean without swallowing.
     const odbcQueryResultVisible = await page
       .locator(
-        '.progress-section, .results-section, .results-table, .error-section, .error-display'
+        '.progress-section, .results-section, .results-table, .error-section, .error-display, [data-testid="error-display"]'
       )
       .first()
       .waitFor({ state: 'visible', timeout: 30000 })
@@ -606,7 +606,7 @@ test.describe('Phase 6 Mesh + Virtualization', () => {
     const hasResult = await resultsTable.waitFor({ state: 'visible', timeout: 15000 }).then(() => true).catch(() => false);
     if (!hasResult) {
       // No results table — ODBC driver unavailable; verify error response is shown (graceful degradation)
-      const errSection = page.locator('.error-section, .error-display');
+      const errSection = page.locator('.error-section, .error-display, [data-testid="error-display"]');
       const hasErr = (await errSection.count()) > 0;
       expect(odbcQueryResultVisible || hasErr).toBe(true) /* acceptable states */; // odbcQueryResultVisible is true here
       return;

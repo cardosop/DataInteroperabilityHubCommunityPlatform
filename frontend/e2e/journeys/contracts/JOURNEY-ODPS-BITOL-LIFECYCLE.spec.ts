@@ -207,7 +207,7 @@ test.describe('JOURNEY-ODPS-BITOL-LIFECYCLE', () => {
 
       await page.goto('/odps/00000000-0000-0000-0000-000000000000');
 
-      const errorDisplay = page.locator('.error-display');
+      const errorDisplay = page.locator('.error-display, [data-testid="error-display"]').first();
       await expect(errorDisplay).toBeVisible({ timeout: 30000 });
     });
   });
@@ -228,12 +228,12 @@ test.describe('JOURNEY-ODPS-BITOL-LIFECYCLE', () => {
 
       await page.goto('/odps');
       await page.waitForSelector(
-        '.odps-list-page, .odps-empty-state, .error-display',
+        '.odps-list-page, .odps-empty-state, .error-display, [data-testid="error-display"]',
         { timeout: 30000 },
       );
 
       // Page loaded — verify no crash (list or empty state)
-      const errorDisplay = page.locator('.error-display');
+      const errorDisplay = page.locator('.error-display, [data-testid="error-display"]').first();
       // intentional: visibility check on a transiently-attached element — treating a detached-at-check-time element as 'not visible' is the semantically correct fallback; the caller's branch logic uses the boolean result.
       const hasError = await errorDisplay.isVisible().catch(() => false);
       if (!hasError) {

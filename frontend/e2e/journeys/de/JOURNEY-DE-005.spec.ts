@@ -29,17 +29,17 @@ test.describe('JOURNEY-DE-005: Integrate External Data Source', () => {
         throw _err;
       }
       expect(page.url()).toContain('/integrations');
-      await expect(page.locator('.error-display')).not.toBeVisible();
+      await expect(page.locator('.error-display, [data-testid="error-display"]').first()).not.toBeVisible();
     });
 
     test('sync jobs list loads', async ({ page }) => {
       const testUser = await getTestUser();
       await loginAndNavigateToRoute(page, testUser, '/integrations/sync-jobs', { timeout: 60000 });
       // Wait for a terminal render state instead of a fixed sleep
-      // Include .unavailable-page for capability-gated routes that redirect before resolving
+      // Include .unavailable-page, [data-testid="unavailable-page"] for capability-gated routes that redirect before resolving
       // intentional: probes optional UI presence via a multi-line locator chain — the branch logic below handles both rendered and missing cases deterministically; absence is a legitimate tenant/role state.
       await page
-        .locator('.sync-job-list-page, .empty-state, .error-display, .unavailable-page')
+        .locator('.sync-job-list-page, [data-testid="sync-job-list-page"], .empty-state, [data-testid="empty-state"], .error-display, [data-testid="error-display"], .unavailable-page, [data-testid="unavailable-page"]')
         .first()
         .waitFor({ state: 'visible', timeout: 45000 })
         .catch(() => null);
@@ -58,16 +58,16 @@ test.describe('JOURNEY-DE-005: Integrate External Data Source', () => {
         // Phase 2 wait: ensure terminal content is visible before count() checks
         // intentional: probes optional UI presence via a multi-line locator chain — the branch logic below handles both rendered and missing cases deterministically; absence is a legitimate tenant/role state.
         await page
-          .locator('.sync-job-list-page, .empty-state, .error-display')
+          .locator('.sync-job-list-page, [data-testid="sync-job-list-page"], .empty-state, [data-testid="empty-state"], .error-display, [data-testid="error-display"]')
           .first()
           .waitFor({ state: 'visible', timeout: 15000 })
           .catch(() => null);
         const hasContent =
-          (await page.locator('.sync-job-list-page').count()) > 0 ||
-          (await page.locator('.empty-state').count()) > 0 ||
-          (await page.locator('.error-display').count()) > 0 ||
+          (await page.locator('.sync-job-list-page, [data-testid="sync-job-list-page"]').first().count()) > 0 ||
+          (await page.locator('.empty-state, [data-testid="empty-state"]').first().count()) > 0 ||
+          (await page.locator('.error-display, [data-testid="error-display"]').first().count()) > 0 ||
           // Fallback: route rendered something in the app shell (API slow but page resolved)
-          (await page.locator('.app-main').count()) > 0;
+          (await page.locator('.app-main, [data-testid="app-main"]').first().count()) > 0;
         expect(hasContent).toBe(true) /* acceptable states */;
       }
     });
@@ -76,14 +76,14 @@ test.describe('JOURNEY-DE-005: Integrate External Data Source', () => {
       const testUser = await getTestUser();
       await loginAndNavigateToRoute(page, testUser, '/integrations/mappings', {
         timeout: 120000,
-        contentSelector: '.mapping-list-page, .empty-state, .error-display',
+        contentSelector: '.mapping-list-page, .empty-state, [data-testid="empty-state"], .error-display, [data-testid="error-display"]',
       });
       if (page.url().includes('/login')) {
         test.skip(true, 'Auth gated — skipping success assertion');
         return;
       }
       expect(page.url()).toContain('/integrations');
-      await expect(page.locator('.error-display')).not.toBeVisible();
+      await expect(page.locator('.error-display, [data-testid="error-display"]').first()).not.toBeVisible();
     });
   });
 
@@ -107,7 +107,7 @@ test.describe('JOURNEY-DE-005: Integrate External Data Source', () => {
       await loginAndNavigateToRoute(page, consumer, '/integrations/connections/create', {
         timeout: 60000,
         contentSelector:
-          '.marketplace-connection-create-page, .connection-create-page, .error-display, .unavailable-page',
+          '.marketplace-connection-create-page, .connection-create-page, .error-display, [data-testid="error-display"], .unavailable-page, [data-testid="unavailable-page"]',
       });
       const url = page.url();
       // Consumer role: redirect to login/403/unavailable, or the create page (role may be permitted)

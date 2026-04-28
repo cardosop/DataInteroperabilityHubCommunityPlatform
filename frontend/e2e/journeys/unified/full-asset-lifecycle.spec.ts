@@ -81,7 +81,7 @@ test.describe('Full Asset Lifecycle', () => {
 
     // Should see the contract list page
     await expect(
-      page.getByRole('heading', { name: /contracts/i }).or(page.locator('[data-testid="contract-list-page"]')),
+      page.getByRole('heading', { name: /contracts/i }).or(page.locator('.contract-list-page, [data-testid="contract-list-page"]')),
     ).toBeVisible({ timeout: 10_000 });
 
     // Step 2: Verify spec type column exists

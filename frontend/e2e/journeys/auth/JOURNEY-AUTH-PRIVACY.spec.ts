@@ -23,7 +23,7 @@ test.describe('JOURNEY-AUTH-PRIVACY: GDPR Privacy & Data', () => {
     await page.goto('/settings/privacy', { waitUntil: 'domcontentloaded' });
     // Wait for privacy page content, error display, OR login form — all terminal states.
     await page
-      .locator('[data-testid="privacy-page"], .error-display, input#email')
+      .locator('[data-testid="privacy-page"], .error-display, [data-testid="error-display"], input#email')
       .first()
       .waitFor({ state: 'visible', timeout: 45000 });
     return !page.url().includes('/login');
@@ -69,7 +69,7 @@ test.describe('JOURNEY-AUTH-PRIVACY: GDPR Privacy & Data', () => {
     await exportBtn.click();
 
     // Export request: either success or error display (API may 429 under load)
-    const feedback = page.locator('.privacy-success, .error-display, [role="alert"]');
+    const feedback = page.locator('.privacy-success, .error-display, [data-testid="error-display"], [role="alert"]');
     await expect(feedback.first()).toBeVisible({ timeout: 30000 });
   });
   }); // end Success
@@ -99,7 +99,7 @@ test.describe('JOURNEY-AUTH-PRIVACY: GDPR Privacy & Data', () => {
       await expect(exportBtn).toBeVisible({ timeout: 5000 });
       await exportBtn.click();
 
-      const feedback = page.locator('.privacy-success, .error-display, .privacy-table, [role="alert"]');
+      const feedback = page.locator('.privacy-success, .error-display, [data-testid="error-display"], .privacy-table, [role="alert"]');
       await expect(feedback.first()).toBeVisible({ timeout: 30000 });
     });
   });
@@ -120,7 +120,7 @@ test.describe('JOURNEY-AUTH-PRIVACY: GDPR Privacy & Data', () => {
       await erasureBtn.click();
 
       const feedback = page.locator(
-        '.privacy-erasure-confirm, .privacy-success, .error-display, [role="dialog"], [role="alert"]'
+        '.privacy-erasure-confirm, .privacy-success, .error-display, [data-testid="error-display"], [role="dialog"], [role="alert"]'
       );
       await expect(feedback.first()).toBeVisible({ timeout: 15000 });
     });

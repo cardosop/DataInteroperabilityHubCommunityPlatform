@@ -108,7 +108,7 @@ async function switchTenant(
   return (await res.json()) as { tenant_id?: string; email?: string };
 }
 
-test.describe('JOURNEY-AUTH-007: Tenant Switch — isolation guarantee', () => {
+test.describe('JOURNEY-AUTH-007: Tenant Switch — isolation guarantee @critical', () => {
   test.setTimeout(180_000);
 
   test('list-tenants → switch → resource isolated → switch back → resource visible', async ({
@@ -116,7 +116,7 @@ test.describe('JOURNEY-AUTH-007: Tenant Switch — isolation guarantee', () => {
   }) => {
     const user = await getTestUser();
     await loginUser(page, user);
-    await expect(page.locator('.app-header')).toBeVisible({ timeout: 15_000 });
+    await expect(page.locator('.app-header, [data-testid="app-header"]').first()).toBeVisible({ timeout: 15_000 });
 
     const accessToken = await page.evaluate(() => localStorage.getItem('access_token'));
     if (!accessToken) {

@@ -17,12 +17,37 @@ import { runJOURNEY_AUTH_003_Success } from '../../fixtures/auth-journey-steps';
 const MAILHOG_BASE_URL = process.env.MAILHOG_URL || 'http://localhost:8025';
 const WORKER_HEALTH_URL = process.env.WORKER_HEALTH_URL || 'http://localhost:8087/healthz';
 
-test.describe('JOURNEY-AUTH-003: User Resets Password', () => {
+test.describe('JOURNEY-AUTH-003: User Resets Password @critical', () => {
   // Allow loginUser rate-limit retries (up to 4×65s) after password reset confirm when suite runs many auth tests
   test.setTimeout(120000);
 
   test.describe('Success', () => {
     test('visitor requests password reset and confirms via email link', async ({ page }) => {
+      // External-target safety: when running against staging/prod, MailHog is
+      // typically not deployed and MAILHOG_URL must be explicitly pointed at a
+      // reachable email-sink. If MAILHOG_URL is left at its localhost default
+      // while PLAYWRIGHT_BASE_URL is non-localhost, a developer-side MailHog
+      // container running for *other* tests would falsely report reachable —
+      // the test would then submit the form against staging, wait 120s for an
+      // email that never arrives in the local sink, and time out instead of
+      // skipping cleanly. Detect that mismatch up front and skip with a clear
+      // remediation message.
+      const isExternalTarget = !!process.env.PLAYWRIGHT_BASE_URL?.match(
+        /^https?:\/\/(?!localhost|127\.)/
+      );
+      const isMailhogOverrideSet = !!process.env.MAILHOG_URL;
+      const isMailhogLocalhost = /^https?:\/\/(localhost|127\.)/i.test(MAILHOG_BASE_URL);
+      test.skip(
+        isExternalTarget && !isMailhogOverrideSet && isMailhogLocalhost,
+        `Running against external target (${process.env.PLAYWRIGHT_BASE_URL}) ` +
+          `but MAILHOG_URL is not set — defaulting to ${MAILHOG_BASE_URL}. ` +
+          `Staging emails will not be delivered to a local sink, so the email ` +
+          `interception step would hang for the full test budget. Set ` +
+          `MAILHOG_URL=https://<staging-mailhog-host> to run, or accept the ` +
+          `skip (the password-reset feature itself is exercised by the ` +
+          `Failure / Edge tests in this file).`
+      );
+
       let mailhogReachable = false;
       let workerReachable = false;
       // Retry probes once — under parallel E2E load the first attempt can fail
@@ -51,12 +76,9 @@ test.describe('JOURNEY-AUTH-003: User Resets Password', () => {
       // password-reset email to extract the token — there is no API shortcut.
       // On external targets (staging), MailHog is typically not deployed; set
       // MAILHOG_URL to a reachable MailHog instance if available.
-      const isExternal = !!process.env.PLAYWRIGHT_BASE_URL?.match(
-        /^https?:\/\/(?!localhost|127\.)/
-      );
       test.skip(
         !mailhogReachable,
-        isExternal
+        isExternalTarget
           ? `MailHog not reachable at ${MAILHOG_BASE_URL}. ` +
             `Running against external target (${process.env.PLAYWRIGHT_BASE_URL}); ` +
             `set MAILHOG_URL to the staging MailHog endpoint, or skip this test ` +
@@ -84,7 +106,7 @@ test.describe('JOURNEY-AUTH-003: User Resets Password', () => {
       // CapabilityRoute blocks with LoadingSpinner until capabilities load (up to 30s)
       const resetOrUnavailable = page
         .getByRole('heading', { name: /Reset password/i })
-        .or(page.locator('.unavailable-page h1'));
+        .or(page.locator('.unavailable-page, [data-testid="unavailable-page"] h1'));
       await expect(resetOrUnavailable.first()).toBeVisible({ timeout: 35_000 });
       if (page.url().includes('/unavailable')) {
         throw new Error(
@@ -108,7 +130,7 @@ test.describe('JOURNEY-AUTH-003: User Resets Password', () => {
       });
       // CapabilityRoute blocks with LoadingSpinner until capabilities load (up to 30s)
       await expect(
-        page.getByRole('heading', { name: /Set a new password/i }).or(page.locator('.unavailable-page h1'))
+        page.getByRole('heading', { name: /Set a new password/i }).or(page.locator('.unavailable-page, [data-testid="unavailable-page"] h1'))
       ).toBeVisible({ timeout: 35_000 });
       if (page.url().includes('/unavailable')) {
         throw new Error(
@@ -137,7 +159,7 @@ test.describe('JOURNEY-AUTH-003: User Resets Password', () => {
       // CapabilityRoute blocks with LoadingSpinner until capabilities load (up to 30s)
       const resetOrUnavailable = page
         .getByRole('heading', { name: /Reset password/i })
-        .or(page.locator('.unavailable-page h1'));
+        .or(page.locator('.unavailable-page, [data-testid="unavailable-page"] h1'));
       await expect(resetOrUnavailable.first()).toBeVisible({ timeout: 35_000 });
       if (page.url().includes('/unavailable')) {
         throw new Error(
@@ -164,7 +186,7 @@ test.describe('JOURNEY-AUTH-003: User Resets Password', () => {
       }
       const heading = page
         .getByRole('heading', { name: /Reset password/i })
-        .or(page.locator('.unavailable-page h1'));
+        .or(page.locator('.unavailable-page, [data-testid="unavailable-page"] h1'));
       await expect(heading.first()).toBeVisible({ timeout: 35_000 });
       if (page.url().includes('/unavailable')) {
         return;

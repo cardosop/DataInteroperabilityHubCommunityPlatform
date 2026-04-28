@@ -21,7 +21,7 @@ test.describe('UC-WH-001: Create/Manage Webhook', () => {
       const user = await getTestUser();
       await loginAndNavigateToRoute(page, user, '/webhooks', {
         timeout: 60000,
-        contentSelector: '.webhook-list-page, .empty-state',
+        contentSelector: '.webhook-list-page, .empty-state, [data-testid="empty-state"]',
       });
       if (page.url().includes('/login') || page.url().includes('/403')) {
         expect(page.url()).toMatch(/\/login|\/403/);
@@ -34,7 +34,7 @@ test.describe('UC-WH-001: Create/Manage Webhook', () => {
       const user = await getTestUser();
       await loginAndNavigateToRoute(page, user, '/webhooks/create', {
         timeout: 60000,
-        contentSelector: '.webhook-create-page, form, .empty-state',
+        contentSelector: '.webhook-create-page, form, .empty-state, [data-testid="empty-state"]',
       });
       if (page.url().includes('/login') || page.url().includes('/403')) {
         expect(page.url()).toMatch(/\/login|\/403/);
@@ -61,7 +61,7 @@ test.describe('UC-WH-001: Create/Manage Webhook', () => {
       await page.goto('/webhooks/00000000-0000-0000-0000-000000000000');
       await page.waitForLoadState('domcontentloaded');
       await assertNonExistentIdShowsError(page, {
-        detailContentSelector: '.webhook-detail-page, .error-display',
+        detailContentSelector: '.webhook-detail-page, .error-display, [data-testid="error-display"]',
         waitAfterLoad: 5000,
         selectorTimeout: 20000,
         apiUrlPattern: '/webhooks/00000000-0000-0000-0000-000000000000',
@@ -85,7 +85,7 @@ test.describe('UC-WH-001: Create/Manage Webhook', () => {
       const user = await getTestUser();
       await loginAndNavigateToRoute(page, user, '/webhooks', {
         timeout: 60000,
-        contentSelector: '.webhook-list-page, .empty-state, .error-display',
+        contentSelector: '.webhook-list-page, .empty-state, [data-testid="empty-state"], .error-display, [data-testid="error-display"]',
       });
       expect(page.url()).toContain('/webhooks');
     });

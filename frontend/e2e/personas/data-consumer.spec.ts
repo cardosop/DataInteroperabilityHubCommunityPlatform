@@ -25,7 +25,7 @@ import { test, expect } from '@playwright/test';
 import { waitForAppMainReady, waitForRoleGuardResolved } from '../fixtures/helpers';
 import { loginAsPersona, getConsumerTestUser } from '../fixtures/auth';
 
-test.describe('Persona RBAC: Data Consumer', () => {
+test.describe('Persona RBAC: Data Consumer @critical', () => {
   test.setTimeout(120000);
 
   test('DC can access /marketplace', async ({ page }) => {
@@ -33,11 +33,11 @@ test.describe('Persona RBAC: Data Consumer', () => {
     await page.goto('/marketplace');
     await waitForAppMainReady(page);
     expect(page.url()).toContain('/marketplace');
-    await expect(page.locator('.app-main')).toBeVisible();
-    await expect(page.locator('.error-display')).not.toBeVisible({ timeout: 2000 });
+    await expect(page.locator('.app-main, [data-testid="app-main"]').first()).toBeVisible();
+    await expect(page.locator('.error-display, [data-testid="error-display"]').first()).not.toBeVisible({ timeout: 2000 });
     // Assert actual marketplace content rendered (not just app shell)
     const hasContent = page.locator(
-      '[data-testid="listing-list-page"], .listing-list-page, .listing-list-grid, .empty-state',
+      '[data-testid="listing-list-page"], .listing-list-page, .listing-list-grid, [data-testid="listing-list-grid"], .empty-state, [data-testid="empty-state"]',
     );
     await expect(hasContent.first()).toBeVisible({ timeout: 30000 });
   });

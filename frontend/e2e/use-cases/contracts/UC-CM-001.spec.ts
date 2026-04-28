@@ -13,7 +13,7 @@ import { expect, test } from '@playwright/test';
 import { getTestUser } from '../../fixtures/auth';
 import { loginAndNavigateToRoute, waitForLoadingComplete } from '../../fixtures/helpers';
 
-test.describe('UC-CM-001: Create Contract', () => {
+test.describe('UC-CM-001: Create Contract @critical', () => {
   test.setTimeout(90000);
 
   test.describe('Success', () => {
@@ -21,13 +21,13 @@ test.describe('UC-CM-001: Create Contract', () => {
       const user = await getTestUser();
       await loginAndNavigateToRoute(page, user, '/contracts', {
         timeout: 60000,
-        contentSelector: '.contract-list-page, .empty-state',
+        contentSelector: '.contract-list-page, [data-testid="contract-list-page"], .empty-state, [data-testid="empty-state"]',
       });
       expect(page.url()).toContain('/contracts');
       await waitForLoadingComplete(page, { timeout: 15000 });
       const hasContent =
-        (await page.locator('.contract-list-page').count()) > 0 ||
-        (await page.locator('.empty-state').count()) > 0;
+        (await page.locator('.contract-list-page, [data-testid="contract-list-page"]').first().count()) > 0 ||
+        (await page.locator('.empty-state, [data-testid="empty-state"]').first().count()) > 0;
       expect(hasContent).toBe(true) /* acceptable states */;
     });
 
@@ -119,7 +119,7 @@ test.describe('UC-CM-001: Create Contract', () => {
         page.url().includes('/odps/') ||
         !page.url().endsWith('/odps/upload');
       expect(navigated).toBe(true);
-      await expect(page.locator('.error-display')).not.toBeVisible();
+      await expect(page.locator('.error-display, [data-testid="error-display"]').first()).not.toBeVisible();
     });
 
     test('ODPS upload route loads for contract creation', async ({ page }) => {
@@ -152,16 +152,16 @@ test.describe('UC-CM-001: Create Contract', () => {
       const user = await getTestUser();
       await loginAndNavigateToRoute(page, user, '/contracts', {
         timeout: 60000,
-        contentSelector: '.contract-list-page, .empty-state, .error-display',
+        contentSelector: '.contract-list-page, [data-testid="contract-list-page"], .empty-state, [data-testid="empty-state"], .error-display, [data-testid="error-display"]',
       });
       expect(page.url()).toContain('/contracts');
       const hasContent =
-        (await page.locator('.contract-list-page').count()) > 0 ||
-        (await page.locator('.empty-state').count()) > 0;
+        (await page.locator('.contract-list-page, [data-testid="contract-list-page"]').first().count()) > 0 ||
+        (await page.locator('.empty-state, [data-testid="empty-state"]').first().count()) > 0;
       expect(hasContent).toBe(true);
       const hasCreateOption =
         (await page.locator('a[href*="/odps/upload"], a[href*="/contracts/create"], button:has-text("Create"), button:has-text("New Contract")').count()) > 0 ||
-        (await page.locator('.empty-state').count()) > 0;
+        (await page.locator('.empty-state, [data-testid="empty-state"]').first().count()) > 0;
       expect(hasCreateOption).toBe(true);
     });
   });

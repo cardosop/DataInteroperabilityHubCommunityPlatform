@@ -37,7 +37,7 @@ import { test, expect } from '@playwright/test';
 import { loginAsPersona, getTestUser } from '../fixtures/auth';
 import { waitForAppMainReady, waitForRoleGuardResolved } from '../fixtures/helpers';
 
-test.describe('Persona RBAC: Data Product Owner', () => {
+test.describe('Persona RBAC: Data Product Owner @critical', () => {
   test.setTimeout(120000);
 
   test('DPO can access /assets', async ({ page }) => {
@@ -45,11 +45,11 @@ test.describe('Persona RBAC: Data Product Owner', () => {
     await page.goto('/assets');
     await waitForAppMainReady(page);
     expect(page.url()).toContain('/assets');
-    await expect(page.locator('.app-main')).toBeVisible();
-    await expect(page.locator('.error-display')).not.toBeVisible({ timeout: 2000 });
+    await expect(page.locator('.app-main, [data-testid="app-main"]').first()).toBeVisible();
+    await expect(page.locator('.error-display, [data-testid="error-display"]').first()).not.toBeVisible({ timeout: 2000 });
     // Assert actual asset content rendered (not just app shell)
     const hasContent = page.locator(
-      '[data-testid="asset-list-page"], .asset-list-page, .empty-state',
+      '.asset-list-page, [data-testid="asset-list-page"], .asset-list-page, [data-testid="asset-list-page"], .empty-state, [data-testid="empty-state"]',
     );
     await expect(hasContent.first()).toBeVisible({ timeout: 30000 });
   });
@@ -59,11 +59,11 @@ test.describe('Persona RBAC: Data Product Owner', () => {
     await page.goto('/contracts');
     await waitForAppMainReady(page);
     expect(page.url()).toContain('/contracts');
-    await expect(page.locator('.app-main')).toBeVisible();
-    await expect(page.locator('.error-display')).not.toBeVisible({ timeout: 2000 });
+    await expect(page.locator('.app-main, [data-testid="app-main"]').first()).toBeVisible();
+    await expect(page.locator('.error-display, [data-testid="error-display"]').first()).not.toBeVisible({ timeout: 2000 });
     // Assert actual contract content rendered (not just app shell)
     const hasContent = page.locator(
-      '[data-testid="contract-list-page"], .contract-list-page, .empty-state',
+      '.contract-list-page, [data-testid="contract-list-page"], .contract-list-page, [data-testid="contract-list-page"], .empty-state, [data-testid="empty-state"]',
     );
     await expect(hasContent.first()).toBeVisible({ timeout: 30000 });
   });

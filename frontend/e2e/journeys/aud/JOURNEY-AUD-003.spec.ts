@@ -27,13 +27,13 @@ test.describe('JOURNEY-AUD-003: Export Audit Data', () => {
       const auditorUser = await getAuditorUser();
       await loginAndNavigateToRoute(page, auditorUser, '/audit', {
         timeout: 60000,
-        contentSelector: '.audit-event-list-page, .empty-state, .error-display',
+        contentSelector: '.audit-event-list-page, [data-testid="audit-event-list-page"], .empty-state, [data-testid="empty-state"], .error-display, [data-testid="error-display"]',
       });
       if (page.url().includes('/login') || page.url().includes('/403')) {
         test.skip(true, 'Auditor lacks role');
         return;
       }
-      await assertListPageLoads(page, '.audit-event-list-page, .empty-state', {
+      await assertListPageLoads(page, '.audit-event-list-page, [data-testid="audit-event-list-page"], .empty-state, [data-testid="empty-state"]', {
         timeout: 60000,
       });
 
@@ -68,7 +68,7 @@ test.describe('JOURNEY-AUD-003: Export Audit Data', () => {
         '/audit/00000000-0000-0000-0000-000000000000',
         {
           timeout: 60000,
-          contentSelector: '.error-display, [data-testid="audit-event-detail-page"], h1',
+          contentSelector: '.error-display, [data-testid="error-display"], [data-testid="audit-event-detail-page"], h1',
         }
       );
       await assertNonExistentIdShowsError(page, {
@@ -82,7 +82,7 @@ test.describe('JOURNEY-AUD-003: Export Audit Data', () => {
       const auditorUser = await getAuditorUser();
       await loginAndNavigateToRoute(page, auditorUser, '/audit', {
         timeout: 60000,
-        contentSelector: '.audit-event-list-page, .empty-state, .error-display',
+        contentSelector: '.audit-event-list-page, [data-testid="audit-event-list-page"], .empty-state, [data-testid="empty-state"], .error-display, [data-testid="error-display"]',
       });
       if (page.url().includes('/login') || page.url().includes('/403')) {
         test.skip(true, 'Auditor lacks role');
@@ -91,7 +91,7 @@ test.describe('JOURNEY-AUD-003: Export Audit Data', () => {
       const has500 = (await page.locator('text=/500|internal server error/i').count()) > 0;
       expect(has500, 'Audit page must not show 500 errors').toBe(false);
       const hasContent =
-        (await page.locator('.audit-event-list-page, .empty-state').count()) > 0;
+        (await page.locator('.audit-event-list-page, [data-testid="audit-event-list-page"], .empty-state, [data-testid="empty-state"]').count()) > 0;
       expect(hasContent, 'Expected audit list or empty state').toBe(true);
     });
   });

@@ -21,7 +21,7 @@ import {
   waitForLoadingComplete,
 } from '../../fixtures/helpers';
 
-test.describe('JOURNEY-DPO-002: Publish Asset to Marketplace', () => {
+test.describe('JOURNEY-DPO-002: Publish Asset to Marketplace @critical', () => {
   test.setTimeout(120000);
 
   test.describe('Success', () => {
@@ -38,7 +38,7 @@ test.describe('JOURNEY-DPO-002: Publish Asset to Marketplace', () => {
       const assetId = await createAssetViaApi(testUser, { forceNew: true, ensureActivated: true, cleanup });
       await loginAndNavigateToRoute(page, testUser, '/marketplace/publish', {
         timeout: 60000,
-        contentSelector: '.listing-publish-page, h1',
+        contentSelector: '.listing-publish-page, [data-testid="listing-publish-page"], h1',
       });
       await waitForLoadingComplete(page, { timeout: 15000 });
 
@@ -146,6 +146,14 @@ test.describe('JOURNEY-DPO-002: Publish Asset to Marketplace', () => {
             expect(publishResp.status()).toBeLessThan(300);
             // Badge must change from DRAFT to PUBLISHED
             await expect(statusBadge.first()).toContainText('PUBLISHED', { timeout: 10000 });
+            if (listingId) {
+              // Phase 226 G8 — audit-trail guarantee.
+              await verifyAuditEvent(page, {
+                action: 'LISTING_PUBLISHED',
+                resourceType: 'LISTING',
+                resourceId: listingId,
+              });
+            }
           }
         }
       }
@@ -157,7 +165,7 @@ test.describe('JOURNEY-DPO-002: Publish Asset to Marketplace', () => {
       const testUser = await getTestUser();
       await loginAndNavigateToRoute(page, testUser, '/marketplace/publish', {
         timeout: 60000,
-        contentSelector: '.listing-publish-page',
+        contentSelector: '.listing-publish-page, [data-testid="listing-publish-page"]',
       });
       await page.fill('#title', 'Some Title');
       await page.fill('#description', 'Some description');
@@ -178,7 +186,7 @@ test.describe('JOURNEY-DPO-002: Publish Asset to Marketplace', () => {
       const assetId = await createAssetViaApi(testUser, { forceNew: true, ensureActivated: true, cleanup });
       await loginAndNavigateToRoute(page, testUser, '/marketplace/publish', {
         timeout: 60000,
-        contentSelector: '.listing-publish-page',
+        contentSelector: '.listing-publish-page, [data-testid="listing-publish-page"]',
       });
       const hasAssets = await waitForAssetDropdownOptions(page, { timeout: 15000 });
       if (!hasAssets) {
@@ -219,7 +227,7 @@ test.describe('JOURNEY-DPO-002: Publish Asset to Marketplace', () => {
       const testUser = await getTestUser();
       await loginAndNavigateToRoute(page, testUser, '/marketplace/publish', {
         timeout: 60000,
-        contentSelector: '.listing-publish-page',
+        contentSelector: '.listing-publish-page, [data-testid="listing-publish-page"]',
       });
       const assetSelect = page.locator('select#asset_id');
       await expect(assetSelect).toBeVisible({ timeout: 5000 });
@@ -235,7 +243,7 @@ test.describe('JOURNEY-DPO-002: Publish Asset to Marketplace', () => {
       const testUser = await getTestUser();
       await loginAndNavigateToRoute(page, testUser, '/marketplace/publish', {
         timeout: 60000,
-        contentSelector: '.listing-publish-page',
+        contentSelector: '.listing-publish-page, [data-testid="listing-publish-page"]',
       });
       await page.fill('#title', 'E2E Edge Title');
       await page.fill(

@@ -20,9 +20,9 @@ test.describe('Feature: Assets', () => {
       const testUser = await getTestUser();
       await loginAndNavigateToRoute(page, testUser, '/assets', {
         timeout: 60000,
-        contentSelector: '.asset-list-page, .empty-state, .error-display',
+        contentSelector: '.asset-list-page, [data-testid="asset-list-page"], .empty-state, [data-testid="empty-state"], .error-display, [data-testid="error-display"]',
       });
-      await assertListPageLoads(page, '.asset-list-page, .empty-state', { timeout: 60000 });
+      await assertListPageLoads(page, '.asset-list-page, [data-testid="asset-list-page"], .empty-state, [data-testid="empty-state"]', { timeout: 60000 });
     });
   });
 
@@ -32,10 +32,10 @@ test.describe('Feature: Assets', () => {
       const nonExistentId = '00000000-0000-0000-0000-000000000000';
       await loginAndNavigateToRoute(page, testUser, `/assets/${nonExistentId}`, {
         timeout: 60000,
-        contentSelector: '.error-display, .asset-detail-page, h1',
+        contentSelector: '.error-display, [data-testid="error-display"], .asset-detail-page, [data-testid="asset-detail-page"], h1',
       });
       await assertNonExistentIdShowsError(page, {
-        detailContentSelector: '.asset-detail-page, .asset-detail-content',
+        detailContentSelector: '.asset-detail-content, .asset-detail-page, [data-testid="asset-detail-page"]',
       });
     });
   });
@@ -45,7 +45,7 @@ test.describe('Feature: Assets', () => {
       const testUser = await getTestUser();
       await loginAndNavigateToRoute(page, testUser, '/assets/create', {
         timeout: 60000,
-        contentSelector: 'form, .asset-form, .asset-create-page, h1',
+        contentSelector: 'form, .asset-form, .asset-create-page, [data-testid="asset-create-page"], h1',
       });
       const url = page.url();
       if (url.includes('/login')) {
@@ -55,12 +55,12 @@ test.describe('Feature: Assets', () => {
       // Must show a form — not just be on the URL
       const hasForm =
         (await page.locator('form').count()) > 0 ||
-        (await page.locator('.asset-form, .asset-create-page').count()) > 0;
+        (await page.locator('.asset-form, .asset-create-page, [data-testid="asset-create-page"]').count()) > 0;
       expect(
         hasForm,
         'Expected a form (.asset-form or <form>) to be present on /assets/create'
       ).toBe(true);
-      await expect(page.locator('.error-display')).not.toBeVisible({ timeout: 3000 });
+      await expect(page.locator('.error-display, [data-testid="error-display"]').first()).not.toBeVisible({ timeout: 3000 });
     });
   });
 });

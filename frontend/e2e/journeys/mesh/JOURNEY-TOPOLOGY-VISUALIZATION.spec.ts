@@ -16,19 +16,19 @@ test.describe('JOURNEY-TOPOLOGY-VISUALIZATION: Topology React Flow canvas', () =
     const dmoUser = await getDataMeshDomainOwnerUser();
     await loginAndNavigateToRoute(page, dmoUser, '/mesh/topology', {
       timeout: 90000,
-      contentSelector: '.react-flow, .empty-state',
+      contentSelector: '.react-flow, .empty-state, [data-testid="empty-state"]',
     });
 
-    // assertCapabilityGatedPageLoads rejects .error-display and allows
-    // /403, /login, .unavailable-page as valid gating outcomes.
+    // assertCapabilityGatedPageLoads rejects .error-display, [data-testid="error-display"] and allows
+    // /403, /login, .unavailable-page, [data-testid="unavailable-page"] as valid gating outcomes.
     await assertCapabilityGatedPageLoads(
       page,
-      '.react-flow, .empty-state, .unavailable-page',
+      '.react-flow, .empty-state, [data-testid="empty-state"], .unavailable-page, [data-testid="unavailable-page"]',
       { timeout: 30000 },
     );
 
     const hasReactFlow = (await page.locator('.react-flow').count()) > 0;
-    const hasEmptyState = (await page.locator('.empty-state').count()) > 0;
+    const hasEmptyState = (await page.locator('.empty-state, [data-testid="empty-state"]').first().count()) > 0;
 
     if (hasReactFlow) {
       await expect(page.locator('.react-flow__controls')).toBeVisible({ timeout: 5000 });
@@ -44,12 +44,12 @@ test.describe('JOURNEY-TOPOLOGY-VISUALIZATION: Topology React Flow canvas', () =
     const dmoUser = await getDataMeshDomainOwnerUser();
     await loginAndNavigateToRoute(page, dmoUser, '/mesh/topology', {
       timeout: 90000,
-      contentSelector: '.react-flow, .empty-state',
+      contentSelector: '.react-flow, .empty-state, [data-testid="empty-state"]',
     });
 
     await assertCapabilityGatedPageLoads(
       page,
-      '.react-flow, .empty-state, .unavailable-page',
+      '.react-flow, .empty-state, [data-testid="empty-state"], .unavailable-page, [data-testid="unavailable-page"]',
       { timeout: 30000 },
     );
 
@@ -67,12 +67,12 @@ test.describe('JOURNEY-TOPOLOGY-VISUALIZATION: Topology React Flow canvas', () =
     const dmoUser = await getDataMeshDomainOwnerUser();
     await loginAndNavigateToRoute(page, dmoUser, '/mesh/topology', {
       timeout: 90000,
-      contentSelector: '.react-flow, .empty-state',
+      contentSelector: '.react-flow, .empty-state, [data-testid="empty-state"]',
     });
 
     await assertCapabilityGatedPageLoads(
       page,
-      '.react-flow, .empty-state, .unavailable-page',
+      '.react-flow, .empty-state, [data-testid="empty-state"], .unavailable-page, [data-testid="unavailable-page"]',
       { timeout: 30000 },
     );
 

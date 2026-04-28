@@ -27,7 +27,7 @@ test.describe('JOURNEY-DS-003: Configure ML-Based Anomaly Detection', () => {
       await page.waitForLoadState('domcontentloaded');
       // intentional: probes optional UI presence via a multi-line locator chain — the branch logic below handles both rendered and missing cases deterministically; absence is a legitimate tenant/role state.
       await page
-        .locator('.ml-page, .unavailable-page, [data-testid="unavailable-page"]')
+        .locator('.ml-page, .unavailable-page, [data-testid="unavailable-page"], .unavailable-page, [data-testid="unavailable-page"]')
         .first()
         .waitFor({ state: 'visible', timeout: 15000 })
         .catch(() => null);
@@ -40,14 +40,14 @@ test.describe('JOURNEY-DS-003: Configure ML-Based Anomaly Detection', () => {
       const isGated =
         page.url().includes('/403') ||
         page.url().includes('/unavailable') ||
-        (await page.locator('.unavailable-page, [data-testid="unavailable-page"]').count()) > 0;
+        (await page.locator('.unavailable-page, [data-testid="unavailable-page"], .unavailable-page, [data-testid="unavailable-page"]').count()) > 0;
       if (isGated) {
         test.skip(true, 'ML capability gated — cannot test Training Jobs tab');
         return;
       }
 
       expect(page.url()).toContain('/ml');
-      await expect(page.locator('.error-display')).not.toBeVisible();
+      await expect(page.locator('.error-display, [data-testid="error-display"]').first()).not.toBeVisible();
       await expect(page.locator('.ml-page')).toBeVisible({ timeout: 10000 });
 
       // DS-003 specific: navigate to Training Jobs tab
@@ -61,7 +61,7 @@ test.describe('JOURNEY-DS-003: Configure ML-Based Anomaly Detection', () => {
 
       // Verify training jobs section renders (list, empty state, or loading)
       const hasTrainingContent =
-        (await page.locator('.training-jobs-section, .empty-state, .training-job-list').count()) > 0;
+        (await page.locator('.training-jobs-section, .empty-state, [data-testid="empty-state"], .training-job-list').count()) > 0;
       expect(hasTrainingContent, 'Expected Training Jobs section content').toBe(true);
     });
   });
@@ -83,7 +83,7 @@ test.describe('JOURNEY-DS-003: Configure ML-Based Anomaly Detection', () => {
       await page.waitForLoadState('domcontentloaded');
       // intentional: probes optional UI presence via a multi-line locator chain — the branch logic below handles both rendered and missing cases deterministically; absence is a legitimate tenant/role state.
       await page
-        .locator('.ml-page, .unavailable-page')
+        .locator('.ml-page, .unavailable-page, [data-testid="unavailable-page"]')
         .first()
         .waitFor({ state: 'visible', timeout: 15000 })
         .catch(() => null);
@@ -93,7 +93,7 @@ test.describe('JOURNEY-DS-003: Configure ML-Based Anomaly Detection', () => {
         return;
       }
 
-      const isGated = (await page.locator('.unavailable-page').count()) > 0;
+      const isGated = (await page.locator('.unavailable-page, [data-testid="unavailable-page"]').first().count()) > 0;
       if (isGated) {
         test.skip(true, 'ML capability gated');
         return;
@@ -109,7 +109,7 @@ test.describe('JOURNEY-DS-003: Configure ML-Based Anomaly Detection', () => {
       await page.waitForTimeout(500);
 
       // Either empty-state or training-job rows should be present
-      const hasEmpty = (await page.locator('.empty-state').count()) > 0;
+      const hasEmpty = (await page.locator('.empty-state, [data-testid="empty-state"]').first().count()) > 0;
       const hasJobs = (await page.locator('.training-job-row, .training-job-card, tr').count()) > 0;
       expect(hasEmpty || hasJobs, 'Expected empty state or training job rows').toBe(true);
     });

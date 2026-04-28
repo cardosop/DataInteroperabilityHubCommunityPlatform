@@ -56,17 +56,17 @@ test.describe('Admin, Audit, Settings, remaining persona routes', () => {
 
       expect(url).toContain('/admin');
 
-      // .app-main alone is the generic app shell — it tells us nothing about page content.
+      // .app-main, [data-testid="app-main"] alone is the generic app shell — it tells us nothing about page content.
       // error-display means something crashed — never acceptable as a success outcome.
       const hasError =
-        (await page.locator('.error-display').count()) > 0 ||
-        (await page.locator('.error-display-title').count()) > 0;
+        (await page.locator('.error-display, [data-testid="error-display"]').first().count()) > 0 ||
+        (await page.locator('.error-display-title, [data-testid="error-display-title"]').first().count()) > 0;
       if (hasError) {
         // intentional: admin-audit-settings routes test page-level navigation tolerance; per-route content failures surface in the URL/heading assertions, not the optional sub-step probes.
-        const errText = await page.locator('.error-display, .error-display-title').first().textContent().catch(() => '');
+        const errText = await page.locator('.error-display, [data-testid="error-display"], .error-display-title, [data-testid="error-display-title"]').first().textContent().catch(() => '');
         throw new Error(`Admin page shows error state: "${errText?.slice(0, 300)}"`);
       }
-      await expect(page.locator('.admin-page, .empty-state').first()).toBeVisible({ timeout: 10000 });
+      await expect(page.locator('.admin-page, [data-testid="admin-page"], .empty-state, [data-testid="empty-state"]').first()).toBeVisible({ timeout: 10000 });
     });
 
     test('audit page loads or shows 403/redirect', async ({ page }) => {
@@ -82,15 +82,15 @@ test.describe('Admin, Audit, Settings, remaining persona routes', () => {
       expect(url).toContain('/audit');
 
       const hasError =
-        (await page.locator('.error-display').count()) > 0 ||
-        (await page.locator('.error-display-title').count()) > 0;
+        (await page.locator('.error-display, [data-testid="error-display"]').first().count()) > 0 ||
+        (await page.locator('.error-display-title, [data-testid="error-display-title"]').first().count()) > 0;
       if (hasError) {
         // intentional: admin-audit-settings routes test page-level navigation tolerance; per-route content failures surface in the URL/heading assertions, not the optional sub-step probes.
-        const errText = await page.locator('.error-display, .error-display-title').first().textContent().catch(() => '');
+        const errText = await page.locator('.error-display, [data-testid="error-display"], .error-display-title, [data-testid="error-display-title"]').first().textContent().catch(() => '');
         throw new Error(`Audit page shows error state: "${errText?.slice(0, 300)}"`);
       }
       await expect(
-        page.locator('.audit-event-list-page, .empty-state').first()
+        page.locator('.audit-event-list-page, [data-testid="audit-event-list-page"], .empty-state, [data-testid="empty-state"]').first()
       ).toBeVisible({ timeout: 10000 });
     });
 
@@ -140,18 +140,18 @@ test.describe('Admin, Audit, Settings, remaining persona routes', () => {
         return;
       }
 
-      // .app-main alone and error-display are never acceptable as success evidence
+      // .app-main, [data-testid="app-main"] alone and error-display are never acceptable as success evidence
       const hasError =
-        (await page.locator('.error-display').count()) > 0 ||
-        (await page.locator('.error-display-title').count()) > 0;
+        (await page.locator('.error-display, [data-testid="error-display"]').first().count()) > 0 ||
+        (await page.locator('.error-display-title, [data-testid="error-display-title"]').first().count()) > 0;
       if (hasError) {
         // intentional: admin-audit-settings routes test page-level navigation tolerance; per-route content failures surface in the URL/heading assertions, not the optional sub-step probes.
-        const errText = await page.locator('.error-display, .error-display-title').first().textContent().catch(() => '');
+        const errText = await page.locator('.error-display, [data-testid="error-display"], .error-display-title, [data-testid="error-display-title"]').first().textContent().catch(() => '');
         throw new Error(`Observability page shows error state: "${errText?.slice(0, 300)}"`);
       }
       await expect(
         page
-          .locator('.observability-page, [data-testid="observability-page"], .unavailable-page')
+          .locator('.observability-page, [data-testid="observability-page"], .unavailable-page, [data-testid="unavailable-page"]')
           .first()
       ).toBeVisible({ timeout: 10000 });
     });
@@ -161,30 +161,30 @@ test.describe('Admin, Audit, Settings, remaining persona routes', () => {
     test('scheduled-exports list loads', async ({ page }) => {
       const { ok } = await navigateOrSkip(page, '/scheduled-exports', {
         contentSelector:
-          '.scheduled-export-list-page, .empty-state, .error-display, .unavailable-page',
+          '.scheduled-export-list-page, .empty-state, [data-testid="empty-state"], .error-display, [data-testid="error-display"], .unavailable-page, [data-testid="unavailable-page"]',
       });
       if (!ok) return;
 
       expect(page.url()).toContain('/scheduled-exports');
-      // .error-display must NOT appear in the final toBeVisible assertion — it was previously
+      // .error-display, [data-testid="error-display"] must NOT appear in the final toBeVisible assertion — it was previously
       // included, causing broken pages to be silently accepted as passing.
       const hasError =
-        (await page.locator('.error-display').count()) > 0 ||
-        (await page.locator('.error-display-title').count()) > 0;
+        (await page.locator('.error-display, [data-testid="error-display"]').first().count()) > 0 ||
+        (await page.locator('.error-display-title, [data-testid="error-display-title"]').first().count()) > 0;
       if (hasError) {
         // intentional: admin-audit-settings routes test page-level navigation tolerance; per-route content failures surface in the URL/heading assertions, not the optional sub-step probes.
-        const errText = await page.locator('.error-display, .error-display-title').first().textContent().catch(() => '');
+        const errText = await page.locator('.error-display, [data-testid="error-display"], .error-display-title, [data-testid="error-display-title"]').first().textContent().catch(() => '');
         throw new Error(`Scheduled-exports page shows error state: "${errText?.slice(0, 300)}"`);
       }
       await expect(
-        page.locator('.scheduled-export-list-page, .empty-state, .unavailable-page').first()
+        page.locator('.scheduled-export-list-page, .empty-state, [data-testid="empty-state"], .unavailable-page, [data-testid="unavailable-page"]').first()
       ).toBeVisible({ timeout: 10000 });
     });
 
     test('cost page loads (at /settings/cost, role-gated TENANT_ADMIN)', async ({ page }) => {
       // Route is /settings/cost — nested under settings.
       // The e2e_test user is DATA_PROVIDER; role check fails → redirect to /403.
-      // /403 (ForbiddenPage) is a top-level route without .app-main.
+      // /403 (ForbiddenPage) is a top-level route without .app-main, [data-testid="app-main"].
       const { ok } = await navigateOrSkip(page, '/settings/cost');
       if (!ok) return;
 
@@ -194,17 +194,17 @@ test.describe('Admin, Audit, Settings, remaining persona routes', () => {
         return;
       }
 
-      // .app-main alone and error-display are never acceptable
+      // .app-main, [data-testid="app-main"] alone and error-display are never acceptable
       const hasError =
-        (await page.locator('.error-display').count()) > 0 ||
-        (await page.locator('.error-display-title').count()) > 0;
+        (await page.locator('.error-display, [data-testid="error-display"]').first().count()) > 0 ||
+        (await page.locator('.error-display-title, [data-testid="error-display-title"]').first().count()) > 0;
       if (hasError) {
         // intentional: admin-audit-settings routes test page-level navigation tolerance; per-route content failures surface in the URL/heading assertions, not the optional sub-step probes.
-        const errText = await page.locator('.error-display, .error-display-title').first().textContent().catch(() => '');
+        const errText = await page.locator('.error-display, [data-testid="error-display"], .error-display-title, [data-testid="error-display-title"]').first().textContent().catch(() => '');
         throw new Error(`Cost page shows error state: "${errText?.slice(0, 300)}"`);
       }
       await expect(
-        page.locator('.cost-page, .cost-tracking-page, .unavailable-page').first()
+        page.locator('.cost-page, .cost-tracking-page, .unavailable-page, [data-testid="unavailable-page"]').first()
       ).toBeVisible({ timeout: 10000 });
     });
 
@@ -219,17 +219,17 @@ test.describe('Admin, Audit, Settings, remaining persona routes', () => {
         return;
       }
 
-      // .app-main alone is not acceptable
+      // .app-main, [data-testid="app-main"] alone is not acceptable
       const hasError =
-        (await page.locator('.error-display').count()) > 0 ||
-        (await page.locator('.error-display-title').count()) > 0;
+        (await page.locator('.error-display, [data-testid="error-display"]').first().count()) > 0 ||
+        (await page.locator('.error-display-title, [data-testid="error-display-title"]').first().count()) > 0;
       if (hasError) {
         // intentional: admin-audit-settings routes test page-level navigation tolerance; per-route content failures surface in the URL/heading assertions, not the optional sub-step probes.
-        const errText = await page.locator('.error-display, .error-display-title').first().textContent().catch(() => '');
+        const errText = await page.locator('.error-display, [data-testid="error-display"], .error-display-title, [data-testid="error-display-title"]').first().textContent().catch(() => '');
         throw new Error(`Settings/tenant page shows error state: "${errText?.slice(0, 300)}"`);
       }
       await expect(
-        page.locator('.tenant-settings-page, .unavailable-page').first()
+        page.locator('.tenant-settings-page, .unavailable-page, [data-testid="unavailable-page"]').first()
       ).toBeVisible({ timeout: 10000 });
     });
 
@@ -237,7 +237,7 @@ test.describe('Admin, Audit, Settings, remaining persona routes', () => {
       await gotoWithRetry(page, '/semantic');
       try {
         await waitForAppMainReady(page, {
-          contentSelector: '.semantic-page, .unavailable-page',
+          contentSelector: '.semantic-page, .unavailable-page, [data-testid="unavailable-page"]',
           timeout: 60000,
         });
       } catch (_err) {
@@ -250,9 +250,9 @@ test.describe('Admin, Audit, Settings, remaining persona routes', () => {
         const isGated =
           page.url().includes('/unavailable') ||
           page.url().includes('/403') ||
-          (await page.locator('.unavailable-page').count()) > 0;
+          (await page.locator('.unavailable-page, [data-testid="unavailable-page"]').first().count()) > 0;
         if (isGated) {
-          test.skip(true, 'Semantic capability gated — page rendered outside .app-main');
+          test.skip(true, 'Semantic capability gated — page rendered outside .app-main, [data-testid="app-main"]');
           return;
         }
         // Capabilities API never responded — LoadingSpinner stayed forever
@@ -272,17 +272,17 @@ test.describe('Admin, Audit, Settings, remaining persona routes', () => {
         test.skip(true, `Redirected to ${url.includes('/403') ? '/403' : '/unavailable'} — role/feature not available`);
       }
       expect(url).toContain('/semantic');
-      // .error-display and .app-main are never acceptable in the final assertion
+      // .error-display, [data-testid="error-display"] and .app-main, [data-testid="app-main"] are never acceptable in the final assertion
       const hasError =
-        (await page.locator('.error-display').count()) > 0 ||
-        (await page.locator('.error-display-title').count()) > 0;
+        (await page.locator('.error-display, [data-testid="error-display"]').first().count()) > 0 ||
+        (await page.locator('.error-display-title, [data-testid="error-display-title"]').first().count()) > 0;
       if (hasError) {
         // intentional: admin-audit-settings routes test page-level navigation tolerance; per-route content failures surface in the URL/heading assertions, not the optional sub-step probes.
-        const errText = await page.locator('.error-display, .error-display-title').first().textContent().catch(() => '');
+        const errText = await page.locator('.error-display, [data-testid="error-display"], .error-display-title, [data-testid="error-display-title"]').first().textContent().catch(() => '');
         throw new Error(`Semantic page shows error state: "${errText?.slice(0, 300)}"`);
       }
       await expect(
-        page.locator('.semantic-page, .unavailable-page').first()
+        page.locator('.semantic-page, .unavailable-page, [data-testid="unavailable-page"]').first()
       ).toBeVisible({ timeout: 10000 });
     });
   });
@@ -308,7 +308,7 @@ test.describe('Admin, Audit, Settings, remaining persona routes', () => {
         await waitForAppMainReady(page, {
           timeout: 60000,
           acceptRedirectToLogin: true,
-          contentSelector: '.error-display, .error-display-title, .webhook-detail-page',
+          contentSelector: '.error-display, [data-testid="error-display"], .error-display-title, [data-testid="error-display-title"], .webhook-detail-page',
         });
       } catch (_err) {
         if (page.url().includes('/login')) {
@@ -324,16 +324,16 @@ test.describe('Admin, Audit, Settings, remaining persona routes', () => {
       await responsePromise;
 
       // intentional: admin-audit-settings routes test page-level navigation tolerance; per-route content failures surface in the URL/heading assertions, not the optional sub-step probes.
-      await page.locator('.error-display, .error-display-title, .webhook-detail-page')
+      await page.locator('.error-display, [data-testid="error-display"], .error-display-title, [data-testid="error-display-title"], .webhook-detail-page')
         .first().waitFor({ state: 'visible', timeout: 30000 }).catch(() => null);
 
-      const hasErrorDisplay = (await page.locator('.error-display, .error-display-title').count()) > 0;
+      const hasErrorDisplay = (await page.locator('.error-display, [data-testid="error-display"], .error-display-title, [data-testid="error-display-title"]').count()) > 0;
       // For a non-existent resource, any error state is valid: 404 "not found", API timeout,
       // network error, or generic failure. The test verifies the UI shows an error — the
       // exact error text depends on backend load and response time.
       if (hasErrorDisplay) {
         // intentional: admin-audit-settings routes test page-level navigation tolerance; per-route content failures surface in the URL/heading assertions, not the optional sub-step probes.
-        const errText = await page.locator('.error-display, .error-display-title').first().textContent().catch(() => '');
+        const errText = await page.locator('.error-display, [data-testid="error-display"], .error-display-title, [data-testid="error-display-title"]').first().textContent().catch(() => '');
         if (errText && !errText.toLowerCase().includes('not found') && !errText.includes('404')) {
           console.warn(`[WARN] /webhooks/${nonExistentId} error is not 404: "${errText.slice(0, 200)}"`);
         }
@@ -346,7 +346,7 @@ test.describe('Admin, Audit, Settings, remaining persona routes', () => {
           return;
         }
       }
-      expect(hasErrorDisplay, 'Expected .error-display for non-existent resource').toBe(true);
+      expect(hasErrorDisplay, 'Expected .error-display, [data-testid="error-display"] for non-existent resource').toBe(true);
     });
 
     test('audit event detail with non-existent id shows error', async ({ page }) => {
@@ -367,7 +367,7 @@ test.describe('Admin, Audit, Settings, remaining persona routes', () => {
         await waitForAppMainReady(page, {
           timeout: 60000,
           acceptRedirectToLogin: true,
-          contentSelector: '.error-display, .error-display-title, [data-testid="audit-event-detail-page"]',
+          contentSelector: '.error-display, [data-testid="error-display"], .error-display-title, [data-testid="error-display-title"], [data-testid="audit-event-detail-page"]',
         });
       } catch (_err) {
         if (page.url().includes('/login')) {
@@ -383,7 +383,7 @@ test.describe('Admin, Audit, Settings, remaining persona routes', () => {
       await responsePromise;
 
       // intentional: admin-audit-settings routes test page-level navigation tolerance; per-route content failures surface in the URL/heading assertions, not the optional sub-step probes.
-      await page.locator('.error-display, .error-display-title, [data-testid="audit-event-detail-page"]')
+      await page.locator('.error-display, [data-testid="error-display"], .error-display-title, [data-testid="error-display-title"], [data-testid="audit-event-detail-page"]')
         .first().waitFor({ state: 'visible', timeout: 30000 }).catch(() => null);
 
       const on403 = page.url().includes('/403');
@@ -392,13 +392,13 @@ test.describe('Admin, Audit, Settings, remaining persona routes', () => {
         return;
       }
 
-      const hasErrorDisplay = (await page.locator('.error-display, .error-display-title').count()) > 0;
+      const hasErrorDisplay = (await page.locator('.error-display, [data-testid="error-display"], .error-display-title, [data-testid="error-display-title"]').count()) > 0;
       // For a non-existent resource, any error state is valid: 404 "not found", API timeout,
       // network error, or generic failure. The test verifies the UI shows an error — the
       // exact error text depends on backend load and response time.
       if (hasErrorDisplay) {
         // intentional: admin-audit-settings routes test page-level navigation tolerance; per-route content failures surface in the URL/heading assertions, not the optional sub-step probes.
-        const errText = await page.locator('.error-display, .error-display-title').first().textContent().catch(() => '');
+        const errText = await page.locator('.error-display, [data-testid="error-display"], .error-display-title, [data-testid="error-display-title"]').first().textContent().catch(() => '');
         if (errText && !errText.toLowerCase().includes('not found') && !errText.includes('404')) {
           console.warn(`[WARN] /audit/${nonExistentId} error is not 404: "${errText.slice(0, 200)}"`);
         }
@@ -411,7 +411,7 @@ test.describe('Admin, Audit, Settings, remaining persona routes', () => {
           return;
         }
       }
-      expect(hasErrorDisplay, 'Expected .error-display for non-existent resource').toBe(true);
+      expect(hasErrorDisplay, 'Expected .error-display, [data-testid="error-display"] for non-existent resource').toBe(true);
     });
 
     test('integration connection detail with non-existent id shows error', async ({ page }) => {
@@ -433,7 +433,7 @@ test.describe('Admin, Audit, Settings, remaining persona routes', () => {
         await waitForAppMainReady(page, {
           timeout: 60000,
           acceptRedirectToLogin: true,
-          contentSelector: '.error-display, .error-display-title, .marketplace-connection-detail-page',
+          contentSelector: '.error-display, [data-testid="error-display"], .error-display-title, [data-testid="error-display-title"], .marketplace-connection-detail-page, [data-testid="marketplace-connection-detail-page"]',
         });
       } catch (_err) {
         if (page.url().includes('/login')) {
@@ -449,16 +449,16 @@ test.describe('Admin, Audit, Settings, remaining persona routes', () => {
       await responsePromise;
 
       // intentional: admin-audit-settings routes test page-level navigation tolerance; per-route content failures surface in the URL/heading assertions, not the optional sub-step probes.
-      await page.locator('.error-display, .error-display-title, .marketplace-connection-detail-page')
+      await page.locator('.error-display, [data-testid="error-display"], .error-display-title, [data-testid="error-display-title"], .marketplace-connection-detail-page, [data-testid="marketplace-connection-detail-page"]')
         .first().waitFor({ state: 'visible', timeout: 30000 }).catch(() => null);
 
-      const hasErrorDisplay = (await page.locator('.error-display, .error-display-title').count()) > 0;
+      const hasErrorDisplay = (await page.locator('.error-display, [data-testid="error-display"], .error-display-title, [data-testid="error-display-title"]').count()) > 0;
       // For a non-existent resource, any error state is valid: 404 "not found", API timeout,
       // network error, or generic failure. The test verifies the UI shows an error — the
       // exact error text depends on backend load and response time.
       if (hasErrorDisplay) {
         // intentional: admin-audit-settings routes test page-level navigation tolerance; per-route content failures surface in the URL/heading assertions, not the optional sub-step probes.
-        const errText = await page.locator('.error-display, .error-display-title').first().textContent().catch(() => '');
+        const errText = await page.locator('.error-display, [data-testid="error-display"], .error-display-title, [data-testid="error-display-title"]').first().textContent().catch(() => '');
         if (errText && !errText.toLowerCase().includes('not found') && !errText.includes('404')) {
           console.warn(`[WARN] /integrations/connections/${nonExistentId} error is not 404: "${errText.slice(0, 200)}"`);
         }
@@ -471,7 +471,7 @@ test.describe('Admin, Audit, Settings, remaining persona routes', () => {
           return;
         }
       }
-      expect(hasErrorDisplay, 'Expected .error-display for non-existent resource').toBe(true);
+      expect(hasErrorDisplay, 'Expected .error-display, [data-testid="error-display"] for non-existent resource').toBe(true);
     });
   });
 
@@ -482,7 +482,7 @@ test.describe('Admin, Audit, Settings, remaining persona routes', () => {
         await waitForAppMainReady(page, {
           timeout: 60000,
           acceptRedirectToLogin: true,
-          contentSelector: '.developer-portal-page, .unavailable-page',
+          contentSelector: '.developer-portal-page, .unavailable-page, [data-testid="unavailable-page"]',
         });
       } catch (_err) {
         if (page.url().includes('/login')) {
@@ -497,9 +497,9 @@ test.describe('Admin, Audit, Settings, remaining persona routes', () => {
       }
       const url = page.url();
       if (url.includes('/403')) return;
-      // Valid: .developer-portal-page (DeveloperPortalPage.tsx:36) OR .unavailable-page (capability disabled).
-      // .app-main alone and error-display are never acceptable.
-      await assertCapabilityGatedPageLoads(page, '.developer-portal-page, .unavailable-page');
+      // Valid: .developer-portal-page (DeveloperPortalPage.tsx:36) OR .unavailable-page, [data-testid="unavailable-page"] (capability disabled).
+      // .app-main, [data-testid="app-main"] alone and error-display are never acceptable.
+      await assertCapabilityGatedPageLoads(page, '.developer-portal-page, .unavailable-page, [data-testid="unavailable-page"]');
     });
 
     test('baas page loads or shows unavailable', async ({ page }) => {
@@ -508,7 +508,7 @@ test.describe('Admin, Audit, Settings, remaining persona routes', () => {
         await waitForAppMainReady(page, {
           timeout: 60000,
           acceptRedirectToLogin: true,
-          contentSelector: '.baas-page, .unavailable-page',
+          contentSelector: '.baas-page, .unavailable-page, [data-testid="unavailable-page"]',
         });
       } catch (_err) {
         if (page.url().includes('/login')) {
@@ -523,7 +523,7 @@ test.describe('Admin, Audit, Settings, remaining persona routes', () => {
       }
       const url = page.url();
       if (url.includes('/403')) return;
-      await assertCapabilityGatedPageLoads(page, '.baas-page, .unavailable-page');
+      await assertCapabilityGatedPageLoads(page, '.baas-page, .unavailable-page, [data-testid="unavailable-page"]');
     });
 
     test('ml page loads or shows unavailable', async ({ page }) => {
@@ -532,7 +532,7 @@ test.describe('Admin, Audit, Settings, remaining persona routes', () => {
         await waitForAppMainReady(page, {
           timeout: 60000,
           acceptRedirectToLogin: true,
-          contentSelector: '.ml-page, .unavailable-page',
+          contentSelector: '.ml-page, .unavailable-page, [data-testid="unavailable-page"]',
         });
       } catch (_err) {
         if (page.url().includes('/login')) {
@@ -547,7 +547,7 @@ test.describe('Admin, Audit, Settings, remaining persona routes', () => {
       }
       const url = page.url();
       if (url.includes('/403')) return;
-      await assertCapabilityGatedPageLoads(page, '.ml-page, .unavailable-page', { timeout: 30000 });
+      await assertCapabilityGatedPageLoads(page, '.ml-page, .unavailable-page, [data-testid="unavailable-page"]', { timeout: 30000 });
     });
 
     test('communities page loads or shows unavailable', async ({ page }) => {
@@ -556,7 +556,7 @@ test.describe('Admin, Audit, Settings, remaining persona routes', () => {
         await waitForAppMainReady(page, {
           timeout: 60000,
           acceptRedirectToLogin: true,
-          contentSelector: '.communities-page, .communities-tab, .unavailable-page',
+          contentSelector: '.communities-page, .communities-tab, .unavailable-page, [data-testid="unavailable-page"]',
         });
       } catch (_err) {
         if (page.url().includes('/login')) {
@@ -571,7 +571,7 @@ test.describe('Admin, Audit, Settings, remaining persona routes', () => {
       }
       const url = page.url();
       if (url.includes('/403')) return;
-      await assertCapabilityGatedPageLoads(page, '.communities-page, .communities-tab, .unavailable-page', { timeout: 30000 });
+      await assertCapabilityGatedPageLoads(page, '.communities-page, .communities-tab, .unavailable-page, [data-testid="unavailable-page"]', { timeout: 30000 });
     });
   });
 });

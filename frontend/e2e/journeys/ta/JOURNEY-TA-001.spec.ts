@@ -30,7 +30,7 @@ test.describe('JOURNEY-TA-001: Onboard New User', () => {
       }
       expect(page.url()).toContain('/admin');
       // Assert admin page AND users section rendered (not just page class)
-      await expect(page.locator('.admin-page')).toBeVisible({ timeout: 15000 });
+      await expect(page.locator('.admin-page, [data-testid="admin-page"]').first()).toBeVisible({ timeout: 15000 });
       const usersSection = page.locator(
         '.admin-tabs, .admin-users-section, [data-testid="admin-users-section"], button:has-text("Users")',
       );
@@ -53,7 +53,7 @@ test.describe('JOURNEY-TA-001: Onboard New User', () => {
       await usersTab.first().click();
       // Wait for content to render (not arbitrary 2s sleep)
       const usersContent = page.locator(
-        '[data-testid="admin-users-section"], .admin-table, .admin-table tbody tr, .empty-state',
+        '[data-testid="admin-users-section"], .admin-table, .admin-table tbody tr, .empty-state, [data-testid="empty-state"]',
       );
       await expect(usersContent.first()).toBeVisible({ timeout: 15000 });
     });
@@ -64,7 +64,7 @@ test.describe('JOURNEY-TA-001: Onboard New User', () => {
       const taUser = await getTenantAdminUser();
       await loginAndNavigateToRoute(page, taUser, '/admin', {
         timeout: 60000,
-        contentSelector: '.admin-page, [data-testid="forbidden-page"], .error-display',
+        contentSelector: '.admin-page, [data-testid="admin-page"], [data-testid="forbidden-page"], .error-display, [data-testid="error-display"]',
       });
       if (page.url().includes('/login')) {
         test.skip(true, 'Auth redirect — session expired');
@@ -80,8 +80,8 @@ test.describe('JOURNEY-TA-001: Onboard New User', () => {
       expect(has500, 'Admin page must not show 500 errors').toBe(false);
       // Must have meaningful content (not blank)
       if (url.includes('/admin')) {
-        const hasContent = (await page.locator('.admin-page').count()) > 0;
-        expect(hasContent, 'Expected .admin-page content').toBe(true);
+        const hasContent = (await page.locator('.admin-page, [data-testid="admin-page"]').first().count()) > 0;
+        expect(hasContent, 'Expected .admin-page, [data-testid="admin-page"] content').toBe(true);
       }
     });
   });

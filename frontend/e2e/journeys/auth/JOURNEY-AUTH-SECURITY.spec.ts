@@ -71,7 +71,7 @@ test.describe('JOURNEY-AUTH-SECURITY: token storage hardening (11.1)', () => {
     await page.reload({ waitUntil: 'domcontentloaded' });
 
     // App shell should appear (the silent refresh restored the session).
-    const shell = page.locator('.app-header, .app-sidebar').first();
+    const shell = page.locator('.app-sidebar, .app-header, [data-testid="app-header"]').first();
     await expect(shell).toBeVisible({ timeout: 60_000 });
   });
 });

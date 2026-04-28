@@ -30,7 +30,7 @@ const QUARANTINE_CONFIG_PATH = resolve(
   'playwright.mvp.quarantine.config.ts',
 );
 
-test.describe('Quarantine policy wiring', () => {
+test.describe('Quarantine policy wiring @critical', () => {
   test('default MVP config excludes @quarantine via grepInvert', () => {
     const source = readFileSync(MVP_CONFIG_PATH, 'utf8');
     // grepInvert must target the @quarantine token with a word boundary so

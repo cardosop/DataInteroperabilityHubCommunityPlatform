@@ -21,7 +21,7 @@ test.describe('UC-INT-001: Install Pre-built Connector', () => {
       const user = await getTestUser();
       await loginAndNavigateToRoute(page, user, '/integrations', {
         timeout: 60000,
-        contentSelector: '.marketplace-connection-list-page, .integrations-layout, .empty-state',
+        contentSelector: '.marketplace-connection-list-page, .integrations-layout, .empty-state, [data-testid="empty-state"]',
       });
       if (page.url().includes('/login') || page.url().includes('/403')) {
         expect(page.url()).toMatch(/\/login|\/403/);
@@ -48,7 +48,7 @@ test.describe('UC-INT-001: Install Pre-built Connector', () => {
       const user = await getTestUser();
       await loginAndNavigateToRoute(page, user, '/integrations', {
         timeout: 60000,
-        contentSelector: '.marketplace-connection-list-page, .integrations-layout, .empty-state, .error-display',
+        contentSelector: '.marketplace-connection-list-page, .integrations-layout, .empty-state, [data-testid="empty-state"], .error-display, [data-testid="error-display"]',
       });
       expect(page.url()).toContain('/integrations');
     });

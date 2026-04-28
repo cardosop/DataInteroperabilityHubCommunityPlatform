@@ -9,6 +9,10 @@ import { hasLoginPrompt, loginAndNavigateToRoute, waitForLoadingComplete } from 
 // Phase 226 B1a — dual-channel verification on contract-create mutation.
 import { verifyViaApi } from '../../fixtures/verifyViaApi';
 import { verifyAuditEvent } from '../../fixtures/verifyAuditEvent';
+// Phase 226 G7 — semantic-IRI guarantee on contract-create.
+import { verifySemanticIri } from '../../fixtures/verifySemantic';
+// Phase 226 G12 — search-index freshness guarantee on contract-create.
+import { verifySearchable } from '../../fixtures/verifySearchable';
 
 test.describe('Contract Creation Flow', () => {
   test.setTimeout(90000);
@@ -34,7 +38,7 @@ test.describe('Contract Creation Flow', () => {
       // of an ODPS payload still routes to the products/workflow endpoint.
       await loginAndNavigateToRoute(page, testUser, '/contracts/create', {
         timeout: 60000,
-        contentSelector: '.contract-create-page__mode-selector, textarea#odps-content, textarea, .error-display',
+        contentSelector: '.contract-create-page__mode-selector, textarea#odps-content, textarea, .error-display, [data-testid="error-display"]',
       });
       if (page.url().includes('/login')) {
         throw new Error('Unexpected redirect to login');
@@ -74,7 +78,7 @@ test.describe('Contract Creation Flow', () => {
       await page.waitForTimeout(8000);
       await waitForLoadingComplete(page);
       // Expect error: 400 or validation error; no contract created (stay on upload or show error)
-      const errorDisplay = page.locator('.error-display, [role="alert"], .alert-danger');
+      const errorDisplay = page.locator('.error-display, [data-testid="error-display"], [role="alert"], .alert-danger');
       const hasErrorDisplay =
         (await errorDisplay.count()) > 0 && (await errorDisplay.first().isVisible());
       const hasErrorText =
@@ -88,7 +92,7 @@ test.describe('Contract Creation Flow', () => {
     const testUser = await getTestUser();
     await loginAndNavigateToRoute(page, testUser, '/contracts', {
       timeout: 60000,
-      contentSelector: '.contract-list-page, .empty-state, .error-display, h1',
+      contentSelector: '.contract-list-page, [data-testid="contract-list-page"], .empty-state, [data-testid="empty-state"], .error-display, [data-testid="error-display"], h1',
     });
     await waitForLoadingComplete(page);
 
@@ -96,9 +100,9 @@ test.describe('Contract Creation Flow', () => {
     await page.waitForTimeout(2000);
 
     // Check if we have empty state or list with create button
-    const emptyState = page.locator('.empty-state, [data-testid="empty-state"]');
+    const emptyState = page.locator('.empty-state, [data-testid="empty-state"], .empty-state, [data-testid="empty-state"]');
     const createButton = page.locator('button:has-text("Create Contract")');
-    const emptyStateAction = page.locator('.empty-state-action, .empty-state button');
+    const emptyStateAction = page.locator('[data-testid="empty-state-action"], .empty-state, [data-testid="empty-state"] button');
 
     const hasEmptyState =
       (await emptyState.count()) > 0 &&
@@ -209,7 +213,7 @@ test.describe('Contract Creation Flow', () => {
     const finalUrl = page.url();
     if (finalUrl.includes('/contracts/') && !finalUrl.includes('/edit')) {
       // Contract detail page - success
-      await expect(page.locator('.contract-detail-page, .contract-detail-content, h1').first()).toBeVisible(
+      await expect(page.locator('.contract-detail-page, [data-testid="contract-detail-page"], .contract-detail-content, h1').first()).toBeVisible(
         { timeout: 15000 }
       );
       // Phase 226 B1a — dual-channel verification of contract creation.
@@ -221,10 +225,23 @@ test.describe('Contract Creation Flow', () => {
           resourceType: 'CONTRACT',
           resourceId: contractId,
         });
+        // Phase 226 G7 — JSON-LD dereference guarantee on contract-create.
+        await verifySemanticIri(page, 'contract', contractId, {
+          testInfo: test.info(),
+          skipSparqlOn: ({ status }) => status === 404 || status === 501 || status === 503,
+        });
+        // Phase 226 G12 — search-index freshness on contract-create. Use the
+        // contract id as the search key — backend ODPS-derived contracts get a
+        // generated id+name; the contractId is always indexed.
+        await verifySearchable(page, {
+          resourceType: 'CONTRACT',
+          id: contractId,
+          key: contractId.slice(0, 8),
+        });
       }
     } else if (finalUrl.includes('/odps/') && !finalUrl.includes('/upload')) {
       // ODPS detail page - success (navigated after workflow completed)
-      await expect(page.locator('.odps-detail-page, .contract-detail-page, h1').first()).toBeVisible(
+      await expect(page.locator('.odps-detail-page, .contract-detail-page, [data-testid="contract-detail-page"], h1').first()).toBeVisible(
         { timeout: 15000 }
       );
     } else if (finalUrl.includes('/status') || finalUrl.includes('/workflow')) {
@@ -235,7 +252,7 @@ test.describe('Contract Creation Flow', () => {
     } else if (finalUrl.includes('/contracts/create') || finalUrl.includes('/odps/upload')) {
       // Phase 211: stayed on /contracts/create (or backward-compat /odps/upload
       // which redirects there). Check for inline error display before failing.
-      const errorDisplay = page.locator('.error-display');
+      const errorDisplay = page.locator('.error-display, [data-testid="error-display"]').first();
       if ((await errorDisplay.count()) > 0 && (await errorDisplay.first().isVisible())) {
         const errorText = await errorDisplay.first().textContent() ?? '';
         // "Workflows are disabled for this tenant" is a backend config issue — skip

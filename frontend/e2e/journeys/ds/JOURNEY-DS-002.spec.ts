@@ -30,7 +30,7 @@ test.describe('JOURNEY-DS-002: Use AI Schema Matching', () => {
       const isGated =
         page.url().includes('/403') ||
         redirectedAway ||
-        (await page.locator('.unavailable-page').count()) > 0;
+        (await page.locator('.unavailable-page, [data-testid="unavailable-page"]').first().count()) > 0;
       // Both outcomes are valid: capability enabled (page loads) or disabled (properly gated)
       if (isGated) {
         expect(isGated).toBe(true) /* acceptable states */; // Capability gate is working — valid outcome
@@ -38,7 +38,7 @@ test.describe('JOURNEY-DS-002: Use AI Schema Matching', () => {
       }
       const onSchemaMatching = page.url().includes('/ai/schema-matching');
       const hasContent =
-        (await page.locator('.schema-matching-page, .app-main').count()) > 0;
+        (await page.locator('.schema-matching-page, .app-main, [data-testid="app-main"]').count()) > 0;
       expect(onSchemaMatching && hasContent).toBe(true) /* acceptable states */;
     });
   });
@@ -51,7 +51,7 @@ test.describe('JOURNEY-DS-002: Use AI Schema Matching', () => {
       await page.waitForLoadState('domcontentloaded');
       await page.waitForTimeout(3000);
       const on403 = page.url().includes('/403');
-      const onUnavailable = (await page.locator('.unavailable-page, .error-display').count()) > 0;
+      const onUnavailable = (await page.locator('.unavailable-page, [data-testid="unavailable-page"], .error-display, [data-testid="error-display"]').count()) > 0;
       const onLogin = page.url().includes('/login');
       expect(on403 || onUnavailable || onLogin).toBe(true) /* acceptable states */;
     });

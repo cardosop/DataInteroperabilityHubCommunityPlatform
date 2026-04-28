@@ -20,12 +20,12 @@ test.describe('Feature: Compliance', () => {
       const testUser = await getTestUser();
       await loginAndNavigateToRoute(page, testUser, '/compliance', {
         timeout: 60000,
-        contentSelector: '.compliance-run-list-page, .empty-state, .error-display',
+        contentSelector: '.compliance-run-list-page, [data-testid="compliance-run-list-page"], .empty-state, [data-testid="empty-state"], .error-display, [data-testid="error-display"]',
       });
       if (page.url().includes('/login')) {
         throw new Error('compliance list loads: still on /login after loginAndNavigateToRoute');
       }
-      await assertListPageLoads(page, '.compliance-run-list-page, .empty-state', { timeout: 60000 });
+      await assertListPageLoads(page, '.compliance-run-list-page, [data-testid="compliance-run-list-page"], .empty-state, [data-testid="empty-state"]', { timeout: 60000 });
     });
   });
 
@@ -38,11 +38,11 @@ test.describe('Feature: Compliance', () => {
         '/compliance/runs/00000000-0000-0000-0000-000000000000',
         {
           timeout: 60000,
-          contentSelector: '.error-display, .compliance-run-detail-page, h1',
+          contentSelector: '.error-display, [data-testid="error-display"], .compliance-run-detail-page, [data-testid="compliance-run-detail-page"], h1',
         }
       );
       await assertNonExistentIdShowsError(page, {
-        detailContentSelector: '.compliance-run-detail-page',
+        detailContentSelector: '.compliance-run-detail-page, [data-testid="compliance-run-detail-page"]',
       });
     });
 
@@ -62,12 +62,12 @@ test.describe('Feature: Compliance', () => {
       const testUser = await getTestUser();
       await loginAndNavigateToRoute(page, testUser, '/compliance', {
         timeout: 60000,
-        contentSelector: '.compliance-run-list-page, .empty-state, .error-display',
+        contentSelector: '.compliance-run-list-page, [data-testid="compliance-run-list-page"], .empty-state, [data-testid="empty-state"], .error-display, [data-testid="error-display"]',
       });
       // Must not crash — either show list content or empty state
-      await expect(page.locator('.error-display')).not.toBeVisible({ timeout: 5000 });
+      await expect(page.locator('.error-display, [data-testid="error-display"]').first()).not.toBeVisible({ timeout: 5000 });
       const hasContent =
-        (await page.locator('.compliance-run-list-page, .empty-state').count()) > 0;
+        (await page.locator('.compliance-run-list-page, [data-testid="compliance-run-list-page"], .empty-state, [data-testid="empty-state"]').count()) > 0;
       expect(hasContent, 'Expected compliance list or empty state (no crash)').toBe(true);
     });
   });

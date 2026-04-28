@@ -81,7 +81,7 @@ test.describe('Accept Invitation (JOURNEY-TA-001)', () => {
       } else {
         // Unexpected state — no response and page still on /accept-invitation
         const hasContent =
-          (await page.locator('.error-display, .error-message, [data-testid="accept-invitation-form"]').count()) > 0;
+          (await page.locator('.error-display, [data-testid="error-display"], .error-message, [data-testid="accept-invitation-form"]').count()) > 0;
         expect(navigatedAway || hasContent).toBe(true) /* acceptable states */;
       }
     });
@@ -131,7 +131,7 @@ test.describe('Accept Invitation (JOURNEY-TA-001)', () => {
       const apiRejected = submitResponse != null && submitResponse.status() >= 400;
       const hasError =
         (await page
-          .locator('.error-display, .error-message, .accept-invitation-validation-error, [role="alert"]')
+          .locator('.error-display, [data-testid="error-display"], .error-message, .accept-invitation-validation-error, [role="alert"]')
           .count()) > 0 ||
         (await page
           .locator('text=/invalid|expired|forbidden|unauthorized|not found|error|failed/i')
@@ -157,7 +157,7 @@ test.describe('Accept Invitation (JOURNEY-TA-001)', () => {
       await page.waitForTimeout(3000);
       const url = page.url();
       const hasContent =
-        (await page.locator('[data-testid="accept-invitation-page"], .accept-invitation-page').count()) > 0 ||
+        (await page.locator('.accept-invitation-page, [data-testid="accept-invitation-page"]').count()) > 0 ||
         (await page.locator('text=/invalid|expired|no invitation/i').count()) > 0;
       expect(url.includes('/accept-invitation') || url.includes('/login') || hasContent).toBe(true);
     });

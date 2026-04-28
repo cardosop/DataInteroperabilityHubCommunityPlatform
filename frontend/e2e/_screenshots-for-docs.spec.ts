@@ -41,7 +41,7 @@ const UC_PAGES = [
   { name: "UC-COMP-001", path: "/docs/mvpdocs/use-cases/UC-COMP-001/" },
 ];
 
-test.describe("Documentation screenshots", () => {
+test.describe("Documentation screenshots @critical", () => {
   for (const viewport of Object.entries(VIEWPORTS)) {
     const [vpName, vpSize] = viewport;
 

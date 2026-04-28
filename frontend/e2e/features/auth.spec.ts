@@ -31,7 +31,7 @@ test.describe('Feature: Auth', () => {
       // loginUser already navigates to '/' and waits for app shell.
       // Do NOT call page.goto('/') again — a full reload re-initializes auth,
       // which under parallel E2E load takes 60-120s and causes timeout failures.
-      await page.waitForSelector('.app-header', { timeout: 30_000 });
+      await page.waitForSelector('.app-header, [data-testid="app-header"]', { timeout: 30_000 });
       await expect(
         page.locator('[data-testid="home-page"], .home-page, h1:has-text("Dashboard")').first()
       ).toBeVisible({ timeout: 15_000 });
@@ -99,8 +99,8 @@ test.describe('Feature: Auth', () => {
       // This test verifies the SPA handles unknown routes correctly.
       //
       // Do NOT use loginAndNavigateToRoute here — it calls waitForAppMainReady
-      // which expects .app-main. A 404 page may render outside the app shell
-      // (raw nginx 404 or React NotFoundPage without sidebar), so .app-main
+      // which expects .app-main, [data-testid="app-main"]. A 404 page may render outside the app shell
+      // (raw nginx 404 or React NotFoundPage without sidebar), so .app-main, [data-testid="app-main"]
       // never appears and the helper times out after 65s.
       //
       // Instead: login first to establish auth, then navigate directly.
@@ -111,7 +111,7 @@ test.describe('Feature: Auth', () => {
       // Wait for any terminal state — 404 content, app shell, or loading
       // intentional: probes optional UI presence via a multi-line locator chain — the branch logic below handles both rendered and missing cases deterministically; absence is a legitimate tenant/role state.
       await page
-        .locator('.not-found-page, .app-main, [role="status"], text=/not found|404|loading/i')
+        .locator('.not-found-page, .app-main, [data-testid="app-main"], [role="status"], text=/not found|404|loading/i')
         .first()
         .waitFor({ state: 'visible', timeout: 30000 })
         .catch(() => null);
@@ -121,7 +121,7 @@ test.describe('Feature: Auth', () => {
         (await page.locator('text=/not found|404|page not found/i').count()) > 0 ||
         (await page.locator('.not-found-page').count()) > 0;
       const onLogin = url.includes('/login');
-      const appRendered = (await page.locator('.app-main').count()) > 0;
+      const appRendered = (await page.locator('.app-main, [data-testid="app-main"]').first().count()) > 0;
       const suspenseActive =
         (await page.locator('[role="status"]').count()) > 0 ||
         (await page.locator('text=/loading/i').count()) > 0;
@@ -153,14 +153,14 @@ test.describe('Feature: Auth', () => {
       // 60s covers: capabilities fetch (25s) + retry (25s) + React render.
       // intentional: probes optional UI presence via a multi-line locator chain — the branch logic below handles both rendered and missing cases deterministically; absence is a legitimate tenant/role state.
       await page
-        .locator('input#name, .unavailable-page')
+        .locator('input#name, .unavailable-page, [data-testid="unavailable-page"]')
         .first()
         .waitFor({ state: 'visible', timeout: 60000 })
         .catch(() => null);
 
       if (
         page.url().includes('/unavailable') ||
-        (await page.locator('.unavailable-page').count()) > 0
+        (await page.locator('.unavailable-page, [data-testid="unavailable-page"]').first().count()) > 0
       ) {
         return false; // registration feature-flagged off
       }
@@ -306,7 +306,7 @@ test.describe('Feature: Auth', () => {
       await page.goto('/register', { waitUntil: 'domcontentloaded' });
       // intentional: probes optional UI presence via a multi-line locator chain — the branch logic below handles both rendered and missing cases deterministically; absence is a legitimate tenant/role state.
       await page
-        .locator('h1, .register-page, .unavailable-page')
+        .locator('h1, .register-page, .unavailable-page, [data-testid="unavailable-page"]')
         .first()
         .waitFor({ state: 'visible', timeout: 25000 })
         .catch(() => null);

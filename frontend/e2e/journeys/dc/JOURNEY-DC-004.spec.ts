@@ -22,7 +22,7 @@ test.describe('JOURNEY-DC-004: Access Entitlement', () => {
       await loginAndNavigateToRoute(page, consumer, '/marketplace/entitlements', {
         timeout: 90000,
         contentSelector:
-          '.entitlement-list-page, .empty-state, .error-display',
+          '.entitlement-list-page, .empty-state, [data-testid="empty-state"], .error-display, [data-testid="error-display"]',
       });
       if (page.url().includes('/login')) {
         expect(page.url()).toContain('/login');
@@ -33,15 +33,15 @@ test.describe('JOURNEY-DC-004: Access Entitlement', () => {
       // Wait for API data to load (terminal state: list page, empty state, or error)
       // intentional: probes optional UI presence via a multi-line locator chain — the branch logic below handles both rendered and missing cases deterministically; absence is a legitimate tenant/role state.
       await page
-        .locator('.entitlement-list-page, .empty-state, .error-display')
+        .locator('.entitlement-list-page, .empty-state, [data-testid="empty-state"], .error-display, [data-testid="error-display"]')
         .first()
         .waitFor({ state: 'visible', timeout: 30000 })
         .catch(() => null);
 
       const hasContent =
         (await page.locator('.entitlement-list-page').count()) > 0 ||
-        (await page.locator('.empty-state').count()) > 0 ||
-        (await page.locator('.error-display').count()) > 0;
+        (await page.locator('.empty-state, [data-testid="empty-state"]').first().count()) > 0 ||
+        (await page.locator('.error-display, [data-testid="error-display"]').first().count()) > 0;
       expect(hasContent).toBe(true) /* acceptable states */;
     });
 
@@ -50,7 +50,7 @@ test.describe('JOURNEY-DC-004: Access Entitlement', () => {
       await loginAndNavigateToRoute(page, consumer, '/marketplace/entitlements', {
         timeout: 90000,
         contentSelector:
-          '.entitlement-list-page, .empty-state, .error-display',
+          '.entitlement-list-page, .empty-state, [data-testid="empty-state"], .error-display, [data-testid="error-display"]',
       });
       if (page.url().includes('/login')) {
         expect(page.url()).toContain('/login');
@@ -61,7 +61,7 @@ test.describe('JOURNEY-DC-004: Access Entitlement', () => {
       if ((await entitlementRow.count()) > 0) {
         await entitlementRow.click();
         await page.waitForURL(/\/marketplace\/entitlements\/[^/]+/, { timeout: 10000 });
-        await page.waitForSelector('.entitlement-detail-page, .error-display, .app-main', { timeout: 15000 });
+        await page.waitForSelector('.entitlement-detail-page, .error-display, [data-testid="error-display"], .app-main, [data-testid="app-main"]', { timeout: 15000 });
         const hasDetail = (await page.locator('.entitlement-detail-page').count()) > 0;
         expect(hasDetail || page.url().includes('/marketplace/entitlements/')).toBe(true);
       }
@@ -78,7 +78,7 @@ test.describe('JOURNEY-DC-004: Access Entitlement', () => {
         { timeout: 65000 }
       );
       await assertNonExistentIdShowsError(page, {
-        detailContentSelector: '.entitlement-detail-page, .error-display',
+        detailContentSelector: '.entitlement-detail-page, .error-display, [data-testid="error-display"]',
         waitAfterLoad: 12000,
       });
     });
@@ -90,7 +90,7 @@ test.describe('JOURNEY-DC-004: Access Entitlement', () => {
       await loginAndNavigateToRoute(page, consumer, '/marketplace/entitlements', {
         timeout: 90000,
         contentSelector:
-          '.entitlement-list-page, .empty-state, .error-display',
+          '.entitlement-list-page, .empty-state, [data-testid="empty-state"], .error-display, [data-testid="error-display"]',
       });
       if (page.url().includes('/login')) {
         expect(page.url()).toContain('/login');

@@ -23,7 +23,7 @@ async function getPublishTestUser() {
   }
 }
 
-test.describe('JOURNEY-DPO-010: Publish Asset with Usage-Based Pricing', () => {
+test.describe('JOURNEY-DPO-010: Publish Asset with Usage-Based Pricing @critical', () => {
   test.setTimeout(90000);
 
   test.describe('Success', () => {
@@ -32,7 +32,7 @@ test.describe('JOURNEY-DPO-010: Publish Asset with Usage-Based Pricing', () => {
       await createAssetViaApi(testUser);
       await loginAndNavigateToRoute(page, testUser, '/marketplace/publish', {
         timeout: 90000,
-        contentSelector: '.listing-publish-page, .listing-publish-form, form, h1',
+        contentSelector: '.listing-publish-page, [data-testid="listing-publish-page"], .listing-publish-form, form, h1',
       });
       const assetSelect = page.locator('select#asset_id');
       await expect(assetSelect).toBeVisible({ timeout: 5000 });
@@ -46,7 +46,7 @@ test.describe('JOURNEY-DPO-010: Publish Asset with Usage-Based Pricing', () => {
       await createAssetViaApi(testUser, { ensureActivated: true });
       await loginAndNavigateToRoute(page, testUser, '/marketplace/publish', {
         timeout: 90000,
-        contentSelector: '.listing-publish-page, .listing-publish-form, form, h1',
+        contentSelector: '.listing-publish-page, [data-testid="listing-publish-page"], .listing-publish-form, form, h1',
       });
 
       // Fill mandatory title and description first
@@ -80,10 +80,10 @@ test.describe('JOURNEY-DPO-010: Publish Asset with Usage-Based Pricing', () => {
 
       // The form should still be on the publish page with no crash
       expect(page.url()).toContain('/marketplace/publish');
-      const hasFormError = (await page.locator('.error-display').count()) > 0;
+      const hasFormError = (await page.locator('.error-display, [data-testid="error-display"]').first().count()) > 0;
       // The only error expected at this point is a missing-asset validation (not a crash)
       if (hasFormError) {
-        const errText = (await page.locator('.error-display').first().textContent()) ?? '';
+        const errText = (await page.locator('.error-display, [data-testid="error-display"]').first().first().textContent()) ?? '';
         const isAssetMissing = /asset|required/i.test(errText);
         expect(isAssetMissing).toBe(true);
       }
@@ -95,7 +95,7 @@ test.describe('JOURNEY-DPO-010: Publish Asset with Usage-Based Pricing', () => {
       const testUser = await getPublishTestUser();
       await loginAndNavigateToRoute(page, testUser, '/marketplace/publish', {
         timeout: 90000,
-        contentSelector: '.listing-publish-page, .listing-publish-form, form, h1',
+        contentSelector: '.listing-publish-page, [data-testid="listing-publish-page"], .listing-publish-form, form, h1',
       });
       await page.fill('#title', 'Usage-Based Listing');
       await page.fill('#description', 'Some description');
@@ -115,11 +115,11 @@ test.describe('JOURNEY-DPO-010: Publish Asset with Usage-Based Pricing', () => {
       const testUser = await getTestUser();
       await loginAndNavigateToRoute(page, testUser, '/marketplace/publish', {
         timeout: 90000,
-        contentSelector: '.listing-publish-page, .listing-publish-form, form, h1',
+        contentSelector: '.listing-publish-page, [data-testid="listing-publish-page"], .listing-publish-form, form, h1',
       });
       expect(page.url()).toContain('/marketplace/publish');
       const hasPublishContent =
-        (await page.locator('.listing-publish-page, .listing-publish-form, form').count()) > 0;
+        (await page.locator('.listing-publish-page, [data-testid="listing-publish-page"], .listing-publish-form, form').count()) > 0;
       expect(hasPublishContent).toBe(true);
     });
   });

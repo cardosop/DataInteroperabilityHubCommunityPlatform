@@ -22,7 +22,7 @@ test.describe('JOURNEY-DE-008: Integrate AI Schema Matching into Workflow', () =
       await loginAndNavigateToRoute(page, testUser, '/ai/schema-matching', {
         timeout: 60000,
         contentSelector:
-          '[data-testid="schema-matching-page"], .schema-matching-page, .unavailable-page, .error-display',
+          '[data-testid="schema-matching-page"], .schema-matching-page, .unavailable-page, [data-testid="unavailable-page"], .error-display, [data-testid="error-display"]',
       });
       const url = page.url();
       const onLogin = url.includes('/login');
@@ -35,9 +35,9 @@ test.describe('JOURNEY-DE-008: Integrate AI Schema Matching into Workflow', () =
       expect(onSchemaMatching).toBe(true);
       const hasContent =
         (await page.locator('.schema-matching-page, [data-testid="schema-matching-page"]').count()) > 0 ||
-        (await page.locator('.unavailable-page').count()) > 0;
+        (await page.locator('.unavailable-page, [data-testid="unavailable-page"]').first().count()) > 0;
       expect(hasContent).toBe(true);
-      await expect(page.locator('.error-display')).not.toBeVisible();
+      await expect(page.locator('.error-display, [data-testid="error-display"]').first()).not.toBeVisible();
     });
   });
 
@@ -58,7 +58,7 @@ test.describe('JOURNEY-DE-008: Integrate AI Schema Matching into Workflow', () =
       await loginAndNavigateToRoute(page, testUser, '/ai/schema-matching', {
         timeout: 60000,
         contentSelector:
-          '[data-testid="schema-matching-page"], .schema-matching-page, .unavailable-page, .error-display',
+          '[data-testid="schema-matching-page"], .schema-matching-page, .unavailable-page, [data-testid="unavailable-page"], .error-display, [data-testid="error-display"]',
       });
       const url = page.url();
       expect(url.includes('/login') || url.includes('/403') || url.includes('/ai/schema-matching')).toBe(

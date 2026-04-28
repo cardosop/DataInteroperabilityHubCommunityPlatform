@@ -17,7 +17,7 @@ import {
   waitForLoadingComplete,
 } from '../../fixtures/helpers';
 
-test.describe('UC-GOV-ADV-004: Configure Automated Retention', () => {
+test.describe('UC-GOV-ADV-004: Configure Automated Retention @critical', () => {
   test.setTimeout(120000);
 
   test.describe('Success', () => {
@@ -29,15 +29,15 @@ test.describe('UC-GOV-ADV-004: Configure Automated Retention', () => {
       expect(page.url()).toContain('/governance/retention');
       await waitForLoadingComplete(page, { timeout: 15000 });
       // D85: error-display is NOT acceptable — means backend or retention service is down
-      const hasError = (await page.locator('.error-display').count()) > 0;
+      const hasError = (await page.locator('.error-display, [data-testid="error-display"]').first().count()) > 0;
       if (hasError) {
         // intentional: tolerates a detached/removed element while extracting text for a diagnostic message; the surrounding throw/expect below this catch is the primary failure path.
-        const errText = await page.locator('.error-display').first().textContent().catch(() => '');
+        const errText = await page.locator('.error-display, [data-testid="error-display"]').first().first().textContent().catch(() => '');
         throw new Error(`Retention page shows error: "${errText?.slice(0, 300)}"`);
       }
       const hasContent =
         (await page.locator('.governance-retention-policy-list-page').count()) > 0 ||
-        (await page.locator('.empty-state').count()) > 0;
+        (await page.locator('.empty-state, [data-testid="empty-state"]').first().count()) > 0;
       expect(hasContent).toBe(true) /* acceptable states */;
     });
 
@@ -65,7 +65,7 @@ test.describe('UC-GOV-ADV-004: Configure Automated Retention', () => {
         expect(hasForm || hasNameField || hasRetentionField).toBe(true);
       } else {
         // No create button — page may show empty state with inline create
-        const hasEmptyState = (await page.locator('.empty-state').count()) > 0;
+        const hasEmptyState = (await page.locator('.empty-state, [data-testid="empty-state"]').first().count()) > 0;
         const hasListPage = (await page.locator('.governance-retention-policy-list-page').count()) > 0;
         expect(hasEmptyState || hasListPage).toBe(true);
       }
@@ -103,7 +103,7 @@ test.describe('UC-GOV-ADV-004: Configure Automated Retention', () => {
         return;
       }
       expect(url).toContain('/governance/retention');
-      const hasEmptyState = (await page.locator('.empty-state').count()) > 0;
+      const hasEmptyState = (await page.locator('.empty-state, [data-testid="empty-state"]').first().count()) > 0;
       const hasListPage = (await page.locator('.governance-retention-policy-list-page').count()) > 0;
       expect(hasEmptyState || hasListPage).toBe(true);
       // If empty state, verify a create option is available

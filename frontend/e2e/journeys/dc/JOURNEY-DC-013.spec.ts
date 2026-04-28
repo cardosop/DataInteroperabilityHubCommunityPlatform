@@ -37,7 +37,7 @@ test.describe('JOURNEY-DC-013: Use Asset Recommendations', () => {
       await loginAndNavigateToRoute(page, consumer, '/marketplace', {
         timeout: 85_000,
         contentSelector:
-          '[data-testid="listing-list-page"], .listing-list-page, .listing-list-grid, .empty-state, .error-display',
+          '[data-testid="listing-list-page"], .listing-list-page, .listing-list-grid, [data-testid="listing-list-grid"], .empty-state, [data-testid="empty-state"], .error-display, [data-testid="error-display"]',
       });
       if (page.url().includes('/login')) {
         expect(page.url()).toContain('/login');
@@ -46,7 +46,7 @@ test.describe('JOURNEY-DC-013: Use Asset Recommendations', () => {
       expect(page.url()).toContain('/marketplace');
       await listingsSettled;
       const terminal = page.locator(
-        '.listing-list-page, .listing-list-grid, .empty-state, .error-display'
+        '.listing-list-page, .listing-list-grid, [data-testid="listing-list-grid"], .empty-state, [data-testid="empty-state"], .error-display, [data-testid="error-display"]'
       );
       await expect(terminal.first()).toBeVisible({ timeout: 45_000 });
     });
@@ -58,7 +58,7 @@ test.describe('JOURNEY-DC-013: Use Asset Recommendations', () => {
       await loginAndNavigateToRoute(page, consumer, '/marketplace', {
         timeout: 65000,
         contentSelector:
-          '[data-testid="listing-list-page"], .listing-list-page, .empty-state, .error-display',
+          '[data-testid="listing-list-page"], .listing-list-page, .empty-state, [data-testid="empty-state"], .error-display, [data-testid="error-display"]',
       });
       if (page.url().includes('/login')) {
         expect(page.url()).toContain('/login');
@@ -74,7 +74,7 @@ test.describe('JOURNEY-DC-013: Use Asset Recommendations', () => {
       await loginAndNavigateToRoute(page, consumer, '/marketplace', {
         timeout: 90000,
         contentSelector:
-          '[data-testid="listing-list-page"], .listing-list-page, .listing-list-grid, .empty-state, .error-display',
+          '[data-testid="listing-list-page"], .listing-list-page, .listing-list-grid, [data-testid="listing-list-grid"], .empty-state, [data-testid="empty-state"], .error-display, [data-testid="error-display"]',
       });
       if (page.url().includes('/login')) {
         expect(page.url()).toContain('/login');
@@ -83,9 +83,9 @@ test.describe('JOURNEY-DC-013: Use Asset Recommendations', () => {
       expect(page.url()).toContain('/marketplace');
       const hasContent =
         (await page.locator('.listing-list-page').count()) > 0 ||
-        (await page.locator('.listing-list-grid').count()) > 0 ||
-        (await page.locator('.empty-state').count()) > 0 ||
-        (await page.locator('.error-display').count()) > 0;
+        (await page.locator('.listing-list-grid, [data-testid="listing-list-grid"]').first().count()) > 0 ||
+        (await page.locator('.empty-state, [data-testid="empty-state"]').first().count()) > 0 ||
+        (await page.locator('.error-display, [data-testid="error-display"]').first().count()) > 0;
       expect(hasContent).toBe(true);
     });
   });

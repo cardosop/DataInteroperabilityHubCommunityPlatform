@@ -27,15 +27,15 @@ test.describe('JOURNEY-DE-009: Set Up Data Virtualization', () => {
       expect(page.url()).toContain('/virtualization');
       // intentional: probes optional UI presence via a multi-line locator chain — the branch logic below handles both rendered and missing cases deterministically; absence is a legitimate tenant/role state.
       await page
-        .locator('.virtual-dataset-list-page, .virtual-dataset-list-header, .empty-state, .error-display')
+        .locator('.virtual-dataset-list-page, [data-testid="virtual-dataset-list-page"], .virtual-dataset-list-header, .empty-state, [data-testid="empty-state"], .error-display, [data-testid="error-display"]')
         .first()
         .waitFor({ state: 'visible', timeout: 20000 })
         .catch(() => null);
       const hasContent =
-        (await page.locator('.virtual-dataset-list-page').count()) > 0 ||
+        (await page.locator('.virtual-dataset-list-page, [data-testid="virtual-dataset-list-page"]').first().count()) > 0 ||
         (await page.locator('.virtual-dataset-list-header').count()) > 0 ||
-        (await page.locator('.empty-state').count()) > 0 ||
-        (await page.locator('.error-display').count()) > 0;
+        (await page.locator('.empty-state, [data-testid="empty-state"]').first().count()) > 0 ||
+        (await page.locator('.error-display, [data-testid="error-display"]').first().count()) > 0;
       expect(hasContent).toBe(true);
     });
 

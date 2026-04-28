@@ -21,7 +21,7 @@ test.describe('JOURNEY-MP-006: Manage Marketplace Mappings', () => {
       const testUser = await getTestUser();
       await loginAndNavigateToRoute(page, testUser, '/integrations/mappings', {
         timeout: 60000,
-        contentSelector: '.mapping-list-page, .empty-state, .error-display',
+        contentSelector: '.mapping-list-page, .empty-state, [data-testid="empty-state"], .error-display, [data-testid="error-display"]',
         acceptRedirectToLogin: true,
       });
       if (page.url().includes('/login')) {
@@ -31,8 +31,8 @@ test.describe('JOURNEY-MP-006: Manage Marketplace Mappings', () => {
       expect(page.url()).toContain('/integrations/mappings');
       const hasContent =
         (await page.locator('.mapping-list-page').count()) > 0 ||
-        (await page.locator('.error-display').count()) > 0 ||
-        (await page.locator('.empty-state').count()) > 0;
+        (await page.locator('.error-display, [data-testid="error-display"]').first().count()) > 0 ||
+        (await page.locator('.empty-state, [data-testid="empty-state"]').first().count()) > 0;
       expect(hasContent).toBe(true) /* acceptable states */;
     });
   });
@@ -78,7 +78,7 @@ test.describe('JOURNEY-MP-006: Manage Marketplace Mappings', () => {
       const testUser = await getTestUser();
       await loginAndNavigateToRoute(page, testUser, '/integrations/mappings', {
         timeout: 90000,
-        contentSelector: '.mapping-list-page, .empty-state, .error-display',
+        contentSelector: '.mapping-list-page, .empty-state, [data-testid="empty-state"], .error-display, [data-testid="error-display"]',
         acceptRedirectToLogin: true,
       });
       if (page.url().includes('/login')) return;

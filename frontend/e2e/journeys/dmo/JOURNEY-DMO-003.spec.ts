@@ -21,21 +21,21 @@ test.describe('JOURNEY-DMO-003: Manage Domain Topology', () => {
       const dmoUser = await getDataMeshDomainOwnerUser();
       await loginAndNavigateToRoute(page, dmoUser, '/mesh', {
         timeout: 90000,
-        contentSelector: '.mesh-domain-list-page, .error-display, .empty-state',
+        contentSelector: '.mesh-domain-list-page, .error-display, [data-testid="error-display"], .empty-state, [data-testid="empty-state"]',
       });
       if (page.url().includes('/login')) {
         test.skip(true, 'Auth gated — skipping success assertion');
         return;
       }
       expect(page.url()).toContain('/mesh');
-      await expect(page.locator('.error-display')).not.toBeVisible();
+      await expect(page.locator('.error-display, [data-testid="error-display"]').first()).not.toBeVisible();
     });
 
     test('mesh topology page loads', async ({ page }) => {
       const dmoUser = await getDataMeshDomainOwnerUser();
       await loginAndNavigateToRoute(page, dmoUser, '/mesh/topology', {
         timeout: 90000,
-        contentSelector: '.react-flow, .app-main, .error-display, .loading-spinner',
+        contentSelector: '.react-flow, .app-main, [data-testid="app-main"], .error-display, [data-testid="error-display"], .loading-spinner',
       });
       const onMeshTopology = page.url().includes('/mesh/topology');
       const onLogin = page.url().includes('/login');
@@ -46,9 +46,9 @@ test.describe('JOURNEY-DMO-003: Manage Domain Topology', () => {
       }
       expect(onMeshTopology).toBe(true);
       const hasContent =
-        (await page.locator('.react-flow, .app-main').count()) > 0;
+        (await page.locator('.react-flow, .app-main, [data-testid="app-main"]').count()) > 0;
       expect(hasContent).toBe(true);
-      await expect(page.locator('.error-display')).not.toBeVisible();
+      await expect(page.locator('.error-display, [data-testid="error-display"]').first()).not.toBeVisible();
     });
   });
 
@@ -74,7 +74,7 @@ test.describe('JOURNEY-DMO-003: Manage Domain Topology', () => {
       const dmoUser = await getDataMeshDomainOwnerUser();
       await loginAndNavigateToRoute(page, dmoUser, '/mesh', {
         timeout: 90000,
-        contentSelector: '.mesh-domain-list-page, .empty-state, .error-display',
+        contentSelector: '.mesh-domain-list-page, .empty-state, [data-testid="empty-state"], .error-display, [data-testid="error-display"]',
       });
       const urlAfterMesh = page.url();
       expect(

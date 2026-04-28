@@ -21,9 +21,9 @@ test.describe('Dimension: Concurrent operations', () => {
     const testUser = await getTestUser();
     await loginAndNavigateToRoute(page, testUser, '/assets', {
       timeout: 60000,
-      contentSelector: '.asset-list-page, .empty-state, .error-display',
+      contentSelector: '.asset-list-page, [data-testid="asset-list-page"], .empty-state, [data-testid="empty-state"], .error-display, [data-testid="error-display"]',
     });
-    await assertListPageLoads(page, '.asset-list-page, .empty-state', { timeout: 30000 });
+    await assertListPageLoads(page, '.asset-list-page, [data-testid="asset-list-page"], .empty-state, [data-testid="empty-state"]', { timeout: 30000 });
     // Second goto reloads the SPA from scratch — auth must re-init and the
     // asset list must re-render. The previous fixed waitForTimeout(2000) was
     // racy on cold staging workers (auth refresh + lazy chunk + list query
@@ -31,14 +31,14 @@ test.describe('Dimension: Concurrent operations', () => {
     // states to actually appear, with a deterministic timeout.
     await page.goto('/assets', { waitUntil: 'domcontentloaded' });
     await page
-      .locator('.asset-list-page, .empty-state, .error-display')
+      .locator('.asset-list-page, [data-testid="asset-list-page"], .empty-state, [data-testid="empty-state"], .error-display, [data-testid="error-display"]')
       .first()
       .waitFor({ state: 'visible', timeout: 30000 });
     expect(page.url()).toContain('/assets');
     const hasContent =
-      (await page.locator('.asset-list-page').count()) > 0 ||
-      (await page.locator('.empty-state').count()) > 0 ||
-      (await page.locator('.error-display').count()) > 0;
+      (await page.locator('.asset-list-page, [data-testid="asset-list-page"]').first().count()) > 0 ||
+      (await page.locator('.empty-state, [data-testid="empty-state"]').first().count()) > 0 ||
+      (await page.locator('.error-display, [data-testid="error-display"]').first().count()) > 0;
     expect(hasContent).toBe(true);
   });
 

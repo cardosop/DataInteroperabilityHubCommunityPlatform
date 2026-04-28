@@ -146,4 +146,68 @@ test.describe('Security: CSP enforce mode (Phase 14 / task 7.7)', () => {
     expect(hsts).toContain('max-age=31536000');
     expect(hsts).toContain('includeSubDomains');
   });
+
+  // ----- Phase 226 G16 — full security-header set on every HTML response.
+  // The pattern below matches the global guardedTest.securityHeaders auto-
+  // fixture; this spec is the authoritative explicit reference, the auto-
+  // fixture is the regression net for every other spec.
+  test('Referrer-Policy present and conservative on root response', async ({ request }) => {
+    const response = await request.get('/');
+    const rp = response.headers()['referrer-policy'];
+    expect(rp, 'Referrer-Policy header must be present').toBeTruthy();
+    // Acceptable conservative values — anything that does NOT leak the full
+    // URL to a cross-origin destination. Reject permissive values explicitly.
+    expect(rp).not.toBe('unsafe-url');
+    expect(rp).not.toBe('no-referrer-when-downgrade');
+    expect(rp).toMatch(/(no-referrer|same-origin|strict-origin|origin)/i);
+  });
+
+  test('Full security-header set present on root response (G16 baseline)', async ({ request }) => {
+    const response = await request.get('/');
+    const headers = response.headers();
+    // Each MUST be a non-empty string. The csp-enforce / X-Frame-Options /
+    // X-Content-Type-Options / HSTS tests above pin the values; this test
+    // is the cross-cutting "all five together" assertion that catches an
+    // nginx config refactor accidentally dropping one of them.
+    const required = [
+      'content-security-policy',
+      'x-frame-options',
+      'x-content-type-options',
+      'referrer-policy',
+    ];
+    for (const h of required) {
+      expect(headers[h], `Header "${h}" must be present`).toBeTruthy();
+      expect(headers[h], `Header "${h}" must be non-empty`).not.toBe('');
+    }
+    // HSTS is conditional on HTTPS — assert when the request URL is https.
+    const requestUrl = response.url();
+    if (requestUrl.startsWith('https://')) {
+      expect(
+        headers['strict-transport-security'],
+        'HSTS must be present on HTTPS responses',
+      ).toBeTruthy();
+    }
+  });
+
+  test('SPA route responses also carry the security-header set (not just /)', async ({ request }) => {
+    // Navigation to an internal SPA route (e.g. /assets) returns the SPA
+    // shell HTML the same way / does. A regression that adds headers only
+    // on the literal "/" location block (not the catch-all SPA fallback)
+    // is invisible to / but breaks every internal nav. Probe a known
+    // route — /login is universally available and unauthenticated.
+    const response = await request.get('/login');
+    if (!response.ok() && response.status() !== 200) {
+      // If the host doesn't serve /login as HTML (e.g. Vite returns 200 but
+      // not nginx-headers in some configurations), skip rather than fail.
+      test.skip(
+        true,
+        `/login returned ${response.status()} — not a valid HTML SPA shell on this host`,
+      );
+    }
+    const headers = response.headers();
+    // CSP must be present on SPA route shells too.
+    expect(headers['content-security-policy']).toBeTruthy();
+    expect(headers['x-frame-options']).toBeTruthy();
+    expect(headers['x-content-type-options']).toBe('nosniff');
+  });
 });

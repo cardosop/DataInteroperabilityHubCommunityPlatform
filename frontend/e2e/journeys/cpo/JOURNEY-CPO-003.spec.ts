@@ -26,20 +26,20 @@ test.describe('JOURNEY-CPO-003: Review Access Request', () => {
       const cpoUser = await getComplianceOfficerUser();
       await loginAndNavigateToRoute(page, cpoUser, '/governance', {
         timeout: 60000,
-        // .error-display excluded: an error is not a valid success state for a CPO user
+        // .error-display, [data-testid="error-display"] excluded: an error is not a valid success state for a CPO user
         contentSelector:
-          '.governance-access-request-list-page, .access-request-list-page, .empty-state',
+          '.governance-access-request-list-page, .access-request-list-page, .empty-state, [data-testid="empty-state"]',
       });
       if (page.url().includes('/login') || page.url().includes('/403')) {
         throw new Error(`Unexpected redirect to ${page.url()} — verify CPO user has governance access`);
       }
       await waitForLoadingComplete(page, { timeout: 15000 });
       // Error-display is NOT acceptable on the success path
-      await expect(page.locator('.error-display')).not.toBeVisible();
+      await expect(page.locator('.error-display, [data-testid="error-display"]').first()).not.toBeVisible();
       expect(page.url()).toContain('/governance');
       const hasContent =
         (await page.locator('.governance-access-request-list-page, .access-request-list-page').count()) > 0 ||
-        (await page.locator('.empty-state').count()) > 0;
+        (await page.locator('.empty-state, [data-testid="empty-state"]').first().count()) > 0;
       expect(hasContent).toBe(true);
     });
 
@@ -47,9 +47,9 @@ test.describe('JOURNEY-CPO-003: Review Access Request', () => {
       const cpoUser = await getComplianceOfficerUser();
       await loginAndNavigateToRoute(page, cpoUser, '/governance', {
         timeout: 60000,
-        // .error-display excluded: an error is not a valid success state for a CPO user
+        // .error-display, [data-testid="error-display"] excluded: an error is not a valid success state for a CPO user
         contentSelector:
-          '.governance-access-request-list-page, .access-request-list-page, .empty-state',
+          '.governance-access-request-list-page, .access-request-list-page, .empty-state, [data-testid="empty-state"]',
       });
       if (page.url().includes('/login') || page.url().includes('/403')) {
         throw new Error(`Unexpected redirect to ${page.url()} — verify CPO user has governance access`);
@@ -64,7 +64,7 @@ test.describe('JOURNEY-CPO-003: Review Access Request', () => {
           page.locator('.governance-access-request-detail-page, .governance-status-badge')
         ).toBeVisible({ timeout: 15000 });
         // No generic error on the detail page
-        await expect(page.locator('.error-display')).not.toBeVisible();
+        await expect(page.locator('.error-display, [data-testid="error-display"]').first()).not.toBeVisible();
       }
     });
 
@@ -73,7 +73,7 @@ test.describe('JOURNEY-CPO-003: Review Access Request', () => {
       await loginAndNavigateToRoute(page, cpoUser, '/governance', {
         timeout: 60000,
         contentSelector:
-          '.governance-access-request-list-page, .access-request-list-page, .empty-state',
+          '.governance-access-request-list-page, .access-request-list-page, .empty-state, [data-testid="empty-state"]',
       });
       if (page.url().includes('/login') || page.url().includes('/403')) return;
       if (!(await page.locator('.governance-access-request-list-page, .access-request-list-page').isVisible())) return;
@@ -89,7 +89,7 @@ test.describe('JOURNEY-CPO-003: Review Access Request', () => {
       await pendingRow.click();
       await page.waitForURL(/\/governance\/access-requests\/[^/]+$/, { timeout: 10000 });
       await expect(page.locator('.governance-access-request-detail-page')).toBeVisible({ timeout: 10000 });
-      await expect(page.locator('.error-display')).not.toBeVisible();
+      await expect(page.locator('.error-display, [data-testid="error-display"]').first()).not.toBeVisible();
       await expect(page.locator('.governance-status-badge')).toBeVisible();
     });
   });
@@ -131,7 +131,7 @@ test.describe('JOURNEY-CPO-003: Review Access Request', () => {
       await loginAndNavigateToRoute(page, cpoUser, '/governance', {
         timeout: 60000,
         contentSelector:
-          '.governance-access-request-list-page, .access-request-list-page, .empty-state, .error-display',
+          '.governance-access-request-list-page, .access-request-list-page, .empty-state, [data-testid="empty-state"], .error-display, [data-testid="error-display"]',
       });
       if (page.url().includes('/login') || page.url().includes('/403')) {
         expect(page.url()).toMatch(/\/login|\/403/);

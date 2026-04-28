@@ -50,7 +50,7 @@ test.describe('JOURNEY-DE-011: Set Up Reverse ETL', () => {
         { timeout: 90000 }
       );
       await assertNonExistentIdShowsError(page, {
-        detailContentSelector: '.job-detail-page, .job-detail-content, .error-display',
+        detailContentSelector: '.job-detail-page, .job-detail-content, .error-display, [data-testid="error-display"]',
         waitAfterLoad: 12000,
       });
     });

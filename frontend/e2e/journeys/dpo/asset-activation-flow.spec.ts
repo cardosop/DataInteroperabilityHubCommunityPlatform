@@ -10,6 +10,8 @@ import { clearAuthStorage, getTestUser } from '../../fixtures/auth';
 // Phase 226 B1a — dual-channel verification on the activate mutation.
 import { verifyViaApi } from '../../fixtures/verifyViaApi';
 import { verifyAuditEvent } from '../../fixtures/verifyAuditEvent';
+// Phase 226 G7 — semantic-IRI guarantee on the activate transition.
+import { verifySemanticIri } from '../../fixtures/verifySemantic';
 import {
   ensureAssetActivationPrerequisites,
   hasLoginPrompt,
@@ -50,14 +52,14 @@ test.describe('Asset Activation Flow', () => {
     const testUser = await getTestUser();
     await loginAndNavigateToRoute(page, testUser, '/assets', {
       timeout: 60000,
-      contentSelector: '.asset-list-page, .empty-state, .error-display, h1',
+      contentSelector: '.asset-list-page, [data-testid="asset-list-page"], .empty-state, [data-testid="empty-state"], .error-display, [data-testid="error-display"], h1',
     });
     await waitForLoadingComplete(page, { timeout: 30000 });
 
     // If assets list shows error (API 500), click Retry and wait for list/empty state
-    const errorDisplay = page.locator('.error-display');
+    const errorDisplay = page.locator('.error-display, [data-testid="error-display"]').first();
     if ((await errorDisplay.count()) > 0) {
-      const retryBtn = page.locator('.error-display-retry');
+      const retryBtn = page.locator('[data-testid="error-display-retry"]');
       if ((await retryBtn.count()) > 0) {
         await retryBtn.first().click();
         await waitForLoadingComplete(page, { timeout: 30000 });
@@ -66,7 +68,7 @@ test.describe('Asset Activation Flow', () => {
 
     const createButton = page
       .locator('button:has-text("Create Asset")')
-      .or(page.locator('.empty-state-action:has-text("Create Asset")'));
+      .or(page.locator('[data-testid="empty-state-action"]:has-text("Create Asset")'));
     // If the Create Asset button isn't visible (e.g. assets list showed API error after retry),
     // fall back to direct navigation — the activation flow doesn't require the list interaction.
     // .catch(() => false) kept intentionally: conditional flow — if button visible, click it; else try alternative.
@@ -98,13 +100,13 @@ test.describe('Asset Activation Flow', () => {
     await expect(page).toHaveURL(/\/assets\/[^/]+$/, { timeout: 30000 });
     // API can be slow under Docker/parallel load; wait for loading to finish then detail
     await waitForLoadingComplete(page, { timeout: 45000 });
-    await page.waitForSelector('.asset-detail-page, .error-display', { timeout: 60000 });
+    await page.waitForSelector('.asset-detail-page, [data-testid="asset-detail-page"], .error-display, [data-testid="error-display"]', { timeout: 60000 });
     await page.waitForTimeout(1000); // Allow React to finish rendering
 
     // Verify asset is in DRAFT status (status-badge is inside asset-detail-metadata)
-    const hasError = (await page.locator('.error-display').count()) > 0;
+    const hasError = (await page.locator('.error-display, [data-testid="error-display"]').first().count()) > 0;
     if (hasError) {
-      const errText = (await page.locator('.error-display').first().textContent()) ?? '';
+      const errText = (await page.locator('.error-display, [data-testid="error-display"]').first().first().textContent()) ?? '';
       // 403 means permission not yet propagated (subscription/KYC race) — annotate, don't fail
       if (/403|forbidden|permission|UNKNOWN_ERROR/i.test(errText)) {
         test.info().annotations.push({
@@ -119,8 +121,8 @@ test.describe('Asset Activation Flow', () => {
       );
     }
     const statusBadge = page
-      .locator('.asset-detail-page .asset-detail-metadata .status-badge')
-      .or(page.locator('.asset-detail-page .status-badge'))
+      .locator('.asset-detail-page, [data-testid="asset-detail-page"] .asset-detail-metadata .status-badge')
+      .or(page.locator('.asset-detail-page, [data-testid="asset-detail-page"] .status-badge'))
       .first();
     await expect(statusBadge).toBeVisible({ timeout: 15000 });
     await expect(statusBadge).toContainText('DRAFT', { timeout: 10000 });
@@ -153,7 +155,7 @@ test.describe('Asset Activation Flow', () => {
         } catch {
           // Response timeout or network error: accept only if UI shows error on asset detail page
           await page.waitForTimeout(3000);
-          const hasErrorDisplay = (await page.locator('.error-display').count()) > 0;
+          const hasErrorDisplay = (await page.locator('.error-display, [data-testid="error-display"]').first().count()) > 0;
           const onAssetDetail = page.url().match(/\/assets\/[^/]+$/);
           if (hasErrorDisplay && onAssetDetail) return;
           if (onAssetDetail) return; // Still on asset detail, activation may have timed out
@@ -165,13 +167,13 @@ test.describe('Asset Activation Flow', () => {
           if (fallbackResp.status() === 200) {
             // Activation succeeded without prerequisites — continue to ACTIVE verification below
           } else if (fallbackResp.status() === 400) {
-            const badge = page.locator('.asset-detail-page .status-badge').first();
+            const badge = page.locator('.asset-detail-page, [data-testid="asset-detail-page"] .status-badge').first();
             await expect(badge).toContainText('DRAFT', { timeout: 5000 });
             expect(page.url()).toMatch(/\/assets\/[^/]+$/);
             return; // Activation blocked: UI correctly shows DRAFT state
           } else if (fallbackResp.status() >= 500) {
-            const hasErrorDisplay = (await page.locator('.error-display').count()) > 0;
-            const badge = page.locator('.asset-detail-page .status-badge').first();
+            const hasErrorDisplay = (await page.locator('.error-display, [data-testid="error-display"]').first().count()) > 0;
+            const badge = page.locator('.asset-detail-page, [data-testid="asset-detail-page"] .status-badge').first();
             const stillDraft = (await badge.count()) > 0 && (await badge.textContent())?.includes('DRAFT');
             expect(hasErrorDisplay || stillDraft).toBe(true) /* acceptable states */;
             return; // Backend error: UI handled gracefully
@@ -200,10 +202,10 @@ test.describe('Asset Activation Flow', () => {
           await page.waitForTimeout(1500);
           await page.reload({ waitUntil: 'domcontentloaded' });
           await waitForLoadingComplete(page, { timeout: 30000 });
-          await page.waitForSelector('.asset-detail-page, .error-display', { timeout: 15000 });
+          await page.waitForSelector('.asset-detail-page, [data-testid="asset-detail-page"], .error-display, [data-testid="error-display"]', { timeout: 15000 });
           const activeBadge2 = page.locator(
-            '.asset-detail-page .asset-detail-metadata .metadata-item:has(label:has-text("Status")) .status-badge'
-          ).or(page.locator('.asset-detail-page .status-badge').first());
+            '.asset-detail-page, [data-testid="asset-detail-page"] .asset-detail-metadata .metadata-item:has(label:has-text("Status")) .status-badge'
+          ).or(page.locator('.asset-detail-page, [data-testid="asset-detail-page"] .status-badge').first());
           await expect
             .poll(
               async () => (await activeBadge2.first().textContent())?.trim() === 'ACTIVE',
@@ -220,10 +222,10 @@ test.describe('Asset Activation Flow', () => {
     // Prerequisites met: reload to get latest asset state, then activate via UI
     await page.reload({ waitUntil: 'domcontentloaded' });
     await waitForLoadingComplete(page, { timeout: 30000 });
-    await page.waitForSelector('.asset-detail-page, .error-display', { timeout: 15000 });
+    await page.waitForSelector('.asset-detail-page, [data-testid="asset-detail-page"], .error-display, [data-testid="error-display"]', { timeout: 15000 });
 
     // If error display (e.g. API 500), retry reload once
-    const hasErrorAfterReload = (await page.locator('.error-display').count()) > 0;
+    const hasErrorAfterReload = (await page.locator('.error-display, [data-testid="error-display"]').first().count()) > 0;
     if (hasErrorAfterReload) {
       await page.waitForTimeout(3000);
       await page.reload({ waitUntil: 'domcontentloaded' });
@@ -243,8 +245,8 @@ test.describe('Asset Activation Flow', () => {
     }
     if (activateButtonCount === 0) {
       // intentional: tolerates a detached/removed element while extracting text for a diagnostic message; the surrounding throw/expect below this catch is the primary failure path.
-      const statusBadge = await page.locator('.asset-detail-page .status-badge').first().textContent().catch(() => '');
-      const hasErr = (await page.locator('.error-display').count()) > 0;
+      const statusBadge = await page.locator('.asset-detail-page, [data-testid="asset-detail-page"] .status-badge').first().textContent().catch(() => '');
+      const hasErr = (await page.locator('.error-display, [data-testid="error-display"]').first().count()) > 0;
       throw new Error(
         `Activate button not found after prerequisites. Status: ${statusBadge || 'unknown'}, errorDisplay: ${hasErr}. ` +
           `Asset may need contract visible in UI or API may have returned 500.`
@@ -270,10 +272,10 @@ test.describe('Asset Activation Flow', () => {
       // Timeout: backend may hang; verify UI state and fail with context
       await page.waitForTimeout(3000);
       const stillDraft =
-        (await page.locator('.asset-detail-page .status-badge').first().textContent())?.includes(
+        (await page.locator('.asset-detail-page, [data-testid="asset-detail-page"] .status-badge').first().textContent())?.includes(
           'DRAFT'
         ) ?? false;
-      const hasError = (await page.locator('.error-display').count()) > 0;
+      const hasError = (await page.locator('.error-display, [data-testid="error-display"]').first().count()) > 0;
       throw new Error(
         `Activate API did not respond within ${activateTimeoutMs / 1000}s. UI: ${stillDraft ? 'DRAFT' : 'unknown'}, errorDisplay: ${hasError}. ` +
           `Ensure backend is reachable and activation logic completes.`
@@ -370,15 +372,23 @@ test.describe('Asset Activation Flow', () => {
       resourceId: assetId,
     });
 
+    // Phase 226 G7 — semantic-layer guarantee on activation. After ACTIVE
+    // state, the asset MUST be dereferenceable as JSON-LD; SPARQL visibility
+    // additionally proves the triplestore picked up the activation.
+    await verifySemanticIri(page, 'asset', assetId, {
+      testInfo: test.info(),
+      skipSparqlOn: ({ status }) => status === 404 || status === 501 || status === 503,
+    });
+
     // Reload to ensure UI reflects backend state (apiActive already verified backend has ACTIVE)
     await page.waitForTimeout(1500);
     await page.reload({ waitUntil: 'domcontentloaded' });
     await waitForLoadingComplete(page, { timeout: 30000 });
-    await page.waitForSelector('.asset-detail-page, .error-display', { timeout: 15000 });
+    await page.waitForSelector('.asset-detail-page, [data-testid="asset-detail-page"], .error-display, [data-testid="error-display"]', { timeout: 15000 });
     // Use asset-detail-metadata Status badge specifically (avoids DQ/Compliance badges)
     const activeBadge = page.locator(
-      '.asset-detail-page .asset-detail-metadata .metadata-item:has(label:has-text("Status")) .status-badge'
-    ).or(page.locator('.asset-detail-page .status-badge').first());
+      '.asset-detail-page, [data-testid="asset-detail-page"] .asset-detail-metadata .metadata-item:has(label:has-text("Status")) .status-badge'
+    ).or(page.locator('.asset-detail-page, [data-testid="asset-detail-page"] .status-badge').first());
     await expect
       .poll(
         async () => (await activeBadge.first().textContent())?.trim() === 'ACTIVE',

@@ -19,7 +19,7 @@ test.describe('Organization Creation (Platform Admin)', () => {
     const user = await getPlatformAdminUser();
     await loginAndNavigateToRoute(page, user, '/admin', {
       timeout: 60000,
-      contentSelector: '.admin-page, [data-testid="admin-page"]',
+      contentSelector: '.admin-page, [data-testid="admin-page"], .admin-page, [data-testid="admin-page"]',
     });
     if (page.url().includes('/login')) {
       test.skip(true, 'Auth redirect — could not login as platform admin');
@@ -42,7 +42,7 @@ test.describe('Organization Creation (Platform Admin)', () => {
     const user = await getPlatformAdminUser();
     await loginAndNavigateToRoute(page, user, '/admin', {
       timeout: 60000,
-      contentSelector: '.admin-page, [data-testid="admin-page"]',
+      contentSelector: '.admin-page, [data-testid="admin-page"], .admin-page, [data-testid="admin-page"]',
     });
     if (page.url().includes('/login')) {
       test.skip(true, 'Auth redirect — could not login as platform admin');
@@ -73,14 +73,14 @@ test.describe('Organization Creation (Platform Admin)', () => {
       page.locator('[data-testid="create-tenant-form"]')
         .waitFor({ state: 'hidden', timeout: 30000 })
         .then(() => 'closed' as const),
-      page.locator('.error-display')
+      page.locator('.error-display, [data-testid="error-display"]').first()
         .waitFor({ state: 'visible', timeout: 30000 })
         .then(() => 'error' as const),
     ]).catch(() => 'timeout' as const);
 
     if (result === 'error') {
       // intentional: tolerates a detached/removed element while extracting text for a diagnostic message; the surrounding throw/expect below this catch is the primary failure path.
-      const errText = await page.locator('.error-display').first().textContent().catch(() => '');
+      const errText = await page.locator('.error-display, [data-testid="error-display"]').first().first().textContent().catch(() => '');
       test.skip(true, `Create org API failed: ${(errText ?? '').slice(0, 150)}`);
       return;
     }
@@ -120,7 +120,7 @@ test.describe('Organization Creation (Platform Admin)', () => {
     await page.goto('/', { waitUntil: 'domcontentloaded' });
     // intentional: probes optional UI presence via a multi-line locator chain — the branch logic below handles both rendered and missing cases deterministically; absence is a legitimate tenant/role state.
     await page
-      .locator('[data-testid="landing-page"], .landing-page')
+      .locator('.landing-page, [data-testid="landing-page"]')
       .first()
       .waitFor({ state: 'visible', timeout: 10000 })
       .catch(() => null);

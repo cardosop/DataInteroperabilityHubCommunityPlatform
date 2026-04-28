@@ -17,7 +17,7 @@ test.describe('Feature: Scheduled Export', () => {
       await loginAndNavigateToRoute(page, adminUser, '/scheduled-exports', {
         timeout: 60000,
         contentSelector:
-          '.scheduled-export-list-page, .empty-state, .unavailable-page, h1',
+          '.scheduled-export-list-page, .empty-state, [data-testid="empty-state"], .unavailable-page, [data-testid="unavailable-page"], h1',
         acceptRedirectToLogin: true,
       });
       if (page.url().includes('/login')) {
@@ -29,16 +29,16 @@ test.describe('Feature: Scheduled Export', () => {
       expect(url).toMatch(/\/scheduled-exports|\/403/);
 
       // Error-display is NOT acceptable — it means the backend is down or broken
-      const hasError = (await page.locator('.error-display').count()) > 0;
+      const hasError = (await page.locator('.error-display, [data-testid="error-display"]').first().count()) > 0;
       if (hasError) {
         // intentional: tolerates a detached/removed element while extracting text for a diagnostic message; the surrounding throw/expect below this catch is the primary failure path.
-        const errText = await page.locator('.error-display').first().textContent().catch(() => '');
+        const errText = await page.locator('.error-display, [data-testid="error-display"]').first().first().textContent().catch(() => '');
         throw new Error(`Scheduled exports page shows error: ${errText?.slice(0, 200)}`);
       }
       // Must render actual page content — URL match alone provides no signal
       const hasContent =
         (await page
-          .locator('.scheduled-export-list-page, .empty-state, .unavailable-page, h1')
+          .locator('.scheduled-export-list-page, .empty-state, [data-testid="empty-state"], .unavailable-page, [data-testid="unavailable-page"], h1')
           .count()) > 0;
       expect(hasContent).toBe(true);
     });
@@ -56,7 +56,7 @@ test.describe('Feature: Scheduled Export', () => {
         {
           timeout: 60000,
           contentSelector:
-            '.error-display, .scheduled-export-detail-page, .unavailable-page, h1',
+            '.error-display, [data-testid="error-display"], .scheduled-export-detail-page, .unavailable-page, [data-testid="unavailable-page"], h1',
           acceptRedirectToLogin: true,
         }
       );
@@ -66,20 +66,20 @@ test.describe('Feature: Scheduled Export', () => {
       // so loginAndNavigateToRoute may return before the API 404 resolves to EmptyState.
       // Wait for the actual not-found/error content to appear before asserting.
       await page
-        .locator('.error-display, .empty-state, .unavailable-page')
+        .locator('.error-display, [data-testid="error-display"], .empty-state, [data-testid="empty-state"], .unavailable-page, [data-testid="unavailable-page"]')
         .first()
         .waitFor({ state: 'visible', timeout: 30000 })
         .catch(() => {});
 
-      const hasError = (await page.locator('.error-display').count()) > 0;
-      const hasUnavailable = (await page.locator('.unavailable-page').count()) > 0;
+      const hasError = (await page.locator('.error-display, [data-testid="error-display"]').first().count()) > 0;
+      const hasUnavailable = (await page.locator('.unavailable-page, [data-testid="unavailable-page"]').first().count()) > 0;
       const hasNotFoundText =
         (await page.locator('text=/not found|404|does not exist/i').count()) > 0;
       const is404 = page.url().includes('/404') || page.url().includes('/not-found');
 
       expect(
         hasError || hasUnavailable || hasNotFoundText || is404,
-        'Expected .error-display, .unavailable-page, or not-found text for a nil-UUID scheduled export'
+        'Expected .error-display, [data-testid="error-display"], .unavailable-page, [data-testid="unavailable-page"], or not-found text for a nil-UUID scheduled export'
       ).toBe(true);
     });
   });

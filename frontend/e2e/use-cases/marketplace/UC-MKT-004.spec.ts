@@ -21,7 +21,7 @@ test.describe('UC-MKT-004: Access Entitlements', () => {
       const user = await getConsumerTestUser();
       await loginAndNavigateToRoute(page, user, '/marketplace/entitlements', {
         timeout: 90000,
-        contentSelector: '.entitlement-list-page, .empty-state',
+        contentSelector: '.entitlement-list-page, .empty-state, [data-testid="empty-state"]',
       });
       if (page.url().includes('/login')) {
         expect(page.url()).toContain('/login');
@@ -39,7 +39,7 @@ test.describe('UC-MKT-004: Access Entitlements', () => {
       await page.goto('/marketplace/entitlements/00000000-0000-0000-0000-000000000000');
       await page.waitForLoadState('domcontentloaded');
       await assertNonExistentIdShowsError(page, {
-        detailContentSelector: '.entitlement-detail-page, .error-display',
+        detailContentSelector: '.entitlement-detail-page, .error-display, [data-testid="error-display"]',
         waitAfterLoad: 12000,
       });
     });
@@ -50,7 +50,7 @@ test.describe('UC-MKT-004: Access Entitlements', () => {
       const user = await getConsumerTestUser();
       await loginAndNavigateToRoute(page, user, '/marketplace/entitlements', {
         timeout: 90000,
-        contentSelector: '.entitlement-list-page, .empty-state, .error-display',
+        contentSelector: '.entitlement-list-page, .empty-state, [data-testid="empty-state"], .error-display, [data-testid="error-display"]',
       });
       expect(page.url()).toContain('/marketplace/entitlements');
     });

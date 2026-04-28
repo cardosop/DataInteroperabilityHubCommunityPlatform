@@ -30,7 +30,7 @@ test.describe('JOURNEY-PA-004: Review Platform Analytics', () => {
         // intentional: best-effort .catch on an optional step — primary pass/fail is made by a downstream assertion (verifyViaApi, waitFor, explicit expect). The fallback value tolerates well-known transient or absent-UI cases without papering over real failures.
         await loginAndNavigateToRoute(page, paUser, route, {
           timeout: routeTimeout,
-          contentSelector: '.admin-page, .analytics-page, .usage-page',
+          contentSelector: '.admin-page, [data-testid="admin-page"], .analytics-page, .usage-page',
         }).catch(() => null);
         if (page.url().includes('/403') || page.url().includes('/login')) continue;
         const hasAnalytics =
@@ -65,7 +65,7 @@ test.describe('JOURNEY-PA-004: Review Platform Analytics', () => {
       // UI: metrics must appear within the analytics/admin page containers specifically
       // (not just any number on the page — dates and IDs are excluded this way)
       const hasMetric =
-        (await page.locator('.analytics-page, .usage-page, .admin-page').locator('text=/[1-9][0-9]*/').count()) > 0 ||
+        (await page.locator('.analytics-page, .usage-page, .admin-page, [data-testid="admin-page"]').locator('text=/[1-9][0-9]*/').count()) > 0 ||
         (await page.locator('.metric-card, .stat-card, .kpi-card, [data-testid*="metric"]').count()) > 0;
       expect(hasMetric).toBe(true);
     });
@@ -86,7 +86,7 @@ test.describe('JOURNEY-PA-004: Review Platform Analytics', () => {
       const paUser = await getPlatformAdminUser();
       await loginAndNavigateToRoute(page, paUser, '/admin', {
         timeout: 60000,
-        contentSelector: '.admin-page, [data-testid="forbidden-page"]',
+        contentSelector: '.admin-page, [data-testid="admin-page"], [data-testid="forbidden-page"]',
       });
       // Authenticated PA user: /login should not appear; /admin or /403 (role not assigned) are valid
       expect(page.url()).toMatch(/\/admin|\/403/);

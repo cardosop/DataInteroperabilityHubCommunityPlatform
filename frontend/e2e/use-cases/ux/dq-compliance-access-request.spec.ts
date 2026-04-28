@@ -25,7 +25,7 @@ test.describe('DQ, Compliance, Access Request: Resource Pickers', () => {
     await loginAndNavigateToRoute(page, user, '/dq', {
       timeout: 60000,
       contentSelector:
-        '.dq-run-list-page, .empty-state, h1',
+        '.dq-run-list-page, .empty-state, [data-testid="empty-state"], h1',
     });
     await waitForLoadingComplete(page, { timeout: 30000 });
 
@@ -56,7 +56,7 @@ test.describe('DQ, Compliance, Access Request: Resource Pickers', () => {
     await loginAndNavigateToRoute(page, user, '/dq', {
       timeout: 60000,
       contentSelector:
-        '.dq-run-list-page, .empty-state, h1',
+        '.dq-run-list-page, .empty-state, [data-testid="empty-state"], h1',
     });
     await waitForLoadingComplete(page, { timeout: 30000 });
 
@@ -93,7 +93,7 @@ test.describe('DQ, Compliance, Access Request: Resource Pickers', () => {
     await loginAndNavigateToRoute(page, user, '/compliance', {
       timeout: 60000,
       contentSelector:
-        '.compliance-run-list-page, .empty-state, h1',
+        '.compliance-run-list-page, [data-testid="compliance-run-list-page"], .empty-state, [data-testid="empty-state"], h1',
     });
     await waitForLoadingComplete(page, { timeout: 30000 });
 
@@ -128,7 +128,7 @@ test.describe('DQ, Compliance, Access Request: Resource Pickers', () => {
     await loginAndNavigateToRoute(page, user, '/compliance', {
       timeout: 60000,
       contentSelector:
-        '.compliance-run-list-page, .empty-state, h1',
+        '.compliance-run-list-page, [data-testid="compliance-run-list-page"], .empty-state, [data-testid="empty-state"], h1',
     });
     await waitForLoadingComplete(page, { timeout: 30000 });
 

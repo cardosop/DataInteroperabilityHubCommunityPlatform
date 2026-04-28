@@ -21,7 +21,7 @@ test.describe('JOURNEY-MP-003: Import Dataset from Marketplace', () => {
       const testUser = await getConsumerTestUser();
       await loginAndNavigateToRoute(page, testUser, '/integrations/connections', {
         timeout: 65000,
-        contentSelector: '.connection-list-page, .empty-state, .error-display',
+        contentSelector: '.connection-list-page, .empty-state, [data-testid="empty-state"], .error-display, [data-testid="error-display"]',
         acceptRedirectToLogin: true,
       });
       if (page.url().includes('/login')) {
@@ -35,7 +35,7 @@ test.describe('JOURNEY-MP-003: Import Dataset from Marketplace', () => {
       const testUser = await getConsumerTestUser();
       await loginAndNavigateToRoute(page, testUser, '/integrations/sync-jobs', {
         timeout: 60000,
-        contentSelector: '.sync-job-list-page, .empty-state, .error-display',
+        contentSelector: '.sync-job-list-page, [data-testid="sync-job-list-page"], .empty-state, [data-testid="empty-state"], .error-display, [data-testid="error-display"]',
         acceptRedirectToLogin: true,
       });
       if (page.url().includes('/login')) {
@@ -54,7 +54,7 @@ test.describe('JOURNEY-MP-003: Import Dataset from Marketplace', () => {
         acceptRedirectToLogin: true,
       });
       await page.waitForTimeout(3000);
-      const hasError = (await page.locator('.error-display').count()) > 0;
+      const hasError = (await page.locator('.error-display, [data-testid="error-display"]').first().count()) > 0;
       const onLogin = page.url().includes('/login');
       expect(hasError || onLogin).toBe(true) /* acceptable states */;
     });
@@ -65,7 +65,7 @@ test.describe('JOURNEY-MP-003: Import Dataset from Marketplace', () => {
       const testUser = await getConsumerTestUser();
       await loginAndNavigateToRoute(page, testUser, '/integrations/connections', {
         timeout: 90000,
-        contentSelector: '.connection-list-page, .empty-state, .error-display',
+        contentSelector: '.connection-list-page, .empty-state, [data-testid="empty-state"], .error-display, [data-testid="error-display"]',
         acceptRedirectToLogin: true,
       });
       if (page.url().includes('/login')) return;
@@ -73,7 +73,7 @@ test.describe('JOURNEY-MP-003: Import Dataset from Marketplace', () => {
       // Client-side nav avoids session loss; re-login if redirected
       await loginAndNavigateToRoute(page, testUser, '/integrations/sync-jobs', {
         timeout: 120000,
-        contentSelector: '.sync-job-list-page, .empty-state, .error-display',
+        contentSelector: '.sync-job-list-page, [data-testid="sync-job-list-page"], .empty-state, [data-testid="empty-state"], .error-display, [data-testid="error-display"]',
         acceptRedirectToLogin: true,
       });
       if (page.url().includes('/login')) return;

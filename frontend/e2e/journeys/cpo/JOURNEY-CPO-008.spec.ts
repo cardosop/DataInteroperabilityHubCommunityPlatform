@@ -14,7 +14,7 @@ import { expect, test } from '@playwright/test';
 import { clearAuthStorage, getComplianceOfficerUser, loginAsPersona } from '../../fixtures/auth';
 import { assertNonExistentIdShowsError, waitForAppMainReady, waitForLoadingComplete } from '../../fixtures/helpers';
 
-test.describe('JOURNEY-CPO-008: Manage Consent Tracking', () => {
+test.describe('JOURNEY-CPO-008: Manage Consent Tracking @critical', () => {
   test.setTimeout(120000);
 
   test.describe('Success', () => {
@@ -33,15 +33,15 @@ test.describe('JOURNEY-CPO-008: Manage Consent Tracking', () => {
       }
       expect(page.url()).toContain('/compliance');
       // error-display is NOT acceptable — compliance service must be reachable
-      const hasError = (await page.locator('.error-display').count()) > 0;
+      const hasError = (await page.locator('.error-display, [data-testid="error-display"]').first().count()) > 0;
       if (hasError) {
         // intentional: tolerates a detached/removed element while extracting text for a diagnostic message; the surrounding throw/expect below this catch is the primary failure path.
-        const errText = await page.locator('.error-display').first().textContent().catch(() => '');
+        const errText = await page.locator('.error-display, [data-testid="error-display"]').first().first().textContent().catch(() => '');
         throw new Error(`Compliance page shows error for CPO user: "${errText?.slice(0, 300)}"`);
       }
       const hasContent =
-        (await page.locator('.compliance-run-list-page').count()) > 0 ||
-        (await page.locator('.empty-state').count()) > 0;
+        (await page.locator('.compliance-run-list-page, [data-testid="compliance-run-list-page"]').first().count()) > 0 ||
+        (await page.locator('.empty-state, [data-testid="empty-state"]').first().count()) > 0;
       expect(hasContent).toBe(true);
     });
 
@@ -75,7 +75,7 @@ test.describe('JOURNEY-CPO-008: Manage Consent Tracking', () => {
       const hasGovernanceContent = (await governanceContent.count()) > 0;
 
       expect(hasConsentText || hasAccessRequestLinks || hasGovernanceContent).toBe(true);
-      await expect(page.locator('.error-display')).not.toBeVisible();
+      await expect(page.locator('.error-display, [data-testid="error-display"]').first()).not.toBeVisible();
     });
   });
 
@@ -85,7 +85,7 @@ test.describe('JOURNEY-CPO-008: Manage Consent Tracking', () => {
       await page.goto('/compliance/runs/00000000-0000-0000-0000-000000000000');
       await page.waitForLoadState('domcontentloaded');
       await assertNonExistentIdShowsError(page, {
-        detailContentSelector: '.compliance-run-detail-page',
+        detailContentSelector: '.compliance-run-detail-page, [data-testid="compliance-run-detail-page"]',
         waitAfterLoad: 8000,
       });
     });

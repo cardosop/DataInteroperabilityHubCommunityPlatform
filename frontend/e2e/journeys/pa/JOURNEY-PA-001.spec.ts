@@ -13,7 +13,7 @@ import { expect, test } from '@playwright/test';
 import { getPlatformAdminUser, loginAsPersona } from '../../fixtures/auth';
 import { loginAndNavigateToRoute, waitForAppMainReady } from '../../fixtures/helpers';
 
-test.describe('JOURNEY-PA-001: Onboard New Tenant', () => {
+test.describe('JOURNEY-PA-001: Onboard New Tenant @critical', () => {
   test.setTimeout(120000);
 
   test.describe('Success', () => {
@@ -26,7 +26,7 @@ test.describe('JOURNEY-PA-001: Onboard New Tenant', () => {
       }
       expect(page.url()).toContain('/admin');
       const hasTenantsTab = (await page.locator('button:has-text("Tenants")').count()) > 0;
-      const hasContent = (await page.locator('.admin-page').count()) > 0;
+      const hasContent = (await page.locator('.admin-page, [data-testid="admin-page"]').first().count()) > 0;
       expect(hasContent).toBe(true) /* acceptable states */;
       expect(hasTenantsTab).toBe(true) /* acceptable states */;
     });
@@ -43,7 +43,7 @@ test.describe('JOURNEY-PA-001: Onboard New Tenant', () => {
       await tenantsTab.first().click();
       // Wait for tenant content to render (event-driven, not fixed sleep)
       const tenantContent = page.locator(
-        '[data-testid="admin-tenants-section"], .admin-table, .admin-table tbody tr, .empty-state'
+        '[data-testid="admin-tenants-section"], .admin-table, .admin-table tbody tr, .empty-state, [data-testid="empty-state"]'
       );
       await expect(tenantContent.first()).toBeVisible({ timeout: 15000 });
       const hasTenantsSection = (await tenantContent.count()) > 0;
@@ -59,7 +59,7 @@ test.describe('JOURNEY-PA-001: Onboard New Tenant', () => {
       try {
         await waitForAppMainReady(page, {
           timeout: 30000,
-          contentSelector: '.admin-page, .admin-no-permission, [data-testid="forbidden-page"]',
+          contentSelector: '.admin-page, [data-testid="admin-page"], .admin-no-permission, [data-testid="forbidden-page"]',
           acceptRedirectToLogin: true,
         });
       } catch (err) {
@@ -76,7 +76,7 @@ test.describe('JOURNEY-PA-001: Onboard New Tenant', () => {
         const no500 = (await page.locator('text=/500|internal server error/i').count()) === 0;
         expect(no500, 'Admin page must not show 500 errors').toBe(true);
         const hasContent =
-          (await page.locator('.admin-page, .admin-no-permission, [data-testid="forbidden-page"]').count()) > 0;
+          (await page.locator('.admin-page, [data-testid="admin-page"], .admin-no-permission, [data-testid="forbidden-page"]').count()) > 0;
         expect(hasContent, 'Expected admin content or forbidden page').toBe(true);
       }
     });
@@ -87,7 +87,7 @@ test.describe('JOURNEY-PA-001: Onboard New Tenant', () => {
       const paUser = await getPlatformAdminUser();
       await loginAndNavigateToRoute(page, paUser, '/admin', {
         timeout: 60000,
-        contentSelector: '.admin-page, .admin-no-permission, [data-testid="forbidden-page"], h1',
+        contentSelector: '.admin-page, [data-testid="admin-page"], .admin-no-permission, [data-testid="forbidden-page"], h1',
       });
       const url = page.url();
       if (url.includes('/login') || url.includes('/403')) {
@@ -95,9 +95,9 @@ test.describe('JOURNEY-PA-001: Onboard New Tenant', () => {
         return;
       }
       // Must show admin content with no errors
-      await expect(page.locator('.error-display')).not.toBeVisible({ timeout: 3000 });
-      const hasContent = (await page.locator('.admin-page').count()) > 0;
-      expect(hasContent, 'Expected .admin-page to be rendered').toBe(true);
+      await expect(page.locator('.error-display, [data-testid="error-display"]').first()).not.toBeVisible({ timeout: 3000 });
+      const hasContent = (await page.locator('.admin-page, [data-testid="admin-page"]').first().count()) > 0;
+      expect(hasContent, 'Expected .admin-page, [data-testid="admin-page"] to be rendered').toBe(true);
     });
   });
 });

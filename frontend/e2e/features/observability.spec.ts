@@ -16,16 +16,16 @@ test.describe('Feature: Observability', () => {
       const testUser = await getTestUser();
       await loginAndNavigateToRoute(page, testUser, '/observability', {
         timeout: 60000,
-        contentSelector: '.observability-page, .monitoring-page, .unavailable-page, .error-display, h1',
+        contentSelector: '.observability-page, .monitoring-page, .unavailable-page, [data-testid="unavailable-page"], .error-display, [data-testid="error-display"], h1',
       });
       const url = page.url();
       if (url.includes('/login') || url.includes('/403')) {
         test.skip(true, 'Auth/role redirect — observability may require specific role');
         return;
       }
-      await expect(page.locator('.error-display')).not.toBeVisible({ timeout: 5000 });
+      await expect(page.locator('.error-display, [data-testid="error-display"]').first()).not.toBeVisible({ timeout: 5000 });
       const hasContent =
-        (await page.locator('.observability-page, .monitoring-page, .unavailable-page, h1').count()) > 0;
+        (await page.locator('.observability-page, .monitoring-page, .unavailable-page, [data-testid="unavailable-page"], h1').count()) > 0;
       expect(hasContent, 'Expected observability content or unavailable page').toBe(true);
     });
   });
@@ -47,7 +47,7 @@ test.describe('Feature: Observability', () => {
       const testUser = await getTestUser();
       await loginAndNavigateToRoute(page, testUser, '/observability', {
         timeout: 60000,
-        contentSelector: '.observability-page, .monitoring-page, .unavailable-page, .error-display, h1',
+        contentSelector: '.observability-page, .monitoring-page, .unavailable-page, [data-testid="unavailable-page"], .error-display, [data-testid="error-display"], h1',
       });
       if (page.url().includes('/login') || page.url().includes('/403')) return;
       const has500 = (await page.locator('text=/500|internal server error/i').count()) > 0;

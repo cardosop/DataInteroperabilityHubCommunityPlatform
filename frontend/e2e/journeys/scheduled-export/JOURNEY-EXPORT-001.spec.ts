@@ -21,7 +21,7 @@ import { expect, test } from '@playwright/test';
 import { clearAuthStorage, getTenantAdminUser } from '../../fixtures/auth';
 import { hasLoginPrompt, loginAndNavigateToRoute } from '../../fixtures/helpers';
 
-test.describe('JOURNEY-EXPORT-001: Create and Run Scheduled Export', () => {
+test.describe('JOURNEY-EXPORT-001: Create and Run Scheduled Export @critical', () => {
   test.setTimeout(120000);
 
   test.describe('Success', () => {
@@ -30,7 +30,7 @@ test.describe('JOURNEY-EXPORT-001: Create and Run Scheduled Export', () => {
       await loginAndNavigateToRoute(page, testUser, '/scheduled-exports', {
         timeout: 60000,
         contentSelector:
-          '.scheduled-export-list-page, .empty-state, .unavailable-page, h1',
+          '.scheduled-export-list-page, .empty-state, [data-testid="empty-state"], .unavailable-page, [data-testid="unavailable-page"], h1',
         acceptRedirectToLogin: true,
       });
       if (page.url().includes('/login')) {
@@ -45,12 +45,12 @@ test.describe('JOURNEY-EXPORT-001: Create and Run Scheduled Export', () => {
         return;
       }
 
-      // Success test must NOT accept .error-display
-      await expect(page.locator('.error-display')).not.toBeVisible();
+      // Success test must NOT accept .error-display, [data-testid="error-display"]
+      await expect(page.locator('.error-display, [data-testid="error-display"]').first()).not.toBeVisible();
 
       // Must render list page content
       const hasContent =
-        (await page.locator('.scheduled-export-list-page, .empty-state, h1').count()) > 0;
+        (await page.locator('.scheduled-export-list-page, .empty-state, [data-testid="empty-state"], h1').count()) > 0;
       expect(hasContent, 'Expected scheduled-export list content').toBe(true);
 
       // Create Export button must be accessible
@@ -71,7 +71,7 @@ test.describe('JOURNEY-EXPORT-001: Create and Run Scheduled Export', () => {
         return;
       }
 
-      await expect(page.locator('.error-display')).not.toBeVisible();
+      await expect(page.locator('.error-display, [data-testid="error-display"]').first()).not.toBeVisible();
 
       // Form must have name input and cron/schedule input
       const hasForm = (await page.locator('form').count()) > 0;

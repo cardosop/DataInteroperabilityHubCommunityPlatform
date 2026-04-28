@@ -14,7 +14,7 @@ import { expect, test } from '@playwright/test';
 import { clearAuthStorage, getComplianceOfficerUser, loginAsPersona } from '../../fixtures/auth';
 import { assertNonExistentIdShowsError, waitForAppMainReady, waitForLoadingComplete } from '../../fixtures/helpers';
 
-test.describe('JOURNEY-CPO-006: Configure Automated Compliance', () => {
+test.describe('JOURNEY-CPO-006: Configure Automated Compliance @critical', () => {
   test.setTimeout(120000);
 
   test.describe('Success', () => {
@@ -69,7 +69,7 @@ test.describe('JOURNEY-CPO-006: Configure Automated Compliance', () => {
 
       // Look for compliance list content (runs list or empty state)
       const complianceContent = page.locator(
-        '.compliance-run-list-page, .compliance-run-list, .empty-state'
+        '.compliance-run-list-page, [data-testid="compliance-run-list-page"], .compliance-run-list, .empty-state, [data-testid="empty-state"]'
       );
       // intentional: visibility check on a transiently-attached element — treating a detached-at-check-time element as 'not visible' is the semantically correct fallback; the caller's branch logic uses the boolean result.
       const hasComplianceContent = (await complianceContent.count()) > 0 && await complianceContent.first().isVisible().catch(() => false);
@@ -78,7 +78,7 @@ test.describe('JOURNEY-CPO-006: Configure Automated Compliance', () => {
       expect(hasCreateButton || hasConfigUI || hasComplianceContent).toBe(true);
 
       // error-display must NOT be visible (D85)
-      await expect(page.locator('.error-display')).not.toBeVisible();
+      await expect(page.locator('.error-display, [data-testid="error-display"]').first()).not.toBeVisible();
     });
   });
 
@@ -88,7 +88,7 @@ test.describe('JOURNEY-CPO-006: Configure Automated Compliance', () => {
       await page.goto('/compliance/runs/00000000-0000-0000-0000-000000000000');
       await page.waitForLoadState('domcontentloaded');
       await assertNonExistentIdShowsError(page, {
-        detailContentSelector: '.compliance-run-detail-page, .compliance-run-detail',
+        detailContentSelector: '.compliance-run-detail, .compliance-run-detail-page, [data-testid="compliance-run-detail-page"]',
         waitAfterLoad: 8000,
       });
     });

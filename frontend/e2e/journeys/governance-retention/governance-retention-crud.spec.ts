@@ -41,7 +41,7 @@ test.describe('Governance Retention Policy CRUD', () => {
       await loginAndNavigateToRoute(page, regularUser, '/governance/retention/new', {
         timeout: 60000,
         contentSelector:
-          '.governance-retention-policy-create-page, .error-display, .unavailable-page, h1',
+          '.governance-retention-policy-create-page, .error-display, [data-testid="error-display"], .unavailable-page, [data-testid="unavailable-page"], h1',
         acceptRedirectToLogin: true,
       });
       if (page.url().includes('/login')) return; // Redirect to login is acceptable
@@ -50,7 +50,7 @@ test.describe('Governance Retention Policy CRUD', () => {
       const on403 = url.includes('/403');
       const hasForbiddenText =
         (await page.locator('text=/forbidden|403|access denied|not authorized/i').count()) > 0;
-      const hasErrorDisplay = (await page.locator('.error-display').count()) > 0;
+      const hasErrorDisplay = (await page.locator('.error-display, [data-testid="error-display"]').first().count()) > 0;
       const redirectedAwayFromCreate = !url.includes('/governance/retention/new');
 
       // Regular user must NOT see the create form — they must be blocked
@@ -71,14 +71,14 @@ test.describe('Governance Retention Policy CRUD', () => {
       await loginAndNavigateToRoute(page, user, `/governance/retention/${NIL_UUID}`, {
         timeout: 60000,
         contentSelector:
-          '.error-display, .not-found-page, .governance-retention-policy-detail-page, [data-testid="not-found"]',
+          '.error-display, [data-testid="error-display"], .not-found-page, .governance-retention-policy-detail-page, [data-testid="not-found"]',
       });
       if (page.url().includes('/403') || page.url().includes('/login')) {
         return; // Role-gated — acceptable outcome
       }
       // The nil UUID must show an error, not a valid detail page
       const hasError =
-        (await page.locator('.error-display').count()) > 0 ||
+        (await page.locator('.error-display, [data-testid="error-display"]').first().count()) > 0 ||
         (await page.locator('[data-testid="not-found"]').count()) > 0 ||
         (await page.locator('text=/not found|does not exist|404/i').count()) > 0 ||
         !page.url().includes(NIL_UUID);
@@ -91,7 +91,7 @@ test.describe('Governance Retention Policy CRUD', () => {
     await loginAndNavigateToRoute(page, user, '/governance/retention', {
       timeout: 90000,
       contentSelector:
-        '.governance-retention-policy-list-page, .empty-state, .error-display, [data-testid="forbidden-page"]',
+        '.governance-retention-policy-list-page, .empty-state, [data-testid="empty-state"], .error-display, [data-testid="error-display"], [data-testid="forbidden-page"]',
     });
   });
 
@@ -115,12 +115,12 @@ test.describe('Governance Retention Policy CRUD', () => {
         (await page.locator('h1:has-text("Retention Policies")').count()) > 0 ||
         (await page.locator('.governance-retention-policy-list-page').count()) > 0 ||
         (await page.locator('.governance-retention-policy-table').count()) > 0 ||
-        (await page.locator('.empty-state').count()) > 0;
+        (await page.locator('.empty-state, [data-testid="empty-state"]').first().count()) > 0;
       // Crucially: error-display is NOT accepted as success here
-      const hasError = (await page.locator('.error-display').count()) > 0;
+      const hasError = (await page.locator('.error-display, [data-testid="error-display"]').first().count()) > 0;
       if (hasError) {
         // intentional: governance-retention CRUD spec tolerates state-dependent intermediate steps; primary assertions are on the create/update/delete API responses observed via waitForResponse.
-        const errText = await page.locator('.error-display').first().textContent().catch(() => '');
+        const errText = await page.locator('.error-display, [data-testid="error-display"]').first().first().textContent().catch(() => '');
         throw new Error(`Retention policies list shows error: ${errText}`);
       }
       expect(hasContent).toBe(true) /* acceptable states */;
@@ -140,7 +140,7 @@ test.describe('Governance Retention Policy CRUD', () => {
         'button:has-text("New Policy"), a:has-text("Create Policy")'
       );
       if ((await createButton.count()) === 0) {
-        const emptyCta = page.locator('.empty-state a, .empty-state button').first();
+        const emptyCta = page.locator('.empty-state, [data-testid="empty-state"] a, .empty-state, [data-testid="empty-state"] button').first();
         // intentional: empty-state CTA is genuinely optional — the
         // primary "Create Policy" button check above is the canonical
         // entry; this branch is a documented fallback for tenants that
@@ -350,7 +350,7 @@ test.describe('Governance Retention Policy CRUD', () => {
       // Navigate to list and confirm policy name appears
       await page.goto('/governance/retention');
       await page.waitForSelector(
-        '.governance-retention-policy-list-page, .governance-retention-policy-table, .empty-state',
+        '.governance-retention-policy-list-page, .governance-retention-policy-table, .empty-state, [data-testid="empty-state"]',
         { timeout: 15000 }
       );
       await expect(page.locator(`text="${policyName}"`)).toBeVisible({ timeout: 10000 });
@@ -393,10 +393,10 @@ test.describe('Governance Retention Policy CRUD', () => {
       await waitForAppMainReady(page, { timeout: 90000 });
 
       // No error on a real policy
-      const hasError = (await page.locator('.error-display').count()) > 0;
+      const hasError = (await page.locator('.error-display, [data-testid="error-display"]').first().count()) > 0;
       if (hasError) {
         // intentional: governance-retention CRUD spec tolerates state-dependent intermediate steps; primary assertions are on the create/update/delete API responses observed via waitForResponse.
-        const errText = await page.locator('.error-display').first().textContent().catch(() => '');
+        const errText = await page.locator('.error-display, [data-testid="error-display"]').first().first().textContent().catch(() => '');
         throw new Error(`Policy detail shows error for real policy ${policyId}: ${errText}`);
       }
       // Detail page content
@@ -712,10 +712,10 @@ test.describe('Governance Retention Policy CRUD', () => {
       // ── Step 2: View detail ───────────────────────────────────────────────
       await page.waitForURL(/\/governance\/retention\/[^/]+$/, { timeout: 10000 });
       expect(page.url()).toContain(`/governance/retention/${policyId}`);
-      const hasError = (await page.locator('.error-display').count()) > 0;
+      const hasError = (await page.locator('.error-display, [data-testid="error-display"]').first().count()) > 0;
       if (hasError) {
         // intentional: governance-retention CRUD spec tolerates state-dependent intermediate steps; primary assertions are on the create/update/delete API responses observed via waitForResponse.
-        const msg = await page.locator('.error-display').first().textContent().catch(() => '');
+        const msg = await page.locator('.error-display, [data-testid="error-display"]').first().first().textContent().catch(() => '');
         throw new Error(`Detail page shows error after create: ${msg}`);
       }
 

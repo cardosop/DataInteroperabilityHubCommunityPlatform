@@ -32,7 +32,7 @@ test.describe('JOURNEY-PA-009: Manage Federated Assets', () => {
         // intentional: best-effort .catch on an optional step — primary pass/fail is made by a downstream assertion (verifyViaApi, waitFor, explicit expect). The fallback value tolerates well-known transient or absent-UI cases without papering over real failures.
         await loginAndNavigateToRoute(page, paUser, route, {
           timeout: routeTimeout,
-          contentSelector: '.mesh-domain-list-page, .topology-page, .federated-assets-page, .empty-state, .unavailable-page',
+          contentSelector: '.mesh-domain-list-page, .topology-page, .federated-assets-page, .empty-state, [data-testid="empty-state"], .unavailable-page, [data-testid="unavailable-page"]',
         }).catch(() => null);
         if (page.url().includes('/403') || page.url().includes('/login')) continue;
         landed = true;
@@ -60,8 +60,8 @@ test.describe('JOURNEY-PA-009: Manage Federated Assets', () => {
 
       const hasContent =
         (await page.locator('.mesh-domain-list-page, .topology-page').count()) > 0 ||
-        (await page.locator('.empty-state').count()) > 0 ||
-        (await page.locator('.unavailable-page').count()) > 0; // capability may be gated
+        (await page.locator('.empty-state, [data-testid="empty-state"]').first().count()) > 0 ||
+        (await page.locator('.unavailable-page, [data-testid="unavailable-page"]').first().count()) > 0; // capability may be gated
       expect(hasContent).toBe(true) /* acceptable states */;
     });
   });
@@ -81,7 +81,7 @@ test.describe('JOURNEY-PA-009: Manage Federated Assets', () => {
       const paUser = await getPlatformAdminUser();
       await loginAndNavigateToRoute(page, paUser, '/mesh', {
         timeout: 60000,
-        contentSelector: '.mesh-domain-list-page, .empty-state, .unavailable-page, .error-display',
+        contentSelector: '.mesh-domain-list-page, .empty-state, [data-testid="empty-state"], .unavailable-page, [data-testid="unavailable-page"], .error-display, [data-testid="error-display"]',
       });
       // Authenticated PA user: /login should not appear; /mesh, /403, or /unavailable are valid.
       // /unavailable is shown when the data-mesh capability is disabled for this tenant.

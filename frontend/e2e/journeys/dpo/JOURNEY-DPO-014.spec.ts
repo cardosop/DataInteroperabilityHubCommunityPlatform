@@ -14,7 +14,7 @@ import { createAssetViaApi } from '../../fixtures/api-assets';
 import { getTestUser, loginUser } from '../../fixtures/auth';
 import { loginAndNavigateToRoute } from '../../fixtures/helpers';
 
-test.describe('JOURNEY-DPO-014: Monitor Asset Reliability Score', () => {
+test.describe('JOURNEY-DPO-014: Monitor Asset Reliability Score @critical', () => {
   test.setTimeout(90000);
 
   test.describe('Success', () => {
@@ -22,7 +22,7 @@ test.describe('JOURNEY-DPO-014: Monitor Asset Reliability Score', () => {
       const testUser = await getTestUser();
       await loginAndNavigateToRoute(page, testUser, '/observability', {
         timeout: 60000,
-        contentSelector: '.observability-page, [data-testid="observability-page"], .error-display',
+        contentSelector: '.observability-page, [data-testid="observability-page"], .error-display, [data-testid="error-display"]',
       });
       if (page.url().includes('/login')) {
         test.skip(true, 'Redirected to /login — auth not available in this environment');
@@ -40,9 +40,9 @@ test.describe('JOURNEY-DPO-014: Monitor Asset Reliability Score', () => {
       const assetId = await createAssetViaApi(testUser);
       await loginAndNavigateToRoute(page, testUser, `/assets/${assetId}`, {
         timeout: 60000,
-        contentSelector: '.asset-detail-page, .asset-detail-content, .error-display',
+        contentSelector: '.asset-detail-page, [data-testid="asset-detail-page"], .asset-detail-content, .error-display, [data-testid="error-display"]',
       });
-      await page.waitForSelector('.asset-detail-page, .asset-detail-content, .error-display', {
+      await page.waitForSelector('.asset-detail-page, [data-testid="asset-detail-page"], .asset-detail-content, .error-display, [data-testid="error-display"]', {
         timeout: 15000,
       });
 
@@ -50,14 +50,14 @@ test.describe('JOURNEY-DPO-014: Monitor Asset Reliability Score', () => {
         throw new Error('Unexpected redirect to login on asset detail');
       }
 
-      const hasError = (await page.locator('.error-display').count()) > 0;
+      const hasError = (await page.locator('.error-display, [data-testid="error-display"]').first().count()) > 0;
       if (hasError) {
-        const errText = (await page.locator('.error-display').first().textContent()) ?? '';
+        const errText = (await page.locator('.error-display, [data-testid="error-display"]').first().first().textContent()) ?? '';
         throw new Error(`Asset detail failed to load: ${errText.slice(0, 250)}`);
       }
 
       await expect(
-        page.locator('.asset-detail-page, .asset-detail-content').first()
+        page.locator('.asset-detail-content, .asset-detail-page, [data-testid="asset-detail-page"]').first()
       ).toBeVisible({ timeout: 5000 });
       expect(page.url()).toContain(`/assets/${assetId}`);
     });
@@ -74,7 +74,7 @@ test.describe('JOURNEY-DPO-014: Monitor Asset Reliability Score', () => {
         '/assets/00000000-0000-0000-0000-000000000000',
         {
           timeout: 60000,
-          contentSelector: '.error-display, .asset-detail-page, [role="alert"]',
+          contentSelector: '.error-display, [data-testid="error-display"], .asset-detail-page, [data-testid="asset-detail-page"], [role="alert"]',
         }
       );
 
@@ -84,7 +84,7 @@ test.describe('JOURNEY-DPO-014: Monitor Asset Reliability Score', () => {
 
       // The UI MUST show an explicit error when a non-existent asset id is requested.
       const hasExplicitError =
-        (await page.locator('.error-display').count()) > 0 ||
+        (await page.locator('.error-display, [data-testid="error-display"]').first().count()) > 0 ||
         (await page.locator('[role="alert"]').count()) > 0;
       expect(hasExplicitError).toBe(true) /* acceptable states */;
     });
@@ -100,19 +100,19 @@ test.describe('JOURNEY-DPO-014: Monitor Asset Reliability Score', () => {
       const assetId = await createAssetViaApi(testUser);
       await loginAndNavigateToRoute(page, testUser, `/assets/${assetId}`, {
         timeout: 60000,
-        contentSelector: '.asset-detail-page, .asset-detail-content, .error-display',
+        contentSelector: '.asset-detail-page, [data-testid="asset-detail-page"], .asset-detail-content, .error-display, [data-testid="error-display"]',
       });
 
       if (page.url().includes('/login')) {
         throw new Error('Unexpected redirect to login on asset detail');
       }
 
-      await page.waitForSelector('.asset-detail-page, .asset-detail-content, .error-display', {
+      await page.waitForSelector('.asset-detail-page, [data-testid="asset-detail-page"], .asset-detail-content, .error-display, [data-testid="error-display"]', {
         timeout: 15000,
       });
-      const hasError = (await page.locator('.error-display').count()) > 0;
+      const hasError = (await page.locator('.error-display, [data-testid="error-display"]').first().count()) > 0;
       if (hasError) {
-        const errText = (await page.locator('.error-display').first().textContent()) ?? '';
+        const errText = (await page.locator('.error-display, [data-testid="error-display"]').first().first().textContent()) ?? '';
         throw new Error(`Asset detail failed to load: ${errText.slice(0, 250)}`);
       }
 
@@ -126,7 +126,7 @@ test.describe('JOURNEY-DPO-014: Monitor Asset Reliability Score', () => {
               '.asset-detail-quality, .quality-score'
           )
           .count()) > 0;
-      const hasDetailPage = (await page.locator('.asset-detail-page, .asset-detail-content').count()) > 0;
+      const hasDetailPage = (await page.locator('.asset-detail-content, .asset-detail-page, [data-testid="asset-detail-page"]').count()) > 0;
 
       // At minimum the asset detail must have loaded; reliability section is a bonus
       expect(hasDetailPage).toBe(true) /* acceptable states */;

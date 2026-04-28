@@ -90,7 +90,7 @@ interface Plan {
   price_amount_cents?: number;
 }
 
-test.describe('JOURNEY-TA-BILLING-UPGRADE: UC-BILL-002 Billing Upgrade', () => {
+test.describe('JOURNEY-TA-BILLING-UPGRADE: UC-BILL-002 Billing Upgrade @critical', () => {
   test.setTimeout(180_000);
 
   test('TA changes plan → subscription reflects new plan → audit row emitted', async ({
@@ -98,7 +98,7 @@ test.describe('JOURNEY-TA-BILLING-UPGRADE: UC-BILL-002 Billing Upgrade', () => {
   }) => {
     const taUser = await getTenantAdminUser();
     await loginUser(page, taUser);
-    await expect(page.locator('.app-header')).toBeVisible({ timeout: 15_000 });
+    await expect(page.locator('.app-header, [data-testid="app-header"]').first()).toBeVisible({ timeout: 15_000 });
 
     const accessToken = await page.evaluate(() => localStorage.getItem('access_token'));
     if (!accessToken) {

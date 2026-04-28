@@ -22,7 +22,7 @@ test.describe('JOURNEY-DC-003: Search and Filter Assets', () => {
       await loginAndNavigateToRoute(page, consumer, '/marketplace', {
         timeout: 90000,
         contentSelector:
-          '.listing-list-page, .listing-list-grid, .empty-state, .error-display, .listing-list-filters',
+          '.listing-list-page, .listing-list-grid, [data-testid="listing-list-grid"], .empty-state, [data-testid="empty-state"], .error-display, [data-testid="error-display"], .listing-list-filters',
       });
       if (page.url().includes('/login')) {
         expect(page.url()).toContain('/login');
@@ -39,7 +39,7 @@ test.describe('JOURNEY-DC-003: Search and Filter Assets', () => {
       }
       expect(page.url()).toContain('/marketplace');
       const hasContent =
-        (await page.locator('.listing-list-page, .listing-list-grid, .empty-state, .error-display').count()) > 0;
+        (await page.locator('.listing-list-page, .listing-list-grid, [data-testid="listing-list-grid"], .empty-state, [data-testid="empty-state"], .error-display, [data-testid="error-display"]').count()) > 0;
       expect(hasContent).toBe(true) /* acceptable states */;
     });
 
@@ -48,7 +48,7 @@ test.describe('JOURNEY-DC-003: Search and Filter Assets', () => {
       await loginAndNavigateToRoute(page, consumer, '/marketplace', {
         timeout: 90000,
         contentSelector:
-          '.listing-list-page, .listing-list-grid, .empty-state, .error-display, .listing-list-filters, .filter-select',
+          '.listing-list-page, .listing-list-grid, [data-testid="listing-list-grid"], .empty-state, [data-testid="empty-state"], .error-display, [data-testid="error-display"], .listing-list-filters, .filter-select',
       });
       if (page.url().includes('/login')) {
         expect(page.url()).toContain('/login');
@@ -60,14 +60,14 @@ test.describe('JOURNEY-DC-003: Search and Filter Assets', () => {
         await filterSelect.selectOption({ index: 1 });
         // Wait for the filter to take effect — result container must render a terminal state
         await page
-          .locator('.listing-list-page, .listing-list-grid, .empty-state, .error-display')
+          .locator('.listing-list-page, .listing-list-grid, [data-testid="listing-list-grid"], .empty-state, [data-testid="empty-state"], .error-display, [data-testid="error-display"]')
           .first()
           .waitFor({ state: 'visible', timeout: 10000 })
           .catch(() => null);
         const hasTerminalState =
-          (await page.locator('.listing-list-page, .listing-list-grid').count()) > 0 ||
-          (await page.locator('.empty-state').count()) > 0 ||
-          (await page.locator('.error-display').count()) > 0;
+          (await page.locator('.listing-list-page, .listing-list-grid, [data-testid="listing-list-grid"]').count()) > 0 ||
+          (await page.locator('.empty-state, [data-testid="empty-state"]').first().count()) > 0 ||
+          (await page.locator('.error-display, [data-testid="error-display"]').first().count()) > 0;
         expect(hasTerminalState).toBe(true) /* acceptable states */;
       }
       expect(page.url()).toContain('/marketplace');
@@ -95,7 +95,7 @@ test.describe('JOURNEY-DC-003: Search and Filter Assets', () => {
       const consumer = await getConsumerTestUser();
       await loginAndNavigateToRoute(page, consumer, '/marketplace', {
         timeout: 90000,
-        contentSelector: '.listing-list-page, .listing-list-grid, .empty-state, .listing-list-filters',
+        contentSelector: '.listing-list-page, .listing-list-grid, [data-testid="listing-list-grid"], .empty-state, [data-testid="empty-state"], .listing-list-filters',
       });
       if (page.url().includes('/login')) {
         expect(page.url()).toContain('/login');
@@ -107,7 +107,7 @@ test.describe('JOURNEY-DC-003: Search and Filter Assets', () => {
         await searchInput.fill('xyznonexistent');
         // After filter applied — wait for results to settle
         await page
-          .locator('.listing-list-page, .listing-list-grid, .empty-state, .error-display')
+          .locator('.listing-list-page, .listing-list-grid, [data-testid="listing-list-grid"], .empty-state, [data-testid="empty-state"], .error-display, [data-testid="error-display"]')
           .first()
           .waitFor({ state: 'visible', timeout: 8000 })
           .catch(() => null);
@@ -116,16 +116,16 @@ test.describe('JOURNEY-DC-003: Search and Filter Assets', () => {
         await searchInput.fill('');
         // intentional: probes optional UI presence via a multi-line locator chain — the branch logic below handles both rendered and missing cases deterministically; absence is a legitimate tenant/role state.
         await page
-          .locator('.listing-list-page, .listing-list-grid, .empty-state, .error-display')
+          .locator('.listing-list-page, .listing-list-grid, [data-testid="listing-list-grid"], .empty-state, [data-testid="empty-state"], .error-display, [data-testid="error-display"]')
           .first()
           .waitFor({ state: 'visible', timeout: 8000 })
           .catch(() => null);
 
         // After clearing, a terminal state must be visible (not blank)
         const hasTerminalState =
-          (await page.locator('.listing-list-page, .listing-list-grid').count()) > 0 ||
-          (await page.locator('.empty-state').count()) > 0 ||
-          (await page.locator('.error-display').count()) > 0;
+          (await page.locator('.listing-list-page, .listing-list-grid, [data-testid="listing-list-grid"]').count()) > 0 ||
+          (await page.locator('.empty-state, [data-testid="empty-state"]').first().count()) > 0 ||
+          (await page.locator('.error-display, [data-testid="error-display"]').first().count()) > 0;
         expect(hasTerminalState).toBe(true) /* acceptable states */;
       }
       expect(page.url()).toContain('/marketplace');

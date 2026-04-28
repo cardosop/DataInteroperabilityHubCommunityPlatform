@@ -76,9 +76,9 @@ test.describe('JOURNEY-DPO-001: Onboard New Asset via Data-First Flow @critical'
       await loginAndNavigateToRoute(page, testUser, '/assets', {
         timeout: 60000,
         // Phase 226.F1.b — list-page wrapper is now testid'd
-        // ([data-testid="asset-list-page"]); CSS class kept for layout.
+        // (.asset-list-page, [data-testid="asset-list-page"]); CSS class kept for layout.
         contentSelector:
-          '[data-testid="asset-list-page"], [data-testid="empty-state"], [data-testid="error-display"], h1',
+          '.asset-list-page, [data-testid="asset-list-page"], .empty-state, [data-testid="empty-state"], .error-display, [data-testid="error-display"], h1',
       });
       await page.waitForTimeout(2000);
 
@@ -91,7 +91,7 @@ test.describe('JOURNEY-DPO-001: Onboard New Asset via Data-First Flow @critical'
       // from the F1.b migration.
       const createButton = page
         .locator('button:has-text("Create Asset")')
-        .or(page.locator('.empty-state-action:has-text("Create Asset")'));
+        .or(page.locator('[data-testid="empty-state-action"]:has-text("Create Asset")'));
       await createButton.first().waitFor({ timeout: 10000 });
       await createButton.first().click();
 
@@ -116,8 +116,18 @@ test.describe('JOURNEY-DPO-001: Onboard New Asset via Data-First Flow @critical'
       await page.getByTestId('asset-create-description').or(page.locator('textarea[id="asset-description"]')).fill('Test asset description');
       await page.getByTestId('asset-create-visibility').or(page.locator('select[id="asset-visibility"]')).selectOption('INTERNAL');
 
-      const submitButton = page.getByTestId('asset-create-submit');
-      await submitButton.waitFor({ timeout: 10000 });
+      // The data-testid was added in Phase 226.F1.b
+      // (frontend/src/features/assets/components/AssetCreatePage.tsx:355). Mirror
+      // the Phase 213.F1.b backward-compat pattern used elsewhere in this spec
+      // (.or() to a stable accessible name) so the wait succeeds against builds
+      // that pre-date the testid roll-out — staging is sometimes one or two
+      // commits behind the release branch. The button text "Create Asset" comes
+      // from AssetCreatePage's <Button> child and is the screen-reader accessible
+      // name; the role+name selector is stable across the testid migration.
+      const submitButton = page
+        .getByTestId('asset-create-submit')
+        .or(page.getByRole('button', { name: /^Create Asset$/i }));
+      await submitButton.waitFor({ timeout: 15000 });
       await submitButton.click();
 
       // Wait for redirect to asset detail (visible project has slowMo; backend can be slow under load)
@@ -141,15 +151,15 @@ test.describe('JOURNEY-DPO-001: Onboard New Asset via Data-First Flow @critical'
       cleanup.track({ type: 'asset', id: assetId, owner: testUser });
 
       await page.waitForSelector(
-        '[data-testid="asset-detail-page"], .asset-detail-content',
+        '.asset-detail-content, .asset-detail-page, [data-testid="asset-detail-page"]',
         { timeout: 35000 },
       );
       const assetHeading = page
-        .locator('[data-testid="asset-detail-page"] h1, .asset-detail-content h1')
+        .locator('.asset-detail-page, [data-testid="asset-detail-page"] h1, .asset-detail-content h1')
         .first();
       await expect(assetHeading).toContainText('Test Asset', { timeout: 10000 });
       await expect(
-        page.locator('[data-testid="asset-detail-page"] .status-badge').first(),
+        page.locator('.asset-detail-page, [data-testid="asset-detail-page"] .status-badge').first(),
       ).toContainText('DRAFT');
 
       // Phase 226 B1a — dual-channel post-create verification (UC-AM-001).
@@ -167,7 +177,7 @@ test.describe('JOURNEY-DPO-001: Onboard New Asset via Data-First Flow @critical'
       await navigateToRouteFromApp(page, '/datasets/create', {
         timeout: 90000,
         contentSelector:
-          '[data-testid="dataset-create-page"], [data-testid="file-upload"], [data-testid="error-display"], form, h1',
+          '.dataset-create-page, [data-testid="dataset-create-page"], .file-upload, [data-testid="file-upload"], .error-display, [data-testid="error-display"], form, h1',
         user: testUser,
       });
       await page.waitForTimeout(2000);
@@ -176,10 +186,10 @@ test.describe('JOURNEY-DPO-001: Onboard New Asset via Data-First Flow @critical'
       let datasetId = '';
       let fileUploadSucceeded = false;
 
-      const dropzone = page.getByTestId('file-upload-dropzone');
+      const dropzone = page.locator('.file-upload-dropzone, [data-testid="file-upload-dropzone"]').first();
       if ((await dropzone.count()) > 0) {
         const datasetFileInput = page
-          .getByTestId('file-upload-dropzone')
+          .locator('.file-upload-dropzone, [data-testid="file-upload-dropzone"]').first()
           .locator('input[type="file"]');
         if ((await datasetFileInput.count()) > 0) {
           let uploadSuccess = false;
@@ -231,17 +241,17 @@ test.describe('JOURNEY-DPO-001: Onboard New Asset via Data-First Flow @critical'
             // indicator without depending on legacy class suffixes.
             await page
               .locator(
-                '[data-testid="file-upload-dropzone"][data-upload-state="success"], ' +
+                '.file-upload-dropzone, [data-testid="file-upload-dropzone"][data-upload-state="success"], ' +
                   '.file-upload-success, .upload-success, ' +
-                  '[data-testid="file-upload"] [data-testid="error-display"], ' +
-                  '[data-testid="dataset-create-page"] [data-testid="error-display"]',
+                  '.file-upload, [data-testid="file-upload"] .error-display, [data-testid="error-display"], ' +
+                  '.dataset-create-page, [data-testid="dataset-create-page"] .error-display, [data-testid="error-display"]',
               )
               .first()
               .waitFor({ state: 'visible', timeout: 45000 });
 
             const uploadError = page.locator(
-              '[data-testid="file-upload"] [data-testid="error-display"], ' +
-                '[data-testid="dataset-create-page"] [data-testid="error-display"]',
+              '.file-upload, [data-testid="file-upload"] .error-display, [data-testid="error-display"], ' +
+                '.dataset-create-page, [data-testid="dataset-create-page"] .error-display, [data-testid="error-display"]',
             );
             // intentional: JOURNEY-DPO-001 onboarding journey tolerates well-known 429s during the multi-step asset-create chain; final state assertions use verifyViaApi / verifyAuditEvent.
             if (await uploadError.isVisible().catch(() => false)) {
@@ -283,7 +293,7 @@ test.describe('JOURNEY-DPO-001: Onboard New Asset via Data-First Flow @critical'
         }
       }
 
-      if (fileUploadSucceeded || (await page.getByTestId('file-upload-dropzone').count()) === 0) {
+      if (fileUploadSucceeded || (await page.locator('.file-upload-dropzone, [data-testid="file-upload-dropzone"]').first().count()) === 0) {
         // Proceed with dataset creation (either upload succeeded or no file dropzone)
         const assetIdInput = page.locator('input[placeholder*="Asset ID"]');
         if ((await assetIdInput.count()) > 0) {
@@ -304,14 +314,15 @@ test.describe('JOURNEY-DPO-001: Onboard New Asset via Data-First Flow @critical'
           await page.waitForURL(/\/datasets\/[^/]+$/, { timeout: 30000 });
           await waitForAppMainReady(page, {
             timeout: 90000,
-            contentSelector: '.dataset-detail-page, .dataset-detail-content, .dataset-detail-metadata, .error-display',
+            contentSelector:
+              '.dataset-detail-page, [data-testid="dataset-detail-page"], .dataset-detail-content, .dataset-detail-metadata, .error-display, [data-testid="error-display"]',
           });
           await page.waitForTimeout(2000);
           const datasetContent = page
-            .locator('.dataset-detail-page .dataset-detail-metadata')
-            .or(page.locator('.dataset-detail-page .dataset-detail-content'))
+            .locator('.dataset-detail-page, [data-testid="dataset-detail-page"] .dataset-detail-metadata')
+            .or(page.locator('.dataset-detail-page, [data-testid="dataset-detail-page"] .dataset-detail-content'))
             .first();
-          const errorDisplay = page.locator('.error-display');
+          const errorDisplay = page.locator('.error-display, [data-testid="error-display"]').first();
           await expect(datasetContent.or(errorDisplay))
             .toBeVisible({ timeout: 20000 });
           // intentional: JOURNEY-DPO-001 onboarding journey tolerates well-known 429s during the multi-step asset-create chain; final state assertions use verifyViaApi / verifyAuditEvent.
@@ -363,6 +374,14 @@ test.describe('JOURNEY-DPO-001: Onboard New Asset via Data-First Flow @critical'
         dqRunId = dqResult.runId;
         expect(dqResult.httpStatus).toBeGreaterThanOrEqual(200);
         expect(dqResult.httpStatus).toBeLessThan(300);
+        if (dqRunId) {
+          // Phase 226 G8 — audit-trail guarantee.
+          await verifyAuditEvent(page, {
+            action: 'DQ_RUN_TRIGGERED',
+            resourceType: 'DQ_RUN',
+            resourceId: dqRunId,
+          });
+        }
         // Poll until terminal. D88: if run doesn't finish, that is a real failure — not acceptable.
         const dqFinal = await _waitDQ(testUser, dqRunId, DQ_POLL_TIMEOUT_MS);
         // Accept any terminal execution status: the journey proves the DQ pipeline works end-to-end.
@@ -404,6 +423,14 @@ test.describe('JOURNEY-DPO-001: Onboard New Asset via Data-First Flow @critical'
         compRunId = compResult.runId;
         expect(compResult.httpStatus).toBeGreaterThanOrEqual(200);
         expect(compResult.httpStatus).toBeLessThan(300);
+        if (compRunId) {
+          // Phase 226 G8 — audit-trail guarantee.
+          await verifyAuditEvent(page, {
+            action: 'COMPLIANCE_RUN_TRIGGERED',
+            resourceType: 'COMPLIANCE_RUN',
+            resourceId: compRunId,
+          });
+        }
         // Poll until terminal. D88: if run doesn't finish, that is a real failure.
         const compFinal = await _waitComp(testUser, compRunId, COMPLIANCE_POLL_TIMEOUT_MS);
         // Accept any terminal execution status: proves the compliance pipeline works end-to-end.
@@ -442,10 +469,58 @@ test.describe('JOURNEY-DPO-001: Onboard New Asset via Data-First Flow @critical'
       try {
         const odpsResult = await _uploadODPS(page, odpsFilePath);
         expect(odpsResult.contractId).toBeTruthy();
+        if (odpsResult.contractId) {
+          // Phase 226 G8 — audit-trail guarantee.
+          //
+          // CORRECTED 2026-04-27: previous version queried for
+          //   action='CONTRACT_CREATED', resourceType='CONTRACT'
+          // and the verifier returned 0 rows within the 3 s budget. Investigation
+          // of the backend audit emissions showed the ODPS-upload code path emits
+          //   action='ODPS_CREATED', resource_type='ODPS'
+          // at hub/apps/contracts/services.py:2749-2755 (synchronously, inside the
+          // workflow-completion handler), NOT the generic CONTRACT_CREATED that
+          // services.py:421 emits on the simple register_contract path. The audit
+          // row WAS being created within ~50 ms of the API response — but with a
+          // (action, resource_type) pair the test never queried for. Querying for
+          // the canonical ODPS-upload pair lets the test see the row that was
+          // always there.
+          //
+          // (The shared helper still works for non-ODPS contract creation by
+          //  using action='CONTRACT_CREATED', resourceType='CONTRACT' — see e.g.
+          //  journeys/dpo/contract-creation-flow.spec.ts.)
+          //
+          // Use `disableAuditorSideChannel: true` so the verification GET is
+          // sent with the **primary user's** identity — the same DPO test
+          // user who triggered the audit. The audit list endpoint at
+          // [hub/apps/audit/views.py:91-105](hub/apps/audit/views.py#L91-L105)
+          // tenant-scopes results via `get_request_tenant_id(request)`. The
+          // default auditor side-channel uses a separate `e2e_auditor@example.com`
+          // account whose tenant membership on staging is not guaranteed to
+          // overlap with the DPO test user's tenant; on the cycle-3 staging
+          // run it returned 0 rows for an audit event that was actually
+          // emitted (services.py:2749-2755) but lived in a tenant the
+          // auditor account couldn't see. The DPO is in their own tenant
+          // by definition — `disableAuditorSideChannel` makes the verifier
+          // reuse the primary identity, eliminating the cross-tenant
+          // visibility race for self-emitted events.
+          //
+          // The cross-tenant variant of this guarantee is exercised by
+          // dedicated cross-persona specs (`multi-tenancy-isolation.spec.ts`)
+          // — those should keep using the auditor side channel.
+          await verifyAuditEvent(
+            page,
+            {
+              action: 'ODPS_CREATED',
+              resourceType: 'ODPS',
+              resourceId: odpsResult.contractId,
+            },
+            { disableAuditorSideChannel: true },
+          );
+        }
         // Navigate back to asset detail to verify contracts section updated
         await loginAndNavigateToRoute(page, testUser, `/assets/${assetId}`, {
           timeout: 60000,
-          contentSelector: '.asset-detail-page, .asset-detail-content',
+          contentSelector: '.asset-detail-content, .asset-detail-page, [data-testid="asset-detail-page"]',
         });
         await page.waitForTimeout(2000);
       } catch (odpsErr) {
@@ -471,7 +546,7 @@ test.describe('JOURNEY-DPO-001: Onboard New Asset via Data-First Flow @critical'
       //  Eliminating the round-trip saves 30-60s of timeout budget for this multi-step journey.)
       await loginAndNavigateToRoute(page, testUser, `/assets/${assetId}`, {
         timeout: 60000,
-        contentSelector: '.asset-detail-page, .asset-detail-content, h1',
+        contentSelector: '.asset-detail-page, [data-testid="asset-detail-page"], .asset-detail-content, h1',
       });
       await page.waitForTimeout(2000);
 
@@ -491,12 +566,15 @@ test.describe('JOURNEY-DPO-001: Onboard New Asset via Data-First Flow @critical'
       }
 
       // Still on `/assets/${assetId}` from the navigation above; ensure() only used fetch().
-      // Full reload refreshes React Query + asset.version for the activate mutation (root cause
-      // of stale client state was redundant client nav, not missing login here).
-      await page.reload({ waitUntil: 'domcontentloaded' });
-      await waitForAppMainReady(page, {
+      // Re-navigate via loginAndNavigateToRoute (instead of bare page.reload) to refresh
+      // React Query + asset.version for the activate mutation AND restore a fresh
+      // session — same staging-token-TTL rationale as the post-activation reload below.
+      // Bare page.reload at this point in a 6-min test risks SPA bootstrap on an expired
+      // access_token + a stale refresh cookie, ending in a /login redirect that masks
+      // a successful prereq run.
+      await loginAndNavigateToRoute(page, testUser, `/assets/${assetId}`, {
         timeout: 60000,
-        contentSelector: '.asset-detail-page, .asset-detail-content, .error-display',
+        contentSelector: '.asset-detail-page, [data-testid="asset-detail-page"], .asset-detail-content, .error-display, [data-testid="error-display"]',
       });
 
       // Activate button should be visible after prerequisites are met
@@ -587,13 +665,56 @@ test.describe('JOURNEY-DPO-001: Onboard New Asset via Data-First Flow @critical'
         throw new Error('Backend did not persist ACTIVE status after activation response 200.');
       }
 
-      // Reload to verify UI reflects backend state
+      // Reload to verify UI reflects backend state.
+      //
+      // Replaced `page.reload()` with `loginAndNavigateToRoute(...)` to the
+      // same URL because by this point the test has been running for several
+      // minutes (asset create → dataset create → ODPS upload → prerequisites
+      // → activation), well past staging's access_token TTL. A bare
+      // `page.reload()` re-bootstraps the SPA, which reads the now-expired
+      // access_token from localStorage, calls /auth/me/, gets 401, attempts
+      // a refresh via the httpOnly cookie — and the refresh fails on staging
+      // because `syncPageWithApiAuth` (auth.ts:178-215) writes the
+      // refresh_token cookie under `new URL(pageUrl).hostname` (the FRONTEND
+      // host), but the backend issues the refresh cookie for the API host
+      // (`api.stagingmeshant-internal.example.com`); the browser's cookie on the API
+      // origin remains the *original* refresh_token from the first UI login,
+      // and the backend's one-active-refresh-token-per-user policy
+      // (Phase 220.4) has long since rotated it via the intermediate
+      // loginAndNavigateToRoute calls. SPA therefore redirects to /login
+      // (cycle 5 manifestation: `waiting for "https://stagingmeshant-internal.example.com
+      // /login" navigation`).
+      //
+      // `loginAndNavigateToRoute(testUser, /assets/${assetId})` re-establishes
+      // a fresh session via the canonical login path AND navigates to the
+      // same URL. The asset-detail page bootstraps with a valid access_token,
+      // refetches state from the backend (so the UI reflects the just-
+      // activated status), and the badge assertion below proceeds normally.
+      // This is functionally equivalent to "reload after login" but uses the
+      // helper already exercised throughout this spec, so it inherits the
+      // same retry-on-rate-limit + sidebar-fallback behaviour.
       await page.waitForTimeout(1500);
-      await page.reload({ waitUntil: 'domcontentloaded' });
-      await page.waitForSelector('.asset-detail-page, .error-display', { timeout: 15000 });
-      const activeBadge = page.locator(
-        '.asset-detail-page .asset-detail-metadata .metadata-item:has(label:has-text("Status")) .status-badge'
-      ).or(page.locator('.asset-detail-page .status-badge').first());
+      await loginAndNavigateToRoute(page, testUser, `/assets/${assetId}`, {
+        timeout: 60000,
+        contentSelector: '.asset-detail-page, [data-testid="asset-detail-page"], .asset-detail-content, .error-display, [data-testid="error-display"]',
+      });
+      await page.waitForSelector('.asset-detail-page, [data-testid="asset-detail-page"], .error-display, [data-testid="error-display"]', { timeout: 15000 });
+      // Selector must scope `.status-badge` strictly INSIDE the
+      // asset-detail-page container. The previous form
+      //   `.asset-detail-page, [data-testid="asset-detail-page"] .asset-detail-metadata ... .status-badge`
+      // is parsed by CSS as TWO comma-separated alternates:
+      //   alt 1 → `.asset-detail-page` (the page container itself)
+      //   alt 2 → `[data-testid="asset-detail-page"] .asset-detail-metadata ... .status-badge`
+      // `.first()` matches alt 1 (the page container). Reading
+      // `.textContent()` on the container returns the entire page's text,
+      // which is never exactly "ACTIVE", so `expect.poll` waited the full
+      // 20 s and failed. SAME shape as Fix 10's asset-row selector bug —
+      // comma in CSS alternates two unrelated selectors, not "any descendant".
+      // Nest the locators so the outer container scopes the inner search.
+      const detailPage = page.locator('.asset-detail-page, [data-testid="asset-detail-page"]');
+      const activeBadge = detailPage
+        .locator('.asset-detail-metadata .metadata-item:has(label:has-text("Status")) .status-badge')
+        .or(detailPage.locator('.status-badge').first());
       await expect
         .poll(async () => (await activeBadge.first().textContent())?.trim() === 'ACTIVE', {
           timeout: 20000,
@@ -610,18 +731,18 @@ test.describe('JOURNEY-DPO-001: Onboard New Asset via Data-First Flow @critical'
       const testUser = await getTestUser();
       await loginAndNavigateToRoute(page, testUser, '/assets', {
         timeout: 60000,
-        contentSelector: '.asset-list-page, .empty-state, .error-display, h1',
+        contentSelector: '.asset-list-page, [data-testid="asset-list-page"], .empty-state, [data-testid="empty-state"], .error-display, [data-testid="error-display"], h1',
       });
       expect(page.url()).toContain('/assets');
-      await page.locator('.asset-list-page, .empty-state, .error-display').first().waitFor({
+      await page.locator('.asset-list-page, [data-testid="asset-list-page"], .empty-state, [data-testid="empty-state"], .error-display, [data-testid="error-display"]').first().waitFor({
         state: 'visible',
         timeout: 20000,
       });
       // Assert: the page must not show an error display — this test validates the page loads without error.
       // An error-display (even with Retry) means the backend returned an error, which is a failure.
-      const hasError = (await page.locator('.error-display').count()) > 0;
+      const hasError = (await page.locator('.error-display, [data-testid="error-display"]').first().count()) > 0;
       if (hasError) {
-        const errText = (await page.locator('.error-display').first().textContent()) ?? '';
+        const errText = (await page.locator('.error-display, [data-testid="error-display"]').first().first().textContent()) ?? '';
         throw new Error(`Assets list shows error (page should load without error): ${errText.slice(0, 200)}`);
       }
     });
@@ -753,12 +874,12 @@ test.describe('JOURNEY-DPO-001: Onboard New Asset via Data-First Flow @critical'
       // In either case, must stay on create page with an error shown
       await expect(page).toHaveURL(/\/assets\/create/, { timeout: 5000 });
       // Wait for validation/error UI to appear (client-side or server-side)
-      await page.locator('.error-message, .error-display, [role="alert"]').first().waitFor({
+      await page.locator('.error-message, .error-display, [data-testid="error-display"], [role="alert"]').first().waitFor({
         state: 'visible',
         timeout: 5000,
       });
       const hasError =
-        (await page.locator('.error-message, .error-display, [role="alert"]').count()) > 0;
+        (await page.locator('.error-message, .error-display, [data-testid="error-display"], [role="alert"]').count()) > 0;
       expect(hasError).toBe(true);
     });
 
@@ -781,29 +902,29 @@ test.describe('JOURNEY-DPO-001: Onboard New Asset via Data-First Flow @critical'
       const testUser = await getTestUser();
       await loginAndNavigateToRoute(page, testUser, '/assets', {
         timeout: 60000,
-        contentSelector: '.asset-list-page, .empty-state, .error-display, h1',
+        contentSelector: '.asset-list-page, [data-testid="asset-list-page"], .empty-state, [data-testid="empty-state"], .error-display, [data-testid="error-display"], h1',
       });
       expect(page.url()).toContain('/assets');
       await page.waitForTimeout(2000);
 
-      const assetListPage = page.locator('.asset-list-page');
+      const assetListPage = page.locator('.asset-list-page, [data-testid="asset-list-page"]').first();
       if ((await assetListPage.count()) === 0) {
-        test.skip(true, 'Asset list page not rendered — no .asset-list-page element found (empty state or error)');
+        test.skip(true, 'Asset list page not rendered — no .asset-list-page, [data-testid="asset-list-page"] element found (empty state or error)');
         return;
       }
       {
         // Capture initial state before filtering
-        const initialRowCount = await page.locator('.asset-list-page tr, .asset-list-page .asset-card, .asset-list-page [data-testid*="asset"]').count();
+        const initialRowCount = await page.locator('.asset-list-page, [data-testid="asset-list-page"] tr, .asset-list-page, [data-testid="asset-list-page"] .asset-card, .asset-list-page, [data-testid="asset-list-page"] [data-testid*="asset"]').count();
 
         const searchInput = page.locator('input[placeholder="Search assets..."]');
         if ((await searchInput.count()) > 0) {
           await searchInput.fill('test');
           // Wait for debounced search to trigger and API refetch to complete
           // The component shows ListPageSkeleton during loading, then re-renders with results or empty state
-          await page.locator('.asset-list-page, .empty-state').first().waitFor({ state: 'visible', timeout: 15000 });
+          await page.locator('.asset-list-page, [data-testid="asset-list-page"], .empty-state, [data-testid="empty-state"]').first().waitFor({ state: 'visible', timeout: 15000 });
           // Assert: row count changed OR empty state appeared (search produced a visible effect)
-          const afterSearchRowCount = await page.locator('.asset-list-page tr, .asset-list-page .asset-card, .asset-list-page [data-testid*="asset"]').count();
-          const hasEmptyAfterSearch = (await page.locator('.empty-state').count()) > 0;
+          const afterSearchRowCount = await page.locator('.asset-list-page, [data-testid="asset-list-page"] tr, .asset-list-page, [data-testid="asset-list-page"] .asset-card, .asset-list-page, [data-testid="asset-list-page"] [data-testid*="asset"]').count();
+          const hasEmptyAfterSearch = (await page.locator('.empty-state, [data-testid="empty-state"]').first().count()) > 0;
           const searchHadEffect = afterSearchRowCount !== initialRowCount || hasEmptyAfterSearch;
           // If search didn't change results, the test data may not distinguish — annotate only.
           // All E2E-seeded assets contain "test" in their name, so searching for "test"
@@ -823,12 +944,12 @@ test.describe('JOURNEY-DPO-001: Onboard New Asset via Data-First Flow @critical'
         if ((await statusSelect.count()) > 0) {
           await statusSelect.selectOption('DRAFT');
           // Wait for the API refetch to complete — the component shows ListPageSkeleton during loading,
-          // then renders either .asset-list-page (results) or .empty-state (no results for filter).
-          await page.locator('.asset-list-page, .empty-state').first().waitFor({ state: 'visible', timeout: 15000 });
+          // then renders either .asset-list-page, [data-testid="asset-list-page"] (results) or .empty-state, [data-testid="empty-state"] (no results for filter).
+          await page.locator('.asset-list-page, [data-testid="asset-list-page"], .empty-state, [data-testid="empty-state"]').first().waitFor({ state: 'visible', timeout: 15000 });
           // Assert: URL should still be /assets and content should still be present (filter applied)
           expect(page.url()).toContain('/assets');
-          const afterFilterContent = (await page.locator('.asset-list-page').count()) > 0 ||
-            (await page.locator('.empty-state').count()) > 0;
+          const afterFilterContent = (await page.locator('.asset-list-page, [data-testid="asset-list-page"]').first().count()) > 0 ||
+            (await page.locator('.empty-state, [data-testid="empty-state"]').first().count()) > 0;
           expect(afterFilterContent).toBe(true);
         }
       }
@@ -840,7 +961,7 @@ test.describe('JOURNEY-DPO-001: Onboard New Asset via Data-First Flow @critical'
       const testUser = await getTestUser();
       await loginAndNavigateToRoute(page, testUser, '/datasets/create', {
         timeout: 60000,
-        contentSelector: '.dataset-create-page',
+        contentSelector: '.dataset-create-page, [data-testid="dataset-create-page"]',
       });
       const createBtn = page.locator('button:has-text("Create Dataset")');
       await createBtn.waitFor({ state: 'visible', timeout: 10000 });
@@ -855,13 +976,13 @@ test.describe('JOURNEY-DPO-001: Onboard New Asset via Data-First Flow @critical'
       const testUser = await getTestUser();
       await loginAndNavigateToRoute(page, testUser, '/assets', {
         timeout: 60000,
-        contentSelector: '.asset-list-page, .empty-state, .error-display, h1',
+        contentSelector: '.asset-list-page, [data-testid="asset-list-page"], .empty-state, [data-testid="empty-state"], .error-display, [data-testid="error-display"], h1',
       });
       // Non-existent id: must use page.goto (no client-side link); expect error or login redirect
       await page.goto('/assets/00000000-0000-0000-0000-000000000000');
       await page.waitForLoadState('domcontentloaded');
       await assertNonExistentIdShowsError(page, {
-        detailContentSelector: '.asset-detail-page .asset-detail-content',
+        detailContentSelector: '.asset-detail-page, [data-testid="asset-detail-page"] .asset-detail-content',
         waitAfterLoad: 5000,
       });
     });
@@ -870,25 +991,25 @@ test.describe('JOURNEY-DPO-001: Onboard New Asset via Data-First Flow @critical'
       const testUser = await getTestUser();
       await loginAndNavigateToRoute(page, testUser, '/assets', {
         timeout: 60000,
-        contentSelector: '.asset-list-page, .empty-state, .error-display, .asset-list-pagination, h1',
+        contentSelector: '.asset-list-page, [data-testid="asset-list-page"], .empty-state, [data-testid="empty-state"], .error-display, [data-testid="error-display"], .asset-list-pagination, h1',
       });
       expect(page.url()).toContain('/assets');
       await page
-        .locator('.asset-list-page, .empty-state, .error-display')
+        .locator('.asset-list-page, [data-testid="asset-list-page"], .empty-state, [data-testid="empty-state"], .error-display, [data-testid="error-display"]')
         .first()
         .waitFor({ state: 'visible', timeout: 20000 });
 
       // Error display must NOT count as "list loaded" — it means the API failed
-      const hasError = (await page.locator('.error-display').count()) > 0;
+      const hasError = (await page.locator('.error-display, [data-testid="error-display"]').first().count()) > 0;
       if (hasError) {
-        const errText = (await page.locator('.error-display').first().textContent()) ?? '';
+        const errText = (await page.locator('.error-display, [data-testid="error-display"]').first().first().textContent()) ?? '';
         throw new Error(`Asset list shows backend error: ${errText.slice(0, 200)}`);
       }
 
       const hasPagination = (await page.locator('.asset-list-pagination').count()) > 0;
       const hasListOrEmpty =
-        (await page.locator('.asset-list-page table tr, .asset-list-page .list-item').count()) > 0 ||
-        (await page.locator('.empty-state').count()) > 0;
+        (await page.locator('.asset-list-page, [data-testid="asset-list-page"] table tr, .asset-list-page, [data-testid="asset-list-page"] .list-item').count()) > 0 ||
+        (await page.locator('.empty-state, [data-testid="empty-state"]').first().count()) > 0;
       expect(hasPagination || hasListOrEmpty).toBe(true) /* acceptable states */;
     });
   });

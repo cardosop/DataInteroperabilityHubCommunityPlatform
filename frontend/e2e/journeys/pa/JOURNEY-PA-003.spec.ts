@@ -104,7 +104,7 @@ test.describe('JOURNEY-PA-003: Configure Platform Settings', () => {
       const paUser = await getPlatformAdminUser();
       await loginAndNavigateToRoute(page, paUser, '/admin', {
         timeout: 60000,
-        contentSelector: '.admin-page, .error-display, [data-testid="forbidden-page"]',
+        contentSelector: '.admin-page, [data-testid="admin-page"], .error-display, [data-testid="error-display"], [data-testid="forbidden-page"]',
       });
       expect(page.url()).toMatch(/\/admin|\/403|\/login/);
     });

@@ -111,14 +111,14 @@ test.describe('Phase 2b — Asset Activation Golden Path', () => {
     console.log('Step 1: Creating asset via UI…');
     await loginAndNavigateToRoute(page, testUser, '/assets', {
       timeout: 60000,
-      contentSelector: '.asset-list-page, .empty-state, .error-display, h1',
+      contentSelector: '.asset-list-page, [data-testid="asset-list-page"], .empty-state, [data-testid="empty-state"], .error-display, [data-testid="error-display"], h1',
     });
     await waitForLoadingComplete(page, { timeout: 15000 });
 
     // The Create button can live in three places — test them in priority order.
     const createButton = page
       .locator('.asset-list-header button:has-text("Create Asset")')
-      .or(page.locator('.empty-state-action:has-text("Create Asset")'))
+      .or(page.locator('[data-testid="empty-state-action"]:has-text("Create Asset")'))
       .or(page.locator('button:has-text("Create Asset")'));
     await createButton.first().waitFor({ timeout: 15000 });
     await createButton.first().click();
@@ -142,7 +142,7 @@ test.describe('Phase 2b — Asset Activation Golden Path', () => {
       await page.waitForURL(uuidRegex, { timeout: 60000, waitUntil: 'domcontentloaded' });
     } catch {
       // intentional: tolerates a detached/removed element while extracting text for a diagnostic message; the surrounding throw/expect below this catch is the primary failure path.
-      const errEl = await page.locator('.error-display').first().textContent().catch(() => '');
+      const errEl = await page.locator('.error-display, [data-testid="error-display"]').first().first().textContent().catch(() => '');
       const errHint = errEl ? ` Backend error: ${errEl.slice(0, 200)}` : '';
       throw new Error(`Asset create redirect timed out. Current URL: ${page.url()}.${errHint}`);
     }
@@ -280,7 +280,7 @@ test.describe('Phase 2b — Asset Activation Golden Path', () => {
     console.log('Step 5: Activating asset via UI…');
     await navigateToRouteFromApp(page, `/assets/${assetId}`, {
       timeout: 60000,
-      contentSelector: '.asset-detail-page, .asset-detail-content, h1',
+      contentSelector: '.asset-detail-page, [data-testid="asset-detail-page"], .asset-detail-content, h1',
     });
     await waitForLoadingComplete(page, { timeout: 15000 });
 

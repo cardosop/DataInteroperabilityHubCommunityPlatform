@@ -22,12 +22,12 @@ test.describe('Feature: Virtualization', () => {
       const testUser = await getTestUser();
       await loginAndNavigateToRoute(page, testUser, '/virtualization', {
         timeout: 60000,
-        contentSelector: '.virtualization-page, .virtual-dataset-list-page, .empty-state, .error-display, h1',
+        contentSelector: '.virtualization-page, .virtual-dataset-list-page, [data-testid="virtual-dataset-list-page"], .empty-state, [data-testid="empty-state"], .error-display, [data-testid="error-display"], h1',
       });
       try {
         await assertListPageLoads(
           page,
-          '.virtualization-page, .virtual-dataset-list-page, .empty-state',
+          '.virtualization-page, .virtual-dataset-list-page, [data-testid="virtual-dataset-list-page"], .empty-state, [data-testid="empty-state"]',
           { timeout: 60000 }
         );
       } catch (err) {
@@ -54,7 +54,7 @@ test.describe('Feature: Virtualization', () => {
         '/virtualization/00000000-0000-0000-0000-000000000000',
         {
           timeout: 60000,
-          contentSelector: '.error-display, .virtual-dataset-detail-page, h1',
+          contentSelector: '.error-display, [data-testid="error-display"], .virtual-dataset-detail-page, h1',
         }
       );
       await assertNonExistentIdShowsError(page, {
@@ -68,10 +68,10 @@ test.describe('Feature: Virtualization', () => {
       const testUser = await getTestUser();
       await loginAndNavigateToRoute(page, testUser, '/virtualization', {
         timeout: 60000,
-        contentSelector: '.virtualization-page, .virtual-dataset-list-page, .empty-state, .error-display, h1',
+        contentSelector: '.virtualization-page, .virtual-dataset-list-page, [data-testid="virtual-dataset-list-page"], .empty-state, [data-testid="empty-state"], .error-display, [data-testid="error-display"], h1',
       });
       // Accept error-display when backend is not deployed (NOT_FOUND)
-      const errorDisplay = page.locator('.error-display');
+      const errorDisplay = page.locator('.error-display, [data-testid="error-display"]').first();
       if ((await errorDisplay.count()) > 0) {
         // intentional: tolerates a detached/removed element while extracting text for a diagnostic message; the surrounding throw/expect below this catch is the primary failure path.
         const errText = await errorDisplay.first().textContent().catch(() => '') ?? '';
@@ -84,7 +84,7 @@ test.describe('Feature: Virtualization', () => {
         }
       }
       const hasContent =
-        (await page.locator('.virtualization-page, .virtual-dataset-list-page, .empty-state').count()) > 0;
+        (await page.locator('.virtualization-page, .virtual-dataset-list-page, [data-testid="virtual-dataset-list-page"], .empty-state, [data-testid="empty-state"]').count()) > 0;
       expect(hasContent, 'Expected virtualization list or empty state').toBe(true);
     });
 

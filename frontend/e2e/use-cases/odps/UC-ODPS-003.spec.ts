@@ -24,7 +24,7 @@ test.describe('UC-ODPS-003: Export ODPS Product', () => {
 
       await loginAndNavigateToRoute(page, user, `/odps/${odpsId}`, {
         timeout: 90000,
-        contentSelector: '.odps-detail-page, .odps-detail, .odps-detail-main, .error-display',
+        contentSelector: '.odps-detail-page, .odps-detail, .odps-detail-main, .error-display, [data-testid="error-display"]',
         acceptRedirectToLogin: false,
       });
       if (page.url().includes('/login')) {
@@ -50,7 +50,7 @@ test.describe('UC-ODPS-003: Export ODPS Product', () => {
         {
           timeout: 90000,
           contentSelector:
-            '.odps-detail-page, .odps-detail, .error-display, [role="alert"]',
+            '.odps-detail-page, .odps-detail, .error-display, [data-testid="error-display"], [role="alert"]',
           acceptRedirectToLogin: false,
         }
       );
@@ -70,12 +70,12 @@ test.describe('UC-ODPS-003: Export ODPS Product', () => {
       const user = await getTestUser();
       await loginAndNavigateToRoute(page, user, '/odps', {
         timeout: 90000,
-        contentSelector: '.odps-list-page, .empty-state, .error-display',
+        contentSelector: '.odps-list-page, .empty-state, [data-testid="empty-state"], .error-display, [data-testid="error-display"]',
       });
       expect(page.url()).toContain('/odps');
       const hasContent =
         (await page.locator('.odps-list-page').count()) > 0 ||
-        (await page.locator('.empty-state').count()) > 0;
+        (await page.locator('.empty-state, [data-testid="empty-state"]').first().count()) > 0;
       expect(hasContent).toBe(true);
     });
   });

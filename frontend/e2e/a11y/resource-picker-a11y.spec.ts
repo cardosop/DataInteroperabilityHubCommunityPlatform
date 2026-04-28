@@ -34,7 +34,7 @@ test.describe('Resource Picker Accessibility (axe) — authenticated', () => {
     // Wait for either the create form or the login page — whichever appears first.
     // intentional: probes optional UI presence via a multi-line locator chain — the branch logic below handles both rendered and missing cases deterministically; absence is a legitimate tenant/role state.
     await page
-      .locator('.dataset-create-page, .app-main')
+      .locator('.dataset-create-page, [data-testid="dataset-create-page"], .app-main, [data-testid="app-main"]')
       .first()
       .waitFor({ state: 'visible', timeout: 30000 })
       .catch(() => null);
@@ -54,7 +54,7 @@ test.describe('Resource Picker Accessibility (axe) — authenticated', () => {
       await page.waitForLoadState('domcontentloaded');
       // intentional: probes optional UI presence via a multi-line locator chain — the branch logic below handles both rendered and missing cases deterministically; absence is a legitimate tenant/role state.
       await page
-        .locator('.dataset-create-page, .app-main')
+        .locator('.dataset-create-page, [data-testid="dataset-create-page"], .app-main, [data-testid="app-main"]')
         .first()
         .waitFor({ state: 'visible', timeout: 20000 })
         .catch(() => null);
@@ -71,7 +71,7 @@ test.describe('Resource Picker Accessibility (axe) — authenticated', () => {
     await page.goto('/assets', { waitUntil: 'domcontentloaded', timeout: 30000 }).catch(() => null);
     // intentional: probes optional UI presence via a multi-line locator chain — the branch logic below handles both rendered and missing cases deterministically; absence is a legitimate tenant/role state.
     await page
-      .locator('.asset-list-page, .empty-state, .app-main')
+      .locator('.asset-list-page, [data-testid="asset-list-page"], .empty-state, [data-testid="empty-state"], .app-main, [data-testid="app-main"]')
       .first()
       .waitFor({ state: 'visible', timeout: 30000 })
       .catch(() => null);
@@ -89,7 +89,7 @@ test.describe('Resource Picker Accessibility (axe) — authenticated', () => {
       await page.goto('/assets', { waitUntil: 'domcontentloaded', timeout: 30000 }).catch(() => null);
       // intentional: probes optional UI presence via a multi-line locator chain — the branch logic below handles both rendered and missing cases deterministically; absence is a legitimate tenant/role state.
       await page
-        .locator('.asset-list-page, .empty-state, .app-main')
+        .locator('.asset-list-page, [data-testid="asset-list-page"], .empty-state, [data-testid="empty-state"], .app-main, [data-testid="app-main"]')
         .first()
         .waitFor({ state: 'visible', timeout: 20000 })
         .catch(() => null);

@@ -13,7 +13,7 @@ import { expect, test } from '@playwright/test';
 import { getTestUser } from '../../fixtures/auth';
 import { loginAndNavigateToRoute } from '../../fixtures/helpers';
 
-test.describe('JOURNEY-DPO-012: Join Data Community', () => {
+test.describe('JOURNEY-DPO-012: Join Data Community @critical', () => {
   test.setTimeout(120000);
 
   test.describe('Success', () => {
@@ -22,7 +22,7 @@ test.describe('JOURNEY-DPO-012: Join Data Community', () => {
       await loginAndNavigateToRoute(page, testUser, '/communities', {
         timeout: 90000,
         contentSelector:
-          '.communities-page, .communities-tab, .unavailable-page',
+          '.communities-page, .communities-tab, .unavailable-page, [data-testid="unavailable-page"]',
         acceptRedirectToLogin: false,
       });
       await page.waitForTimeout(1500);
@@ -39,7 +39,7 @@ test.describe('JOURNEY-DPO-012: Join Data Community', () => {
 
       // If capability is off, an unavailable or 403 state is valid
       if (onUnavailable || on403) {
-        const unavailablePage = page.locator('.unavailable-page');
+        const unavailablePage = page.locator('.unavailable-page, [data-testid="unavailable-page"]').first();
         await expect(unavailablePage.first()).toBeVisible({ timeout: 5000 });
         return;
       }
@@ -52,7 +52,7 @@ test.describe('JOURNEY-DPO-012: Join Data Community', () => {
       const joinBtn = page.locator(
         'button:has-text("Join"), [data-testid="join-community-btn"]'
       );
-      const emptyState = page.locator('.empty-state, [data-testid="communities-empty"]');
+      const emptyState = page.locator('.empty-state, [data-testid="empty-state"], [data-testid="communities-empty"]');
 
       const hasList = (await communityList.count()) > 0;
       const hasJoin = (await joinBtn.count()) > 0;
@@ -69,7 +69,7 @@ test.describe('JOURNEY-DPO-012: Join Data Community', () => {
       const testUser = await getTestUser();
       await loginAndNavigateToRoute(page, testUser, '/communities', {
         timeout: 90000,
-        contentSelector: '.communities-page, .communities-tab, .unavailable-page, .error-display',
+        contentSelector: '.communities-page, .communities-tab, .unavailable-page, [data-testid="unavailable-page"], .error-display, [data-testid="error-display"]',
         acceptRedirectToLogin: false,
       });
 
@@ -80,9 +80,9 @@ test.describe('JOURNEY-DPO-012: Join Data Community', () => {
       const capabilityEnabled =
         page.url().includes('/communities') &&
         (await page.locator('.communities-page, .communities-tab').count()) > 0 &&
-        (await page.locator('.unavailable-page').count()) === 0;
+        (await page.locator('.unavailable-page, [data-testid="unavailable-page"]').first().count()) === 0;
       const capabilityDisabled =
-        (await page.locator('.unavailable-page, .error-display').count()) > 0 ||
+        (await page.locator('.unavailable-page, [data-testid="unavailable-page"], .error-display, [data-testid="error-display"]').count()) > 0 ||
         page.url().includes('/unavailable') ||
         page.url().includes('/403');
 
@@ -90,7 +90,7 @@ test.describe('JOURNEY-DPO-012: Join Data Community', () => {
 
       if (capabilityDisabled) {
         await expect(
-          page.locator('.unavailable-page, .error-display').first()
+          page.locator('.unavailable-page, [data-testid="unavailable-page"], .error-display, [data-testid="error-display"]').first()
         ).toBeVisible({ timeout: 10000 });
       } else {
         await expect(
@@ -105,7 +105,7 @@ test.describe('JOURNEY-DPO-012: Join Data Community', () => {
       const testUser = await getTestUser();
       await loginAndNavigateToRoute(page, testUser, '/communities', {
         timeout: 90000,
-        contentSelector: '.communities-page, .communities-tab, .unavailable-page',
+        contentSelector: '.communities-page, .communities-tab, .unavailable-page, [data-testid="unavailable-page"]',
         acceptRedirectToLogin: false,
       });
 
@@ -115,7 +115,7 @@ test.describe('JOURNEY-DPO-012: Join Data Community', () => {
 
       // Must render something meaningful — not a blank or crash
       const hasContent =
-        (await page.locator('.communities-page, .communities-tab, .unavailable-page').count()) > 0 ||
+        (await page.locator('.communities-page, .communities-tab, .unavailable-page, [data-testid="unavailable-page"]').count()) > 0 ||
         page.url().includes('/403');
       expect(hasContent).toBe(true) /* acceptable states */;
     });

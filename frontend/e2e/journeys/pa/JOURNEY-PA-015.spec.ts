@@ -42,8 +42,8 @@ test.describe('Phase 15: Platform Admin Suspend/Resume & Usage', () => {
       await page.waitForTimeout(2000);
       const usageSection = page.locator('[data-testid="admin-usage-section"]');
       await expect(usageSection).toBeVisible({ timeout: 5000 });
-      const hasTable = (await page.locator('.admin-table').count()) > 0;
-      const hasEmptyState = (await page.locator('.empty-state').count()) > 0;
+      const hasTable = (await page.locator('.admin-table, [data-testid="admin-table"]').first().count()) > 0;
+      const hasEmptyState = (await page.locator('.empty-state, [data-testid="empty-state"]').first().count()) > 0;
       const hasLoading = (await page.locator('.loading-spinner').count()) > 0;
       expect(hasTable || hasEmptyState || hasLoading).toBe(true) /* acceptable states */;
     });
@@ -69,8 +69,8 @@ test.describe('Phase 15: Platform Admin Suspend/Resume & Usage', () => {
         (await page.locator('button:has-text("Resume")').count()) > 0 ||
         (await page.locator('.admin-action-disabled').count()) > 0;
       const hasTableOrEmpty =
-        (await page.locator('.admin-table').count()) > 0 ||
-        (await page.locator('.empty-state').count()) > 0;
+        (await page.locator('.admin-table, [data-testid="admin-table"]').first().count()) > 0 ||
+        (await page.locator('.empty-state, [data-testid="empty-state"]').first().count()) > 0;
       expect(hasTableOrEmpty).toBe(true) /* acceptable states */;
       expect(hasActionsColumn || hasTableOrEmpty).toBe(true) /* acceptable states */;
     });
@@ -99,7 +99,7 @@ test.describe('Phase 15: Platform Admin Suspend/Resume & Usage', () => {
       }
       await waitForLoadingComplete(page, { timeout: 15000 });
       const hasContent =
-        (await page.locator('.admin-page, .admin-table, .empty-state').count()) > 0;
+        (await page.locator('.admin-page, [data-testid="admin-page"], .admin-table, .empty-state, [data-testid="empty-state"]').count()) > 0;
       expect(hasContent).toBe(true) /* acceptable states */;
     });
   });

@@ -36,25 +36,25 @@ test.describe('Feature: Track B — list-page input focus retention', () => {
       name: '/assets search input',
       url: '/assets',
       inputLocator: '#asset-search',
-      contentSelector: '.asset-list-page, .empty-state',
+      contentSelector: '.asset-list-page, [data-testid="asset-list-page"], .empty-state, [data-testid="empty-state"]',
     },
     {
       name: '/datasets asset-id filter input',
       url: '/datasets',
       inputLocator: '#dataset-asset-id-filter',
-      contentSelector: '.dataset-list-page, .empty-state',
+      contentSelector: '.dataset-list-page, [data-testid="dataset-list-page"], .empty-state, [data-testid="empty-state"]',
     },
     {
       name: '/governance/retention asset-id filter input',
       url: '/governance/retention',
       inputLocator: '#asset-id-filter',
-      contentSelector: '.governance-retention-policy-list-page, .empty-state',
+      contentSelector: '.governance-retention-policy-list-page, .empty-state, [data-testid="empty-state"]',
     },
     {
       name: '/audit actor-user-id filter input',
       url: '/audit',
       inputLocator: '#audit-actor-filter',
-      contentSelector: '.audit-event-list-page, .empty-state',
+      contentSelector: '.audit-event-list-page, [data-testid="audit-event-list-page"], .empty-state, [data-testid="empty-state"]',
     },
   ];
 

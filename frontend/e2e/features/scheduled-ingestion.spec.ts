@@ -17,7 +17,7 @@ test.describe('Feature: Scheduled Ingestion', () => {
       await loginAndNavigateToRoute(page, adminUser, '/scheduled-ingestions', {
         timeout: 60000,
         contentSelector:
-          '.scheduled-ingestion-list-page, .empty-state, .unavailable-page, h1',
+          '.scheduled-ingestion-list-page, .empty-state, [data-testid="empty-state"], .unavailable-page, [data-testid="unavailable-page"], h1',
         acceptRedirectToLogin: true,
       });
       if (page.url().includes('/login')) {
@@ -28,13 +28,13 @@ test.describe('Feature: Scheduled Ingestion', () => {
       const url = page.url();
       expect(url).toMatch(/\/scheduled-ingestions|\/403/);
 
-      // Success test must NOT accept .error-display
-      await expect(page.locator('.error-display')).not.toBeVisible();
+      // Success test must NOT accept .error-display, [data-testid="error-display"]
+      await expect(page.locator('.error-display, [data-testid="error-display"]').first()).not.toBeVisible();
       // Must render actual page content — URL match alone provides no signal
       const hasContent =
         (await page
           .locator(
-            '.scheduled-ingestion-list-page, .empty-state, .unavailable-page, h1'
+            '.scheduled-ingestion-list-page, .empty-state, [data-testid="empty-state"], .unavailable-page, [data-testid="unavailable-page"], h1'
           )
           .count()) > 0;
       expect(hasContent).toBe(true);
@@ -53,21 +53,21 @@ test.describe('Feature: Scheduled Ingestion', () => {
         {
           timeout: 60000,
           contentSelector:
-            '.error-display, .scheduled-ingestion-detail-page, .unavailable-page, h1',
+            '.error-display, [data-testid="error-display"], .scheduled-ingestion-detail-page, .unavailable-page, [data-testid="unavailable-page"], h1',
           acceptRedirectToLogin: true,
         }
       );
       if (page.url().includes('/login')) return;
 
-      const hasError = (await page.locator('.error-display').count()) > 0;
-      const hasUnavailable = (await page.locator('.unavailable-page').count()) > 0;
+      const hasError = (await page.locator('.error-display, [data-testid="error-display"]').first().count()) > 0;
+      const hasUnavailable = (await page.locator('.unavailable-page, [data-testid="unavailable-page"]').first().count()) > 0;
       const hasNotFoundText =
         (await page.locator('text=/not found|404|does not exist/i').count()) > 0;
       const is404 = page.url().includes('/404') || page.url().includes('/not-found');
 
       expect(
         hasError || hasUnavailable || hasNotFoundText || is404,
-        'Expected .error-display, .unavailable-page, or not-found text for a nil-UUID scheduled ingestion'
+        'Expected .error-display, [data-testid="error-display"], .unavailable-page, [data-testid="unavailable-page"], or not-found text for a nil-UUID scheduled ingestion'
       ).toBe(true);
     });
   });

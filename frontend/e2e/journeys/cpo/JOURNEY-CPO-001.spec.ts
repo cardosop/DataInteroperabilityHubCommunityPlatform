@@ -26,6 +26,7 @@ import {
   expectComplianceRunSucceeded,
   waitForComplianceRunViaApi,
 } from '../../fixtures/api-compliance';
+import { verifyAuditEvent } from '../../fixtures/verifyAuditEvent';
 
 // Phase 213.C.9 — configurable compliance-run poll budget. Local default 90s; staging
 // gets 180s because the compliance engine cold-starts more often under shared load.
@@ -39,7 +40,7 @@ const COMPLIANCE_POLL_TIMEOUT_MS = (() => {
 // Intentional nil UUID — only for 404/error-boundary tests.
 const NIL_UUID = '00000000-0000-0000-0000-000000000000';
 
-test.describe('JOURNEY-CPO-001: Review Compliance for Asset', () => {
+test.describe('JOURNEY-CPO-001: Review Compliance for Asset @critical', () => {
   test.setTimeout(120000);
 
   test.describe('Success', () => {
@@ -51,7 +52,7 @@ test.describe('JOURNEY-CPO-001: Review Compliance for Asset', () => {
         await waitForAppMainReady(page, {
           timeout: 60000,
           contentSelector:
-            '.compliance-run-list-page, .empty-state',
+            '.compliance-run-list-page, [data-testid="compliance-run-list-page"], .empty-state, [data-testid="empty-state"]',
         });
       } catch (_err) {
         if (page.url().includes('/login') || page.url().includes('/403')) {
@@ -64,15 +65,15 @@ test.describe('JOURNEY-CPO-001: Review Compliance for Asset', () => {
       await waitForLoadingComplete(page, { timeout: 15000 });
 
       // Error-display is NOT acceptable — it means compliance service is down or broken
-      const hasError = (await page.locator('.error-display').count()) > 0;
+      const hasError = (await page.locator('.error-display, [data-testid="error-display"]').first().count()) > 0;
       if (hasError) {
         // intentional: tolerates a detached/removed element while extracting text for a diagnostic message; the surrounding throw/expect below this catch is the primary failure path.
-        const errText = await page.locator('.error-display').first().textContent().catch(() => '');
+        const errText = await page.locator('.error-display, [data-testid="error-display"]').first().first().textContent().catch(() => '');
         throw new Error(`Compliance list shows error for CPO user: ${errText}`);
       }
       const hasContent =
-        (await page.locator('.compliance-run-list-page').count()) > 0 ||
-        (await page.locator('.empty-state').count()) > 0;
+        (await page.locator('.compliance-run-list-page, [data-testid="compliance-run-list-page"]').first().count()) > 0 ||
+        (await page.locator('.empty-state, [data-testid="empty-state"]').first().count()) > 0;
       expect(hasContent).toBe(true);
     });
 
@@ -100,6 +101,29 @@ test.describe('JOURNEY-CPO-001: Review Compliance for Asset', () => {
         runId = result.runId;
         expect(result.httpStatus).toBeGreaterThanOrEqual(200);
         expect(result.httpStatus).toBeLessThan(300);
+        if (runId) {
+          // Phase 226 G8 — audit-trail guarantee.
+          //
+          // CORRECTED 2026-04-27: previous version used `COMPLIANCE_RUN_TRIGGERED`
+          // and bumped retryBudgetMs to 15 s, hypothesising async-worker latency.
+          // Both were wrong. The backend emits `COMPLIANCE_RUN_CREATED`
+          // (hub/apps/compliance/views.py:293, inline with the synchronous
+          // create_audit_event call inside the POST /api/v1/compliance/runs/
+          // view). The audit row appears within a single DB transaction of the
+          // API response — there is no async dispatch and no worker tick.
+          //
+          // The previous run-and-bump cycle was treating a symptom (test never
+          // saw the row, even at 15 s) of a different bug (wrong action name).
+          // The row was emitted within ~50 ms but with a name the test never
+          // queried for. Fix is to query the canonical action name and revert
+          // to the default 3 s budget — anything longer would now hide a real
+          // emission regression behind a generous timeout.
+          await verifyAuditEvent(page, {
+            action: 'COMPLIANCE_RUN_CREATED',
+            resourceType: 'COMPLIANCE_RUN',
+            resourceId: runId,
+          });
+        }
       } catch (scanErr) {
         // Classify the error rather than blanket-skipping. The previous
         // implementation converted EVERY failure here to test.skip(), which
@@ -132,7 +156,7 @@ test.describe('JOURNEY-CPO-001: Review Compliance for Asset', () => {
       await page.waitForLoadState('domcontentloaded');
       await waitForAppMainReady(page, {
         timeout: 30000,
-        contentSelector: '.compliance-run-list-page, .empty-state',
+        contentSelector: '.compliance-run-list-page, [data-testid="compliance-run-list-page"], .empty-state, [data-testid="empty-state"]',
       });
       // Allow a brief moment for the newly created run to propagate to the list
       await page.waitForTimeout(3000);
@@ -148,13 +172,13 @@ test.describe('JOURNEY-CPO-001: Review Compliance for Asset', () => {
       }
 
       // Verify the run detail page is accessible by navigating directly with the runId.
-      // ComplianceRunDetailPage renders a LoadingSpinner while fetching (no .compliance-run-detail-page
+      // ComplianceRunDetailPage renders a LoadingSpinner while fetching (no .compliance-run-detail-page, [data-testid="compliance-run-detail-page"]
       // div in DOM during load), so wait for either the detail page OR an error display to appear.
       await page.goto(`/compliance/runs/${runId}`);
       await page.waitForLoadState('domcontentloaded');
       // intentional: probes optional UI presence via selector — same shape as waitFor; absence is a legitimate state handled by the branch below.
-      await page.waitForSelector('.compliance-run-detail-page, .error-display', { timeout: 30000 }).catch(() => null);
-      const hasDetail = (await page.locator('.compliance-run-detail-page').count()) > 0;
+      await page.waitForSelector('.compliance-run-detail-page, [data-testid="compliance-run-detail-page"], .error-display, [data-testid="error-display"]', { timeout: 30000 }).catch(() => null);
+      const hasDetail = (await page.locator('.compliance-run-detail-page, [data-testid="compliance-run-detail-page"]').first().count()) > 0;
       if (!hasDetail) {
         test.info().annotations.push({
           type: 'note',
@@ -189,7 +213,7 @@ test.describe('JOURNEY-CPO-001: Review Compliance for Asset', () => {
       await page.goto(`/compliance/runs/${NIL_UUID}`);
       await page.waitForLoadState('domcontentloaded');
       await assertNonExistentIdShowsError(page, {
-        detailContentSelector: '.compliance-run-detail-page, .compliance-run-detail',
+        detailContentSelector: '.compliance-run-detail, .compliance-run-detail-page, [data-testid="compliance-run-detail-page"]',
         waitAfterLoad: 8000,
       });
     });
@@ -203,7 +227,7 @@ test.describe('JOURNEY-CPO-001: Review Compliance for Asset', () => {
       try {
         await waitForAppMainReady(page, {
           timeout: 60000,
-          contentSelector: '.compliance-run-list-page, .empty-state',
+          contentSelector: '.compliance-run-list-page, [data-testid="compliance-run-list-page"], .empty-state, [data-testid="empty-state"]',
         });
       } catch (_err) {
         if (page.url().includes('/login') || page.url().includes('/403')) {
@@ -223,8 +247,8 @@ test.describe('JOURNEY-CPO-001: Review Compliance for Asset', () => {
       expect(has500).toBe(false);
       // Verify page actually rendered (not blank)
       const hasContent =
-        (await page.locator('.compliance-run-list-page').count()) > 0 ||
-        (await page.locator('.empty-state').count()) > 0;
+        (await page.locator('.compliance-run-list-page, [data-testid="compliance-run-list-page"]').first().count()) > 0 ||
+        (await page.locator('.empty-state, [data-testid="empty-state"]').first().count()) > 0;
       expect(hasContent).toBe(true);
     });
   });

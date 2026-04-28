@@ -16,7 +16,7 @@ import { createAssetViaApi } from '../../fixtures/api-assets';
 import { getTestUser } from '../../fixtures/auth';
 import { loginAndNavigateToRoute, waitForLoadingComplete } from '../../fixtures/helpers';
 
-test.describe('JOURNEY-DPO-009: Manage Asset Ratings and Reviews', () => {
+test.describe('JOURNEY-DPO-009: Manage Asset Ratings and Reviews @critical', () => {
   test.setTimeout(90000);
 
   test.describe('Success', () => {
@@ -24,7 +24,7 @@ test.describe('JOURNEY-DPO-009: Manage Asset Ratings and Reviews', () => {
       const testUser = await getTestUser();
       await loginAndNavigateToRoute(page, testUser, '/communities', {
         timeout: 60000,
-        contentSelector: '.communities-page, .communities-tab, .unavailable-page, .error-display',
+        contentSelector: '.communities-page, .communities-tab, .unavailable-page, [data-testid="unavailable-page"], .error-display, [data-testid="error-display"]',
         acceptRedirectToLogin: false,
       });
       if (page.url().includes('/login')) {
@@ -35,14 +35,14 @@ test.describe('JOURNEY-DPO-009: Manage Asset Ratings and Reviews', () => {
       const url = page.url();
       if (url.includes('/403') || url.includes('/unavailable')) {
         await expect(
-          page.locator('.unavailable-page, .error-display, [role="alert"]').first()
+          page.locator('.unavailable-page, [data-testid="unavailable-page"], .error-display, [data-testid="error-display"], [role="alert"]').first()
         ).toBeVisible({ timeout: 10000 });
         return;
       }
 
-      const isCapabilityGated = (await page.locator('.unavailable-page').count()) > 0;
+      const isCapabilityGated = (await page.locator('.unavailable-page, [data-testid="unavailable-page"]').first().count()) > 0;
       if (isCapabilityGated) {
-        await expect(page.locator('.unavailable-page').first()).toBeVisible({ timeout: 5000 });
+        await expect(page.locator('.unavailable-page, [data-testid="unavailable-page"]').first().first()).toBeVisible({ timeout: 5000 });
         return;
       }
 
@@ -50,7 +50,7 @@ test.describe('JOURNEY-DPO-009: Manage Asset Ratings and Reviews', () => {
       const hasContent =
         (await page.locator('.communities-page, .communities-tab').count()) > 0;
       expect(hasContent).toBe(true);
-      await expect(page.locator('.error-display')).not.toBeVisible();
+      await expect(page.locator('.error-display, [data-testid="error-display"]').first()).not.toBeVisible();
     });
 
     test('asset detail page shows Community / ratings section or empty state (Phase 27.1)', async ({
@@ -61,23 +61,23 @@ test.describe('JOURNEY-DPO-009: Manage Asset Ratings and Reviews', () => {
       const assetId = await createAssetViaApi(testUser);
       await loginAndNavigateToRoute(page, testUser, `/assets/${assetId}`, {
         timeout: 60000,
-        contentSelector: '.asset-detail-page, .asset-detail-content, .error-display',
+        contentSelector: '.asset-detail-page, [data-testid="asset-detail-page"], .asset-detail-content, .error-display, [data-testid="error-display"]',
       });
 
       if (page.url().includes('/login')) {
         throw new Error('Unexpected redirect to login on asset detail');
       }
 
-      await page.waitForSelector('.asset-detail-page, .asset-detail-content, .error-display', {
+      await page.waitForSelector('.asset-detail-page, [data-testid="asset-detail-page"], .asset-detail-content, .error-display, [data-testid="error-display"]', {
         timeout: 15000,
       });
 
       // If asset fails to load entirely (no detail container), fail the test.
       // Sub-section errors (e.g. ratings 500) are acceptable — the asset detail page
       // itself still renders and the Community section test can proceed.
-      const hasDetailContainer = (await page.locator('.asset-detail-page, .asset-detail-content').count()) > 0;
+      const hasDetailContainer = (await page.locator('.asset-detail-content, .asset-detail-page, [data-testid="asset-detail-page"]').count()) > 0;
       if (!hasDetailContainer) {
-        const errText = (await page.locator('.error-display').first().textContent().catch(() => 'unknown')) ?? '';
+        const errText = (await page.locator('.error-display, [data-testid="error-display"]').first().first().textContent().catch(() => 'unknown')) ?? '';
         throw new Error(`Asset detail failed to load (required for Community section test): ${errText.slice(0, 250)}`);
       }
 
@@ -99,7 +99,7 @@ test.describe('JOURNEY-DPO-009: Manage Asset Ratings and Reviews', () => {
       // intentional: visibility check on a transiently-attached element — treating a detached-at-check-time element as 'not visible' is the semantically correct fallback; the caller's branch logic uses the boolean result.
       const hasSocialSection = (await socialSection.count()) > 0 && (await socialSection.isVisible().catch(() => false));
       const hasUnavailable = (await unavailableIndicator.count()) > 0;
-      const hasDetailPage = (await page.locator('.asset-detail-page, .asset-detail-content').count()) > 0;
+      const hasDetailPage = (await page.locator('.asset-detail-content, .asset-detail-page, [data-testid="asset-detail-page"]').count()) > 0;
 
       // Asset detail must always be present
       expect(hasDetailPage).toBe(true) /* acceptable states */;
@@ -113,7 +113,7 @@ test.describe('JOURNEY-DPO-009: Manage Asset Ratings and Reviews', () => {
       } else {
         // Neither social section nor unavailable indicator found — capability gated out silently.
         // Verify the asset detail page itself at least has meaningful content (not blank).
-        const hasAssetTitle = (await page.locator('.asset-detail-page h1, .asset-detail-content h1, [data-testid="asset-title"]').count()) > 0;
+        const hasAssetTitle = (await page.locator('.asset-detail-page, [data-testid="asset-detail-page"] h1, .asset-detail-content h1, [data-testid="asset-title"]').count()) > 0;
         expect(hasAssetTitle).toBe(true);
       }
     });
@@ -127,7 +127,7 @@ test.describe('JOURNEY-DPO-009: Manage Asset Ratings and Reviews', () => {
       // /communities is in CAPABILITY_GATED_ROUTES — loginAndNavigateToRoute auto-accepts login redirect.
       await loginAndNavigateToRoute(page, testUser, '/communities', {
         timeout: 60000,
-        contentSelector: '.communities-page, .communities-tab, .unavailable-page, .error-display',
+        contentSelector: '.communities-page, .communities-tab, .unavailable-page, [data-testid="unavailable-page"], .error-display, [data-testid="error-display"]',
         acceptRedirectToLogin: false,
       });
       await waitForLoadingComplete(page, { timeout: 30000 });
@@ -139,9 +139,9 @@ test.describe('JOURNEY-DPO-009: Manage Asset Ratings and Reviews', () => {
       const capabilityEnabled =
         page.url().includes('/communities') &&
         (await page.locator('.communities-page, .communities-tab').count()) > 0 &&
-        (await page.locator('.unavailable-page').count()) === 0;
+        (await page.locator('.unavailable-page, [data-testid="unavailable-page"]').first().count()) === 0;
       const capabilityDisabled =
-        (await page.locator('.unavailable-page, .error-display').count()) > 0 ||
+        (await page.locator('.unavailable-page, [data-testid="unavailable-page"], .error-display, [data-testid="error-display"]').count()) > 0 ||
         page.url().includes('/unavailable') ||
         page.url().includes('/403');
 
@@ -149,7 +149,7 @@ test.describe('JOURNEY-DPO-009: Manage Asset Ratings and Reviews', () => {
 
       if (capabilityDisabled) {
         await expect(
-          page.locator('.unavailable-page, .error-display').first()
+          page.locator('.unavailable-page, [data-testid="unavailable-page"], .error-display, [data-testid="error-display"]').first()
         ).toBeVisible({ timeout: 10000 });
       } else {
         await expect(
@@ -164,7 +164,7 @@ test.describe('JOURNEY-DPO-009: Manage Asset Ratings and Reviews', () => {
       const testUser = await getTestUser();
       await loginAndNavigateToRoute(page, testUser, '/communities', {
         timeout: 60000,
-        contentSelector: '.communities-page, .communities-tab, .unavailable-page, .error-display',
+        contentSelector: '.communities-page, .communities-tab, .unavailable-page, [data-testid="unavailable-page"], .error-display, [data-testid="error-display"]',
         acceptRedirectToLogin: false,
       });
       await waitForLoadingComplete(page, { timeout: 30000 });
@@ -175,7 +175,7 @@ test.describe('JOURNEY-DPO-009: Manage Asset Ratings and Reviews', () => {
 
       // Page must render something meaningful — not a blank screen or JS crash
       const hasPageContent =
-        (await page.locator('.communities-page, .communities-tab, .unavailable-page').count()) > 0 ||
+        (await page.locator('.communities-page, .communities-tab, .unavailable-page, [data-testid="unavailable-page"]').count()) > 0 ||
         page.url().includes('/403');
       expect(hasPageContent).toBe(true) /* acceptable states */;
     });

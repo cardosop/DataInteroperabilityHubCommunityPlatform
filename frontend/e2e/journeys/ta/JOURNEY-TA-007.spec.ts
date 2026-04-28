@@ -12,7 +12,7 @@ import { expect, test } from '@playwright/test';
 import { getTenantAdminUser } from '../../fixtures/auth';
 import { loginAndNavigateToRoute, waitForLoadingComplete } from '../../fixtures/helpers';
 
-test.describe('JOURNEY-TA-007: Monitor Cost Tracking', () => {
+test.describe('JOURNEY-TA-007: Monitor Cost Tracking @critical', () => {
   test.setTimeout(120000);
 
   test('Phase 18: tenant admin can view cost tracking page', async ({ page }) => {

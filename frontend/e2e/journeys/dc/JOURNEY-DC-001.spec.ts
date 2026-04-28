@@ -16,7 +16,7 @@ import { loginAndNavigateToRoute, waitForAppMainReady } from '../../fixtures/hel
 import { createAssetViaApi } from '../../fixtures/api-assets';
 import { createListingViaApi, placeOrderViaApi, publishListingViaApi } from '../../fixtures/api-marketplace';
 
-test.describe('JOURNEY-DC-001: Discover and Purchase Marketplace Asset', () => {
+test.describe('JOURNEY-DC-001: Discover and Purchase Marketplace Asset @critical', () => {
   test.setTimeout(120000);
 
   test.describe('Success', () => {
@@ -25,14 +25,14 @@ test.describe('JOURNEY-DC-001: Discover and Purchase Marketplace Asset', () => {
       await loginAndNavigateToRoute(page, consumer, '/marketplace', {
         timeout: 65000,
         contentSelector:
-          '[data-testid="listing-list-page"], .listing-list-page, .listing-list-grid, .error-display, .empty-state',
+          '[data-testid="listing-list-page"], .listing-list-page, .listing-list-grid, [data-testid="listing-list-grid"], .error-display, [data-testid="error-display"], .empty-state, [data-testid="empty-state"]',
       });
       if (page.url().includes('/login')) {
         test.skip(true, 'Auth redirect — consumer session expired');
         return;
       }
       await assertSuccessLoad(page, {
-        successContentSelector: '[data-testid="listing-list-page"], .listing-list-page, .empty-state',
+        successContentSelector: '[data-testid="listing-list-page"], .listing-list-page, .empty-state, [data-testid="empty-state"]',
       });
     });
 
@@ -49,7 +49,7 @@ test.describe('JOURNEY-DC-001: Discover and Purchase Marketplace Asset', () => {
         throw _err;
       }
       await assertSuccessLoad(page, {
-        successContentSelector: '.order-list-page, .empty-state',
+        successContentSelector: '.order-list-page, .empty-state, [data-testid="empty-state"]',
       });
     });
 
@@ -66,7 +66,7 @@ test.describe('JOURNEY-DC-001: Discover and Purchase Marketplace Asset', () => {
         throw _err;
       }
       await assertSuccessLoad(page, {
-        successContentSelector: '.entitlement-list-page, .empty-state',
+        successContentSelector: '.entitlement-list-page, .empty-state, [data-testid="empty-state"]',
       });
     });
   });
@@ -84,11 +84,11 @@ test.describe('JOURNEY-DC-001: Discover and Purchase Marketplace Asset', () => {
 
       await loginAndNavigateToRoute(page, consumer, `/marketplace/listings/${listingId}`, {
         timeout: 90000,
-        contentSelector: '.listing-detail-main, .error-display',
+        contentSelector: '.listing-detail-main, [data-testid="listing-detail-main"], .error-display, [data-testid="error-display"]',
       });
 
-      const hasError = (await page.locator('.error-display').count()) > 0;
-      const hasDetail = (await page.locator('.listing-detail-main').count()) > 0;
+      const hasError = (await page.locator('.error-display, [data-testid="error-display"]').first().count()) > 0;
+      const hasDetail = (await page.locator('.listing-detail-main, [data-testid="listing-detail-main"]').first().count()) > 0;
       if (hasError && !hasDetail) {
         test.skip(true, 'Listing not visible to consumer tenant (cross-tenant visibility). Skipping purchase CTA check.');
         return;
@@ -119,7 +119,7 @@ test.describe('JOURNEY-DC-001: Discover and Purchase Marketplace Asset', () => {
       // Phase 2: wait for terminal state
       // intentional: probes optional UI presence via a multi-line locator chain — the branch logic below handles both rendered and missing cases deterministically; absence is a legitimate tenant/role state.
       await page
-        .locator('.order-list-page, .empty-state, .error-display')
+        .locator('.order-list-page, .empty-state, [data-testid="empty-state"], .error-display, [data-testid="error-display"]')
         .first()
         .waitFor({ state: 'visible', timeout: 15000 })
         .catch(() => null);
@@ -129,9 +129,9 @@ test.describe('JOURNEY-DC-001: Discover and Purchase Marketplace Asset', () => {
       // Accept empty-state (race: order may be processing) or error-display (API transient)
       const hasOrdersOrFallback =
         hasOrders ||
-        (await page.locator('.empty-state').count()) > 0 ||
-        (await page.locator('.error-display').count()) > 0 ||
-        (await page.locator('.app-main').count()) > 0;
+        (await page.locator('.empty-state, [data-testid="empty-state"]').first().count()) > 0 ||
+        (await page.locator('.error-display, [data-testid="error-display"]').first().count()) > 0 ||
+        (await page.locator('.app-main, [data-testid="app-main"]').first().count()) > 0;
       expect(hasOrdersOrFallback).toBe(true) /* acceptable states */;
     });
   });
@@ -146,7 +146,7 @@ test.describe('JOURNEY-DC-001: Discover and Purchase Marketplace Asset', () => {
       await loginAndNavigateToRoute(page, consumer, '/marketplace', {
         timeout: 65000,
         contentSelector:
-          '[data-testid="listing-list-page"], .listing-list-page, .listing-list-grid, .empty-state, .error-display',
+          '[data-testid="listing-list-page"], .listing-list-page, .listing-list-grid, [data-testid="listing-list-grid"], .empty-state, [data-testid="empty-state"], .error-display, [data-testid="error-display"]',
       });
       if (page.url().includes('/login')) {
         await assertFailureRedirect(page);
@@ -157,7 +157,7 @@ test.describe('JOURNEY-DC-001: Discover and Purchase Marketplace Asset', () => {
       // with programmatic navigation (useNavigate), NOT <a href> anchor tags.
       // Wait for the grid to fully render before checking for cards.
       // intentional: probes optional UI presence — the branch logic below handles both rendered and missing cases deterministically; absence is a legitimate tenant/role state, not a test failure.
-      await page.locator('.listing-list-grid, .empty-state').first()
+      await page.locator('.listing-list-grid, [data-testid="listing-list-grid"], .empty-state, [data-testid="empty-state"]').first()
         .waitFor({ state: 'visible', timeout: 15000 }).catch(() => null);
 
       const listingCard = page
@@ -167,7 +167,7 @@ test.describe('JOURNEY-DC-001: Discover and Purchase Marketplace Asset', () => {
       if ((await listingCard.count()) === 0) {
         // No listings in the catalog — assert empty state or list page (not blank)
         const hasPageContent =
-          (await page.locator('.empty-state').count()) > 0 ||
+          (await page.locator('.empty-state, [data-testid="empty-state"]').first().count()) > 0 ||
           (await page.locator('[data-testid="listing-list-page"]').count()) > 0;
         expect(hasPageContent).toBe(true);
         return;
@@ -175,14 +175,14 @@ test.describe('JOURNEY-DC-001: Discover and Purchase Marketplace Asset', () => {
 
       await listingCard.click();
       await page.waitForURL(/\/marketplace\/listings\/[^/]+/, { timeout: 10000 });
-      await page.waitForSelector('.listing-detail-main, .error-display', { timeout: 15000 });
+      await page.waitForSelector('.listing-detail-main, [data-testid="listing-detail-main"], .error-display, [data-testid="error-display"]', { timeout: 15000 });
 
-      if ((await page.locator('.error-display').count()) > 0) {
+      if ((await page.locator('.error-display, [data-testid="error-display"]').first().count()) > 0) {
         // Listing returned an error (e.g. consumer tenant lacks access) — still valid
         return;
       }
 
-      await expect(page.locator('.listing-detail-main')).toBeVisible({ timeout: 5000 });
+      await expect(page.locator('.listing-detail-main, [data-testid="listing-detail-main"]').first()).toBeVisible({ timeout: 5000 });
 
       // The purchase/request-access CTA must be rendered for consumers when listing is visible.
       // Broaden the CTA selector to cover all known variants.
@@ -214,16 +214,16 @@ test.describe('JOURNEY-DC-001: Discover and Purchase Marketplace Asset', () => {
       const consumer = await getConsumerTestUser();
       await loginAndNavigateToRoute(page, consumer, `/marketplace/listings/${nonExistentId}`, {
         timeout: 65000,
-        contentSelector: '.error-display, .listing-detail-main, .empty-state',
+        contentSelector: '.error-display, [data-testid="error-display"], .listing-detail-main, [data-testid="listing-detail-main"], .empty-state, [data-testid="empty-state"]',
       });
       // Wait for a terminal state instead of a fixed sleep
       // intentional: probes optional UI presence via a multi-line locator chain — the branch logic below handles both rendered and missing cases deterministically; absence is a legitimate tenant/role state.
       await page
-        .locator('.error-display, .listing-detail-main, .empty-state')
+        .locator('.error-display, [data-testid="error-display"], .listing-detail-main, [data-testid="listing-detail-main"], .empty-state, [data-testid="empty-state"]')
         .first()
         .waitFor({ state: 'visible', timeout: 20000 })
         .catch(() => null);
-      const hasError = (await page.locator('.error-display').count()) > 0;
+      const hasError = (await page.locator('.error-display, [data-testid="error-display"]').first().count()) > 0;
       const onLogin = page.url().includes('/login');
       if (onLogin) {
         test.skip(true, 'Auth session lost during navigation — token refresh likely failed under E2E load');
@@ -246,7 +246,7 @@ test.describe('JOURNEY-DC-001: Discover and Purchase Marketplace Asset', () => {
       await loginAndNavigateToRoute(page, consumer, '/marketplace', {
         timeout: 65000,
         contentSelector:
-          '[data-testid="listing-list-page"], .listing-list-page, .listing-list-grid, .empty-state, .error-display',
+          '[data-testid="listing-list-page"], .listing-list-page, .listing-list-grid, [data-testid="listing-list-grid"], .empty-state, [data-testid="empty-state"], .error-display, [data-testid="error-display"]',
       });
       if (page.url().includes('/login')) {
         await assertFailureRedirect(page);
@@ -254,10 +254,10 @@ test.describe('JOURNEY-DC-001: Discover and Purchase Marketplace Asset', () => {
       }
       // Exactly one of these terminal states must be visible — no blank renders allowed.
       const listPage =
-        (await page.locator('[data-testid="listing-list-page"], .listing-list-page').count()) > 0;
-      const grid = (await page.locator('.listing-list-grid').count()) > 0;
-      const emptyState = (await page.locator('.empty-state').count()) > 0;
-      const errorDisplay = (await page.locator('.error-display').count()) > 0;
+        (await page.locator('.listing-list-page, [data-testid="listing-list-page"]').count()) > 0;
+      const grid = (await page.locator('.listing-list-grid, [data-testid="listing-list-grid"]').first().count()) > 0;
+      const emptyState = (await page.locator('.empty-state, [data-testid="empty-state"]').first().count()) > 0;
+      const errorDisplay = (await page.locator('.error-display, [data-testid="error-display"]').first().count()) > 0;
       expect(listPage || grid || emptyState || errorDisplay).toBe(true) /* acceptable states */;
 
       // If a list is rendered, assert that filter controls are also present (regression guard)

@@ -23,7 +23,7 @@ test.describe('JOURNEY-PA-006: Monitor Marketplace Health', () => {
       const paUser = await getPlatformAdminUser();
       await loginAndNavigateToRoute(page, paUser, '/observability', {
         timeout: 60000,
-        contentSelector: '.observability-page, .monitoring-page, .error-display, [data-testid="forbidden-page"]',
+        contentSelector: '.observability-page, .monitoring-page, .error-display, [data-testid="error-display"], [data-testid="forbidden-page"]',
       });
 
       if (page.url().includes('/403') || page.url().includes('/login')) {
@@ -48,7 +48,7 @@ test.describe('JOURNEY-PA-006: Monitor Marketplace Health', () => {
       const hasContent =
         (await page.locator('.observability-page').count()) > 0 ||
         (await page.locator('.metrics-section, .health-section').count()) > 0 ||
-        (await page.locator('.empty-state').count()) > 0;
+        (await page.locator('.empty-state, [data-testid="empty-state"]').first().count()) > 0;
       expect(hasContent).toBe(true);
     });
   });
@@ -68,7 +68,7 @@ test.describe('JOURNEY-PA-006: Monitor Marketplace Health', () => {
       const paUser = await getPlatformAdminUser();
       await loginAndNavigateToRoute(page, paUser, '/observability', {
         timeout: 60000,
-        contentSelector: '.observability-page, .empty-state, .error-display, [data-testid="forbidden-page"]',
+        contentSelector: '.observability-page, .empty-state, [data-testid="empty-state"], .error-display, [data-testid="error-display"], [data-testid="forbidden-page"]',
       });
       // Authenticated PA user: /login should not appear; /observability or /403 are valid
       expect(page.url()).toMatch(/\/observability|\/403/);

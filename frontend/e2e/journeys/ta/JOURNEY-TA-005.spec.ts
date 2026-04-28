@@ -33,8 +33,8 @@ test.describe('JOURNEY-TA-005: Configure Data Mesh Domains', () => {
       expect(page.url()).toContain('/mesh');
       const hasContent =
         (await page.locator('.mesh-domain-list-page').count()) > 0 ||
-        (await page.locator('.empty-state').count()) > 0 ||
-        (await page.locator('.error-display').count()) > 0;
+        (await page.locator('.empty-state, [data-testid="empty-state"]').first().count()) > 0 ||
+        (await page.locator('.error-display, [data-testid="error-display"]').first().count()) > 0;
       expect(hasContent).toBe(true);
     });
 
@@ -42,7 +42,7 @@ test.describe('JOURNEY-TA-005: Configure Data Mesh Domains', () => {
       await loginAsPersona(page, getTenantAdminUser);
       await page.goto('/mesh/create');
       await page.waitForLoadState('domcontentloaded');
-      await page.waitForSelector('.mesh-domain-create-page, .error-display', {
+      await page.waitForSelector('.mesh-domain-create-page, .error-display, [data-testid="error-display"]', {
         timeout: 20000,
       });
       if (page.url().includes('/login') || page.url().includes('/403')) {
@@ -73,7 +73,7 @@ test.describe('JOURNEY-TA-005: Configure Data Mesh Domains', () => {
       try {
         await waitForAppMainReady(page, {
           timeout: 60000,
-          contentSelector: '.mesh-domain-list-page, .empty-state, .error-display',
+          contentSelector: '.mesh-domain-list-page, .empty-state, [data-testid="empty-state"], .error-display, [data-testid="error-display"]',
         });
       } catch (_err) {
         if (page.url().includes('/login') || page.url().includes('/403')) {

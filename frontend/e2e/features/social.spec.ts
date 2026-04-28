@@ -45,10 +45,10 @@ test.describe('Feature: Social on Asset Page (Phase 27.1)', () => {
       const assetId = await createAssetViaApi(testUser);
       await loginAndNavigateToRoute(page, testUser, `/assets/${assetId}`, {
         timeout: 60000,
-        contentSelector: '.asset-detail-page, .asset-detail-content, .asset-social-section',
+        contentSelector: '.asset-detail-page, [data-testid="asset-detail-page"], .asset-detail-content, .asset-social-section',
       });
-      await page.waitForSelector('.asset-detail-page', { timeout: 15000 });
-      if ((await page.locator('.error-display').count()) > 0) {
+      await page.waitForSelector('.asset-detail-page, [data-testid="asset-detail-page"]', { timeout: 15000 });
+      if ((await page.locator('.error-display, [data-testid="error-display"]').first().count()) > 0) {
         test.skip(true, 'Asset load failed; cannot assert Community section');
       }
       // When social capabilities (social.ratings, social.reviews, social.comments) are available,
@@ -79,7 +79,7 @@ test.describe('Feature: Rate and Review on Asset Page (Phase 27.3.2)', () => {
       const assetId = await createAssetViaApi(testUser, { ensureActivated: true });
       await loginAndNavigateToRoute(page, testUser, `/assets/${assetId}`, {
         timeout: 60000,
-        contentSelector: '.asset-detail-page, .asset-detail-content, .asset-social-section',
+        contentSelector: '.asset-detail-page, [data-testid="asset-detail-page"], .asset-detail-content, .asset-social-section',
       });
       const socialSection = page.locator('[data-testid="asset-social-section"]');
       // intentional: probes optional UI presence — the branch logic below handles both rendered and missing cases deterministically; absence is a legitimate tenant/role state, not a test failure.
@@ -111,7 +111,7 @@ test.describe('Feature: Rate and Review on Asset Page (Phase 27.3.2)', () => {
         const submitFormBtn = page.locator('button:has-text("Submit")').filter({ hasText: /^Submit$/ });
         await submitFormBtn.click();
         await page.waitForTimeout(2000);
-        await expect(page.locator('.ratings-tab, .rating-item, .empty-state').first()).toBeVisible({ timeout: 5000 });
+        await expect(page.locator('.ratings-tab, .rating-item, .empty-state, [data-testid="empty-state"]').first()).toBeVisible({ timeout: 5000 });
       }
     });
 
@@ -120,7 +120,7 @@ test.describe('Feature: Rate and Review on Asset Page (Phase 27.3.2)', () => {
       const assetId = await createAssetViaApi(testUser, { ensureActivated: true });
       await loginAndNavigateToRoute(page, testUser, `/assets/${assetId}`, {
         timeout: 60000,
-        contentSelector: '.asset-detail-page, .asset-detail-content, .asset-social-section',
+        contentSelector: '.asset-detail-page, [data-testid="asset-detail-page"], .asset-detail-content, .asset-social-section',
       });
       const socialSection = page.locator('[data-testid="asset-social-section"]');
       // intentional: probes optional UI presence — the branch logic below handles both rendered and missing cases deterministically; absence is a legitimate tenant/role state, not a test failure.
@@ -154,7 +154,7 @@ test.describe('Feature: Rate and Review on Asset Page (Phase 27.3.2)', () => {
         const submitReviewBtn = page.locator('button:has-text("Submit Review")');
         await submitReviewBtn.click();
         await page.waitForTimeout(2000);
-        await expect(page.locator('.reviews-tab, .review-item, .empty-state').first()).toBeVisible({ timeout: 5000 });
+        await expect(page.locator('.reviews-tab, .review-item, .empty-state, [data-testid="empty-state"]').first()).toBeVisible({ timeout: 5000 });
       }
     });
   });

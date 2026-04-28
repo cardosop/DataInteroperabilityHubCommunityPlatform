@@ -14,7 +14,7 @@ import '../journeys/auth/JOURNEY-AUTH-004.spec';
 import { test, expect } from '@playwright/test';
 import { clearAuthStorage } from '../fixtures/auth';
 
-test.describe('Persona RBAC: Visitor (Unauthenticated)', () => {
+test.describe('Persona RBAC: Visitor (Unauthenticated) @critical', () => {
   test.setTimeout(60000);
 
   test('unauthenticated user is redirected to login from /assets', async ({ page }) => {

@@ -19,17 +19,17 @@ test.describe('Feature: Notifications', () => {
       await loginAndNavigateToRoute(page, testUser, '/notifications', {
         timeout: 60000,
         contentSelector:
-          '.notification-list-page, .notifications-page, .empty-state, .error-display, h1',
+          '.notification-list-page, .notifications-page, .empty-state, [data-testid="empty-state"], .error-display, [data-testid="error-display"], h1',
       });
       const url = page.url();
       if (url.includes('/login') || url.includes('/403')) {
         test.skip(true, 'Auth/role redirect');
         return;
       }
-      await expect(page.locator('.error-display')).not.toBeVisible({ timeout: 5000 });
+      await expect(page.locator('.error-display, [data-testid="error-display"]').first()).not.toBeVisible({ timeout: 5000 });
       const hasContent =
         (await page
-          .locator('.notification-list-page, .notifications-page, .empty-state, h1')
+          .locator('.notification-list-page, .notifications-page, .empty-state, [data-testid="empty-state"], h1')
           .count()) > 0;
       expect(hasContent, 'Expected notifications list or empty state').toBe(true);
     });
@@ -38,7 +38,7 @@ test.describe('Feature: Notifications', () => {
       const testUser = await getTestUser();
       await loginAndNavigateToRoute(page, testUser, '/', {
         timeout: 60000,
-        contentSelector: '.app-main, h1',
+        contentSelector: '.app-main, [data-testid="app-main"], h1',
       });
       if (page.url().includes('/login')) {
         test.skip(true, 'Auth redirect');
@@ -76,14 +76,14 @@ test.describe('Feature: Notifications', () => {
       await loginAndNavigateToRoute(page, testUser, '/notifications', {
         timeout: 60000,
         contentSelector:
-          '.notification-list-page, .notifications-page, .empty-state, .error-display, h1',
+          '.notification-list-page, .notifications-page, .empty-state, [data-testid="empty-state"], .error-display, [data-testid="error-display"], h1',
       });
       if (page.url().includes('/login') || page.url().includes('/403')) return;
       const has500 = (await page.locator('text=/500|internal server error/i').count()) > 0;
       expect(has500, 'Notifications page must not show 500 errors').toBe(false);
       const hasContent =
         (await page
-          .locator('.notification-list-page, .notifications-page, .empty-state')
+          .locator('.notification-list-page, .notifications-page, .empty-state, [data-testid="empty-state"]')
           .count()) > 0;
       expect(hasContent, 'Expected notifications content or empty state').toBe(true);
     });

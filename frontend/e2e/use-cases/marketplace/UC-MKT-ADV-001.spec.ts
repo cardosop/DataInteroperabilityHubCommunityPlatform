@@ -13,7 +13,7 @@ import { expect, test } from '@playwright/test';
 import { clearAuthStorage, getTestUser } from '../../fixtures/auth';
 import { loginAndNavigateToRoute, waitForLoadingComplete } from '../../fixtures/helpers';
 
-test.describe('UC-MKT-ADV-001: Configure Usage-Based Pricing', () => {
+test.describe('UC-MKT-ADV-001: Configure Usage-Based Pricing @critical', () => {
   test.setTimeout(120000);
 
   test.describe('Success', () => {
@@ -21,15 +21,15 @@ test.describe('UC-MKT-ADV-001: Configure Usage-Based Pricing', () => {
       const testUser = await getTestUser();
       await loginAndNavigateToRoute(page, testUser, '/marketplace', {
         timeout: 90000,
-        contentSelector: '.listing-list-page, .listing-list-grid, .empty-state',
+        contentSelector: '.listing-list-page, .listing-list-grid, [data-testid="listing-list-grid"], .empty-state, [data-testid="empty-state"]',
       });
       await waitForLoadingComplete(page, { timeout: 15000 });
 
       // D86: skip on login redirect instead of silent return
       test.skip(page.url().includes('/login'), 'Auth redirect — infrastructure issue');
 
-      // D85: Success test must NOT accept .error-display
-      const hasErrorOnList = (await page.locator('.error-display').count()) > 0;
+      // D85: Success test must NOT accept .error-display, [data-testid="error-display"]
+      const hasErrorOnList = (await page.locator('.error-display, [data-testid="error-display"]').first().count()) > 0;
       expect(hasErrorOnList).toBe(false);
 
       const listingLink = page.locator('.listing-list-page a[href*="/marketplace/listings/"]').first();
@@ -40,10 +40,10 @@ test.describe('UC-MKT-ADV-001: Configure Usage-Based Pricing', () => {
         await waitForLoadingComplete(page, { timeout: 15000 });
 
         // Verify listing detail loaded without error
-        const hasDetailError = (await page.locator('.error-display').count()) > 0;
+        const hasDetailError = (await page.locator('.error-display, [data-testid="error-display"]').first().count()) > 0;
         expect(hasDetailError).toBe(false);
 
-        const hasDetail = (await page.locator('.listing-detail-main, .listing-detail-page').count()) > 0;
+        const hasDetail = (await page.locator('.listing-detail-page, .listing-detail-main, [data-testid="listing-detail-main"]').count()) > 0;
         expect(hasDetail).toBe(true);
 
         // Look for pricing-related UI elements on the detail page
@@ -62,7 +62,7 @@ test.describe('UC-MKT-ADV-001: Configure Usage-Based Pricing', () => {
         expect(hasPricing || hasPricingText).toBe(true);
       } else {
         // No listings: marketplace is empty; assert empty state (not error)
-        const hasEmpty = (await page.locator('.empty-state').count()) > 0;
+        const hasEmpty = (await page.locator('.empty-state, [data-testid="empty-state"]').first().count()) > 0;
         const hasListPage = (await page.locator('.listing-list-page').count()) > 0;
         expect(hasEmpty || hasListPage).toBe(true) /* acceptable states */;
         test.info().annotations.push({
@@ -93,7 +93,7 @@ test.describe('UC-MKT-ADV-001: Configure Usage-Based Pricing', () => {
       const testUser = await getTestUser();
       await loginAndNavigateToRoute(page, testUser, '/marketplace', {
         timeout: 90000,
-        contentSelector: '.listing-list-page, .listing-list-grid, .empty-state',
+        contentSelector: '.listing-list-page, .listing-list-grid, [data-testid="listing-list-grid"], .empty-state, [data-testid="empty-state"]',
       });
       await waitForLoadingComplete(page, { timeout: 15000 });
 
@@ -109,11 +109,11 @@ test.describe('UC-MKT-ADV-001: Configure Usage-Based Pricing', () => {
 
         // Listing detail page should render without error
         const hasDetail =
-          (await page.locator('.listing-detail-main, .listing-detail-page').count()) > 0;
+          (await page.locator('.listing-detail-page, .listing-detail-main, [data-testid="listing-detail-main"]').count()) > 0;
         expect(hasDetail).toBe(true);
       } else {
         // Empty marketplace: valid edge case
-        const hasEmpty = (await page.locator('.empty-state').count()) > 0;
+        const hasEmpty = (await page.locator('.empty-state, [data-testid="empty-state"]').first().count()) > 0;
         const hasListPage = (await page.locator('.listing-list-page').count()) > 0;
         expect(hasEmpty || hasListPage).toBe(true);
       }

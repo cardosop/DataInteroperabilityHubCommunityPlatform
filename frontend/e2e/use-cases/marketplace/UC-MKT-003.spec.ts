@@ -30,7 +30,7 @@ test.describe('UC-MKT-003: Purchase Asset from Marketplace', () => {
       const consumerUser = await getConsumerTestUser();
       await loginAndNavigateToRoute(page, consumerUser, `/marketplace/listings/${listingId}`, {
         timeout: 90000,
-        contentSelector: '.listing-detail-main, .listing-detail-page, .error-display, main',
+        contentSelector: '.listing-detail-main, [data-testid="listing-detail-main"], .listing-detail-page, .error-display, [data-testid="error-display"], main',
       });
       if (page.url().includes('/login')) {
         test.skip(true, 'Redirected to login — auth not available');
@@ -64,7 +64,7 @@ test.describe('UC-MKT-003: Purchase Asset from Marketplace', () => {
         const successMessage = page.locator('text=/success|order placed|order created/i');
         const hasSuccess = onOrderDetail || (await successMessage.count()) > 0;
         expect(hasSuccess).toBe(true);
-        await expect(page.locator('.error-display')).not.toBeVisible();
+        await expect(page.locator('.error-display, [data-testid="error-display"]').first()).not.toBeVisible();
       } else {
         // intentional: tolerates non-text / streaming response body when building a diagnostic message; the `throw new Error(...)` immediately below this catch is the primary failure path — this catch is not the pass/fail decision.
         const body = await response.text().catch(() => '');
@@ -76,7 +76,7 @@ test.describe('UC-MKT-003: Purchase Asset from Marketplace', () => {
       const user = await getConsumerTestUser();
       await loginAndNavigateToRoute(page, user, '/marketplace', {
         timeout: 90000,
-        contentSelector: '.listing-list-page, .listing-list-grid, .empty-state',
+        contentSelector: '.listing-list-page, .listing-list-grid, [data-testid="listing-list-grid"], .empty-state, [data-testid="empty-state"]',
       });
       if (page.url().includes('/login')) {
         expect(page.url()).toContain('/login');
@@ -88,7 +88,7 @@ test.describe('UC-MKT-003: Purchase Asset from Marketplace', () => {
         await link.click();
         await page.waitForURL(/\/marketplace\/listings\/[^/]+/, { timeout: 10000 });
         const purchaseBtn = page.locator('button:has-text("Purchase"), button:has-text("Request"), a:has-text("Purchase")');
-        const hasDetail = (await page.locator('.listing-detail-main').count()) > 0;
+        const hasDetail = (await page.locator('.listing-detail-main, [data-testid="listing-detail-main"]').first().count()) > 0;
         const hasPurchase = (await purchaseBtn.count()) > 0;
         expect(hasDetail || hasPurchase).toBe(true) /* acceptable states */;
       }
@@ -98,7 +98,7 @@ test.describe('UC-MKT-003: Purchase Asset from Marketplace', () => {
       const user = await getConsumerTestUser();
       await loginAndNavigateToRoute(page, user, '/marketplace/orders', {
         timeout: 90000,
-        contentSelector: '.order-list-page, .empty-state',
+        contentSelector: '.order-list-page, .empty-state, [data-testid="empty-state"]',
       });
       if (page.url().includes('/login')) {
         expect(page.url()).toContain('/login');
@@ -119,7 +119,7 @@ test.describe('UC-MKT-003: Purchase Asset from Marketplace', () => {
       await page.waitForLoadState('domcontentloaded');
       await page.waitForTimeout(5000);
       const hasError =
-        (await page.locator('.error-display').count()) > 0 ||
+        (await page.locator('.error-display, [data-testid="error-display"]').first().count()) > 0 ||
         (await page.locator('text=/not found|failed|404/i').count()) > 0;
       expect(hasError).toBe(true) /* acceptable states */;
     });
@@ -130,7 +130,7 @@ test.describe('UC-MKT-003: Purchase Asset from Marketplace', () => {
       const user = await getConsumerTestUser();
       await loginAndNavigateToRoute(page, user, '/marketplace/orders', {
         timeout: 90000,
-        contentSelector: '.order-list-page, .empty-state, .error-display',
+        contentSelector: '.order-list-page, .empty-state, [data-testid="empty-state"], .error-display, [data-testid="error-display"]',
       });
       expect(page.url()).toContain('/marketplace/orders');
     });

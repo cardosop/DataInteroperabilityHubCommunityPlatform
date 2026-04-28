@@ -30,9 +30,9 @@ test.describe('JOURNEY-MPA-009: Manage Plugin Marketplace', () => {
       }
       expect(onDeveloper).toBe(true);
       const hasContent =
-        (await page.locator('.developer-portal-page, .app-main').count()) > 0;
+        (await page.locator('.developer-portal-page, .app-main, [data-testid="app-main"]').count()) > 0;
       expect(hasContent).toBe(true);
-      await expect(page.locator('.error-display')).not.toBeVisible();
+      await expect(page.locator('.error-display, [data-testid="error-display"]').first()).not.toBeVisible();
     });
   });
 
@@ -44,7 +44,7 @@ test.describe('JOURNEY-MPA-009: Manage Plugin Marketplace', () => {
       await page.waitForTimeout(3000);
       const url = page.url();
       const hasContent =
-        (await page.locator('.developer-portal-page, .unavailable-page, .app-main').count()) > 0;
+        (await page.locator('.developer-portal-page, .unavailable-page, [data-testid="unavailable-page"], .app-main, [data-testid="app-main"]').count()) > 0;
       expect(url.includes('/login') || url.includes('/403') || url.includes('/developer')).toBe(true);
       // When on /login, we may not have developer content; when on /developer or /403, expect content
       expect(url.includes('/login') || hasContent).toBe(true);

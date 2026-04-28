@@ -27,7 +27,7 @@ import { expect, test } from '@playwright/test';
 import { clearAuthStorage, getTestUser } from '../../fixtures/auth';
 import { loginAndNavigateToRoute } from '../../fixtures/helpers';
 
-test.describe('JOURNEY-DEV-006: Integrate Transformation Pipeline API', () => {
+test.describe('JOURNEY-DEV-006: Integrate Transformation Pipeline API @critical', () => {
   test.setTimeout(120000);
 
   test.describe('Success', () => {
@@ -38,7 +38,7 @@ test.describe('JOURNEY-DEV-006: Integrate Transformation Pipeline API', () => {
       await loginAndNavigateToRoute(page, testUser, '/transformation', {
         timeout: 60000,
         contentSelector:
-          '.transformation-pipeline-list-page, .unavailable-page, .empty-state, .error-display',
+          '.transformation-pipeline-list-page, .unavailable-page, [data-testid="unavailable-page"], .empty-state, [data-testid="empty-state"], .error-display, [data-testid="error-display"]',
       });
 
       if (page.url().includes('/login')) {
@@ -47,15 +47,15 @@ test.describe('JOURNEY-DEV-006: Integrate Transformation Pipeline API', () => {
 
       // intentional: probes optional UI presence via selector — same shape as waitFor; absence is a legitimate state handled by the branch below.
       await page.waitForSelector(
-        '.transformation-pipeline-list-page, .empty-state, .unavailable-page',
+        '.transformation-pipeline-list-page, .empty-state, [data-testid="empty-state"], .unavailable-page, [data-testid="unavailable-page"]',
         { timeout: 30000 }
       ).catch(() => null);
 
       const capabilityEnabled =
         page.url().includes('/transformation') &&
-        (await page.locator('.transformation-pipeline-list-page, .empty-state').count()) > 0;
+        (await page.locator('.transformation-pipeline-list-page, .empty-state, [data-testid="empty-state"]').count()) > 0;
       const capabilityDisabled =
-        (await page.locator('.unavailable-page').count()) > 0 ||
+        (await page.locator('.unavailable-page, [data-testid="unavailable-page"]').first().count()) > 0 ||
         page.url().includes('/unavailable') ||
         page.url().includes('/403');
 
@@ -63,11 +63,11 @@ test.describe('JOURNEY-DEV-006: Integrate Transformation Pipeline API', () => {
 
       if (capabilityEnabled) {
         await expect(
-          page.locator('.transformation-pipeline-list-page, .empty-state').first()
+          page.locator('.transformation-pipeline-list-page, .empty-state, [data-testid="empty-state"]').first()
         ).toBeVisible({ timeout: 5000 });
       } else {
         await expect(
-          page.locator('.unavailable-page, [role="main"]').first()
+          page.locator('.unavailable-page, [data-testid="unavailable-page"], [role="main"]').first()
         ).toBeVisible({ timeout: 5000 });
       }
     });

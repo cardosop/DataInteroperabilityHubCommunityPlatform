@@ -21,7 +21,7 @@ test.describe('UC-INT-002: Create Custom Connector', () => {
       const user = await getTenantAdminUserOrTestUser();
       await loginAndNavigateToRoute(page, user, '/integrations', {
         timeout: 60000,
-        contentSelector: '.marketplace-connection-list-page, .integrations-layout, .empty-state',
+        contentSelector: '.marketplace-connection-list-page, .integrations-layout, .empty-state, [data-testid="empty-state"]',
       });
       if (page.url().includes('/login') || page.url().includes('/403')) {
         throw new Error(
@@ -35,7 +35,7 @@ test.describe('UC-INT-002: Create Custom Connector', () => {
         await waitForAppMainReady(page, {
           timeout: 60000,
           contentSelector:
-            '.marketplace-connection-create-page, .connection-create-page, .error-display, form',
+            '.marketplace-connection-create-page, .connection-create-page, .error-display, [data-testid="error-display"], form',
         });
       } else {
         await loginAndNavigateToRoute(page, user, '/integrations/connections/create', {
@@ -64,7 +64,7 @@ test.describe('UC-INT-002: Create Custom Connector', () => {
         timeout: 60000,
       });
       if (page.url().includes('/login')) return;
-      if ((await page.locator('.error-display').count()) > 0) {
+      if ((await page.locator('.error-display, [data-testid="error-display"]').first().count()) > 0) {
         test.info().annotations.push({ type: 'note', description: 'API unavailable — form not rendered, skipping validation check' });
         return;
       }
@@ -87,7 +87,7 @@ test.describe('UC-INT-002: Create Custom Connector', () => {
       const user = await getTenantAdminUserOrTestUser();
       await loginAndNavigateToRoute(page, user, '/integrations', {
         timeout: 60000,
-        contentSelector: '.marketplace-connection-list-page, .integrations-layout, .empty-state, .error-display',
+        contentSelector: '.marketplace-connection-list-page, .integrations-layout, .empty-state, [data-testid="empty-state"], .error-display, [data-testid="error-display"]',
       });
       expect(page.url()).toContain('/integrations');
     });

@@ -21,20 +21,20 @@ test.describe('JOURNEY-DMO-002: Configure Federated Governance', () => {
       const dmoUser = await getDataMeshDomainOwnerUser();
       await loginAndNavigateToRoute(page, dmoUser, '/mesh', {
         timeout: 90000,
-        contentSelector: '.mesh-domain-list-page, .empty-state, .app-main',
+        contentSelector: '.mesh-domain-list-page, .empty-state, [data-testid="empty-state"], .app-main, [data-testid="app-main"]',
       });
       if (page.url().includes('/login') || page.url().includes('/403')) {
         throw new Error(`Unexpected redirect to ${page.url()} — verify DMO user has mesh access`);
       }
       expect(page.url()).toContain('/mesh');
-      await expect(page.locator('.error-display')).not.toBeVisible();
+      await expect(page.locator('.error-display, [data-testid="error-display"]').first()).not.toBeVisible();
     });
 
     test('governance page loads or 403 when role missing', async ({ page }) => {
       const dmoUser = await getDataMeshDomainOwnerUser();
       await loginAndNavigateToRoute(page, dmoUser, '/governance', {
         timeout: 90000,
-        contentSelector: '.governance-access-request-list-page, .access-request-list-page, .app-main, .empty-state',
+        contentSelector: '.governance-access-request-list-page, .access-request-list-page, .app-main, [data-testid="app-main"], .empty-state, [data-testid="empty-state"]',
       });
       await page.waitForTimeout(3000);
       if (page.url().includes('/login')) {
@@ -48,7 +48,7 @@ test.describe('JOURNEY-DMO-002: Configure Federated Governance', () => {
         return;
       }
       expect(onGov).toBe(true);
-      await expect(page.locator('.error-display')).not.toBeVisible();
+      await expect(page.locator('.error-display, [data-testid="error-display"]').first()).not.toBeVisible();
     });
   });
 
@@ -57,7 +57,7 @@ test.describe('JOURNEY-DMO-002: Configure Federated Governance', () => {
       const dmoUser = await getDataMeshDomainOwnerUser();
       await loginAndNavigateToRoute(page, dmoUser, '/mesh', {
         timeout: 90000,
-        contentSelector: '.mesh-domain-list-page, .empty-state, .error-display',
+        contentSelector: '.mesh-domain-list-page, .empty-state, [data-testid="empty-state"], .error-display, [data-testid="error-display"]',
       });
       await page.goto('/mesh/00000000-0000-0000-0000-000000000000');
       await page.waitForLoadState('domcontentloaded');
@@ -73,7 +73,7 @@ test.describe('JOURNEY-DMO-002: Configure Federated Governance', () => {
       const dmoUser = await getDataMeshDomainOwnerUser();
       await loginAndNavigateToRoute(page, dmoUser, '/mesh', {
         timeout: 90000,
-        contentSelector: '.mesh-domain-list-page, .empty-state, .error-display',
+        contentSelector: '.mesh-domain-list-page, .empty-state, [data-testid="empty-state"], .error-display, [data-testid="error-display"]',
       });
       const urlAfterMesh = page.url();
       expect(

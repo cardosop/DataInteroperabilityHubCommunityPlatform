@@ -23,7 +23,7 @@ test.describe('UC-ODPS-002: Link ODPS to Contract', () => {
       const contractId = await createODCSContractViaApi(user);
       await loginAndNavigateToRoute(page, user, `/contracts/${contractId}/link-odps`, {
         timeout: 60000,
-        contentSelector: '.odps-link-page, .error-display, [role="alert"]',
+        contentSelector: '.odps-link-page, .error-display, [data-testid="error-display"], [role="alert"]',
         acceptRedirectToLogin: false,
       });
       if (page.url().includes('/login')) {
@@ -31,7 +31,7 @@ test.describe('UC-ODPS-002: Link ODPS to Contract', () => {
       }
       expect(page.url()).toContain('/link-odps');
       await expect(
-        page.locator('.odps-link-page, .error-display').first()
+        page.locator('.odps-link-page, .error-display, [data-testid="error-display"]').first()
       ).toBeVisible({ timeout: 15000 });
     });
   });
@@ -48,11 +48,11 @@ test.describe('UC-ODPS-002: Link ODPS to Contract', () => {
         '/contracts/00000000-0000-0000-0000-000000000000/link-odps',
         {
           timeout: 60000,
-          contentSelector: '.error-display, [role="alert"], .odps-link-page',
+          contentSelector: '.error-display, [data-testid="error-display"], [role="alert"], .odps-link-page',
         }
       );
       const hasError =
-        (await page.locator('.error-display').count()) > 0 ||
+        (await page.locator('.error-display, [data-testid="error-display"]').first().count()) > 0 ||
         (await page.locator('[role="alert"]').count()) > 0;
       expect(page.url().includes('/login') || page.url().includes('/403') || hasError).toBe(true);
     });
@@ -63,12 +63,12 @@ test.describe('UC-ODPS-002: Link ODPS to Contract', () => {
       const user = await getTestUser();
       await loginAndNavigateToRoute(page, user, '/contracts', {
         timeout: 60000,
-        contentSelector: '.contract-list-page, .empty-state, .error-display',
+        contentSelector: '.contract-list-page, [data-testid="contract-list-page"], .empty-state, [data-testid="empty-state"], .error-display, [data-testid="error-display"]',
       });
       expect(page.url()).toContain('/contracts');
       const hasContent =
-        (await page.locator('.contract-list-page').count()) > 0 ||
-        (await page.locator('.empty-state').count()) > 0;
+        (await page.locator('.contract-list-page, [data-testid="contract-list-page"]').first().count()) > 0 ||
+        (await page.locator('.empty-state, [data-testid="empty-state"]').first().count()) > 0;
       expect(hasContent).toBe(true);
     });
   });

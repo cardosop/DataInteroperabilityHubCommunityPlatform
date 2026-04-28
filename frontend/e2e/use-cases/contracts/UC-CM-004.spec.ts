@@ -13,7 +13,7 @@ import { expect, test } from '@playwright/test';
 import { clearAuthStorage, getTestUser } from '../../fixtures/auth';
 import { loginAndNavigateToRoute, waitForLoadingComplete } from '../../fixtures/helpers';
 
-test.describe('UC-CM-004: Manage Activity Feed', () => {
+test.describe('UC-CM-004: Manage Activity Feed @critical', () => {
   test.setTimeout(120000);
 
   test.describe('Success', () => {
@@ -22,7 +22,7 @@ test.describe('UC-CM-004: Manage Activity Feed', () => {
       await loginAndNavigateToRoute(page, user, '/communities', {
         timeout: 60000,
         contentSelector:
-          '.communities-page, .communities-tab, .unavailable-page, .error-display',
+          '.communities-page, .communities-tab, .unavailable-page, [data-testid="unavailable-page"], .error-display, [data-testid="error-display"]',
         acceptRedirectToLogin: false,
       });
       if (page.url().includes('/login')) {
@@ -33,21 +33,21 @@ test.describe('UC-CM-004: Manage Activity Feed', () => {
       const url = page.url();
       if (url.includes('/403') || url.includes('/unavailable')) {
         await expect(
-          page.locator('.unavailable-page, .error-display, [role="alert"]').first()
+          page.locator('.unavailable-page, [data-testid="unavailable-page"], .error-display, [data-testid="error-display"], [role="alert"]').first()
         ).toBeVisible({ timeout: 10000 });
         return;
       }
 
-      const isCapabilityGated = (await page.locator('.unavailable-page').count()) > 0;
+      const isCapabilityGated = (await page.locator('.unavailable-page, [data-testid="unavailable-page"]').first().count()) > 0;
       if (isCapabilityGated) {
-        await expect(page.locator('.unavailable-page').first()).toBeVisible({ timeout: 5000 });
+        await expect(page.locator('.unavailable-page, [data-testid="unavailable-page"]').first().first()).toBeVisible({ timeout: 5000 });
         return;
       }
 
       expect(url).toContain('/communities');
 
       const hasCommunitiesPage = (await page.locator('.communities-page, .communities-tab, .community-list, [class*="community"]').count()) > 0;
-      const hasEmptyState = (await page.locator('.empty-state').count()) > 0;
+      const hasEmptyState = (await page.locator('.empty-state, [data-testid="empty-state"]').first().count()) > 0;
 
       expect(hasCommunitiesPage || hasEmptyState).toBe(true);
 
@@ -56,7 +56,7 @@ test.describe('UC-CM-004: Manage Activity Feed', () => {
       const hasFeedEntries =
         (await page.locator('[class*="feed-entry"], [class*="activity-item"], [class*="feed-item"], .timeline-item').count()) > 0;
       const hasEmptyFeedState =
-        (await page.locator('.empty-state, [class*="empty"], [class*="no-activity"]').count()) > 0;
+        (await page.locator('.empty-state, [data-testid="empty-state"], [class*="empty"], [class*="no-activity"]').count()) > 0;
       // Activity feed may be a tab or section within communities; verify feed-specific or empty-feed content is present
       expect(hasActivityFeed || hasFeedEntries || hasEmptyFeedState).toBe(true);
     });
@@ -84,7 +84,7 @@ test.describe('UC-CM-004: Manage Activity Feed', () => {
       await loginAndNavigateToRoute(page, user, '/communities', {
         timeout: 60000,
         contentSelector:
-          '.communities-page, .communities-tab, .unavailable-page, .error-display',
+          '.communities-page, .communities-tab, .unavailable-page, [data-testid="unavailable-page"], .error-display, [data-testid="error-display"]',
         acceptRedirectToLogin: false,
       });
       if (page.url().includes('/login')) {
@@ -95,14 +95,14 @@ test.describe('UC-CM-004: Manage Activity Feed', () => {
       const url = page.url();
       if (url.includes('/403') || url.includes('/unavailable')) {
         await expect(
-          page.locator('.unavailable-page, .error-display, [role="alert"]').first()
+          page.locator('.unavailable-page, [data-testid="unavailable-page"], .error-display, [data-testid="error-display"], [role="alert"]').first()
         ).toBeVisible({ timeout: 10000 });
         return;
       }
 
-      const isCapabilityGated = (await page.locator('.unavailable-page').count()) > 0;
+      const isCapabilityGated = (await page.locator('.unavailable-page, [data-testid="unavailable-page"]').first().count()) > 0;
       if (isCapabilityGated) {
-        await expect(page.locator('.unavailable-page').first()).toBeVisible({ timeout: 5000 });
+        await expect(page.locator('.unavailable-page, [data-testid="unavailable-page"]').first().first()).toBeVisible({ timeout: 5000 });
         return;
       }
 
@@ -112,7 +112,7 @@ test.describe('UC-CM-004: Manage Activity Feed', () => {
       const hasFeedEntries =
         (await page.locator('[class*="feed-entry"], [class*="activity-item"], [class*="feed-item"], .timeline-item').count()) > 0;
       const hasEmptyState =
-        (await page.locator('.empty-state, [class*="empty"], [class*="no-activity"], [class*="no-entries"]').count()) > 0;
+        (await page.locator('.empty-state, [data-testid="empty-state"], [class*="empty"], [class*="no-activity"], [class*="no-entries"]').count()) > 0;
 
       // Either feed entries exist or empty state is shown
       expect(hasFeedEntries || hasEmptyState).toBe(true);

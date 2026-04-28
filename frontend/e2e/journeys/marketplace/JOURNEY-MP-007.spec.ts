@@ -21,7 +21,7 @@ test.describe('JOURNEY-MP-007: Monitor Sync Jobs', () => {
       const testUser = await getTestUser();
       await loginAndNavigateToRoute(page, testUser, '/integrations/sync-jobs', {
         timeout: 60000,
-        contentSelector: '.sync-job-list-page, .empty-state, .error-display',
+        contentSelector: '.sync-job-list-page, [data-testid="sync-job-list-page"], .empty-state, [data-testid="empty-state"], .error-display, [data-testid="error-display"]',
         acceptRedirectToLogin: true,
       });
       if (page.url().includes('/login')) {
@@ -35,7 +35,7 @@ test.describe('JOURNEY-MP-007: Monitor Sync Jobs', () => {
       const testUser = await getTestUser();
       await loginAndNavigateToRoute(page, testUser, '/jobs', {
         timeout: 65000,
-        contentSelector: '.job-list-page, .empty-state, .error-display',
+        contentSelector: '.job-list-page, .empty-state, [data-testid="empty-state"], .error-display, [data-testid="error-display"]',
         acceptRedirectToLogin: true,
       });
       if (page.url().includes('/login')) {
@@ -54,7 +54,7 @@ test.describe('JOURNEY-MP-007: Monitor Sync Jobs', () => {
         acceptRedirectToLogin: true,
       });
       await page.waitForTimeout(3000);
-      const hasError = (await page.locator('.error-display').count()) > 0;
+      const hasError = (await page.locator('.error-display, [data-testid="error-display"]').first().count()) > 0;
       const onLogin = page.url().includes('/login');
       expect(hasError || onLogin).toBe(true) /* acceptable states */;
     });
@@ -72,7 +72,7 @@ test.describe('JOURNEY-MP-007: Monitor Sync Jobs', () => {
       const testUser = await getTestUser();
       await loginAndNavigateToRoute(page, testUser, '/integrations/sync-jobs', {
         timeout: 90000,
-        contentSelector: '.sync-job-list-page, .empty-state, .error-display',
+        contentSelector: '.sync-job-list-page, [data-testid="sync-job-list-page"], .empty-state, [data-testid="empty-state"], .error-display, [data-testid="error-display"]',
         acceptRedirectToLogin: true,
       });
       if (page.url().includes('/login')) {
@@ -83,7 +83,7 @@ test.describe('JOURNEY-MP-007: Monitor Sync Jobs', () => {
       // Already authenticated; use client-side nav to avoid redundant login (prevents timeout)
       await navigateToRouteFromApp(page, '/jobs', {
         timeout: 90000,
-        contentSelector: '.job-list-page, .empty-state, .error-display',
+        contentSelector: '.job-list-page, .empty-state, [data-testid="empty-state"], .error-display, [data-testid="error-display"]',
         acceptRedirectToLogin: true,
       });
       if (page.url().includes('/login')) {

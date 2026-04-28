@@ -25,7 +25,7 @@ test.describe('JOURNEY-DC-008: Rate and Review Asset', () => {
       await loginAndNavigateToRoute(page, consumer, '/communities', {
         timeout: 60000,
         contentSelector:
-          '.communities-page, .communities-tab, .unavailable-page, .empty-state, .error-display',
+          '.communities-page, .communities-tab, .unavailable-page, [data-testid="unavailable-page"], .empty-state, [data-testid="empty-state"], .error-display, [data-testid="error-display"]',
       });
       const url = page.url();
       const onLogin = url.includes('/login');
@@ -37,9 +37,9 @@ test.describe('JOURNEY-DC-008: Rate and Review Asset', () => {
       }
       expect(onCommunities).toBe(true);
       const hasContent =
-        (await page.locator('.communities-page, .communities-tab, .app-main').count()) > 0;
+        (await page.locator('.communities-page, .communities-tab, .app-main, [data-testid="app-main"]').count()) > 0;
       expect(hasContent).toBe(true);
-      await expect(page.locator('.error-display')).not.toBeVisible();
+      await expect(page.locator('.error-display, [data-testid="error-display"]').first()).not.toBeVisible();
     });
 
     test('asset page shows Community section for rating/review (Phase 27.1)', async ({ page }) => {
@@ -51,13 +51,13 @@ test.describe('JOURNEY-DC-008: Rate and Review Asset', () => {
       const assetId = await createAssetViaApi(provider);
       await loginAndNavigateToRoute(page, provider, `/assets/${assetId}`, {
         timeout: 60000,
-        contentSelector: '.asset-detail-page, .asset-detail-content, .asset-social-section, .error-display',
+        contentSelector: '.asset-detail-page, [data-testid="asset-detail-page"], .asset-detail-content, .asset-social-section, .error-display, [data-testid="error-display"]',
       });
-      await page.waitForSelector('.asset-detail-page, .error-display', { timeout: 15000 });
-      if ((await page.locator('.error-display').count()) > 0) {
+      await page.waitForSelector('.asset-detail-page, [data-testid="asset-detail-page"], .error-display, [data-testid="error-display"]', { timeout: 15000 });
+      if ((await page.locator('.error-display, [data-testid="error-display"]').first().count()) > 0) {
         const errText =
           // intentional: tolerates a detached/removed element while extracting text for a diagnostic message; the surrounding throw/expect below this catch is the primary failure path.
-          (await page.locator('.error-display').first().textContent().catch(() => '')) ?? '';
+          (await page.locator('.error-display, [data-testid="error-display"]').first().first().textContent().catch(() => '')) ?? '';
         throw new Error(
           `Asset detail failed to load (required for Community section test). ` +
             `Backend error: ${errText.slice(0, 200)}`
@@ -90,7 +90,7 @@ test.describe('JOURNEY-DC-008: Rate and Review Asset', () => {
       await loginAndNavigateToRoute(page, consumer, '/communities', {
         timeout: 60000,
         contentSelector:
-          '.communities-page, .communities-tab, .unavailable-page, .empty-state, .error-display',
+          '.communities-page, .communities-tab, .unavailable-page, [data-testid="unavailable-page"], .empty-state, [data-testid="empty-state"], .error-display, [data-testid="error-display"]',
       });
       const url = page.url();
       expect(

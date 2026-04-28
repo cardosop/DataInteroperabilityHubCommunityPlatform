@@ -71,7 +71,7 @@ test.describe('Files Upload (UX)', () => {
     const fileInput = page.locator('input[type="file"][accept*="csv"]');
     const hasInput = (await fileInput.count()) > 0;
     if (!hasInput) {
-      const dropzone = page.locator('.file-upload-dropzone');
+      const dropzone = page.locator('.file-upload-dropzone, [data-testid="file-upload-dropzone"]');
       await expect(dropzone).toBeVisible({ timeout: 5000 });
       return;
     }
@@ -87,7 +87,7 @@ test.describe('Files Upload (UX)', () => {
 
       // Wait for upload: progress/success (in modal), error, modal close, or file in table
       const progressOrSuccess = page.locator('.file-upload-progress, .file-upload-success');
-      const errorDisplay = page.locator('.error-display');
+      const errorDisplay = page.locator('.error-display, [data-testid="error-display"]').first();
       const uploadDialog = page.locator('[role="dialog"]');
       const fileInTable = page.locator(`[data-file-name="${fileName}"]`);
       await Promise.race([
@@ -104,7 +104,7 @@ test.describe('Files Upload (UX)', () => {
       const hasProgress = (await progressOrSuccess.count()) > 0;
       const modalClosed = !(await uploadDialog.isVisible());
       const hasFileInTable = (await fileInTable.count()) > 0;
-      await expect(page.locator('.error-display')).not.toBeVisible();
+      await expect(page.locator('.error-display, [data-testid="error-display"]').first()).not.toBeVisible();
       expect(hasProgress || modalClosed || hasFileInTable).toBe(true) /* acceptable states */;
     } finally {
       try {

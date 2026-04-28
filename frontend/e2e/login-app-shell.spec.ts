@@ -58,7 +58,7 @@ test.describe('Login → Load App Shell (DoD-2.2)', () => {
     await waitForLoadingComplete(page, { timeout: 15000 });
 
     // Step 5: Verify App Shell is loaded
-    const header = page.locator('.app-header');
+    const header = page.locator('.app-header, [data-testid="app-header"]').first();
     await expect(header).toBeVisible({ timeout: 15000 });
     await expect(header.locator('.app-title')).toContainText(E2E_APP_NAME);
 
@@ -86,7 +86,7 @@ test.describe('Login → Load App Shell (DoD-2.2)', () => {
     expect(navCount).toBeGreaterThan(0);
 
     // Verify Main content area is visible
-    const mainContent = page.locator('.app-main');
+    const mainContent = page.locator('.app-main, [data-testid="app-main"]').first();
     await expect(mainContent).toBeVisible();
 
     // Step 6: Verify navigation works
@@ -126,7 +126,7 @@ test.describe('Login → Load App Shell (DoD-2.2)', () => {
     // Wait for app shell to be fully loaded
     await page.waitForLoadState('domcontentloaded');
     await page.waitForTimeout(2000); // Wait for React to render
-    await expect(page.locator('.app-header')).toBeVisible({ timeout: 10000 });
+    await expect(page.locator('.app-header, [data-testid="app-header"]').first()).toBeVisible({ timeout: 10000 });
     await expect(page.locator('.app-sidebar')).toBeVisible({ timeout: 10000 });
 
     // Navigate to different routes using sidebar links.
@@ -147,16 +147,16 @@ test.describe('Login → Load App Shell (DoD-2.2)', () => {
       await page.waitForTimeout(1000);
 
       // Navigation must have happened AND shell must still be visible
-      await expect(page.locator('.app-header')).toBeVisible({ timeout: 10000 });
+      await expect(page.locator('.app-header, [data-testid="app-header"]').first()).toBeVisible({ timeout: 10000 });
       await expect(page.locator('.app-sidebar')).toBeVisible({ timeout: 10000 });
-      await expect(page.locator('.app-main')).toBeVisible({ timeout: 10000 });
+      await expect(page.locator('.app-main, [data-testid="app-main"]').first()).toBeVisible({ timeout: 10000 });
     } else {
       // No nav links rendered at all — navigate via URL to a known protected route
       await page.goto('/assets', { waitUntil: 'domcontentloaded' });
       await page.waitForTimeout(1000);
-      await expect(page.locator('.app-header')).toBeVisible({ timeout: 10000 });
+      await expect(page.locator('.app-header, [data-testid="app-header"]').first()).toBeVisible({ timeout: 10000 });
       await expect(page.locator('.app-sidebar')).toBeVisible({ timeout: 10000 });
-      await expect(page.locator('.app-main')).toBeVisible({ timeout: 10000 });
+      await expect(page.locator('.app-main, [data-testid="app-main"]').first()).toBeVisible({ timeout: 10000 });
     }
   });
 
@@ -176,7 +176,7 @@ test.describe('Login → Load App Shell (DoD-2.2)', () => {
     // Login first
     const testUser = await getTestUser();
     await loginUser(page, testUser);
-    await expect(page.locator('.app-header')).toBeVisible({ timeout: 15000 });
+    await expect(page.locator('.app-header, [data-testid="app-header"]').first()).toBeVisible({ timeout: 15000 });
 
     // Confirm tokens are present before logout
     const tokenBefore = await page.evaluate(() => localStorage.getItem('access_token'));
@@ -209,7 +209,7 @@ test.describe('Login → Load App Shell (DoD-2.2)', () => {
     const isOnLanding =
       (new URL(postLogoutUrl).pathname === '/' || new URL(postLogoutUrl).pathname === '') &&
       (await page.locator('[data-testid="landing-page"], .landing-page, h1').count()) > 0;
-    const appShellGone = (await page.locator('.app-header').count()) === 0;
+    const appShellGone = (await page.locator('.app-header, [data-testid="app-header"]').first().count()) === 0;
     expect(isOnLogin || isOnLanding || appShellGone).toBe(true) /* acceptable states */;
 
     // Tokens must be cleared from localStorage (already confirmed by waitForFunction above,

@@ -14,7 +14,7 @@ import { getTestUser } from './fixtures/auth';
 import { loginAndNavigateToRoute, navigateToRouteFromApp, waitForAppMainReady, waitForLoadingComplete } from './fixtures/helpers';
 import { verifyViaApi } from './fixtures/verifyViaApi';
 
-test.describe('Phase 2 Catalog Journey', () => {
+test.describe('Phase 2 Catalog Journey @deprecated', () => {
   // Per-test budget MUST exceed the longest inner-call timeout. Every test
   // in this file calls `loginAndNavigateToRoute({ timeout: 60_000 })`, plus
   // subsequent locator waits and dual-channel verifyViaApi roundtrips.
@@ -32,7 +32,7 @@ test.describe('Phase 2 Catalog Journey', () => {
     const testUser = await getTestUser();
     await loginAndNavigateToRoute(page, testUser, '/assets', {
       timeout: 60000,
-      contentSelector: '.asset-list-page, .empty-state, .error-display, h1',
+      contentSelector: '.asset-list-page, [data-testid="asset-list-page"], .empty-state, [data-testid="empty-state"], .error-display, [data-testid="error-display"], h1',
     });
 
     await waitForLoadingComplete(page, { timeout: 15000 });
@@ -40,7 +40,7 @@ test.describe('Phase 2 Catalog Journey', () => {
     // Try to find Create Asset button - it might be in header (.asset-list-header) or empty state
     const createButton = page
       .locator('.asset-list-header button:has-text("Create Asset")')
-      .or(page.locator('.empty-state-action:has-text("Create Asset")'))
+      .or(page.locator('[data-testid="empty-state-action"]:has-text("Create Asset")'))
       .or(page.locator('button:has-text("Create Asset")'));
     await createButton.first().waitFor({ timeout: 15000 });
     await createButton.first().click();
@@ -69,7 +69,7 @@ test.describe('Phase 2 Catalog Journey', () => {
       await page.waitForURL(uuidRegex, { timeout: 60000, waitUntil: 'domcontentloaded' });
     } catch {
       // intentional: tolerates a detached/removed element while extracting text for a diagnostic message; the surrounding throw/expect below this catch is the primary failure path.
-      const errEl = await page.locator('.error-display').first().textContent().catch(() => '');
+      const errEl = await page.locator('.error-display, [data-testid="error-display"]').first().first().textContent().catch(() => '');
       const errHint = errEl ? ` Backend error: ${errEl.slice(0, 200)}` : '';
       throw new Error(`Asset creation redirect timed out. Current URL: ${page.url()}.${errHint}`);
     }
@@ -91,12 +91,12 @@ test.describe('Phase 2 Catalog Journey', () => {
     });
 
     // Verify asset was created - wait for asset detail page (API can be slow)
-    await page.waitForSelector('.asset-detail-page, .asset-detail-content, .error-display', { timeout: 35000 });
-    if ((await page.locator('.error-display').count()) > 0) {
-      const errText = (await page.locator('.error-display').first().textContent()) ?? '';
+    await page.waitForSelector('.asset-detail-page, [data-testid="asset-detail-page"], .asset-detail-content, .error-display, [data-testid="error-display"]', { timeout: 35000 });
+    if ((await page.locator('.error-display, [data-testid="error-display"]').first().count()) > 0) {
+      const errText = (await page.locator('.error-display, [data-testid="error-display"]').first().first().textContent()) ?? '';
       throw new Error(`Asset creation failed: ${errText.slice(0, 200)}`);
     }
-    const assetHeading = page.locator('.asset-detail-page h1, .asset-detail-content h1').first();
+    const assetHeading = page.locator('.asset-detail-page, [data-testid="asset-detail-page"] h1, .asset-detail-content h1').first();
     await expect(assetHeading).toContainText('Test Asset', { timeout: 10000 });
     await expect(page.locator('.status-badge').first()).toContainText('DRAFT');
 
@@ -108,13 +108,13 @@ test.describe('Phase 2 Catalog Journey', () => {
     // Step 3: Create Dataset (from uploaded file) — client-side nav avoids auth race
     await navigateToRouteFromApp(page, '/datasets/create', {
       timeout: 60000,
-      contentSelector: '.dataset-create-page',
+      contentSelector: '.dataset-create-page, [data-testid="dataset-create-page"]',
     });
 
     await page.waitForTimeout(2000);
 
     // Find file upload dropzone
-    const dropzone = page.locator('.file-upload-dropzone');
+    const dropzone = page.locator('.file-upload-dropzone, [data-testid="file-upload-dropzone"]');
     if ((await dropzone.count()) > 0) {
       // Click on dropzone to trigger file input
       await dropzone.first().click();
@@ -169,7 +169,7 @@ test.describe('Phase 2 Catalog Journey', () => {
           console.log('Upload logs:', uploadLogs.join('\n'));
 
           // Check for upload error
-          const error = page.locator('.error-display');
+          const error = page.locator('.error-display, [data-testid="error-display"]').first();
           if ((await error.count()) > 0) {
             const errorText = await error.textContent();
             throw new Error(`File upload failed: ${errorText}`);
@@ -233,23 +233,23 @@ test.describe('Phase 2 Catalog Journey', () => {
     // Verify dataset was created - wait for dataset detail page to load
     await waitForAppMainReady(page, {
       timeout: 60000,
-      contentSelector: '.dataset-detail-page, .dataset-detail-content, .dataset-detail-metadata, .error-display',
+      contentSelector: '.dataset-detail-page, [data-testid="dataset-detail-page"], .dataset-detail-content, .dataset-detail-metadata, .error-display, [data-testid="error-display"]',
     });
 
     await page.waitForTimeout(2000); // Wait for React to render
 
     // Assert dataset content loaded — error-display is NOT an acceptable outcome
     const datasetContent = page
-      .locator('.dataset-detail-page .dataset-detail-metadata')
-      .or(page.locator('.dataset-detail-page .dataset-detail-content'))
+      .locator('.dataset-detail-page, [data-testid="dataset-detail-page"] .dataset-detail-metadata')
+      .or(page.locator('.dataset-detail-page, [data-testid="dataset-detail-page"] .dataset-detail-content'))
       .first();
     await expect(datasetContent).toBeVisible({ timeout: 10000 });
-    await expect(page.locator('.error-display')).not.toBeVisible();
+    await expect(page.locator('.error-display, [data-testid="error-display"]').first()).not.toBeVisible();
 
     // Step 4: Navigate to Contracts — client-side nav avoids auth race
     await navigateToRouteFromApp(page, '/contracts', {
       timeout: 60000,
-      contentSelector: '.contract-list-page, .empty-state, h1',
+      contentSelector: '.contract-list-page, [data-testid="contract-list-page"], .empty-state, [data-testid="empty-state"], h1',
     });
 
     await page.waitForTimeout(2000);
@@ -257,8 +257,8 @@ test.describe('Phase 2 Catalog Journey', () => {
     // Contracts page loads as either heading or empty-state — wait on
     // whichever paints first, then branch. Replaces the stacked count()
     // guards (226.A1 anti-pattern).
-    const contractsHeading = page.locator('.contract-list-page h1, .app-main h1').first();
-    const contractsEmptyState = page.locator('.empty-state').first();
+    const contractsHeading = page.locator('.contract-list-page, [data-testid="contract-list-page"] h1, .app-main, [data-testid="app-main"] h1').first();
+    const contractsEmptyState = page.locator('.empty-state, [data-testid="empty-state"]').first().first();
     await contractsHeading.or(contractsEmptyState).waitFor({
       state: 'visible',
       timeout: 15000,
@@ -273,7 +273,7 @@ test.describe('Phase 2 Catalog Journey', () => {
     // Step 5: Activate Asset — client-side nav or goto with retry
     await navigateToRouteFromApp(page, `/assets/${assetId}`, {
       timeout: 60000,
-      contentSelector: '.asset-detail-page, .asset-detail-content, h1',
+      contentSelector: '.asset-detail-page, [data-testid="asset-detail-page"], .asset-detail-content, h1',
     });
 
     await page.waitForTimeout(2000);
@@ -328,7 +328,7 @@ test.describe('Phase 2 Catalog Journey', () => {
     const testUser = await getTestUser();
     await loginAndNavigateToRoute(page, testUser, '/assets', {
       timeout: 60000,
-      contentSelector: '.asset-list-page, .empty-state, .error-display, h1',
+      contentSelector: '.asset-list-page, [data-testid="asset-list-page"], .empty-state, [data-testid="empty-state"], .error-display, [data-testid="error-display"], h1',
     });
 
     // Verify we're on assets page (not login or home)
@@ -346,10 +346,10 @@ test.describe('Phase 2 Catalog Journey', () => {
     // budget, then branch on which one won to keep the existing
     // error-state logging behaviour.
     const assetsHeading = page
-      .locator('.asset-list-page h1, .app-main h1:has-text("Assets")')
+      .locator('.asset-list-page, [data-testid="asset-list-page"] h1, .app-main, [data-testid="app-main"] h1:has-text("Assets")')
       .first();
-    const emptyState = page.locator('.empty-state').first();
-    const errorDisplay = page.locator('.error-display').first();
+    const emptyState = page.locator('.empty-state, [data-testid="empty-state"]').first().first();
+    const errorDisplay = page.locator('.error-display, [data-testid="error-display"]').first().first();
     try {
       await assetsHeading.or(emptyState).or(errorDisplay).waitFor({
         state: 'visible',
@@ -374,7 +374,7 @@ test.describe('Phase 2 Catalog Journey', () => {
     }
 
     // Test filters only if assets list is shown (not empty state)
-    const assetListPage = page.locator('.asset-list-page');
+    const assetListPage = page.locator('.asset-list-page, [data-testid="asset-list-page"]').first();
     if ((await assetListPage.count()) > 0) {
       // Test search
       const searchInput = page.locator('input[placeholder="Search assets..."]');
@@ -412,7 +412,7 @@ test.describe('Phase 2 Catalog Journey', () => {
     const testUser = await getTestUser();
     await loginAndNavigateToRoute(page, testUser, '/datasets', {
       timeout: 60000,
-      contentSelector: '.dataset-list-page, .empty-state, .error-display, h1',
+      contentSelector: '.dataset-list-page, [data-testid="dataset-list-page"], .empty-state, [data-testid="empty-state"], .error-display, [data-testid="error-display"], h1',
       acceptRedirectToLogin: true,
     });
     // Auth-race condition: if loginAndNavigateToRoute landed on /login,
@@ -433,9 +433,9 @@ test.describe('Phase 2 Catalog Journey', () => {
     // within the budget, turning a blank page (real bug) into a loud
     // failure instead of the stacked-count false-pass shape.
     const datasetsHeading = page
-      .locator('.dataset-list-page h1, .app-main h1:has-text("Datasets")')
+      .locator('.dataset-list-page, [data-testid="dataset-list-page"] h1, .app-main, [data-testid="app-main"] h1:has-text("Datasets")')
       .first();
-    const datasetsEmpty = page.locator('.empty-state').first();
+    const datasetsEmpty = page.locator('.empty-state, [data-testid="empty-state"]').first().first();
     const datasetsError = page.locator('text=Failed to load datasets').first();
     try {
       await datasetsHeading.or(datasetsEmpty).or(datasetsError).waitFor({
@@ -468,7 +468,7 @@ test.describe('Phase 2 Catalog Journey', () => {
       await page.waitForLoadState('domcontentloaded');
       await waitForLoadingComplete(page, { timeout: 15000 });
       const detailPage = page.locator(
-        '.dataset-detail-page, [data-testid="dataset-detail-page"], .dataset-detail, h1',
+        '.dataset-detail-page, [data-testid="dataset-detail-page"], .dataset-detail-page, [data-testid="dataset-detail-page"], .dataset-detail, h1',
       );
       // intentional: detail page component class name varies across UI
       // versions; we accept multiple markers AND fall back to a URL
@@ -499,7 +499,7 @@ test.describe('Phase 2 Catalog Journey', () => {
     const testUser = await getTestUser();
     await loginAndNavigateToRoute(page, testUser, '/contracts', {
       timeout: 60000,
-      contentSelector: '.contract-list-page, .empty-state, .error-display',
+      contentSelector: '.contract-list-page, [data-testid="contract-list-page"], .empty-state, [data-testid="empty-state"], .error-display, [data-testid="error-display"]',
       acceptRedirectToLogin: true,
     });
     // Auth-race condition: if loginAndNavigateToRoute landed on /login,
@@ -519,9 +519,9 @@ test.describe('Phase 2 Catalog Journey', () => {
     // whichever. Missing page now fails loud (see datasets test above
     // for the pattern rationale).
     const contractsHeading = page
-      .locator('.contract-list-page h1, .app-main h1:has-text("Contracts")')
+      .locator('.contract-list-page, [data-testid="contract-list-page"] h1, .app-main, [data-testid="app-main"] h1:has-text("Contracts")')
       .first();
-    const contractsEmpty = page.locator('.empty-state').first();
+    const contractsEmpty = page.locator('.empty-state, [data-testid="empty-state"]').first().first();
     try {
       await contractsHeading.or(contractsEmpty).waitFor({
         state: 'visible',
@@ -549,7 +549,7 @@ test.describe('Phase 2 Catalog Journey', () => {
       await firstContract.click();
       await page.waitForLoadState('domcontentloaded');
       await page.waitForTimeout(2000);
-      const detailHeading = page.locator('.contract-detail-page h1, .app-main h1').first();
+      const detailHeading = page.locator('.contract-detail-page, [data-testid="contract-detail-page"] h1, .app-main, [data-testid="app-main"] h1').first();
       await expect(detailHeading).toBeVisible({ timeout: 10000 });
 
       // intentional: Validate button is genuinely optional — it only
@@ -568,7 +568,7 @@ test.describe('Phase 2 Catalog Journey', () => {
     const testUser = await getTestUser();
     await loginAndNavigateToRoute(page, testUser, '/jobs', {
       timeout: 60000,
-      contentSelector: '.job-list-page, .empty-state, .error-display, h1',
+      contentSelector: '.job-list-page, .empty-state, [data-testid="empty-state"], .error-display, [data-testid="error-display"], h1',
       acceptRedirectToLogin: true,
     });
     // Auth-race condition: if loginAndNavigateToRoute landed on /login,
@@ -587,8 +587,8 @@ test.describe('Phase 2 Catalog Journey', () => {
     // Jobs page: heading-or-empty on first paint, then table-or-empty
     // for the inner list region. Both use .or() to fail loud on a
     // missing page rather than cascading through count guards.
-    const jobsHeading = page.locator('.job-list-page h1, .app-main h1:has-text("Jobs")').first();
-    const jobsEmpty = page.locator('.empty-state').first();
+    const jobsHeading = page.locator('.job-list-page h1, .app-main, [data-testid="app-main"] h1:has-text("Jobs")').first();
+    const jobsEmpty = page.locator('.empty-state, [data-testid="empty-state"]').first().first();
     try {
       await jobsHeading.or(jobsEmpty).waitFor({ state: 'visible', timeout: 20000 });
     } catch {
@@ -603,7 +603,7 @@ test.describe('Phase 2 Catalog Journey', () => {
     }
 
     const jobsTable = page.locator('.job-list-table table, table').first();
-    const jobsTableEmpty = page.locator('.empty-state').first();
+    const jobsTableEmpty = page.locator('.empty-state, [data-testid="empty-state"]').first().first();
     try {
       await jobsTable.or(jobsTableEmpty).waitFor({ state: 'visible', timeout: 10000 });
     } catch {
@@ -620,7 +620,7 @@ test.describe('Phase 2 Catalog Journey', () => {
       await firstJob.click();
       await page.waitForLoadState('domcontentloaded');
       await page.waitForTimeout(2000);
-      const detailHeading = page.locator('.job-detail-page h1, .app-main h1').first();
+      const detailHeading = page.locator('.job-detail-page h1, .app-main, [data-testid="app-main"] h1').first();
       await expect(detailHeading).toBeVisible({ timeout: 10000 });
     }
   });

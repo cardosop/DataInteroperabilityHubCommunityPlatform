@@ -31,9 +31,9 @@ test.describe('JOURNEY-TA-006: Set Up Advanced Governance', () => {
       }
       expect(onGov).toBe(true);
       const hasContent =
-        (await page.locator('.governance-access-request-list-page, .access-request-list-page, .app-main').count()) > 0;
+        (await page.locator('.governance-access-request-list-page, .access-request-list-page, .app-main, [data-testid="app-main"]').count()) > 0;
       expect(hasContent).toBe(true);
-      await expect(page.locator('.error-display')).not.toBeVisible();
+      await expect(page.locator('.error-display, [data-testid="error-display"]').first()).not.toBeVisible();
     });
 
     test('governance retention list loads', async ({ page }) => {
@@ -46,9 +46,9 @@ test.describe('JOURNEY-TA-006: Set Up Advanced Governance', () => {
       const onRetention = page.url().includes('/governance/retention');
       expect(onRetention).toBe(true);
       const hasContent =
-        (await page.locator('.governance-retention-policy-list-page, .empty-state').count()) > 0;
+        (await page.locator('.governance-retention-policy-list-page, .empty-state, [data-testid="empty-state"]').count()) > 0;
       expect(hasContent).toBe(true);
-      await expect(page.locator('.error-display')).not.toBeVisible();
+      await expect(page.locator('.error-display, [data-testid="error-display"]').first()).not.toBeVisible();
     });
   });
 

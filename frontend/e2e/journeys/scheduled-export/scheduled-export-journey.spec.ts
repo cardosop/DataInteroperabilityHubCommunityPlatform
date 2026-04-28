@@ -294,7 +294,7 @@ async function fillAssetIdInExportForm(
   }
 }
 
-test.describe('Scheduled Export Journey', () => {
+test.describe('Scheduled Export Journey @critical', () => {
   // 15 min: setup (login + asset + export creation + trigger) up to 11 min under parallel E2E load
   // + 4 min RUN_COMPLETION_TIMEOUT_MS polling = 15 min total budget.
   test.setTimeout(90000);
@@ -344,7 +344,7 @@ test.describe('Scheduled Export Journey', () => {
       await loginAndNavigateToRoute(page, testUser, '/scheduled-exports', {
         timeout: 90000,
         contentSelector:
-          '.scheduled-export-list-page, .empty-state, .error-display, h1',
+          '.scheduled-export-list-page, .empty-state, [data-testid="empty-state"], .error-display, [data-testid="error-display"], h1',
       });
       if (page.url().includes('/login') || page.url().includes('/403')) {
         test.skip(
@@ -391,10 +391,10 @@ test.describe('Scheduled Export Journey', () => {
           }
         );
       } catch {
-        const hasError = (await page.locator('.error-display').count()) > 0;
+        const hasError = (await page.locator('.error-display, [data-testid="error-display"]').first().count()) > 0;
         const errText = hasError
           // intentional: scheduled-export journey runs against shared staging where job state varies — best-effort skips on optional UI/state branches; primary assertions on the schedule's terminal state are made via verifyViaApi.
-          ? (await page.locator('.error-display').first().textContent().catch(() => '')) || ''
+          ? (await page.locator('.error-display, [data-testid="error-display"]').first().first().textContent().catch(() => '')) || ''
           : '';
         throw new Error(
           `Scheduled export create did not navigate to detail within 30s. ${errText ? `Error: ${errText.slice(0, 150)}` : 'Check backend and Prefect availability.'}`
@@ -403,13 +403,13 @@ test.describe('Scheduled Export Journey', () => {
       // Detail page may show loading, then content; or error/empty if create failed
       // Use .first() to avoid strict mode violation when both detail page and runs-section empty-state exist
       await page
-        .locator('[data-testid="scheduled-export-detail-page"], .error-display, .empty-state')
+        .locator('[data-testid="scheduled-export-detail-page"], .error-display, [data-testid="error-display"], .empty-state, [data-testid="empty-state"]')
         .first()
         .waitFor({ state: 'visible', timeout: 20000 });
       // Only skip on page-level error or "not found" empty - not the runs section "No runs" empty state
-      const hasPageError = (await page.locator('.error-display').count()) > 0;
+      const hasPageError = (await page.locator('.error-display, [data-testid="error-display"]').first().count()) > 0;
       const hasNotFoundEmpty =
-        (await page.locator('.empty-state:has-text("not found"), .empty-state:has-text("could not be found")').count()) >
+        (await page.locator('.empty-state, [data-testid="empty-state"]:has-text("not found"), .empty-state, [data-testid="empty-state"]:has-text("could not be found")').count()) >
         0;
       if (hasPageError || (hasNotFoundEmpty && (await page.locator('[data-testid="scheduled-export-detail-page"]').count()) === 0)) {
         throw new Error(
@@ -473,9 +473,9 @@ test.describe('Scheduled Export Journey', () => {
 
           // Dismiss any lingering ConfirmDialog from a previous failed attempt.
           // Use Escape key — more reliable than clicking btn-secondary (which may not be present).
-          if ((await page.locator('.modal-overlay').count()) > 0) {
+          if ((await page.locator('.modal-overlay, [data-testid="modal-overlay"]').first().count()) > 0) {
             await page.keyboard.press('Escape').catch(() => {});
-            await page.locator('.modal-overlay').waitFor({ state: 'hidden', timeout: 3000 }).catch(() => {});
+            await page.locator('.modal-overlay, [data-testid="modal-overlay"]').first().waitFor({ state: 'hidden', timeout: 3000 }).catch(() => {});
           }
 
           await triggerBtn.click();
@@ -483,8 +483,8 @@ test.describe('Scheduled Export Journey', () => {
           // ScheduledExportDetailPage uses a React ConfirmDialog (not a browser dialog).
           // page.once('dialog') only handles window.confirm/alert — it has no effect here.
           // After clicking "Trigger Now", the ConfirmDialog opens with a "Trigger Now"
-          // confirm button (btn-primary inside .modal-overlay). Click it to fire the API.
-          const confirmBtn = page.locator('.modal-overlay button.btn-primary').first();
+          // confirm button (btn-primary inside .modal-overlay, [data-testid="modal-overlay"]). Click it to fire the API.
+          const confirmBtn = page.locator('.modal-overlay, [data-testid="modal-overlay"] button.btn-primary').first();
           await confirmBtn.waitFor({ state: 'visible', timeout: 5000 });
           await confirmBtn.click();
 
@@ -624,15 +624,15 @@ test.describe('Scheduled Export Journey', () => {
       );
       // intentional: scheduled-export journey runs against shared staging where job state varies — best-effort skips on optional UI/state branches; primary assertions on the schedule's terminal state are made via verifyViaApi.
       const detailReady = await page.locator(
-        'button:has-text("Edit"), [data-testid="edit-export-button"], .error-display'
+        'button:has-text("Edit"), [data-testid="edit-export-button"], .error-display, [data-testid="error-display"]'
       ).first().waitFor({ state: 'visible', timeout: 30000 }).then(() => true).catch(() => false);
       if (!detailReady || page.url().includes('/login')) {
         test.skip(true, 'Scheduled export detail did not load within 30s — export may have been deleted or API is slow');
         return;
       }
-      if ((await page.locator('.error-display').count()) > 0) {
+      if ((await page.locator('.error-display, [data-testid="error-display"]').first().count()) > 0) {
         // intentional: scheduled-export journey runs against shared staging where job state varies — best-effort skips on optional UI/state branches; primary assertions on the schedule's terminal state are made via verifyViaApi.
-        const errText = await page.locator('.error-display').first().textContent().catch(() => '');
+        const errText = await page.locator('.error-display, [data-testid="error-display"]').first().first().textContent().catch(() => '');
         test.skip(true, `Detail page shows error (export may have been deleted by another test): ${errText?.slice(0, 100)}`);
         return;
       }
@@ -744,15 +744,15 @@ test.describe('Scheduled Export Journey', () => {
       );
       // intentional: scheduled-export journey runs against shared staging where job state varies — best-effort skips on optional UI/state branches; primary assertions on the schedule's terminal state are made via verifyViaApi.
       const deleteDetailReady = await page.locator(
-        'button:has-text("Delete"), [data-testid="delete-export-button"], .error-display'
+        'button:has-text("Delete"), [data-testid="delete-export-button"], .error-display, [data-testid="error-display"]'
       ).first().waitFor({ state: 'visible', timeout: 30000 }).then(() => true).catch(() => false);
       if (!deleteDetailReady || page.url().includes('/login')) {
         test.skip(true, 'Scheduled export detail did not load within 30s — export may have been deleted or API is slow');
         return;
       }
-      if ((await page.locator('.error-display').count()) > 0) {
+      if ((await page.locator('.error-display, [data-testid="error-display"]').first().count()) > 0) {
         // intentional: scheduled-export journey runs against shared staging where job state varies — best-effort skips on optional UI/state branches; primary assertions on the schedule's terminal state are made via verifyViaApi.
-        const errText = await page.locator('.error-display').first().textContent().catch(() => '');
+        const errText = await page.locator('.error-display, [data-testid="error-display"]').first().first().textContent().catch(() => '');
         test.skip(true, `Detail page shows error (export may have been deleted by another test): ${errText?.slice(0, 100)}`);
         return;
       }
@@ -801,7 +801,7 @@ test.describe('Scheduled Export Journey', () => {
 
       await loginAndNavigateToRoute(page, testUser, '/scheduled-exports/create', {
         timeout: 60000,
-        contentSelector: 'form, input[name="name"], .error-display',
+        contentSelector: 'form, input[name="name"], .error-display, [data-testid="error-display"]',
         acceptRedirectToLogin: true,
       });
       if (page.url().includes('/login')) return;
@@ -866,7 +866,7 @@ test.describe('Scheduled Export Journey', () => {
       await loginAndNavigateToRoute(page, testUser, '/scheduled-exports', {
         timeout: 90000,
         contentSelector:
-          '.scheduled-export-list-page, .empty-state, .error-display, h1',
+          '.scheduled-export-list-page, .empty-state, [data-testid="empty-state"], .error-display, [data-testid="error-display"], h1',
       });
       if (page.url().includes('/login') || page.url().includes('/403')) {
         test.skip(
@@ -883,7 +883,7 @@ test.describe('Scheduled Export Journey', () => {
 
       // Wait for list content to load (table or empty state)
       await page.waitForSelector(
-        '.scheduled-export-table tbody tr, .empty-state, [data-testid="scheduled-export-list-page"]',
+        '.scheduled-export-table tbody tr, .empty-state, [data-testid="empty-state"], [data-testid="scheduled-export-list-page"]',
         { timeout: 15000 }
       );
       await page.waitForTimeout(2000);
@@ -916,7 +916,7 @@ test.describe('Scheduled Export Journey', () => {
         }
         await page.goto('/scheduled-exports', { waitUntil: 'domcontentloaded' });
         await page.waitForSelector(
-          '.scheduled-export-table tbody tr, .empty-state',
+          '.scheduled-export-table tbody tr, .empty-state, [data-testid="empty-state"]',
           { timeout: 20000 }
         );
         await page.waitForTimeout(3000);
@@ -960,15 +960,15 @@ test.describe('Scheduled Export Journey', () => {
           // Wait for either inline expansion or navigation to run detail page
           // intentional: scheduled-export journey runs against shared staging where job state varies — best-effort skips on optional UI/state branches; primary assertions on the schedule's terminal state are made via verifyViaApi.
           await page
-            .locator('[data-testid="run-status"], .run-detail-page, .error-display')
+            .locator('[data-testid="run-status"], .run-detail-page, .error-display, [data-testid="error-display"]')
             .first()
             .waitFor({ state: 'visible', timeout: 10000 })
             .catch(() => null);
 
-          const runDetailError = (await page.locator('.error-display').count()) > 0;
+          const runDetailError = (await page.locator('.error-display, [data-testid="error-display"]').first().count()) > 0;
           if (runDetailError) {
             // intentional: scheduled-export journey runs against shared staging where job state varies — best-effort skips on optional UI/state branches; primary assertions on the schedule's terminal state are made via verifyViaApi.
-            const errText = await page.locator('.error-display').first().textContent().catch(() => '');
+            const errText = await page.locator('.error-display, [data-testid="error-display"]').first().first().textContent().catch(() => '');
             throw new Error(`Run detail shows error instead of content: ${errText?.slice(0, 200)}`);
           }
           const hasRunDetails =
@@ -985,10 +985,10 @@ test.describe('Scheduled Export Journey', () => {
         // Assert that the detail page itself has loaded (not a blank or error screen).
         const hasDetailContent =
           (await page.locator('[data-testid="scheduled-export-detail-page"]').count()) > 0;
-        const hasDetailError = (await page.locator('.error-display').count()) > 0;
+        const hasDetailError = (await page.locator('.error-display, [data-testid="error-display"]').first().count()) > 0;
         if (hasDetailError) {
           // intentional: scheduled-export journey runs against shared staging where job state varies — best-effort skips on optional UI/state branches; primary assertions on the schedule's terminal state are made via verifyViaApi.
-          const errText = await page.locator('.error-display').first().textContent().catch(() => '');
+          const errText = await page.locator('.error-display, [data-testid="error-display"]').first().first().textContent().catch(() => '');
           throw new Error(`Scheduled export detail shows error: ${errText?.slice(0, 200)}`);
         }
         expect(

@@ -54,7 +54,7 @@ test.describe('Authenticated Pages A11y', () => {
       // Wait for meaningful content (app shell or the page itself)
       // intentional: probes optional UI presence via a multi-line locator chain — the branch logic below handles both rendered and missing cases deterministically; absence is a legitimate tenant/role state.
       await page
-        .locator('.app-main, .app-sidebar, [role="main"]')
+        .locator('.app-main, [data-testid="app-main"], .app-sidebar, [role="main"]')
         .first()
         .waitFor({ state: 'visible', timeout: 30000 })
         .catch(() => null);

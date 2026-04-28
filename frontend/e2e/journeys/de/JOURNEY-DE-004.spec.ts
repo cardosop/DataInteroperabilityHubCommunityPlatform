@@ -13,7 +13,7 @@ import { expect, test } from '@playwright/test';
 import { getTestUser } from '../../fixtures/auth';
 import { assertNonExistentIdShowsError, loginAndNavigateToRoute } from '../../fixtures/helpers';
 
-test.describe('JOURNEY-DE-004: Set Up Compliance Scanning', () => {
+test.describe('JOURNEY-DE-004: Set Up Compliance Scanning @critical', () => {
   test.setTimeout(90000);
 
   test.describe('Success', () => {
@@ -40,7 +40,7 @@ test.describe('JOURNEY-DE-004: Set Up Compliance Scanning', () => {
         timeout: 90000,
       });
       await assertNonExistentIdShowsError(page, {
-        detailContentSelector: '.compliance-run-detail-page',
+        detailContentSelector: '.compliance-run-detail-page, [data-testid="compliance-run-detail-page"]',
         waitAfterLoad: 8000,
       });
     });
@@ -52,7 +52,7 @@ test.describe('JOURNEY-DE-004: Set Up Compliance Scanning', () => {
       await loginAndNavigateToRoute(page, testUser, '/compliance', {
         timeout: 90000,
         contentSelector:
-          '.compliance-run-list-page, .empty-state, .error-display',
+          '.compliance-run-list-page, [data-testid="compliance-run-list-page"], .empty-state, [data-testid="empty-state"], .error-display, [data-testid="error-display"]',
       });
       expect(page.url()).toContain('/compliance');
     });

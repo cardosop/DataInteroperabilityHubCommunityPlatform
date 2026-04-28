@@ -13,7 +13,7 @@ import { expect, test } from '@playwright/test';
 import { getTestUser } from '../../fixtures/auth';
 import { loginAndNavigateToRoute, waitForLoadingComplete } from '../../fixtures/helpers';
 
-test.describe('UC-AM-001: Create Asset via Data-First Flow', () => {
+test.describe('UC-AM-001: Create Asset via Data-First Flow @critical', () => {
   test.setTimeout(120000);
 
   test.describe('Success', () => {
@@ -21,14 +21,14 @@ test.describe('UC-AM-001: Create Asset via Data-First Flow', () => {
       const user = await getTestUser();
       await loginAndNavigateToRoute(page, user, '/assets', {
         timeout: 60000,
-        contentSelector: '.asset-list-page, .empty-state',
+        contentSelector: '.asset-list-page, [data-testid="asset-list-page"], .empty-state, [data-testid="empty-state"]',
       });
       expect(page.url()).toContain('/assets');
       await waitForLoadingComplete(page, { timeout: 15000 });
-      await expect(page.locator('.error-display')).not.toBeVisible();
+      await expect(page.locator('.error-display, [data-testid="error-display"]').first()).not.toBeVisible();
       const hasContent =
-        (await page.locator('.asset-list-page').count()) > 0 ||
-        (await page.locator('.empty-state').count()) > 0;
+        (await page.locator('.asset-list-page, [data-testid="asset-list-page"]').first().count()) > 0 ||
+        (await page.locator('.empty-state, [data-testid="empty-state"]').first().count()) > 0;
       expect(hasContent).toBe(true) /* acceptable states */;
     });
 
@@ -83,7 +83,7 @@ test.describe('UC-AM-001: Create Asset via Data-First Flow', () => {
 
       await page.waitForTimeout(1500);
       expect(page.url()).not.toContain('/assets/create');
-      await expect(page.locator('.error-display')).not.toBeVisible();
+      await expect(page.locator('.error-display, [data-testid="error-display"]').first()).not.toBeVisible();
     });
 
     test('assets create route loads', async ({ page }) => {
@@ -116,16 +116,16 @@ test.describe('UC-AM-001: Create Asset via Data-First Flow', () => {
       const user = await getTestUser();
       await loginAndNavigateToRoute(page, user, '/assets', {
         timeout: 60000,
-        contentSelector: '.asset-list-page, .empty-state, .error-display',
+        contentSelector: '.asset-list-page, [data-testid="asset-list-page"], .empty-state, [data-testid="empty-state"], .error-display, [data-testid="error-display"]',
       });
       expect(page.url()).toContain('/assets');
       const hasContent =
-        (await page.locator('.asset-list-page').count()) > 0 ||
-        (await page.locator('.empty-state').count()) > 0;
+        (await page.locator('.asset-list-page, [data-testid="asset-list-page"]').first().count()) > 0 ||
+        (await page.locator('.empty-state, [data-testid="empty-state"]').first().count()) > 0;
       expect(hasContent).toBe(true);
       const hasCreateOption =
         (await page.locator('a[href*="/assets/create"], button:has-text("Create"), button:has-text("New Asset")').count()) > 0 ||
-        (await page.locator('.empty-state').count()) > 0;
+        (await page.locator('.empty-state, [data-testid="empty-state"]').first().count()) > 0;
       expect(hasCreateOption).toBe(true);
     });
   });

@@ -10,6 +10,12 @@ import { clearAuthStorage, getTestUser } from '../../fixtures/auth';
 import { hasLoginPrompt, loginAndNavigateToRoute, waitForLoadingComplete } from '../../fixtures/helpers';
 import { verifyViaApi } from '../../fixtures/verifyViaApi';
 import { verifyAuditEvent } from '../../fixtures/verifyAuditEvent';
+// Phase 226 G7 — semantic-IRI guarantee: every Linked Data resource is
+// dereferenceable as JSON-LD. A backend PR that changes SEMANTIC_BASE_IRI
+// without updating the 303 handler must fail this spec.
+import { verifySemanticIri } from '../../fixtures/verifySemantic';
+// Phase 226 G12 — search-index freshness guarantee.
+import { verifySearchable } from '../../fixtures/verifySearchable';
 
 test.describe('Asset Creation Flow', () => {
   test.setTimeout(120000);
@@ -55,7 +61,7 @@ test.describe('Asset Creation Flow', () => {
     const testUser = await getTestUser();
     await loginAndNavigateToRoute(page, testUser, '/datasets/create?linkMode=create_new', {
       timeout: 60000,
-      contentSelector: '[data-testid="flow-create-new"], .dataset-create-page, .error-display, h1',
+      contentSelector: '[data-testid="flow-create-new"], .dataset-create-page, [data-testid="dataset-create-page"], .error-display, [data-testid="error-display"], h1',
     });
     await waitForLoadingComplete(page);
 
@@ -67,14 +73,14 @@ test.describe('Asset Creation Flow', () => {
     const testUser = await getTestUser();
     await loginAndNavigateToRoute(page, testUser, '/assets', {
       timeout: 60000,
-      contentSelector: '.asset-list-page, .empty-state, .error-display, h1',
+      contentSelector: '.asset-list-page, [data-testid="asset-list-page"], .empty-state, [data-testid="empty-state"], .error-display, [data-testid="error-display"], h1',
     });
     await waitForLoadingComplete(page, { timeout: 30000 });
 
     // If assets list shows error (API 500), click Retry and wait for list/empty state
-    const errorDisplay = page.locator('.error-display');
+    const errorDisplay = page.locator('.error-display, [data-testid="error-display"]').first();
     if ((await errorDisplay.count()) > 0) {
-      const retryBtn = page.locator('.error-display-retry');
+      const retryBtn = page.locator('[data-testid="error-display-retry"]');
       if ((await retryBtn.count()) > 0) {
         await retryBtn.first().click();
         await waitForLoadingComplete(page, { timeout: 30000 });
@@ -84,7 +90,7 @@ test.describe('Asset Creation Flow', () => {
     // Wait for create button to be visible (list or empty state)
     const createButton = page
       .locator('button:has-text("Create Asset")')
-      .or(page.locator('.empty-state-action:has-text("Create Asset")'));
+      .or(page.locator('[data-testid="empty-state-action"]:has-text("Create Asset")'));
     await expect(createButton.first()).toBeVisible({ timeout: 15000 });
     await createButton.first().click();
 
@@ -109,23 +115,23 @@ test.describe('Asset Creation Flow', () => {
     await expect(page).toHaveURL(/\/assets\/[^/]+$/, { timeout: 15000 });
     // API can be slow under Docker/parallel load; wait for loading to finish then detail
     await waitForLoadingComplete(page, { timeout: 35000 });
-    await page.waitForSelector('.asset-detail-page, .error-display', { timeout: 25000 });
+    await page.waitForSelector('.asset-detail-page, [data-testid="asset-detail-page"], .error-display, [data-testid="error-display"]', { timeout: 25000 });
     await new Promise((r) => setTimeout(r, 2000)); // Allow React to finish rendering and API to settle
 
     // Verify asset was created
-    const hasError = (await page.locator('.error-display').count()) > 0;
+    const hasError = (await page.locator('.error-display, [data-testid="error-display"]').first().count()) > 0;
     if (hasError) {
-      const errText = (await page.locator('.error-display').first().textContent()) ?? '';
+      const errText = (await page.locator('.error-display, [data-testid="error-display"]').first().first().textContent()) ?? '';
       throw new Error(
         `Asset creation failed (required for create test). Backend error: ${errText.slice(0, 250)}`
       );
     }
     const assetHeading = page
-      .locator('.asset-detail-page .asset-detail-content h1, .asset-detail-page h1')
+      .locator('.asset-detail-page, [data-testid="asset-detail-page"] .asset-detail-content h1, .asset-detail-page, [data-testid="asset-detail-page"] h1')
       .first();
     await expect(assetHeading).toBeVisible({ timeout: 15000 });
     await expect(assetHeading).toContainText('Test Asset', { timeout: 10000 });
-    const statusBadge = page.locator('.asset-detail-page .status-badge').first();
+    const statusBadge = page.locator('.asset-detail-page, [data-testid="asset-detail-page"] .status-badge').first();
     await expect(statusBadge).toBeVisible({ timeout: 10000 });
     await expect(statusBadge).toContainText('DRAFT');
 
@@ -145,6 +151,24 @@ test.describe('Asset Creation Flow', () => {
       action: 'ASSET_CREATED',
       resourceType: 'ASSET',
       resourceId: assetId,
+    });
+
+    // Phase 226 G7 — semantic-layer guarantee. Asset must be dereferenceable
+    // as JSON-LD via /api/v1/semantic/id/asset/<id>. SPARQL visibility is
+    // best-effort — degrades to a test.skip annotation when the triplestore
+    // sidecar is unavailable in the target environment (Open Question §7).
+    await verifySemanticIri(page, 'asset', assetId, {
+      testInfo: test.info(),
+      skipSparqlOn: ({ status }) => status === 404 || status === 501 || status === 503,
+    });
+
+    // Phase 226 G12 — search-index freshness. The asset must appear in the
+    // unified search index within 20 s of creation; otherwise the indexer
+    // signal handler / Celery reindex task is silently dropped.
+    await verifySearchable(page, {
+      resourceType: 'ASSET',
+      id: assetId,
+      key: assetKey,
     });
   });
 });

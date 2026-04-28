@@ -22,7 +22,7 @@ test.describe('JOURNEY-DC-002: Search Marketplace', () => {
       await loginAndNavigateToRoute(page, consumer, '/marketplace', {
         timeout: 65000,
         contentSelector:
-          '.listing-list-page, .listing-list-grid, .error-display, .empty-state, [data-testid="listing-list-page"]',
+          '.listing-list-page, .listing-list-grid, [data-testid="listing-list-grid"], .error-display, [data-testid="error-display"], .empty-state, [data-testid="empty-state"], [data-testid="listing-list-page"]',
       });
       if (page.url().includes('/login')) {
         test.skip(true, 'Auth gated — skipping success assertion');
@@ -39,15 +39,15 @@ test.describe('JOURNEY-DC-002: Search Marketplace', () => {
         await searchInput.fill('xyznonexistent_e2e');
         // Wait for results to update — either empty state or results list
         await page
-          .locator('.empty-state, .listing-list-page, .listing-list-grid, .error-display')
+          .locator('.empty-state, [data-testid="empty-state"], .listing-list-page, .listing-list-grid, [data-testid="listing-list-grid"], .error-display, [data-testid="error-display"]')
           .first()
           .waitFor({ state: 'visible', timeout: 10000 })
           .catch(() => null);
         // The result container must render something (no blank-screen regression)
         const hasTerminalState =
-          (await page.locator('.empty-state').count()) > 0 ||
-          (await page.locator('.listing-list-page, .listing-list-grid').count()) > 0 ||
-          (await page.locator('.error-display').count()) > 0;
+          (await page.locator('.empty-state, [data-testid="empty-state"]').first().count()) > 0 ||
+          (await page.locator('.listing-list-page, .listing-list-grid, [data-testid="listing-list-grid"]').count()) > 0 ||
+          (await page.locator('.error-display, [data-testid="error-display"]').first().count()) > 0;
         expect(hasTerminalState).toBe(true) /* acceptable states */;
       }
     });
@@ -56,7 +56,7 @@ test.describe('JOURNEY-DC-002: Search Marketplace', () => {
       const consumer = await getConsumerTestUser();
       await loginAndNavigateToRoute(page, consumer, '/search', {
         timeout: 60000,
-        contentSelector: '.search-page, .unavailable-page, .empty-state, .error-display',
+        contentSelector: '.search-page, .unavailable-page, [data-testid="unavailable-page"], .empty-state, [data-testid="empty-state"], .error-display, [data-testid="error-display"]',
       });
       const url = page.url();
       const onLogin = url.includes('/login');
@@ -67,9 +67,9 @@ test.describe('JOURNEY-DC-002: Search Marketplace', () => {
       }
       expect(onSearch).toBe(true);
       const hasContent =
-        (await page.locator('.search-page, .app-main').count()) > 0;
+        (await page.locator('.search-page, .app-main, [data-testid="app-main"]').count()) > 0;
       expect(hasContent).toBe(true);
-      await expect(page.locator('.error-display')).not.toBeVisible();
+      await expect(page.locator('.error-display, [data-testid="error-display"]').first()).not.toBeVisible();
     });
   });
 
@@ -79,7 +79,7 @@ test.describe('JOURNEY-DC-002: Search Marketplace', () => {
       await loginAndNavigateToRoute(page, consumer, '/search', {
         timeout: 60000,
         contentSelector:
-          '.search-page, .empty-state, .error-display, .unavailable-page',
+          '.search-page, .empty-state, [data-testid="empty-state"], .error-display, [data-testid="error-display"], .unavailable-page, [data-testid="unavailable-page"]',
       });
       // If the search feature is unavailable for this tenant, accept gracefully.
       if (page.url().includes('/unavailable')) {
@@ -98,8 +98,8 @@ test.describe('JOURNEY-DC-002: Search Marketplace', () => {
       await Promise.race([
         page.waitForSelector('.search-page-results-meta', { timeout: 45_000 }),
         page.waitForSelector('.search-page-results-list', { timeout: 45_000 }),
-        page.waitForSelector('.empty-state', { timeout: 45_000 }),
-        page.waitForSelector('.error-display', { timeout: 45_000 }),
+        page.waitForSelector('.empty-state, [data-testid="empty-state"]', { timeout: 45_000 }),
+        page.waitForSelector('.error-display, [data-testid="error-display"]', { timeout: 45_000 }),
       ]);
       expect(page.url()).toContain('/search');
     });
@@ -111,13 +111,13 @@ test.describe('JOURNEY-DC-002: Search Marketplace', () => {
       await loginAndNavigateToRoute(page, consumer, '/marketplace', {
         timeout: 60000,
         contentSelector:
-          '.listing-list-page, .listing-list-grid, .empty-state, .error-display',
+          '.listing-list-page, .listing-list-grid, [data-testid="listing-list-grid"], .empty-state, [data-testid="empty-state"], .error-display, [data-testid="error-display"]',
       });
       expect(page.url()).toContain('/marketplace');
       await loginAndNavigateToRoute(page, consumer, '/search', {
         timeout: 60000,
         contentSelector:
-          '.search-page, .empty-state, .error-display, .unavailable-page',
+          '.search-page, .empty-state, [data-testid="empty-state"], .error-display, [data-testid="error-display"], .unavailable-page, [data-testid="unavailable-page"]',
       });
       expect(page.url()).toContain('/search');
     });

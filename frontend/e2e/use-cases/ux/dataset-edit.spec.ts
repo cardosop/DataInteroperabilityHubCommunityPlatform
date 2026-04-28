@@ -22,16 +22,16 @@ test.describe('Dataset Edit with Asset Link (UX)', () => {
     const testUser = await getTestUser();
     await loginAndNavigateToRoute(page, testUser, '/datasets', {
       timeout: 60000,
-      contentSelector: '[data-testid="dataset-list-page"], .empty-state',
+      contentSelector: '.dataset-list-page, [data-testid="dataset-list-page"], .empty-state, [data-testid="empty-state"]',
     });
     await waitForLoadingComplete(page, { timeout: 30000 });
 
-    const listPage = page.locator('[data-testid="dataset-list-page"]');
+    const listPage = page.locator('.dataset-list-page, [data-testid="dataset-list-page"]');
     await expect(listPage).toBeVisible({ timeout: 15000 });
 
     const createBtn = page
       .locator('button:has-text("Create Dataset")')
-      .or(page.locator('.empty-state-action:has-text("Create Dataset")'))
+      .or(page.locator('[data-testid="empty-state-action"]:has-text("Create Dataset")'))
       .or(page.locator('a:has-text("Create Dataset")'));
     await expect(createBtn.first()).toBeVisible({ timeout: 10000 });
   });
@@ -44,7 +44,7 @@ test.describe('Dataset Edit with Asset Link (UX)', () => {
     const datasetId = await createDatasetViaApi(testUser, { forceNew: true });
     await loginAndNavigateToRoute(page, testUser, `/datasets/${datasetId}`, {
       timeout: 60000,
-      contentSelector: '.dataset-detail-page',
+      contentSelector: '.dataset-detail-page, [data-testid="dataset-detail-page"]',
     });
     await waitForLoadingComplete(page, { timeout: 30000 });
 
@@ -58,7 +58,7 @@ test.describe('Dataset Edit with Asset Link (UX)', () => {
     const datasetId = await createDatasetViaApi(testUser, { forceNew: true });
     await loginAndNavigateToRoute(page, testUser, `/datasets/${datasetId}`, {
       timeout: 60000,
-      contentSelector: '.dataset-detail-page',
+      contentSelector: '.dataset-detail-page, [data-testid="dataset-detail-page"]',
     });
     await waitForLoadingComplete(page, { timeout: 30000 });
 
@@ -87,7 +87,7 @@ test.describe('Dataset Edit with Asset Link (UX)', () => {
     const datasetId = await createDatasetViaApi(testUser, { forceNew: true });
     await loginAndNavigateToRoute(page, testUser, `/datasets/${datasetId}`, {
       timeout: 60000,
-      contentSelector: '.dataset-detail-page',
+      contentSelector: '.dataset-detail-page, [data-testid="dataset-detail-page"]',
     });
     await waitForLoadingComplete(page, { timeout: 30000 });
 

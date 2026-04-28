@@ -14,7 +14,7 @@ import { expect, test } from '@playwright/test';
 import { clearAuthStorage } from '../../fixtures/auth';
 import { runJOURNEY_AUTH_004_Success } from '../../fixtures/auth-journey-steps';
 
-test.describe('JOURNEY-AUTH-004: Unauthenticated User Accesses Public Resources', () => {
+test.describe('JOURNEY-AUTH-004: Unauthenticated User Accesses Public Resources @critical', () => {
   test.describe('Success', () => {
     test('unauthenticated user can access public resources page', async ({ page }) => {
       await runJOURNEY_AUTH_004_Success(page);
@@ -68,7 +68,7 @@ test.describe('JOURNEY-AUTH-004: Unauthenticated User Accesses Public Resources'
       await page.waitForURL(/\/(login|assets)/, { timeout: 20_000 });
       // Authenticated shell must not be visible to unauthenticated visitors
       const appSidebar = page.locator('.app-sidebar');
-      const appHeader = page.locator('.app-header');
+      const appHeader = page.locator('.app-header, [data-testid="app-header"]').first();
       // intentional: visibility check on a transiently-attached element — treating a detached-at-check-time element as 'not visible' is the semantically correct fallback; the caller's branch logic uses the boolean result.
       const sidebarVisible = await appSidebar.isVisible().catch(() => false);
       // intentional: visibility check on a transiently-attached element — treating a detached-at-check-time element as 'not visible' is the semantically correct fallback; the caller's branch logic uses the boolean result.

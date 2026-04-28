@@ -126,11 +126,11 @@ test.describe('Test Quality Canary', () => {
     // Must have either a login page or the app shell — not just a blank document
     const hasAppShell =
       (await page
-        .locator('.app-sidebar, .app-header, .login-page, [data-testid="landing-page"]')
+        .locator('.app-sidebar, .app-header, [data-testid="app-header"], .login-page, [data-testid="landing-page"]')
         .count()) > 0;
     expect(
       hasAppShell,
-      'App root must render .app-sidebar, .app-header, .login-page, or landing-page'
+      'App root must render .app-sidebar, .app-header, [data-testid="app-header"], .login-page, or landing-page'
     ).toBe(true);
   });
 });

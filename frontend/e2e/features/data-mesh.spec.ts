@@ -20,10 +20,10 @@ test.describe('Feature: Data Mesh', () => {
       const testUser = await getTestUser();
       await loginAndNavigateToRoute(page, testUser, '/mesh', {
         timeout: 60000,
-        contentSelector: '.mesh-list-page, .mesh-domain-list-page, .empty-state, .error-display, h1',
+        contentSelector: '.mesh-list-page, .mesh-domain-list-page, .empty-state, [data-testid="empty-state"], .error-display, [data-testid="error-display"], h1',
       });
       try {
-        await assertListPageLoads(page, '.mesh-list-page, .mesh-domain-list-page, .empty-state', {
+        await assertListPageLoads(page, '.mesh-list-page, .mesh-domain-list-page, .empty-state, [data-testid="empty-state"]', {
           timeout: 60000,
         });
       } catch (err) {
@@ -48,7 +48,7 @@ test.describe('Feature: Data Mesh', () => {
       const testUser = await getTestUser();
       await loginAndNavigateToRoute(page, testUser, '/mesh/00000000-0000-0000-0000-000000000000', {
         timeout: 60000,
-        contentSelector: '.error-display, .mesh-domain-detail-page, h1',
+        contentSelector: '.error-display, [data-testid="error-display"], .mesh-domain-detail-page, h1',
       });
       await assertNonExistentIdShowsError(page, {
         detailContentSelector: '.mesh-domain-detail-page',
@@ -73,10 +73,10 @@ test.describe('Feature: Data Mesh', () => {
       const testUser = await getTestUser();
       await loginAndNavigateToRoute(page, testUser, '/mesh/topology', {
         timeout: 60000,
-        contentSelector: '.topology-visualization, .topology-page, .empty-state, .error-display, h1',
+        contentSelector: '.topology-visualization, .topology-page, .empty-state, [data-testid="empty-state"], .error-display, [data-testid="error-display"], h1',
       });
       // Accept error-display when backend mesh endpoint is not deployed (NOT_FOUND)
-      const errorDisplay = page.locator('.error-display');
+      const errorDisplay = page.locator('.error-display, [data-testid="error-display"]').first();
       if ((await errorDisplay.count()) > 0) {
         // intentional: tolerates a detached/removed element while extracting text for a diagnostic message; the surrounding throw/expect below this catch is the primary failure path.
         const errText = await errorDisplay.first().textContent().catch(() => '') ?? '';
@@ -89,7 +89,7 @@ test.describe('Feature: Data Mesh', () => {
         }
       }
       const hasContent =
-        (await page.locator('.topology-visualization, .topology-page, .empty-state, h1').count()) > 0;
+        (await page.locator('.topology-visualization, .topology-page, .empty-state, [data-testid="empty-state"], h1').count()) > 0;
       expect(hasContent, 'Expected topology content or empty state').toBe(true);
     });
   });

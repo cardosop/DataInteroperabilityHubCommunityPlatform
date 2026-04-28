@@ -13,7 +13,7 @@ import { expect, test } from '@playwright/test';
 import { getPlatformAdminUser, loginAsPersona } from '../../fixtures/auth';
 import { assertNonExistentIdShowsError, loginAndNavigateToRoute } from '../../fixtures/helpers';
 
-test.describe('JOURNEY-MPA-005: Manage Connector Marketplace', () => {
+test.describe('JOURNEY-MPA-005: Manage Connector Marketplace @critical', () => {
   test.setTimeout(120000);
 
   test.describe('Success', () => {
@@ -34,7 +34,7 @@ test.describe('JOURNEY-MPA-005: Manage Connector Marketplace', () => {
       await page.goto('/integrations/connections/00000000-0000-0000-0000-000000000000');
       await page.waitForLoadState('domcontentloaded');
       await assertNonExistentIdShowsError(page, {
-        detailContentSelector: '.marketplace-connection-detail-page',
+        detailContentSelector: '.marketplace-connection-detail-page, [data-testid="marketplace-connection-detail-page"]',
         waitAfterLoad: 8000,
       });
     });

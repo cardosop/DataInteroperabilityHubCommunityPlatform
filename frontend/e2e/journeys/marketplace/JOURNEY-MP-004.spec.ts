@@ -21,7 +21,7 @@ test.describe('JOURNEY-MP-004: Sync Assets Bidirectionally', () => {
       const testUser = await getTestUser();
       await loginAndNavigateToRoute(page, testUser, '/integrations/sync-jobs', {
         timeout: 60000,
-        contentSelector: '.sync-job-list-page, .empty-state, .error-display',
+        contentSelector: '.sync-job-list-page, [data-testid="sync-job-list-page"], .empty-state, [data-testid="empty-state"], .error-display, [data-testid="error-display"]',
         acceptRedirectToLogin: true,
       });
       if (page.url().includes('/login')) {
@@ -30,9 +30,9 @@ test.describe('JOURNEY-MP-004: Sync Assets Bidirectionally', () => {
       }
       expect(page.url()).toContain('/integrations/sync-jobs');
       const hasContent =
-        (await page.locator('.sync-job-list-page').count()) > 0 ||
-        (await page.locator('.error-display').count()) > 0 ||
-        (await page.locator('.empty-state').count()) > 0;
+        (await page.locator('.sync-job-list-page, [data-testid="sync-job-list-page"]').first().count()) > 0 ||
+        (await page.locator('.error-display, [data-testid="error-display"]').first().count()) > 0 ||
+        (await page.locator('.empty-state, [data-testid="empty-state"]').first().count()) > 0;
       expect(hasContent).toBe(true) /* acceptable states */;
     });
 
@@ -40,7 +40,7 @@ test.describe('JOURNEY-MP-004: Sync Assets Bidirectionally', () => {
       const testUser = await getTestUser();
       await loginAndNavigateToRoute(page, testUser, '/integrations/connections', {
         timeout: 65000,
-        contentSelector: '.connection-list-page, .empty-state, .error-display',
+        contentSelector: '.connection-list-page, .empty-state, [data-testid="empty-state"], .error-display, [data-testid="error-display"]',
         acceptRedirectToLogin: true,
       });
       if (page.url().includes('/login')) {
@@ -59,7 +59,7 @@ test.describe('JOURNEY-MP-004: Sync Assets Bidirectionally', () => {
         acceptRedirectToLogin: true,
       });
       await page.waitForTimeout(3000);
-      const hasError = (await page.locator('.error-display').count()) > 0;
+      const hasError = (await page.locator('.error-display, [data-testid="error-display"]').first().count()) > 0;
       const onLogin = page.url().includes('/login');
       expect(hasError || onLogin).toBe(true) /* acceptable states */;
     });
@@ -77,7 +77,7 @@ test.describe('JOURNEY-MP-004: Sync Assets Bidirectionally', () => {
       const testUser = await getTestUser();
       await loginAndNavigateToRoute(page, testUser, '/integrations/sync-jobs', {
         timeout: 90000,
-        contentSelector: '.sync-job-list-page, .empty-state, .error-display',
+        contentSelector: '.sync-job-list-page, [data-testid="sync-job-list-page"], .empty-state, [data-testid="empty-state"], .error-display, [data-testid="error-display"]',
       });
       expect(page.url()).toContain('/integrations/sync-jobs');
       // Use direct goto — already authenticated, avoids UI nav slowMo accumulation in visible project

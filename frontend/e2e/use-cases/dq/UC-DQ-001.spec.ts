@@ -13,7 +13,7 @@ import { expect, test } from '@playwright/test';
 import { getTestUser } from '../../fixtures/auth';
 import { assertNonExistentIdShowsError, loginAndNavigateToRoute, waitForLoadingComplete } from '../../fixtures/helpers';
 
-test.describe('UC-DQ-001: Run Data Quality Check', () => {
+test.describe('UC-DQ-001: Run Data Quality Check @critical', () => {
   test.setTimeout(120000);
 
   test.describe('Success', () => {
@@ -21,7 +21,7 @@ test.describe('UC-DQ-001: Run Data Quality Check', () => {
       const user = await getTestUser();
       await loginAndNavigateToRoute(page, user, '/dq', {
         timeout: 60000,
-        contentSelector: '.dq-run-list-page, .empty-state',
+        contentSelector: '.dq-run-list-page, .empty-state, [data-testid="empty-state"]',
       });
       if (page.url().includes('/login')) {
         test.skip(true, 'Redirected to login — auth not available');
@@ -84,20 +84,20 @@ test.describe('UC-DQ-001: Run Data Quality Check', () => {
       const onDetail = page.url().includes('/dq/runs/');
       const onList = page.url().includes('/dq');
       expect(onDetail || onList).toBe(true);
-      await expect(page.locator('.error-display')).not.toBeVisible();
+      await expect(page.locator('.error-display, [data-testid="error-display"]').first()).not.toBeVisible();
     });
 
     test('DQ runs list loads', async ({ page }) => {
       const user = await getTestUser();
       await loginAndNavigateToRoute(page, user, '/dq', {
         timeout: 60000,
-        contentSelector: '.dq-run-list-page, .empty-state',
+        contentSelector: '.dq-run-list-page, .empty-state, [data-testid="empty-state"]',
       });
       expect(page.url()).toContain('/dq');
       await waitForLoadingComplete(page, { timeout: 15000 });
       const hasContent =
         (await page.locator('.dq-run-list-page').count()) > 0 ||
-        (await page.locator('.empty-state').count()) > 0 ||
+        (await page.locator('.empty-state, [data-testid="empty-state"]').first().count()) > 0 ||
         (await page.locator('h1:has-text("Data Quality")').count()) > 0;
       expect(hasContent).toBe(true) /* acceptable states */;
     });
@@ -130,7 +130,7 @@ test.describe('UC-DQ-001: Run Data Quality Check', () => {
       const user = await getTestUser();
       await loginAndNavigateToRoute(page, user, '/dq', {
         timeout: 60000,
-        contentSelector: '.dq-run-list-page, .empty-state, .error-display',
+        contentSelector: '.dq-run-list-page, .empty-state, [data-testid="empty-state"], .error-display, [data-testid="error-display"]',
       });
       expect(page.url()).toContain('/dq');
     });

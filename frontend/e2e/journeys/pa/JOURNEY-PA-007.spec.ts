@@ -23,7 +23,7 @@ test.describe('JOURNEY-PA-007: Manage ODPS Products (Platform)', () => {
       const paUser = await getPlatformAdminUser();
       await loginAndNavigateToRoute(page, paUser, '/odps', {
         timeout: 60000,
-        contentSelector: '.odps-list-page, .empty-state, .error-display',
+        contentSelector: '.odps-list-page, .empty-state, [data-testid="empty-state"], .error-display, [data-testid="error-display"]',
       });
 
       if (page.url().includes('/403') || page.url().includes('/login')) {
@@ -54,10 +54,10 @@ test.describe('JOURNEY-PA-007: Manage ODPS Products (Platform)', () => {
       expect(Array.isArray(odpsData.results) || Array.isArray(odpsData)).toBe(true);
 
       // UI shows list or empty state (no error)
-      const hasError = (await page.locator('.error-display').count()) > 0;
+      const hasError = (await page.locator('.error-display, [data-testid="error-display"]').first().count()) > 0;
       if (hasError) {
         // intentional: tolerates a detached/removed element while extracting text for a diagnostic message; the surrounding throw/expect below this catch is the primary failure path.
-        const errText = await page.locator('.error-display').first().textContent().catch(() => '');
+        const errText = await page.locator('.error-display, [data-testid="error-display"]').first().first().textContent().catch(() => '');
         if (!/403|forbidden/i.test(errText ?? '')) {
           throw new Error(`ODPS list shows error: ${errText}`);
         }
@@ -70,11 +70,11 @@ test.describe('JOURNEY-PA-007: Manage ODPS Products (Platform)', () => {
       const paUser = await getPlatformAdminUser();
       await loginAndNavigateToRoute(page, paUser, '/odps/00000000-0000-0000-0000-000000000000', {
         timeout: 60000,
-        contentSelector: '.odps-detail-page, .error-display, [data-testid="not-found"]',
+        contentSelector: '.odps-detail-page, .error-display, [data-testid="error-display"], [data-testid="not-found"]',
       });
       if (page.url().includes('/403') || page.url().includes('/login')) return;
       const hasError =
-        (await page.locator('.error-display').count()) > 0 ||
+        (await page.locator('.error-display, [data-testid="error-display"]').first().count()) > 0 ||
         (await page.locator('[data-testid="not-found"]').count()) > 0;
       expect(hasError).toBe(true) /* acceptable states */;
     });
@@ -85,7 +85,7 @@ test.describe('JOURNEY-PA-007: Manage ODPS Products (Platform)', () => {
       const paUser = await getPlatformAdminUser();
       await loginAndNavigateToRoute(page, paUser, '/odps', {
         timeout: 60000,
-        contentSelector: '.odps-list-page, .empty-state, .error-display',
+        contentSelector: '.odps-list-page, .empty-state, [data-testid="empty-state"], .error-display, [data-testid="error-display"]',
       });
       expect(page.url()).toMatch(/\/odps|\/403|\/login/);
     });

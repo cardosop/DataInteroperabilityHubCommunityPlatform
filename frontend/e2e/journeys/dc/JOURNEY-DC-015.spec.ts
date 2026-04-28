@@ -14,7 +14,7 @@ import { expect, test } from '@playwright/test';
 import { getConsumerTestUser } from '../../fixtures/auth';
 import { loginAndNavigateToRoute } from '../../fixtures/helpers';
 
-test.describe('JOURNEY-DC-015: Purchase ODPS Product (Marketplace)', () => {
+test.describe('JOURNEY-DC-015: Purchase ODPS Product (Marketplace) @critical', () => {
   test.setTimeout(120000);
 
   test.describe('Success', () => {
@@ -23,7 +23,7 @@ test.describe('JOURNEY-DC-015: Purchase ODPS Product (Marketplace)', () => {
       await loginAndNavigateToRoute(page, consumer, '/marketplace', {
         timeout: 65000,
         contentSelector:
-          '[data-testid="listing-list-page"], .listing-list-page, .listing-list-grid, .empty-state, .error-display',
+          '[data-testid="listing-list-page"], .listing-list-page, .listing-list-grid, [data-testid="listing-list-grid"], .empty-state, [data-testid="empty-state"], .error-display, [data-testid="error-display"]',
       });
       if (page.url().includes('/login')) {
         expect(page.url()).toContain('/login');
@@ -58,11 +58,11 @@ test.describe('JOURNEY-DC-015: Purchase ODPS Product (Marketplace)', () => {
       );
       // intentional: probes optional UI presence via a multi-line locator chain — the branch logic below handles both rendered and missing cases deterministically; absence is a legitimate tenant/role state.
       await page
-        .locator('.error-display, .listing-detail-main')
+        .locator('.error-display, [data-testid="error-display"], .listing-detail-main, [data-testid="listing-detail-main"]')
         .first()
         .waitFor({ state: 'visible', timeout: 30000 })
         .catch(() => null);
-      const hasError = (await page.locator('.error-display').count()) > 0;
+      const hasError = (await page.locator('.error-display, [data-testid="error-display"]').first().count()) > 0;
       const onLogin = page.url().includes('/login');
       if (onLogin) {
         test.skip(true, 'Auth session lost during navigation — token refresh likely failed under E2E load');
@@ -78,7 +78,7 @@ test.describe('JOURNEY-DC-015: Purchase ODPS Product (Marketplace)', () => {
       await loginAndNavigateToRoute(page, consumer, '/marketplace', {
         timeout: 120000,
         contentSelector:
-          '[data-testid="listing-list-page"], .listing-list-page, .listing-list-grid, .empty-state, .error-display',
+          '[data-testid="listing-list-page"], .listing-list-page, .listing-list-grid, [data-testid="listing-list-grid"], .empty-state, [data-testid="empty-state"], .error-display, [data-testid="error-display"]',
       });
       expect(page.url()).toContain('/marketplace');
       await loginAndNavigateToRoute(page, consumer, '/marketplace/orders', { timeout: 120000 });

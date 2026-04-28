@@ -18,7 +18,7 @@ import {
   waitForLoadingComplete,
 } from '../../fixtures/helpers';
 
-test.describe('JOURNEY-CPO-010: Review AI Auto-Classification Results / View Audit Logs', () => {
+test.describe('JOURNEY-CPO-010: Review AI Auto-Classification Results / View Audit Logs @critical', () => {
   test.setTimeout(120000);
 
   test.describe('Success', () => {
@@ -30,7 +30,7 @@ test.describe('JOURNEY-CPO-010: Review AI Auto-Classification Results / View Aud
         return;
       }
       expect(page.url()).toContain('/compliance');
-      await expect(page.locator('.error-display')).not.toBeVisible();
+      await expect(page.locator('.error-display, [data-testid="error-display"]').first()).not.toBeVisible();
     });
 
     test('audit page loads', async ({ page }) => {
@@ -45,15 +45,15 @@ test.describe('JOURNEY-CPO-010: Review AI Auto-Classification Results / View Aud
       }
       expect(onAudit).toBe(true);
       // error-display is NOT acceptable for audit page — means backend is down
-      const hasAuditError = (await page.locator('.error-display').count()) > 0;
+      const hasAuditError = (await page.locator('.error-display, [data-testid="error-display"]').first().count()) > 0;
       if (hasAuditError) {
         // intentional: tolerates a detached/removed element while extracting text for a diagnostic message; the surrounding throw/expect below this catch is the primary failure path.
-        const errText = await page.locator('.error-display').first().textContent().catch(() => '');
+        const errText = await page.locator('.error-display, [data-testid="error-display"]').first().first().textContent().catch(() => '');
         throw new Error(`Audit page shows error for CPO user: "${errText?.slice(0, 300)}"`);
       }
       const hasContent =
-        (await page.locator('.audit-event-list-page').count()) > 0 ||
-        (await page.locator('.empty-state').count()) > 0;
+        (await page.locator('.audit-event-list-page, [data-testid="audit-event-list-page"]').first().count()) > 0 ||
+        (await page.locator('.empty-state, [data-testid="empty-state"]').first().count()) > 0;
       expect(hasContent).toBe(true);
     });
 
@@ -67,10 +67,10 @@ test.describe('JOURNEY-CPO-010: Review AI Auto-Classification Results / View Aud
       await waitForLoadingComplete(page);
 
       const auditRows = page.locator(
-        '.audit-event-list-page tr, .audit-event-row, [data-testid*="audit-event"]'
+        '.audit-event-list-page, [data-testid="audit-event-list-page"] tr, .audit-event-row, [data-testid*="audit-event"]'
       );
-      const emptyState = page.locator('.empty-state');
-      const auditListPage = page.locator('.audit-event-list-page');
+      const emptyState = page.locator('.empty-state, [data-testid="empty-state"]').first();
+      const auditListPage = page.locator('.audit-event-list-page, [data-testid="audit-event-list-page"]').first();
 
       const hasRows = (await auditRows.count()) > 0;
       const hasEmptyState = (await emptyState.count()) > 0;
@@ -87,7 +87,7 @@ test.describe('JOURNEY-CPO-010: Review AI Auto-Classification Results / View Aud
         // No rows — empty state or list page must be present (already asserted above)
         expect(hasEmptyState || hasAuditListPage).toBe(true);
       }
-      await expect(page.locator('.error-display')).not.toBeVisible();
+      await expect(page.locator('.error-display, [data-testid="error-display"]').first()).not.toBeVisible();
     });
   });
 

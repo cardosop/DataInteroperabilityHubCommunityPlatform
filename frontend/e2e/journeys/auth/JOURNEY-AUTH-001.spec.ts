@@ -51,7 +51,7 @@ async function navigateToRegisterPage(page: import('@playwright/test').Page): Pr
   }
 }
 
-test.describe('JOURNEY-AUTH-001: First-Time Visitor Registers', () => {
+test.describe('JOURNEY-AUTH-001: First-Time Visitor Registers @critical', () => {
   test.setTimeout(90000);
 
   test.describe('Success', () => {
@@ -104,7 +104,7 @@ test.describe('JOURNEY-AUTH-001: First-Time Visitor Registers', () => {
       await page.goto('/assets', { waitUntil: 'domcontentloaded' });
       try {
         await page.waitForSelector(
-          '.asset-list-page, .empty-state, .error-display, .asset-list-header, h1:has-text("Assets")',
+          '.asset-list-page, [data-testid="asset-list-page"], .empty-state, [data-testid="empty-state"], .error-display, [data-testid="error-display"], .asset-list-header, h1:has-text("Assets")',
           { timeout: 30_000 }
         );
       } catch (err) {
@@ -118,9 +118,9 @@ test.describe('JOURNEY-AUTH-001: First-Time Visitor Registers', () => {
         throw err;
       }
       await waitForLoadingComplete(page, { timeout: 30_000 });
-      const errorDisplay = page.locator('.error-display');
+      const errorDisplay = page.locator('.error-display, [data-testid="error-display"]').first();
       if ((await errorDisplay.count()) > 0) {
-        const retryBtn = page.locator('.error-display-retry');
+        const retryBtn = page.locator('[data-testid="error-display-retry"]');
         if ((await retryBtn.count()) > 0) {
           await retryBtn.first().click();
           await waitForLoadingComplete(page, { timeout: 30_000 });
@@ -128,7 +128,7 @@ test.describe('JOURNEY-AUTH-001: First-Time Visitor Registers', () => {
       }
       const createButton = page
         .locator('button:has-text("Create Asset")')
-        .or(page.locator('.empty-state-action:has-text("Create Asset")'));
+        .or(page.locator('[data-testid="empty-state-action"]:has-text("Create Asset")'));
       await createButton.first().waitFor({ state: 'visible', timeout: 20_000 });
       await createButton.first().click();
       await expect(page).toHaveURL(/\/assets\/create/, { timeout: 15_000 });
@@ -144,15 +144,15 @@ test.describe('JOURNEY-AUTH-001: First-Time Visitor Registers', () => {
       await submitButton.click();
       await expect(page).toHaveURL(/\/assets\/[^/]+$/, { timeout: 30_000 });
       await waitForLoadingComplete(page, { timeout: 35_000 });
-      const hasError = (await page.locator('.error-display').count()) > 0;
+      const hasError = (await page.locator('.error-display, [data-testid="error-display"]').first().count()) > 0;
       if (hasError) {
-        const errText = (await page.locator('.error-display').first().textContent()) ?? '';
+        const errText = (await page.locator('.error-display, [data-testid="error-display"]').first().first().textContent()) ?? '';
         throw new Error(
           `Asset creation failed (visitor in personal tenant). Backend error: ${errText.slice(0, 250)}`
         );
       }
       const assetHeading = page
-        .locator('.asset-detail-page .asset-detail-content h1, .asset-detail-page h1')
+        .locator('.asset-detail-page, [data-testid="asset-detail-page"] .asset-detail-content h1, .asset-detail-page, [data-testid="asset-detail-page"] h1')
         .first();
       await expect(assetHeading).toBeVisible({ timeout: 15_000 });
       await expect(assetHeading).toContainText('E2E Personal Asset', { timeout: 10_000 });

@@ -9,6 +9,7 @@ import { getConsumerTestUser, getTestUser, loginAsPersona } from '../../fixtures
 import { createAssetViaApi } from '../../fixtures/api-assets';
 import { createListingViaApi, publishListingViaApi } from '../../fixtures/api-marketplace';
 import { waitForLoadingComplete } from '../../fixtures/helpers';
+import { verifyAuditEvent } from '../../fixtures/verifyAuditEvent';
 
 test.describe('Marketplace Stripe checkout', () => {
   test.setTimeout(180000);
@@ -94,5 +95,14 @@ test.describe('Marketplace Stripe checkout', () => {
 
     await page.waitForURL(/\/marketplace\/orders\/[^/]+/i, { timeout: 120000 });
     expect(page.url()).toMatch(/\/marketplace\/orders\//);
+    const orderId = page.url().split('/').pop()?.split('?')[0] ?? '';
+    if (orderId.length > 20) {
+      // Phase 226 G8 — audit-trail guarantee.
+      await verifyAuditEvent(page, {
+        action: 'ORDER_CREATED',
+        resourceType: 'ORDER',
+        resourceId: orderId,
+      });
+    }
   });
 });

@@ -55,7 +55,7 @@ test.describe('Cross-cutting: 404, 403, session', () => {
       const testUser = await getTestUser();
       await loginUser(page, testUser);
       await expect(page).not.toHaveURL(/\/login/);
-      await expect(page.locator('.app-header')).toBeVisible({ timeout: 18_000 });
+      await expect(page.locator('.app-header, [data-testid="app-header"]').first()).toBeVisible({ timeout: 18_000 });
     });
   });
 });

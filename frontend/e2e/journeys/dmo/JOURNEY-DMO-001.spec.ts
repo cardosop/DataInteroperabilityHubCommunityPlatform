@@ -21,36 +21,36 @@ test.describe('JOURNEY-DMO-001: Create Data Mesh Domain', () => {
       const dmoUser = await getDataMeshDomainOwnerUser();
       await loginAndNavigateToRoute(page, dmoUser, '/mesh', {
         timeout: 90000,
-        contentSelector: '.mesh-domain-list-page, .empty-state',
+        contentSelector: '.mesh-domain-list-page, .empty-state, [data-testid="empty-state"]',
       });
       if (page.url().includes('/login') || page.url().includes('/403')) {
         throw new Error(`Unexpected redirect to ${page.url()} — verify DMO user has mesh access`);
       }
       expect(page.url()).toContain('/mesh');
-      await expect(page.locator('.error-display')).not.toBeVisible();
+      await expect(page.locator('.error-display, [data-testid="error-display"]').first()).not.toBeVisible();
     });
 
     test('mesh create page loads', async ({ page }) => {
       const dmoUser = await getDataMeshDomainOwnerUser();
       await loginAndNavigateToRoute(page, dmoUser, '/mesh/create', {
         timeout: 90000,
-        contentSelector: '.mesh-domain-create-page, .app-main',
+        contentSelector: '.mesh-domain-create-page, .app-main, [data-testid="app-main"]',
       });
       if (page.url().includes('/login') || page.url().includes('/403')) {
         throw new Error(`Unexpected redirect to ${page.url()} — verify DMO user has mesh create access`);
       }
       const onMeshCreate = page.url().includes('/mesh/create');
       const hasContent =
-        (await page.locator('.mesh-domain-create-page, .app-main').count()) > 0;
+        (await page.locator('.mesh-domain-create-page, .app-main, [data-testid="app-main"]').count()) > 0;
       expect(onMeshCreate && hasContent).toBe(true) /* acceptable states */;
-      await expect(page.locator('.error-display')).not.toBeVisible();
+      await expect(page.locator('.error-display, [data-testid="error-display"]').first()).not.toBeVisible();
     });
 
     test('DMO can fill mesh domain creation form and submit', async ({ page }) => {
       const dmoUser = await getDataMeshDomainOwnerUser();
       await loginAndNavigateToRoute(page, dmoUser, '/mesh/create', {
         timeout: 90000,
-        contentSelector: '.mesh-domain-create-page, .app-main',
+        contentSelector: '.mesh-domain-create-page, .app-main, [data-testid="app-main"]',
       });
       if (page.url().includes('/login') || page.url().includes('/403')) return;
       if (!(await page.locator('.mesh-domain-create-page').isVisible())) {
@@ -78,7 +78,7 @@ test.describe('JOURNEY-DMO-001: Create Data Mesh Domain', () => {
 
       const resultType = await Promise.race([
         page.waitForURL(/\/mesh\/[a-fA-F0-9-]{36}$/, { timeout: 20000 }).then(() => 'navigated'),
-        page.waitForSelector('.error-display', { state: 'visible', timeout: 20000 }).then(() => 'error'),
+        page.waitForSelector('.error-display, [data-testid="error-display"]', { state: 'visible', timeout: 20000 }).then(() => 'error'),
       ]).catch(() => 'timeout');
 
       if (resultType === 'navigated') {
@@ -105,7 +105,7 @@ test.describe('JOURNEY-DMO-001: Create Data Mesh Domain', () => {
       const dmoUser = await getDataMeshDomainOwnerUser();
       await loginAndNavigateToRoute(page, dmoUser, '/mesh', {
         timeout: 90000,
-        contentSelector: '.mesh-domain-list-page, .empty-state, .error-display',
+        contentSelector: '.mesh-domain-list-page, .empty-state, [data-testid="empty-state"], .error-display, [data-testid="error-display"]',
       });
       await page.goto('/mesh/00000000-0000-0000-0000-000000000000');
       await page.waitForLoadState('domcontentloaded');
@@ -121,7 +121,7 @@ test.describe('JOURNEY-DMO-001: Create Data Mesh Domain', () => {
       const dmoUser = await getDataMeshDomainOwnerUser();
       await loginAndNavigateToRoute(page, dmoUser, '/mesh', {
         timeout: 90000,
-        contentSelector: '.mesh-domain-list-page, .empty-state, .error-display',
+        contentSelector: '.mesh-domain-list-page, .empty-state, [data-testid="empty-state"], .error-display, [data-testid="error-display"]',
       });
       const url = page.url();
       expect(url.includes('/mesh') || url.includes('/login') || url.includes('/403')).toBe(true);

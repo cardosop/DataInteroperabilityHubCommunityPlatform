@@ -19,10 +19,10 @@ test.describe('Feature: Integrations', () => {
       const testUser = await getTestUser();
       await loginAndNavigateToRoute(page, testUser, '/integrations/connections', {
         timeout: 60000,
-        contentSelector: '.integration-connections-page, .empty-state, .error-display, h1',
+        contentSelector: '.integration-connections-page, .empty-state, [data-testid="empty-state"], .error-display, [data-testid="error-display"], h1',
       });
       try {
-        await assertListPageLoads(page, '.integration-connections-page, .empty-state', {
+        await assertListPageLoads(page, '.integration-connections-page, .empty-state, [data-testid="empty-state"]', {
           timeout: 60000,
         });
       } catch (err) {
@@ -46,7 +46,7 @@ test.describe('Feature: Integrations', () => {
       await loginAndNavigateToRoute(page, testUser, '/integrations/sync-jobs', {
         timeout: 60000,
         contentSelector:
-          '.integration-sync-jobs-page, .sync-jobs-page, .empty-state, .unavailable-page, .error-display, h1',
+          '.integration-sync-jobs-page, .sync-jobs-page, .empty-state, [data-testid="empty-state"], .unavailable-page, [data-testid="unavailable-page"], .error-display, [data-testid="error-display"], h1',
       });
 
       const url = page.url();
@@ -55,7 +55,7 @@ test.describe('Feature: Integrations', () => {
         return;
       }
       // Accept error-display when backend is not deployed (NOT_FOUND)
-      const errorDisplay = page.locator('.error-display');
+      const errorDisplay = page.locator('.error-display, [data-testid="error-display"]').first();
       if ((await errorDisplay.count()) > 0) {
         // intentional: tolerates a detached/removed element while extracting text for a diagnostic message; the surrounding throw/expect below this catch is the primary failure path.
         const errText = await errorDisplay.first().textContent().catch(() => '') ?? '';
@@ -72,12 +72,12 @@ test.describe('Feature: Integrations', () => {
       const hasContent =
         (await page
           .locator(
-            '.integration-sync-jobs-page, .sync-jobs-page, .empty-state, .unavailable-page, h1'
+            '.integration-sync-jobs-page, .sync-jobs-page, .empty-state, [data-testid="empty-state"], .unavailable-page, [data-testid="unavailable-page"], h1'
           )
           .count()) > 0;
       expect(
         hasContent,
-        'Expected page content (.sync-jobs-page, .empty-state, .unavailable-page, or h1)'
+        'Expected page content (.sync-jobs-page, .empty-state, [data-testid="empty-state"], .unavailable-page, [data-testid="unavailable-page"], or h1)'
       ).toBe(true);
     });
   });

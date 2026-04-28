@@ -16,7 +16,7 @@ import {
   waitForLoadingComplete,
 } from '../../fixtures/helpers';
 
-test.describe('UC-GOV-ADV-002: GDPR Right to be Forgotten', () => {
+test.describe('UC-GOV-ADV-002: GDPR Right to be Forgotten @critical', () => {
   test.setTimeout(120000);
 
   test.describe('Success', () => {
@@ -28,10 +28,10 @@ test.describe('UC-GOV-ADV-002: GDPR Right to be Forgotten', () => {
       expect(page.url()).toContain('/governance');
       await waitForLoadingComplete(page, { timeout: 15000 });
       // D85: error-display is NOT acceptable — means backend or governance service is down
-      const hasError = (await page.locator('.error-display').count()) > 0;
+      const hasError = (await page.locator('.error-display, [data-testid="error-display"]').first().count()) > 0;
       if (hasError) {
         // intentional: tolerates a detached/removed element while extracting text for a diagnostic message; the surrounding throw/expect below this catch is the primary failure path.
-        const errText = await page.locator('.error-display').first().textContent().catch(() => '');
+        const errText = await page.locator('.error-display, [data-testid="error-display"]').first().first().textContent().catch(() => '');
         throw new Error(`Governance page shows error: "${errText?.slice(0, 300)}"`);
       }
       const hasGDPRContent =

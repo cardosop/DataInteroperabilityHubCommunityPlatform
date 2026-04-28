@@ -21,13 +21,13 @@ test.describe('JOURNEY-DA-002: Wrangle Data Interactively', () => {
       const testUser = await getConsumerTestUser();
       await loginAndNavigateToRoute(page, testUser, '/datasets', {
         timeout: 60000,
-        contentSelector: '.dataset-list-page, .empty-state, .error-display',
+        contentSelector: '.dataset-list-page, [data-testid="dataset-list-page"], .empty-state, [data-testid="empty-state"], .error-display, [data-testid="error-display"]',
       });
       expect(page.url()).toContain('/datasets');
       const hasContent =
-        (await page.locator('.dataset-list-page').count()) > 0 ||
-        (await page.locator('.empty-state').count()) > 0 ||
-        (await page.locator('.error-display').count()) > 0;
+        (await page.locator('.dataset-list-page, [data-testid="dataset-list-page"]').first().count()) > 0 ||
+        (await page.locator('.empty-state, [data-testid="empty-state"]').first().count()) > 0 ||
+        (await page.locator('.error-display, [data-testid="error-display"]').first().count()) > 0;
       expect(hasContent).toBe(true);
     });
 
@@ -35,7 +35,7 @@ test.describe('JOURNEY-DA-002: Wrangle Data Interactively', () => {
       const testUser = await getConsumerTestUser();
       await loginAndNavigateToRoute(page, testUser, '/assets', {
         timeout: 60000,
-        contentSelector: '.asset-list-page, .empty-state, .error-display',
+        contentSelector: '.asset-list-page, [data-testid="asset-list-page"], .empty-state, [data-testid="empty-state"], .error-display, [data-testid="error-display"]',
       });
       expect(page.url()).toContain('/assets');
     });
@@ -48,7 +48,7 @@ test.describe('JOURNEY-DA-002: Wrangle Data Interactively', () => {
       await page.goto('/datasets/00000000-0000-0000-0000-000000000000');
       await page.waitForLoadState('domcontentloaded');
       await assertNonExistentIdShowsError(page, {
-        detailContentSelector: '.dataset-detail-page',
+        detailContentSelector: '.dataset-detail-page, [data-testid="dataset-detail-page"]',
         waitAfterLoad: 8000,
       });
     });
@@ -66,12 +66,12 @@ test.describe('JOURNEY-DA-002: Wrangle Data Interactively', () => {
       const testUser = await getConsumerTestUser();
       await loginAndNavigateToRoute(page, testUser, '/datasets', {
         timeout: 60000,
-        contentSelector: '.dataset-list-page, .empty-state, .error-display',
+        contentSelector: '.dataset-list-page, [data-testid="dataset-list-page"], .empty-state, [data-testid="empty-state"], .error-display, [data-testid="error-display"]',
       });
       expect(page.url()).toContain('/datasets');
       await loginAndNavigateToRoute(page, testUser, '/assets', {
         timeout: 60000,
-        contentSelector: '.asset-list-page, .empty-state, .error-display',
+        contentSelector: '.asset-list-page, [data-testid="asset-list-page"], .empty-state, [data-testid="empty-state"], .error-display, [data-testid="error-display"]',
       });
       expect(page.url()).toContain('/assets');
     });

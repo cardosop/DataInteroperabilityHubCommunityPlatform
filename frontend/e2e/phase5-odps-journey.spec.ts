@@ -194,7 +194,7 @@ test.describe('Phase 5 ODPS Journey', () => {
     console.log('Step 1: Navigating to contract create page...');
     await loginAndNavigateToRoute(page, testUser, '/contracts/create', {
       timeout: 60000,
-      contentSelector: '.contract-create-page, [data-testid="contract-file-reader"], h1',
+      contentSelector: '.contract-create-page, [data-testid="contract-create-page"], [data-testid="contract-file-reader"], h1',
     });
 
     // Route protection and feature gating are invariants of the app shell,
@@ -443,10 +443,10 @@ test.describe('Phase 5 ODPS Journey', () => {
     console.log('Step 5: Navigating to contract detail page...');
     await loginAndNavigateToRoute(page, testUser, `/contracts/${odpsContractId}`, {
       timeout: 60000,
-      contentSelector: '.contract-detail-page, .contract-detail-main, .error-display, h1',
+      contentSelector: '.contract-detail-page, [data-testid="contract-detail-page"], .contract-detail-main, .error-display, [data-testid="error-display"], h1',
     });
 
-    // Verify contract detail page loaded (both .contract-detail-page and
+    // Verify contract detail page loaded (both .contract-detail-page, [data-testid="contract-detail-page"] and
     // the nested main container exist; wait on the inner one to avoid
     // racing the skeleton).
     await expect(page.locator('.contract-detail-main').first()).toBeVisible({ timeout: 15000 });
@@ -508,7 +508,7 @@ test.describe('Phase 5 ODPS Journey', () => {
       // side shows "Link ODCS" instead — see ContractDetailPage.tsx:137-144).
       await loginAndNavigateToRoute(page, testUser, `/contracts/${odcsContractId}`, {
         timeout: 60000,
-        contentSelector: '.contract-detail-page, .contract-detail-main, .error-display',
+        contentSelector: '.contract-detail-page, [data-testid="contract-detail-page"], .contract-detail-main, .error-display, [data-testid="error-display"]',
       });
 
       // Click "Link ODPS" button
@@ -564,7 +564,7 @@ test.describe('Phase 5 ODPS Journey', () => {
     // Re-login and navigate (auth may have expired after long journey).
     await loginAndNavigateToRoute(page, testUser, `/contracts/${odpsContractId}`, {
       timeout: 90000,
-      contentSelector: '.contract-detail-page, .contract-detail-main, .error-display, h1',
+      contentSelector: '.contract-detail-page, [data-testid="contract-detail-page"], .contract-detail-main, .error-display, [data-testid="error-display"], h1',
     });
 
     // Wait for the operations grid (holds the Export button)

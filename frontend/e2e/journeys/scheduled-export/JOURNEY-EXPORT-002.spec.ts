@@ -22,7 +22,7 @@ import { expect, test } from '@playwright/test';
 import { getTenantAdminUser } from '../../fixtures/auth';
 import { loginAndNavigateToRoute } from '../../fixtures/helpers';
 
-test.describe('JOURNEY-EXPORT-002: Monitor and Troubleshoot Export Runs', () => {
+test.describe('JOURNEY-EXPORT-002: Monitor and Troubleshoot Export Runs @critical', () => {
   test.setTimeout(120000);
 
   test.describe('Success', () => {
@@ -31,7 +31,7 @@ test.describe('JOURNEY-EXPORT-002: Monitor and Troubleshoot Export Runs', () => 
       await loginAndNavigateToRoute(page, testUser, '/scheduled-exports', {
         timeout: 60000,
         contentSelector:
-          '.scheduled-export-list-page, .empty-state, .unavailable-page, h1',
+          '.scheduled-export-list-page, .empty-state, [data-testid="empty-state"], .unavailable-page, [data-testid="unavailable-page"], h1',
         acceptRedirectToLogin: true,
       });
       if (page.url().includes('/login')) {
@@ -43,10 +43,10 @@ test.describe('JOURNEY-EXPORT-002: Monitor and Troubleshoot Export Runs', () => 
         return;
       }
 
-      await expect(page.locator('.error-display')).not.toBeVisible();
+      await expect(page.locator('.error-display, [data-testid="error-display"]').first()).not.toBeVisible();
 
       const hasContent =
-        (await page.locator('.scheduled-export-list-page, .empty-state, h1').count()) > 0;
+        (await page.locator('.scheduled-export-list-page, .empty-state, [data-testid="empty-state"], h1').count()) > 0;
       expect(hasContent, 'Expected scheduled-export list content').toBe(true);
     });
   });
@@ -61,7 +61,7 @@ test.describe('JOURNEY-EXPORT-002: Monitor and Troubleshoot Export Runs', () => 
         {
           timeout: 60000,
           contentSelector:
-            '.error-display, .scheduled-export-detail-page, .unavailable-page, h1',
+            '.error-display, [data-testid="error-display"], .scheduled-export-detail-page, .unavailable-page, [data-testid="unavailable-page"], h1',
           acceptRedirectToLogin: true,
         }
       );
@@ -72,13 +72,13 @@ test.describe('JOURNEY-EXPORT-002: Monitor and Troubleshoot Export Runs', () => 
 
       // Wait for error/not-found content to appear
       await page
-        .locator('.error-display, .empty-state, .unavailable-page')
+        .locator('.error-display, [data-testid="error-display"], .empty-state, [data-testid="empty-state"], .unavailable-page, [data-testid="unavailable-page"]')
         .first()
         .waitFor({ state: 'visible', timeout: 30000 })
         .catch(() => {});
 
-      const hasError = (await page.locator('.error-display').count()) > 0;
-      const hasUnavailable = (await page.locator('.unavailable-page').count()) > 0;
+      const hasError = (await page.locator('.error-display, [data-testid="error-display"]').first().count()) > 0;
+      const hasUnavailable = (await page.locator('.unavailable-page, [data-testid="unavailable-page"]').first().count()) > 0;
       const hasNotFoundText =
         (await page.locator('text=/not found|404|does not exist/i').count()) > 0;
       const is404 = page.url().includes('/404') || page.url().includes('/not-found');
@@ -95,7 +95,7 @@ test.describe('JOURNEY-EXPORT-002: Monitor and Troubleshoot Export Runs', () => 
       await loginAndNavigateToRoute(page, testUser, '/scheduled-exports', {
         timeout: 60000,
         contentSelector:
-          '.scheduled-export-list-page, .empty-state, .unavailable-page, h1',
+          '.scheduled-export-list-page, .empty-state, [data-testid="empty-state"], .unavailable-page, [data-testid="unavailable-page"], h1',
         acceptRedirectToLogin: true,
       });
       if (page.url().includes('/login') || page.url().includes('/403')) {

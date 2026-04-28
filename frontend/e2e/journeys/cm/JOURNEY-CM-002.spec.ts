@@ -29,7 +29,7 @@ test.describe('JOURNEY-CM-002: Moderate Reviews and Ratings', () => {
       await page.waitForLoadState('domcontentloaded');
       // intentional: probes optional UI presence via a multi-line locator chain — the branch logic below handles both rendered and missing cases deterministically; absence is a legitimate tenant/role state.
       await page
-        .locator('.asset-detail-page')
+        .locator('.asset-detail-page, [data-testid="asset-detail-page"]').first()
         .first()
         .waitFor({ state: 'visible', timeout: 30000 })
         .catch(() => null);
@@ -39,7 +39,7 @@ test.describe('JOURNEY-CM-002: Moderate Reviews and Ratings', () => {
         return;
       }
 
-      await expect(page.locator('.error-display')).not.toBeVisible();
+      await expect(page.locator('.error-display, [data-testid="error-display"]').first()).not.toBeVisible();
 
       // CM-002 specific: check for social section with Ratings/Reviews tabs
       const socialSection = page.locator('[data-testid="asset-social-section"]');
@@ -73,7 +73,7 @@ test.describe('JOURNEY-CM-002: Moderate Reviews and Ratings', () => {
       const onUnavailable = url.includes('/unavailable');
       const onLogin = url.includes('/login');
       const hasUnavailableContent =
-        (await page.locator('.unavailable-page, .error-display').count()) > 0;
+        (await page.locator('.unavailable-page, [data-testid="unavailable-page"], .error-display, [data-testid="error-display"]').count()) > 0;
       expect(on403 || onUnavailable || hasUnavailableContent || onLogin).toBe(true);
     });
   });
@@ -87,7 +87,7 @@ test.describe('JOURNEY-CM-002: Moderate Reviews and Ratings', () => {
       await page.waitForLoadState('domcontentloaded');
       // intentional: probes optional UI presence via a multi-line locator chain — the branch logic below handles both rendered and missing cases deterministically; absence is a legitimate tenant/role state.
       await page
-        .locator('.asset-detail-page')
+        .locator('.asset-detail-page, [data-testid="asset-detail-page"]').first()
         .first()
         .waitFor({ state: 'visible', timeout: 30000 })
         .catch(() => null);
@@ -114,7 +114,7 @@ test.describe('JOURNEY-CM-002: Moderate Reviews and Ratings', () => {
 
       // Should show ratings content area (empty state or list)
       const hasRatingsContent =
-        (await page.locator('.ratings-tab, .empty-state, .rating-item').count()) > 0;
+        (await page.locator('.ratings-tab, .empty-state, [data-testid="empty-state"], .rating-item').count()) > 0;
       expect(hasRatingsContent, 'Expected ratings tab content').toBe(true);
     });
   });

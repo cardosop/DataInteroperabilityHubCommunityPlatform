@@ -9,19 +9,19 @@ import { expect, test } from '@playwright/test';
 import { clearAuthStorage, gotoWithRetry } from '../../fixtures/auth';
 import { navigateOrSkip, assertListPageLoads, waitForAppMainReady } from '../../fixtures/helpers';
 
-test.describe('Marketplace and Data Consumer routes', () => {
+test.describe('Marketplace and Data Consumer routes @critical', () => {
   test.setTimeout(120000);
 
   test.describe('Success', () => {
     test('marketplace list loads (discover)', async ({ page }) => {
       const { ok } = await navigateOrSkip(page, '/marketplace', {
-        contentSelector: '.listing-list-page, .empty-state',
+        contentSelector: '.listing-list-page, .empty-state, [data-testid="empty-state"]',
 
       });
       if (!ok) return;
       expect(page.url()).toContain('/marketplace');
       try {
-        await assertListPageLoads(page, '.listing-list-page, .empty-state');
+        await assertListPageLoads(page, '.listing-list-page, .empty-state, [data-testid="empty-state"]');
       } catch (err) {
         if (String(err).includes('BACKEND_TIMEOUT')) {
           test.skip(true, 'Backend timeout under parallel E2E load');
@@ -33,12 +33,12 @@ test.describe('Marketplace and Data Consumer routes', () => {
 
     test('marketplace orders list loads', async ({ page }) => {
       const { ok } = await navigateOrSkip(page, '/marketplace/orders', {
-        contentSelector: '.order-list-page, .empty-state',
+        contentSelector: '.order-list-page, .empty-state, [data-testid="empty-state"]',
       });
       if (!ok) return;
       expect(page.url()).toContain('/marketplace/orders');
       try {
-        await assertListPageLoads(page, '.order-list-page, .empty-state');
+        await assertListPageLoads(page, '.order-list-page, .empty-state, [data-testid="empty-state"]');
       } catch (err) {
         if (String(err).includes('BACKEND_TIMEOUT')) {
           test.skip(true, 'Backend timeout under parallel E2E load');
@@ -50,12 +50,12 @@ test.describe('Marketplace and Data Consumer routes', () => {
 
     test('marketplace entitlements list loads', async ({ page }) => {
       const { ok } = await navigateOrSkip(page, '/marketplace/entitlements', {
-        contentSelector: '.entitlement-list-page, .empty-state',
+        contentSelector: '.entitlement-list-page, .empty-state, [data-testid="empty-state"]',
       });
       if (!ok) return;
       expect(page.url()).toContain('/marketplace/entitlements');
       try {
-        await assertListPageLoads(page, '.entitlement-list-page, .empty-state');
+        await assertListPageLoads(page, '.entitlement-list-page, .empty-state, [data-testid="empty-state"]');
       } catch (err) {
         if (String(err).includes('BACKEND_TIMEOUT')) {
           test.skip(true, 'Backend timeout under parallel E2E load');
@@ -83,7 +83,7 @@ test.describe('Marketplace and Data Consumer routes', () => {
         await waitForAppMainReady(page, {
           timeout: 60000,
           acceptRedirectToLogin: true,
-          contentSelector: '.error-display, .error-display-title, .listing-detail-main',
+          contentSelector: '.error-display, [data-testid="error-display"], .error-display-title, [data-testid="error-display-title"], .listing-detail-main, [data-testid="listing-detail-main"]',
         });
       } catch (_err) {
         if (page.url().includes('/login')) {
@@ -101,10 +101,10 @@ test.describe('Marketplace and Data Consumer routes', () => {
       // Wait for error display — React Query retries failed requests before showing error,
       // so the error display can take 15-30s to appear after the initial 404 response.
       // intentional: probes optional UI presence — the branch logic below handles both rendered and missing cases deterministically; absence is a legitimate tenant/role state, not a test failure.
-      await page.locator('.error-display, .error-display-title, .listing-detail-main')
+      await page.locator('.error-display, [data-testid="error-display"], .error-display-title, [data-testid="error-display-title"], .listing-detail-main, [data-testid="listing-detail-main"]')
         .first().waitFor({ state: 'visible', timeout: 30000 }).catch(() => null);
 
-      const hasErrorDisplay = (await page.locator('.error-display, .error-display-title').count()) > 0;
+      const hasErrorDisplay = (await page.locator('.error-display, [data-testid="error-display"], .error-display-title, [data-testid="error-display-title"]').count()) > 0;
       if (!hasErrorDisplay) {
         // Error display didn't appear — page may show empty listing detail or still be loading
         const onLogin = page.url().includes('/login');
@@ -119,19 +119,19 @@ test.describe('Marketplace and Data Consumer routes', () => {
           return;
         }
         // If listing detail loaded for nil-UUID, that is a data integrity problem
-        const hasListingContent = (await page.locator('.listing-detail-main').count()) > 0;
+        const hasListingContent = (await page.locator('.listing-detail-main, [data-testid="listing-detail-main"]').first().count()) > 0;
         if (hasListingContent) {
           throw new Error('Data integrity issue: nil-UUID (00000000...) matched a real listing. Check database for corrupted IDs.');
         }
         throw new Error(
-          'Marketplace listing detail: neither .error-display nor .listing-detail-main appeared ' +
+          'Marketplace listing detail: neither .error-display, [data-testid="error-display"] nor .listing-detail-main, [data-testid="listing-detail-main"] appeared ' +
           `within 30s for nil-UUID. URL: ${page.url()}`
         );
       }
       // For a non-existent resource, any error state is valid: 404 "not found", API timeout,
       // network error, or generic failure. The test verifies the UI shows an error — the
       // exact error text depends on backend load and response time.
-      expect(hasErrorDisplay, 'Expected .error-display for non-existent resource').toBe(true);
+      expect(hasErrorDisplay, 'Expected .error-display, [data-testid="error-display"] for non-existent resource').toBe(true);
     });
   });
 
@@ -140,20 +140,20 @@ test.describe('Marketplace and Data Consumer routes', () => {
       page,
     }) => {
       // Navigate to a listing URL with a well-formed but non-existent purchase flow path.
-      // The /purchase suffix may not match any SPA route -> NotFoundPage renders without .app-main.
+      // The /purchase suffix may not match any SPA route -> NotFoundPage renders without .app-main, [data-testid="app-main"].
       await gotoWithRetry(page, '/marketplace/listings/00000000-0000-0000-0000-000000000000/purchase');
       try {
         await waitForAppMainReady(page, {
           timeout: 60000,
           acceptRedirectToLogin: true,
-          contentSelector: '.error-display, .error-display-title, .listing-detail-main',
+          contentSelector: '.error-display, [data-testid="error-display"], .error-display-title, [data-testid="error-display-title"], .listing-detail-main, [data-testid="listing-detail-main"]',
         });
       } catch (_err) {
         if (page.url().includes('/login')) {
           test.skip(true, 'Redirected to login — auth may have expired');
           return;
         }
-        // SPA 404 page renders without .app-main — valid for a route that doesn't exist
+        // SPA 404 page renders without .app-main, [data-testid="app-main"] — valid for a route that doesn't exist
         const is404Page = (await page.locator('text="404 - Page Not Found"').count()) > 0 ||
           (await page.locator('text="Page Not Found"').count()) > 0;
         if (!is404Page) {
@@ -180,13 +180,13 @@ test.describe('Marketplace and Data Consumer routes', () => {
       // Wait for ErrorDisplay to appear — it renders immediately after the single 404 response
       // intentional: probes optional UI presence via a multi-line locator chain — the branch logic below handles both rendered and missing cases deterministically; absence is a legitimate tenant/role state.
       await page
-        .locator('.error-display, .error-display-title, text="404 - Page Not Found"')
+        .locator('.error-display, [data-testid="error-display"], .error-display-title, [data-testid="error-display-title"], text="404 - Page Not Found"')
         .first()
         .waitFor({ state: 'visible', timeout: 10000 })
         .catch(() => null);
       const hasError =
-        (await page.locator('.error-display').count()) > 0 ||
-        (await page.locator('.error-display-title').count()) > 0 ||
+        (await page.locator('.error-display, [data-testid="error-display"]').first().count()) > 0 ||
+        (await page.locator('.error-display-title, [data-testid="error-display-title"]').first().count()) > 0 ||
         // Router catch-all 404 page when /purchase suffix matches no route
         (await page.locator('text="404 - Page Not Found"').count()) > 0 ||
         (await page.locator('text="Page Not Found"').count()) > 0;

@@ -14,7 +14,7 @@ import {
   waitForLoadingComplete,
 } from '../../fixtures/helpers';
 
-test.describe('Contracts and ODPS routes', () => {
+test.describe('Contracts and ODPS routes @critical', () => {
   test.setTimeout(120000);
 
   test.describe('Auth', () => {
@@ -31,22 +31,22 @@ test.describe('Contracts and ODPS routes', () => {
       page,
     }) => {
       const { ok } = await navigateOrSkip(page, '/contracts/00000000-0000-0000-0000-000000000000/link-odps', {
-        contentSelector: '.error-display, .error-display-title, .odps-link-page',
+        contentSelector: '.error-display, [data-testid="error-display"], .error-display-title, [data-testid="error-display-title"], .odps-link-page',
       });
       if (!ok) return;
 
       // Wait for terminal states: error-display (contract not found) or odps-link-page (success form).
       // intentional: probes optional UI presence via a multi-line locator chain — the branch logic below handles both rendered and missing cases deterministically; absence is a legitimate tenant/role state.
       await page
-        .locator('.error-display, .odps-link-page')
+        .locator('.odps-link-page, .error-display, [data-testid="error-display"]')
         .first()
         .waitFor({ state: 'visible', timeout: 20000 })
         .catch(() => null);
       const url = page.url();
       const on403 = url.includes('/403');
       const hasError =
-        (await page.locator('.error-display').count()) > 0 ||
-        (await page.locator('.error-display-title').count()) > 0;
+        (await page.locator('.error-display, [data-testid="error-display"]').first().count()) > 0 ||
+        (await page.locator('.error-display-title, [data-testid="error-display-title"]').first().count()) > 0;
 
       // Redirect to 403 is always acceptable
       if (on403) return;
@@ -79,7 +79,7 @@ test.describe('Contracts and ODPS routes', () => {
         .catch(() => null);
 
       const { ok } = await navigateOrSkip(page, `/contracts/${nonExistentId}/edit`, {
-        contentSelector: '.error-display, .error-display-title, .contract-editor-page',
+        contentSelector: '.error-display, [data-testid="error-display"], .error-display-title, [data-testid="error-display-title"], .contract-editor-page',
       });
       if (!ok) return;
 
@@ -87,10 +87,10 @@ test.describe('Contracts and ODPS routes', () => {
 
       // Race: wait for error or editor content rather than sleeping
       // intentional: probes optional UI presence — the branch logic below handles both rendered and missing cases deterministically; absence is a legitimate tenant/role state, not a test failure.
-      await page.locator('.error-display, .error-display-title, .contract-editor-page')
+      await page.locator('.error-display, [data-testid="error-display"], .error-display-title, [data-testid="error-display-title"], .contract-editor-page')
         .first().waitFor({ state: 'visible', timeout: 30000 }).catch(() => null);
 
-      const hasErrorDisplay = (await page.locator('.error-display, .error-display-title').count()) > 0;
+      const hasErrorDisplay = (await page.locator('.error-display, [data-testid="error-display"], .error-display-title, [data-testid="error-display-title"]').count()) > 0;
       // For a non-existent resource, any error state is valid: 404 "not found", API timeout,
       // network error, or generic failure. The test verifies the UI shows an error — the
       // exact error text depends on backend load and response time.
@@ -102,12 +102,12 @@ test.describe('Contracts and ODPS routes', () => {
           return;
         }
       }
-      expect(hasErrorDisplay, 'Expected .error-display for non-existent resource').toBe(true);
+      expect(hasErrorDisplay, 'Expected .error-display, [data-testid="error-display"] for non-existent resource').toBe(true);
 
       // H3: warn if error is not a clean 404
       if (hasErrorDisplay) {
         // intentional: tolerates a detached/removed element while extracting text for a diagnostic message; the surrounding throw/expect below this catch is the primary failure path.
-        const errorText = await page.locator('.error-display, .error-display-title').first().textContent().catch(() => '');
+        const errorText = await page.locator('.error-display, [data-testid="error-display"], .error-display-title, [data-testid="error-display-title"]').first().textContent().catch(() => '');
         if (errorText && !errorText.includes('404') && !errorText.toLowerCase().includes('not found')) {
           console.warn(`[H3] contract edit nil-UUID: error-display shows non-404 error: "${errorText.slice(0, 200)}"`);
         }
@@ -131,17 +131,17 @@ test.describe('Contracts and ODPS routes', () => {
         .catch(() => null);
 
       const { ok } = await navigateOrSkip(page, `/odps/${nonExistentId}`, {
-        contentSelector: '.error-display, .error-display-title, .odps-detail-page',
+        contentSelector: '.error-display, [data-testid="error-display"], .error-display-title, [data-testid="error-display-title"], .odps-detail-page',
       });
       if (!ok) return;
 
       await responsePromise;
 
       // intentional: probes optional UI presence — the branch logic below handles both rendered and missing cases deterministically; absence is a legitimate tenant/role state, not a test failure.
-      await page.locator('.error-display, .error-display-title, .odps-detail-page, .odps-detail-main')
+      await page.locator('.error-display, [data-testid="error-display"], .error-display-title, [data-testid="error-display-title"], .odps-detail-page, .odps-detail-main')
         .first().waitFor({ state: 'visible', timeout: 30000 }).catch(() => null);
 
-      const hasErrorDisplay = (await page.locator('.error-display, .error-display-title').count()) > 0;
+      const hasErrorDisplay = (await page.locator('.error-display, [data-testid="error-display"], .error-display-title, [data-testid="error-display-title"]').count()) > 0;
       // For a non-existent resource, any error state is valid: 404 "not found", API timeout,
       // network error, or generic failure. The test verifies the UI shows an error — the
       // exact error text depends on backend load and response time.
@@ -153,12 +153,12 @@ test.describe('Contracts and ODPS routes', () => {
           return;
         }
       }
-      expect(hasErrorDisplay, 'Expected .error-display for non-existent resource').toBe(true);
+      expect(hasErrorDisplay, 'Expected .error-display, [data-testid="error-display"] for non-existent resource').toBe(true);
 
       // H3: warn if error is not a clean 404
       if (hasErrorDisplay) {
         // intentional: tolerates a detached/removed element while extracting text for a diagnostic message; the surrounding throw/expect below this catch is the primary failure path.
-        const errorText = await page.locator('.error-display, .error-display-title').first().textContent().catch(() => '');
+        const errorText = await page.locator('.error-display, [data-testid="error-display"], .error-display-title, [data-testid="error-display-title"]').first().textContent().catch(() => '');
         if (errorText && !errorText.includes('404') && !errorText.toLowerCase().includes('not found')) {
           console.warn(`[H3] odps detail nil-UUID: error-display shows non-404 error: "${errorText.slice(0, 200)}"`);
         }
@@ -178,7 +178,7 @@ test.describe('Contracts and ODPS routes', () => {
         await waitForAppMainReady(page, {
           timeout: 60000,
           acceptRedirectToLogin: true,
-          contentSelector: '.contract-list-page, .empty-state',
+          contentSelector: '.contract-list-page, [data-testid="contract-list-page"], .empty-state, [data-testid="empty-state"]',
         });
       } catch (_err) {
         if (page.url().includes('/login')) {
@@ -194,7 +194,7 @@ test.describe('Contracts and ODPS routes', () => {
       expect(page.url()).toContain('/contracts');
       await assertSuccessfulLoad(page, {
         apiResponsePromise: apiPromise,
-        successContentSelector: '.contract-list-page, .empty-state',
+        successContentSelector: '.contract-list-page, [data-testid="contract-list-page"], .empty-state, [data-testid="empty-state"]',
         rejectErrorDisplay: true,
       });
       await waitForLoadingComplete(page, { timeout: 15000 });

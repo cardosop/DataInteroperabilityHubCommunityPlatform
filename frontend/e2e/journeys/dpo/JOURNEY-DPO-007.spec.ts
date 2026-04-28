@@ -13,7 +13,7 @@ import { expect, test } from '@playwright/test';
 import { getTestUser } from '../../fixtures/auth';
 import { loginAndNavigateToRoute, waitForLoadingComplete } from '../../fixtures/helpers';
 
-test.describe('JOURNEY-DPO-007: Use AI Schema Matching for Asset Creation', () => {
+test.describe('JOURNEY-DPO-007: Use AI Schema Matching for Asset Creation @critical', () => {
   test.setTimeout(90000);
 
   test.describe('Success', () => {
@@ -24,7 +24,7 @@ test.describe('JOURNEY-DPO-007: Use AI Schema Matching for Asset Creation', () =
       await loginAndNavigateToRoute(page, testUser, '/ai/schema-matching', {
         timeout: 60000,
         contentSelector:
-          '.schema-matching-page, [data-testid="schema-matching-page"], .unavailable-page, .error-display',
+          '.schema-matching-page, [data-testid="schema-matching-page"], .unavailable-page, [data-testid="unavailable-page"], .error-display, [data-testid="error-display"]',
         acceptRedirectToLogin: false,
       });
       await waitForLoadingComplete(page, { timeout: 30000 });
@@ -37,7 +37,7 @@ test.describe('JOURNEY-DPO-007: Use AI Schema Matching for Asset Creation', () =
         page.url().includes('/ai/schema-matching') &&
         (await page.locator('.schema-matching-page, [data-testid="schema-matching-page"]').count()) > 0;
       const capabilityDisabled =
-        (await page.locator('.unavailable-page').count()) > 0 ||
+        (await page.locator('.unavailable-page, [data-testid="unavailable-page"]').first().count()) > 0 ||
         page.url().includes('/unavailable') ||
         page.url().includes('/403');
 
@@ -49,7 +49,7 @@ test.describe('JOURNEY-DPO-007: Use AI Schema Matching for Asset Creation', () =
         ).toBeVisible({ timeout: 5000 });
       } else {
         await expect(
-          page.locator('.unavailable-page').first()
+          page.locator('.unavailable-page, [data-testid="unavailable-page"]').first().first()
         ).toBeVisible({ timeout: 5000 });
       }
     });
@@ -63,7 +63,7 @@ test.describe('JOURNEY-DPO-007: Use AI Schema Matching for Asset Creation', () =
       await loginAndNavigateToRoute(page, testUser, '/ai/schema-matching', {
         timeout: 60000,
         contentSelector:
-          '.schema-matching-page, [data-testid="schema-matching-page"], .unavailable-page, .error-display',
+          '.schema-matching-page, [data-testid="schema-matching-page"], .unavailable-page, [data-testid="unavailable-page"], .error-display, [data-testid="error-display"]',
         acceptRedirectToLogin: false,
       });
       await waitForLoadingComplete(page, { timeout: 30000 });
@@ -76,7 +76,7 @@ test.describe('JOURNEY-DPO-007: Use AI Schema Matching for Asset Creation', () =
         page.url().includes('/ai/schema-matching') &&
         (await page.locator('.schema-matching-page, [data-testid="schema-matching-page"]').count()) > 0;
       const capabilityDisabled =
-        (await page.locator('.unavailable-page').count()) > 0 ||
+        (await page.locator('.unavailable-page, [data-testid="unavailable-page"]').first().count()) > 0 ||
         page.url().includes('/unavailable') ||
         page.url().includes('/403');
 
@@ -84,7 +84,7 @@ test.describe('JOURNEY-DPO-007: Use AI Schema Matching for Asset Creation', () =
         await expect(
           page.locator('.schema-matching-page, [data-testid="schema-matching-page"]').first()
         ).toBeVisible({ timeout: 5000 });
-        await expect(page.locator('.error-display')).not.toBeVisible();
+        await expect(page.locator('.error-display, [data-testid="error-display"]').first()).not.toBeVisible();
         test.info().annotations.push({
           type: 'capability-enabled',
           description: 'ai.schema-matching is enabled; verified enabled path renders correctly instead',
@@ -94,7 +94,7 @@ test.describe('JOURNEY-DPO-007: Use AI Schema Matching for Asset Creation', () =
 
       expect(capabilityDisabled).toBe(true);
       await expect(
-        page.locator('.unavailable-page').first()
+        page.locator('.unavailable-page, [data-testid="unavailable-page"]').first().first()
       ).toBeVisible({ timeout: 5000 });
     });
   });
@@ -105,7 +105,7 @@ test.describe('JOURNEY-DPO-007: Use AI Schema Matching for Asset Creation', () =
       await loginAndNavigateToRoute(page, testUser, '/ai/schema-matching', {
         timeout: 60000,
         contentSelector:
-          '.schema-matching-page, [data-testid="schema-matching-page"], .unavailable-page, .error-display',
+          '.schema-matching-page, [data-testid="schema-matching-page"], .unavailable-page, [data-testid="unavailable-page"], .error-display, [data-testid="error-display"]',
         acceptRedirectToLogin: false,
       });
       await waitForLoadingComplete(page, { timeout: 30000 });
@@ -117,10 +117,10 @@ test.describe('JOURNEY-DPO-007: Use AI Schema Matching for Asset Creation', () =
       const capabilityDisabled =
         page.url().includes('/unavailable') ||
         page.url().includes('/403') ||
-        (await page.locator('.unavailable-page').count()) > 0;
+        (await page.locator('.unavailable-page, [data-testid="unavailable-page"]').first().count()) > 0;
 
       if (capabilityDisabled) {
-        await expect(page.locator('.unavailable-page').first()).toBeVisible({ timeout: 5000 });
+        await expect(page.locator('.unavailable-page, [data-testid="unavailable-page"]').first().first()).toBeVisible({ timeout: 5000 });
         return;
       }
 
@@ -146,9 +146,9 @@ test.describe('JOURNEY-DPO-007: Use AI Schema Matching for Asset Creation', () =
           ),
         });
         await page.waitForTimeout(1000);
-        const hasError = (await page.locator('.error-display').count()) > 0;
+        const hasError = (await page.locator('.error-display, [data-testid="error-display"]').first().count()) > 0;
         if (hasError) {
-          const errText = (await page.locator('.error-display').first().textContent()) ?? '';
+          const errText = (await page.locator('.error-display, [data-testid="error-display"]').first().first().textContent()) ?? '';
           throw new Error(`Schema matching file upload produced error: ${errText.slice(0, 200)}`);
         }
         const hasResults =

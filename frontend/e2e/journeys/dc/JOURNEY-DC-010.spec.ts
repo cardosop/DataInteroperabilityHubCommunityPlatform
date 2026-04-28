@@ -28,15 +28,15 @@ test.describe('JOURNEY-DC-010: Query Virtual Dataset', () => {
       // Phase 2: wait for loading spinner to resolve into a terminal state (spinner is transient)
       // intentional: probes optional UI presence via a multi-line locator chain — the branch logic below handles both rendered and missing cases deterministically; absence is a legitimate tenant/role state.
       await page
-        .locator('.virtual-dataset-list-page, .empty-state, .error-display')
+        .locator('.virtual-dataset-list-page, [data-testid="virtual-dataset-list-page"], .empty-state, [data-testid="empty-state"], .error-display, [data-testid="error-display"]')
         .first()
         .waitFor({ state: 'visible', timeout: 20000 })
         .catch(() => null);
       // Spinner excluded: it is a transient loading indicator, not a valid terminal state
       const hasContent =
-        (await page.locator('.virtual-dataset-list-page').count()) > 0 ||
-        (await page.locator('.empty-state').count()) > 0 ||
-        (await page.locator('.error-display').count()) > 0;
+        (await page.locator('.virtual-dataset-list-page, [data-testid="virtual-dataset-list-page"]').first().count()) > 0 ||
+        (await page.locator('.empty-state, [data-testid="empty-state"]').first().count()) > 0 ||
+        (await page.locator('.error-display, [data-testid="error-display"]').first().count()) > 0;
       expect(hasContent).toBe(true);
     });
   });
@@ -51,7 +51,7 @@ test.describe('JOURNEY-DC-010: Query Virtual Dataset', () => {
         { timeout: 90000 }
       );
       await assertNonExistentIdShowsError(page, {
-        detailContentSelector: '.virtual-dataset-detail-page, .error-display',
+        detailContentSelector: '.virtual-dataset-detail-page, .error-display, [data-testid="error-display"]',
         waitAfterLoad: 12000,
       });
     });

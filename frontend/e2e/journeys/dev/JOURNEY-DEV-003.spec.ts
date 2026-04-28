@@ -22,7 +22,7 @@ test.describe('JOURNEY-DEV-003: Integrate via CLI', () => {
       await page.goto('/developer');
       await page.waitForLoadState('domcontentloaded');
       await page.waitForSelector(
-        '.developer-portal-page, .app-main, .unavailable-page, [role="status"]',
+        '.developer-portal-page, .app-main, [data-testid="app-main"], .unavailable-page, [data-testid="unavailable-page"], [role="status"]',
         { timeout: 25000 }
       );
       await page.waitForTimeout(2000);
@@ -35,9 +35,9 @@ test.describe('JOURNEY-DEV-003: Integrate via CLI', () => {
       }
       expect(onDeveloper).toBe(true);
       const hasContent =
-        (await page.locator('.developer-portal-page, .app-main').count()) > 0;
+        (await page.locator('.developer-portal-page, .app-main, [data-testid="app-main"]').count()) > 0;
       expect(hasContent).toBe(true);
-      await expect(page.locator('.error-display')).not.toBeVisible();
+      await expect(page.locator('.error-display, [data-testid="error-display"]').first()).not.toBeVisible();
     });
   });
 

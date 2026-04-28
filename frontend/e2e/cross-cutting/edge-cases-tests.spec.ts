@@ -19,7 +19,7 @@ test.describe('Edge Cases (real tests)', () => {
     const user = await getConsumerTestUser();
     await loginAndNavigateToRoute(page, user, '/marketplace', {
       timeout: 90000,
-      contentSelector: '.listing-list-page, .listing-list-grid, .empty-state, .listing-list-filters',
+      contentSelector: '.listing-list-page, .listing-list-grid, [data-testid="listing-list-grid"], .empty-state, [data-testid="empty-state"], .listing-list-filters',
     });
     // D86: login redirect in a test that requires auth is an infra issue — mark YELLOW, not GREEN
     test.skip(page.url().includes('/login'), 'Auth redirect — backend/rate-limit issue');
@@ -34,7 +34,7 @@ test.describe('Edge Cases (real tests)', () => {
     await page.waitForTimeout(500);
     expect(page.url()).toContain('/marketplace');
     const hasContent =
-      (await page.locator('.listing-list-page, .listing-list-grid, .empty-state').count()) > 0;
+      (await page.locator('.listing-list-page, .listing-list-grid, [data-testid="listing-list-grid"], .empty-state, [data-testid="empty-state"]').count()) > 0;
     expect(hasContent).toBe(true) /* one of the acceptable page states must be true */;
   });
 
@@ -42,7 +42,7 @@ test.describe('Edge Cases (real tests)', () => {
     const user = await getConsumerTestUser();
     await loginAndNavigateToRoute(page, user, '/marketplace', {
       timeout: 90000,
-      contentSelector: '.listing-list-page, .listing-list-grid, .empty-state, .listing-list-filters',
+      contentSelector: '.listing-list-page, .listing-list-grid, [data-testid="listing-list-grid"], .empty-state, [data-testid="empty-state"], .listing-list-filters',
     });
     // D86: login redirect in a test that requires auth is an infra issue — mark YELLOW, not GREEN
     test.skip(page.url().includes('/login'), 'Auth redirect — backend/rate-limit issue');
@@ -55,14 +55,14 @@ test.describe('Edge Cases (real tests)', () => {
     await searchInput.fill('!@#$%^&*()');
     await page.waitForTimeout(1000);
     expect(page.url()).toContain('/marketplace');
-    const hasSearchError = (await page.locator('.error-display').count()) > 0;
+    const hasSearchError = (await page.locator('.error-display, [data-testid="error-display"]').first().count()) > 0;
     if (hasSearchError) {
       // intentional: tolerates a detached/removed element while extracting text for a diagnostic message; the surrounding throw/expect below this catch is the primary failure path.
-      const errText = await page.locator('.error-display').first().textContent().catch(() => '');
+      const errText = await page.locator('.error-display, [data-testid="error-display"]').first().first().textContent().catch(() => '');
       throw new Error(`Special-char search caused a backend error: ${errText?.slice(0, 200)}`);
     }
     const hasContent =
-      (await page.locator('.listing-list-page, .listing-list-grid, .empty-state').count()) > 0;
+      (await page.locator('.listing-list-page, .listing-list-grid, [data-testid="listing-list-grid"], .empty-state, [data-testid="empty-state"]').count()) > 0;
     expect(hasContent).toBe(true) /* one of the acceptable page states must be true */;
   });
 
@@ -70,7 +70,7 @@ test.describe('Edge Cases (real tests)', () => {
     const user = await getConsumerTestUser();
     await loginAndNavigateToRoute(page, user, '/marketplace', {
       timeout: 90000,
-      contentSelector: '.listing-list-page, .listing-list-grid, .empty-state, .listing-list-filters',
+      contentSelector: '.listing-list-page, .listing-list-grid, [data-testid="listing-list-grid"], .empty-state, [data-testid="empty-state"], .listing-list-filters',
     });
     // D86: login redirect in a test that requires auth is an infra issue — mark YELLOW, not GREEN
     test.skip(page.url().includes('/login'), 'Auth redirect — backend/rate-limit issue');
@@ -83,14 +83,14 @@ test.describe('Edge Cases (real tests)', () => {
     await searchInput.fill('日本語テスト café naïve');
     await page.waitForTimeout(1000);
     expect(page.url()).toContain('/marketplace');
-    const hasUnicodeError = (await page.locator('.error-display').count()) > 0;
+    const hasUnicodeError = (await page.locator('.error-display, [data-testid="error-display"]').first().count()) > 0;
     if (hasUnicodeError) {
       // intentional: tolerates a detached/removed element while extracting text for a diagnostic message; the surrounding throw/expect below this catch is the primary failure path.
-      const errText = await page.locator('.error-display').first().textContent().catch(() => '');
+      const errText = await page.locator('.error-display, [data-testid="error-display"]').first().first().textContent().catch(() => '');
       throw new Error(`Unicode search caused a backend error: ${errText?.slice(0, 200)}`);
     }
     const hasContent =
-      (await page.locator('.listing-list-page, .listing-list-grid, .empty-state').count()) > 0;
+      (await page.locator('.listing-list-page, .listing-list-grid, [data-testid="listing-list-grid"], .empty-state, [data-testid="empty-state"]').count()) > 0;
     expect(hasContent).toBe(true) /* one of the acceptable page states must be true */;
   });
 
@@ -102,7 +102,7 @@ test.describe('Edge Cases (real tests)', () => {
     // list, causing the helper to timeout when  is excluded.
     await loginAndNavigateToRoute(page, user, '/assets', {
       timeout: 60000,
-      contentSelector: '.asset-list-page, .empty-state, .error-display, .asset-list-pagination',
+      contentSelector: '.asset-list-page, [data-testid="asset-list-page"], .empty-state, [data-testid="empty-state"], .error-display, [data-testid="error-display"], .asset-list-pagination',
     });
     // D86: login redirect in a test that requires auth is an infra issue — mark YELLOW, not GREEN
     test.skip(page.url().includes('/login'), 'Auth redirect — backend/rate-limit issue');
@@ -112,18 +112,18 @@ test.describe('Edge Cases (real tests)', () => {
     // 90s covers slow backends under parallel E2E load (assets API can be slow to respond).
     // intentional: probes optional UI presence via a multi-line locator chain — the branch logic below handles both rendered and missing cases deterministically; absence is a legitimate tenant/role state.
     await page
-      .locator('.asset-list-page, .empty-state, .error-display, .asset-list-pagination')
+      .locator('.asset-list-page, [data-testid="asset-list-page"], .empty-state, [data-testid="empty-state"], .error-display, [data-testid="error-display"], .asset-list-pagination')
       .first()
       .waitFor({ state: 'visible', timeout: 90000 })
       .catch(() => null);
 
     const hasPagination = (await page.locator('.asset-list-pagination').count()) > 0;
     const hasListOrEmpty =
-      (await page.locator('.asset-list-page').count()) > 0 ||
-      (await page.locator('.empty-state').count()) > 0;
-    const hasError = (await page.locator('.error-display').count()) > 0;
+      (await page.locator('.asset-list-page, [data-testid="asset-list-page"]').first().count()) > 0 ||
+      (await page.locator('.empty-state, [data-testid="empty-state"]').first().count()) > 0;
+    const hasError = (await page.locator('.error-display, [data-testid="error-display"]').first().count()) > 0;
     if (hasError) {
-      const errText = (await page.locator('.error-display').first().textContent()) ?? '';
+      const errText = (await page.locator('.error-display, [data-testid="error-display"]').first().first().textContent()) ?? '';
       // D86: 403 under parallel E2E load is a transient permission/token issue (token refresh
       // race, subscription not scoped to this project's storageState, etc.).  This is an infra
       // issue, not a pagination bug — skip to keep the report accurate.
@@ -140,7 +140,7 @@ test.describe('Edge Cases (real tests)', () => {
     const user = await getConsumerTestUser();
     await loginAndNavigateToRoute(page, user, '/marketplace', {
       timeout: 90000,
-      contentSelector: '.listing-list-page, .listing-list-grid, .empty-state, .listing-list-filters',
+      contentSelector: '.listing-list-page, .listing-list-grid, [data-testid="listing-list-grid"], .empty-state, [data-testid="empty-state"], .listing-list-filters',
     });
     // D86: login redirect in a test that requires auth is an infra issue — mark YELLOW, not GREEN
     test.skip(page.url().includes('/login'), 'Auth redirect — backend/rate-limit issue');
@@ -153,14 +153,14 @@ test.describe('Edge Cases (real tests)', () => {
     await searchInput.fill('a'.repeat(500));
     await page.waitForTimeout(1000);
     expect(page.url()).toContain('/marketplace');
-    const hasMaxLenError = (await page.locator('.error-display').count()) > 0;
+    const hasMaxLenError = (await page.locator('.error-display, [data-testid="error-display"]').first().count()) > 0;
     if (hasMaxLenError) {
       // intentional: tolerates a detached/removed element while extracting text for a diagnostic message; the surrounding throw/expect below this catch is the primary failure path.
-      const errText = await page.locator('.error-display').first().textContent().catch(() => '');
+      const errText = await page.locator('.error-display, [data-testid="error-display"]').first().first().textContent().catch(() => '');
       throw new Error(`Max-length search caused a backend error: ${errText?.slice(0, 200)}`);
     }
     const hasContent =
-      (await page.locator('.listing-list-page, .listing-list-grid, .empty-state').count()) > 0;
+      (await page.locator('.listing-list-page, .listing-list-grid, [data-testid="listing-list-grid"], .empty-state, [data-testid="empty-state"]').count()) > 0;
     expect(hasContent).toBe(true) /* one of the acceptable page states must be true */;
   });
 
@@ -170,7 +170,7 @@ test.describe('Edge Cases (real tests)', () => {
     const user = await getTestUser();
     await loginAndNavigateToRoute(page, user, '/assets/create', {
       timeout: 60000,
-      contentSelector: '.asset-create-page',
+      contentSelector: '.asset-create-page, [data-testid="asset-create-page"]',
     });
     test.skip(page.url().includes('/login'), 'Auth redirect — backend/rate-limit issue');
     test.skip(!page.url().includes('/assets/create'), 'Redirected away from /assets/create — role may not have create permission');
@@ -185,7 +185,7 @@ test.describe('Edge Cases (real tests)', () => {
     await nameInput.fill('A'.repeat(500));
     await page.waitForTimeout(500);
     // Form should still be visible (no JS crash from long input)
-    await expect(page.locator('.asset-create-page')).toBeVisible({ timeout: 5000 });
+    await expect(page.locator('.asset-create-page, [data-testid="asset-create-page"]').first()).toBeVisible({ timeout: 5000 });
     expect(page.url()).toContain('/assets/create');
   });
 
@@ -193,7 +193,7 @@ test.describe('Edge Cases (real tests)', () => {
     const user = await getTestUser();
     await loginAndNavigateToRoute(page, user, '/assets/create', {
       timeout: 60000,
-      contentSelector: '.asset-create-page',
+      contentSelector: '.asset-create-page, [data-testid="asset-create-page"]',
     });
     test.skip(page.url().includes('/login'), 'Auth redirect — backend/rate-limit issue');
     test.skip(!page.url().includes('/assets/create'), 'Redirected away from /assets/create');
@@ -207,7 +207,7 @@ test.describe('Edge Cases (real tests)', () => {
     await keyInput.fill('!@#$%^&*() invalid key');
     await page.waitForTimeout(500);
     // Form must still be visible (no JS crash)
-    await expect(page.locator('.asset-create-page')).toBeVisible({ timeout: 5000 });
+    await expect(page.locator('.asset-create-page, [data-testid="asset-create-page"]').first()).toBeVisible({ timeout: 5000 });
     expect(page.url()).toContain('/assets/create');
   });
 
@@ -215,7 +215,7 @@ test.describe('Edge Cases (real tests)', () => {
     const user = await getTestUser();
     await loginAndNavigateToRoute(page, user, '/assets/create', {
       timeout: 60000,
-      contentSelector: '.asset-create-page',
+      contentSelector: '.asset-create-page, [data-testid="asset-create-page"]',
     });
     test.skip(page.url().includes('/login'), 'Auth redirect — backend/rate-limit issue');
     test.skip(!page.url().includes('/assets/create'), 'Redirected away from /assets/create');

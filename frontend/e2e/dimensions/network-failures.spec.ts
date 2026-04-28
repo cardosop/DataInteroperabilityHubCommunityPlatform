@@ -47,7 +47,7 @@ test.describe('Dimension: Network failures', () => {
     const { loginAndNavigateToRoute } = await import('../fixtures/helpers');
     await loginAndNavigateToRoute(page, testUser, '/assets', {
       timeout: 60000,
-      contentSelector: '.asset-list-page, .empty-state, .error-display',
+      contentSelector: '.asset-list-page, [data-testid="asset-list-page"], .empty-state, [data-testid="empty-state"], .error-display, [data-testid="error-display"]',
     });
 
     // Now that we're on /assets with valid auth, install the route intercept
@@ -65,13 +65,13 @@ test.describe('Dimension: Network failures', () => {
     });
     // Reload triggers the SPA to re-fetch /assets with the intercept active.
     await page.reload({ waitUntil: 'domcontentloaded' });
-    await page.waitForSelector('.asset-list-page, .empty-state, .error-display', {
+    await page.waitForSelector('.asset-list-page, [data-testid="asset-list-page"], .empty-state, [data-testid="empty-state"], .error-display, [data-testid="error-display"]', {
       timeout: 30000,
     });
     const hasContent =
-      (await page.locator('.error-display').count()) > 0 ||
-      (await page.locator('.empty-state').count()) > 0 ||
-      (await page.locator('.asset-list-page').count()) > 0;
+      (await page.locator('.error-display, [data-testid="error-display"]').first().count()) > 0 ||
+      (await page.locator('.empty-state, [data-testid="empty-state"]').first().count()) > 0 ||
+      (await page.locator('.asset-list-page, [data-testid="asset-list-page"]').first().count()) > 0;
     expect(hasContent).toBe(true) /* acceptable states */;
   });
 

@@ -22,11 +22,11 @@ test.describe('Feature: Marketplace', () => {
       await loginAndNavigateToRoute(page, testUser, '/marketplace', {
         timeout: 60000,
         contentSelector:
-          '[data-testid="listing-list-page"], .listing-list-page, .listing-list-grid, .empty-state, .error-display',
+          '[data-testid="listing-list-page"], .listing-list-page, .listing-list-grid, [data-testid="listing-list-grid"], .empty-state, [data-testid="empty-state"], .error-display, [data-testid="error-display"]',
       });
       await assertListPageLoads(
         page,
-        '[data-testid="listing-list-page"], .listing-list-page, .listing-list-grid, .empty-state',
+        '[data-testid="listing-list-page"], .listing-list-page, .listing-list-grid, [data-testid="listing-list-grid"], .empty-state, [data-testid="empty-state"]',
         { timeout: 60000 }
       );
     });
@@ -41,7 +41,7 @@ test.describe('Feature: Marketplace', () => {
         '/marketplace/listings/00000000-0000-0000-0000-000000000000',
         {
           timeout: 60000,
-          contentSelector: '.error-display, .listing-detail-page, h1',
+          contentSelector: '.error-display, [data-testid="error-display"], .listing-detail-page, h1',
         }
       );
       await assertNonExistentIdShowsError(page, {
@@ -65,16 +65,16 @@ test.describe('Feature: Marketplace', () => {
       const testUser = await getTestUser();
       await loginAndNavigateToRoute(page, testUser, '/marketplace/orders', {
         timeout: 60000,
-        contentSelector: '.order-list-page, .empty-state, .error-display, h1',
+        contentSelector: '.order-list-page, .empty-state, [data-testid="empty-state"], .error-display, [data-testid="error-display"], h1',
       });
       const url = page.url();
       if (url.includes('/login')) {
         // Auth redirect — acceptable
         return;
       }
-      await expect(page.locator('.error-display')).not.toBeVisible({ timeout: 5000 });
+      await expect(page.locator('.error-display, [data-testid="error-display"]').first()).not.toBeVisible({ timeout: 5000 });
       const hasContent =
-        (await page.locator('.order-list-page, .empty-state').count()) > 0;
+        (await page.locator('.order-list-page, .empty-state, [data-testid="empty-state"]').count()) > 0;
       expect(hasContent, 'Expected orders list or empty state').toBe(true);
     });
 
@@ -82,13 +82,13 @@ test.describe('Feature: Marketplace', () => {
       const testUser = await getTestUser();
       await loginAndNavigateToRoute(page, testUser, '/marketplace/entitlements', {
         timeout: 60000,
-        contentSelector: '.entitlement-list-page, .empty-state, .error-display, h1',
+        contentSelector: '.entitlement-list-page, .empty-state, [data-testid="empty-state"], .error-display, [data-testid="error-display"], h1',
       });
       const url = page.url();
       if (url.includes('/login')) return;
-      await expect(page.locator('.error-display')).not.toBeVisible({ timeout: 5000 });
+      await expect(page.locator('.error-display, [data-testid="error-display"]').first()).not.toBeVisible({ timeout: 5000 });
       const hasContent =
-        (await page.locator('.entitlement-list-page, .empty-state').count()) > 0;
+        (await page.locator('.entitlement-list-page, .empty-state, [data-testid="empty-state"]').count()) > 0;
       expect(hasContent, 'Expected entitlements list or empty state').toBe(true);
     });
   });

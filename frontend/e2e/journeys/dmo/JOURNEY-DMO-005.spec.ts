@@ -21,7 +21,7 @@ test.describe('JOURNEY-DMO-005: Monitor Domain Health', () => {
       const dmoUser = await getDataMeshDomainOwnerUser();
       await loginAndNavigateToRoute(page, dmoUser, '/mesh', {
         timeout: 90000,
-        contentSelector: '.mesh-domain-list-page, .error-display, .empty-state',
+        contentSelector: '.mesh-domain-list-page, .error-display, [data-testid="error-display"], .empty-state, [data-testid="empty-state"]',
       });
       if (page.url().includes('/login')) {
         expect(page.url()).toContain('/login');
@@ -34,7 +34,7 @@ test.describe('JOURNEY-DMO-005: Monitor Domain Health', () => {
       const dmoUser = await getDataMeshDomainOwnerUser();
       await loginAndNavigateToRoute(page, dmoUser, '/observability', {
         timeout: 90000,
-        contentSelector: '.observability-page, .unavailable-page, .empty-state',
+        contentSelector: '.observability-page, .unavailable-page, [data-testid="unavailable-page"], .empty-state, [data-testid="empty-state"]',
       });
       if (page.url().includes('/login')) {
         expect(page.url()).toContain('/login');
@@ -42,7 +42,7 @@ test.describe('JOURNEY-DMO-005: Monitor Domain Health', () => {
       }
       expect(page.url()).toContain('/observability');
       const hasContent =
-        (await page.locator('.observability-page, .unavailable-page, .empty-state').count()) > 0;
+        (await page.locator('.observability-page, .unavailable-page, [data-testid="unavailable-page"], .empty-state, [data-testid="empty-state"]').count()) > 0;
       expect(hasContent).toBe(true);
     });
   });
@@ -52,7 +52,7 @@ test.describe('JOURNEY-DMO-005: Monitor Domain Health', () => {
       const dmoUser = await getDataMeshDomainOwnerUser();
       await loginAndNavigateToRoute(page, dmoUser, '/mesh', {
         timeout: 90000,
-        contentSelector: '.mesh-domain-list-page, .empty-state, .error-display',
+        contentSelector: '.mesh-domain-list-page, .empty-state, [data-testid="empty-state"], .error-display, [data-testid="error-display"]',
       });
       await page.goto('/mesh/00000000-0000-0000-0000-000000000000');
       await page.waitForLoadState('domcontentloaded');
@@ -75,7 +75,7 @@ test.describe('JOURNEY-DMO-005: Monitor Domain Health', () => {
       const dmoUser = await getDataMeshDomainOwnerUser();
       await loginAndNavigateToRoute(page, dmoUser, '/mesh', {
         timeout: 90000,
-        contentSelector: '.mesh-domain-list-page, .empty-state, .error-display',
+        contentSelector: '.mesh-domain-list-page, .empty-state, [data-testid="empty-state"], .error-display, [data-testid="error-display"]',
       });
       const urlAfterMesh = page.url();
       expect(

@@ -21,7 +21,7 @@ test.describe('Feature: Home / Dashboard', () => {
       const testUser = await getTestUser();
       await loginAndNavigateToRoute(page, testUser, '/', {
         timeout: 60000,
-        contentSelector: '.app-main, .dashboard-page, .home-page, h1',
+        contentSelector: '.app-main, [data-testid="app-main"], .dashboard-page, .home-page, h1',
       });
       const url = page.url();
       if (url.includes('/login')) {
@@ -29,17 +29,17 @@ test.describe('Feature: Home / Dashboard', () => {
         return;
       }
       // Home must render the app shell with navigation
-      const hasAppShell = (await page.locator('.app-main, [data-testid="app-main"]').count()) > 0;
-      expect(hasAppShell, 'Expected app shell (.app-main) to be present').toBe(true);
+      const hasAppShell = (await page.locator('.app-main, [data-testid="app-main"], .app-main, [data-testid="app-main"]').count()) > 0;
+      expect(hasAppShell, 'Expected app shell (.app-main, [data-testid="app-main"]) to be present').toBe(true);
       // No server errors on the dashboard
-      await expect(page.locator('.error-display')).not.toBeVisible({ timeout: 5000 });
+      await expect(page.locator('.error-display, [data-testid="error-display"]').first()).not.toBeVisible({ timeout: 5000 });
     });
 
     test('home page has sidebar navigation', async ({ page }) => {
       const testUser = await getTestUser();
       await loginAndNavigateToRoute(page, testUser, '/', {
         timeout: 60000,
-        contentSelector: '.app-main, h1',
+        contentSelector: '.app-main, [data-testid="app-main"], h1',
       });
       if (page.url().includes('/login')) {
         test.skip(true, 'Auth redirect');
@@ -81,7 +81,7 @@ test.describe('Feature: Home / Dashboard', () => {
       const testUser = await getTestUser();
       await loginAndNavigateToRoute(page, testUser, '/', {
         timeout: 60000,
-        contentSelector: '.app-main, .dashboard-page, .home-page, h1',
+        contentSelector: '.app-main, [data-testid="app-main"], .dashboard-page, .home-page, h1',
       });
       if (page.url().includes('/login')) return;
       const has500 = (await page.locator('text=/500|internal server error/i').count()) > 0;

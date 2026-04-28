@@ -30,7 +30,7 @@ test.describe('JOURNEY-CPO-004: Review Access Requests', () => {
         return;
       }
       expect(onGov).toBe(true);
-      await expect(page.locator('.error-display')).not.toBeVisible();
+      await expect(page.locator('.error-display, [data-testid="error-display"]').first()).not.toBeVisible();
     });
   });
 

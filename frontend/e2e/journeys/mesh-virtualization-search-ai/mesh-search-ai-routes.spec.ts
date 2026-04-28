@@ -32,14 +32,14 @@ test.describe('Mesh, Virtualization, Search, AI routes', () => {
   test.describe('Success', () => {
     test('mesh list loads (domains or empty)', async ({ page }) => {
       const { ok } = await navigateOrSkip(page, '/mesh', {
-        contentSelector: '.mesh-domain-list-page, .empty-state',
+        contentSelector: '.mesh-domain-list-page, .empty-state, [data-testid="empty-state"]',
 
       });
       if (!ok) return;
 
       expect(page.url()).toContain('/mesh');
       try {
-        await assertListPageLoads(page, '.mesh-domain-list-page, .empty-state');
+        await assertListPageLoads(page, '.mesh-domain-list-page, .empty-state, [data-testid="empty-state"]');
       } catch (err) {
         if (String(err).includes('BACKEND_TIMEOUT')) {
           test.skip(true, 'Backend timeout under parallel E2E load');
@@ -51,14 +51,14 @@ test.describe('Mesh, Virtualization, Search, AI routes', () => {
 
     test('virtualization list loads (virtual datasets or empty)', async ({ page }) => {
       const { ok } = await navigateOrSkip(page, '/virtualization', {
-        contentSelector: '.virtual-dataset-list-page, .empty-state',
+        contentSelector: '.virtual-dataset-list-page, [data-testid="virtual-dataset-list-page"], .empty-state, [data-testid="empty-state"]',
 
       });
       if (!ok) return;
 
       expect(page.url()).toContain('/virtualization');
       try {
-        await assertListPageLoads(page, '.virtual-dataset-list-page, .empty-state');
+        await assertListPageLoads(page, '.virtual-dataset-list-page, [data-testid="virtual-dataset-list-page"], .empty-state, [data-testid="empty-state"]');
       } catch (err) {
         if (String(err).includes('BACKEND_TIMEOUT')) {
           test.skip(true, 'Backend timeout under parallel E2E load');
@@ -82,7 +82,7 @@ test.describe('Mesh, Virtualization, Search, AI routes', () => {
   test.describe('Edge (capability-gated)', () => {
     test('ai/search loads or shows unavailable', async ({ page }) => {
       const { ok } = await navigateOrSkip(page, '/ai/search', {
-        contentSelector: '.ai-search-page, .unavailable-page',
+        contentSelector: '.ai-search-page, .unavailable-page, [data-testid="unavailable-page"]',
       });
       if (!ok) return;
 
@@ -90,19 +90,19 @@ test.describe('Mesh, Virtualization, Search, AI routes', () => {
       if (url.includes('/403')) return;
       // Valid outcomes: AI search page OR unavailable page (capability disabled).
       // app-main alone tells us nothing; error-display is never acceptable.
-      await assertCapabilityGatedPageLoads(page, '.ai-search-page, .unavailable-page', { timeout: 30000 });
+      await assertCapabilityGatedPageLoads(page, '.ai-search-page, .unavailable-page, [data-testid="unavailable-page"]', { timeout: 30000 });
     });
 
     test('ai/schema-matching loads or shows unavailable', async ({ page }) => {
       const { ok } = await navigateOrSkip(page, '/ai/schema-matching', {
-        contentSelector: '.schema-matching-page, .unavailable-page',
+        contentSelector: '.schema-matching-page, .unavailable-page, [data-testid="unavailable-page"]',
       });
       if (!ok) return;
 
       const url = page.url();
       if (url.includes('/403')) return;
       // Valid outcomes: schema-matching page OR unavailable page (capability disabled).
-      await assertCapabilityGatedPageLoads(page, '.schema-matching-page, .unavailable-page', { timeout: 30000 });
+      await assertCapabilityGatedPageLoads(page, '.schema-matching-page, .unavailable-page, [data-testid="unavailable-page"]', { timeout: 30000 });
     });
   });
 });

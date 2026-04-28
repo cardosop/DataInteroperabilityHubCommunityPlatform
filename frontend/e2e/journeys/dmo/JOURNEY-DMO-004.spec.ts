@@ -21,7 +21,7 @@ test.describe('JOURNEY-DMO-004: Transfer Asset Ownership', () => {
       const dmoUser = await getDataMeshDomainOwnerUser();
       await loginAndNavigateToRoute(page, dmoUser, '/assets', {
         timeout: 90000,
-        contentSelector: '.asset-list-page, .empty-state, .error-display',
+        contentSelector: '.asset-list-page, [data-testid="asset-list-page"], .empty-state, [data-testid="empty-state"], .error-display, [data-testid="error-display"]',
       });
       if (page.url().includes('/login') || page.url().includes('/403')) {
         expect(page.url()).toMatch(/\/login|\/403/);
@@ -34,7 +34,7 @@ test.describe('JOURNEY-DMO-004: Transfer Asset Ownership', () => {
       const dmoUser = await getDataMeshDomainOwnerUser();
       await loginAndNavigateToRoute(page, dmoUser, '/mesh', {
         timeout: 90000,
-        contentSelector: '.mesh-domain-list-page, .error-display, .empty-state',
+        contentSelector: '.mesh-domain-list-page, .error-display, [data-testid="error-display"], .empty-state, [data-testid="empty-state"]',
       });
       if (page.url().includes('/login')) {
         expect(page.url()).toContain('/login');
@@ -49,12 +49,12 @@ test.describe('JOURNEY-DMO-004: Transfer Asset Ownership', () => {
       const dmoUser = await getDataMeshDomainOwnerUser();
       await loginAndNavigateToRoute(page, dmoUser, '/assets', {
         timeout: 90000,
-        contentSelector: '.asset-list-page, .empty-state, .error-display',
+        contentSelector: '.asset-list-page, [data-testid="asset-list-page"], .empty-state, [data-testid="empty-state"], .error-display, [data-testid="error-display"]',
       });
       await page.goto('/assets/00000000-0000-0000-0000-000000000000');
       await page.waitForLoadState('domcontentloaded');
       await assertNonExistentIdShowsError(page, {
-        detailContentSelector: '.asset-detail-page .asset-detail-content',
+        detailContentSelector: '.asset-detail-page, [data-testid="asset-detail-page"] .asset-detail-content',
         waitAfterLoad: 8000,
       });
     });
@@ -72,7 +72,7 @@ test.describe('JOURNEY-DMO-004: Transfer Asset Ownership', () => {
       const dmoUser = await getDataMeshDomainOwnerUser();
       await loginAndNavigateToRoute(page, dmoUser, '/assets', {
         timeout: 90000,
-        contentSelector: '.asset-list-page, .empty-state, .error-display',
+        contentSelector: '.asset-list-page, [data-testid="asset-list-page"], .empty-state, [data-testid="empty-state"], .error-display, [data-testid="error-display"]',
       });
       const urlAfterAssets = page.url();
       expect(

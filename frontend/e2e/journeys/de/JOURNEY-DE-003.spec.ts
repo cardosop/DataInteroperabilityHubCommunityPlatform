@@ -13,7 +13,7 @@ import { expect, test } from '@playwright/test';
 import { getTestUser } from '../../fixtures/auth';
 import { assertNonExistentIdShowsError, loginAndNavigateToRoute } from '../../fixtures/helpers';
 
-test.describe('JOURNEY-DE-003: Configure Data Quality Checks', () => {
+test.describe('JOURNEY-DE-003: Configure Data Quality Checks @critical', () => {
   test.setTimeout(90000);
 
   test.describe('Success', () => {
@@ -38,7 +38,7 @@ test.describe('JOURNEY-DE-003: Configure Data Quality Checks', () => {
         { timeout: 90000 }
       );
       await assertNonExistentIdShowsError(page, {
-        detailContentSelector: '.dq-run-detail-main, .error-display',
+        detailContentSelector: '.dq-run-detail-main, .error-display, [data-testid="error-display"]',
         waitAfterLoad: 12000,
       });
     });
@@ -50,7 +50,7 @@ test.describe('JOURNEY-DE-003: Configure Data Quality Checks', () => {
       await loginAndNavigateToRoute(page, testUser, '/dq', {
         timeout: 90000,
         contentSelector:
-          '.dq-run-list-page, .empty-state, .error-display',
+          '.dq-run-list-page, .empty-state, [data-testid="empty-state"], .error-display, [data-testid="error-display"]',
       });
       expect(page.url()).toContain('/dq');
     });

@@ -21,13 +21,13 @@ test.describe('JOURNEY-MP-001: Connect to External Marketplace', () => {
       const testUser = await getTestUser();
       await loginAndNavigateToRoute(page, testUser, '/integrations/connections', {
         timeout: 65000,
-        contentSelector: '.connection-list-page, .empty-state',
+        contentSelector: '.connection-list-page, .empty-state, [data-testid="empty-state"]',
         acceptRedirectToLogin: true,
       });
       if (page.url().includes('/login') || page.url().includes('/403')) {
         throw new Error(`Unexpected redirect to ${page.url()} — verify test user has integrations access`);
       }
-      await expect(page.locator('.error-display')).not.toBeVisible();
+      await expect(page.locator('.error-display, [data-testid="error-display"]').first()).not.toBeVisible();
       expect(page.url()).toContain('/integrations/connections');
     });
 
@@ -44,7 +44,7 @@ test.describe('JOURNEY-MP-001: Connect to External Marketplace', () => {
       }
       expect(page.url()).toContain('/integrations/connections/create');
       const hasContent =
-        (await page.locator('.marketplace-connection-create-page, .connection-create-page, .app-main, form').count()) > 0;
+        (await page.locator('.marketplace-connection-create-page, .connection-create-page, .app-main, [data-testid="app-main"], form').count()) > 0;
       expect(hasContent).toBe(true);
     });
   });
@@ -56,7 +56,7 @@ test.describe('JOURNEY-MP-001: Connect to External Marketplace', () => {
       await page.goto('/integrations/connections/00000000-0000-0000-0000-000000000000');
       await page.waitForLoadState('domcontentloaded');
       await assertNonExistentIdShowsError(page, {
-        detailContentSelector: '.marketplace-connection-detail-page',
+        detailContentSelector: '.marketplace-connection-detail-page, [data-testid="marketplace-connection-detail-page"]',
         waitAfterLoad: 8000,
       });
     });
@@ -67,7 +67,7 @@ test.describe('JOURNEY-MP-001: Connect to External Marketplace', () => {
       const testUser = await getTestUser();
       await loginAndNavigateToRoute(page, testUser, '/integrations/connections', {
         timeout: 60000,
-        contentSelector: '.connection-list-page, .empty-state',
+        contentSelector: '.connection-list-page, .empty-state, [data-testid="empty-state"]',
       });
       expect(page.url()).toContain('/integrations/connections');
       await loginAndNavigateToRoute(page, testUser, '/integrations/connections/create', {

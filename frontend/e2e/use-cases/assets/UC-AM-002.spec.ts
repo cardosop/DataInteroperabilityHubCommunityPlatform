@@ -18,7 +18,7 @@ import {
   waitForLoadingComplete,
 } from '../../fixtures/helpers';
 
-test.describe('UC-AM-002: Publish Asset to Marketplace', () => {
+test.describe('UC-AM-002: Publish Asset to Marketplace @critical', () => {
   test.setTimeout(120000);
 
   test.describe('Success', () => {
@@ -31,7 +31,7 @@ test.describe('UC-AM-002: Publish Asset to Marketplace', () => {
       const assetId = await createAssetViaApi(testUser, { forceNew: true, ensureActivated: true });
       await loginAndNavigateToRoute(page, testUser, '/marketplace/publish', {
         timeout: 60000,
-        contentSelector: '.listing-publish-page, h1',
+        contentSelector: '.listing-publish-page, [data-testid="listing-publish-page"], h1',
       });
       await waitForLoadingComplete(page, { timeout: 15000 });
 
@@ -84,8 +84,8 @@ test.describe('UC-AM-002: Publish Asset to Marketplace', () => {
       );
       expect(page.url()).not.toContain('/marketplace/publish');
 
-      // D85: Success test must NOT accept .error-display as valid content
-      const hasErrorDisplay = (await page.locator('.error-display').count()) > 0;
+      // D85: Success test must NOT accept .error-display, [data-testid="error-display"] as valid content
+      const hasErrorDisplay = (await page.locator('.error-display, [data-testid="error-display"]').first().count()) > 0;
       expect(hasErrorDisplay).toBe(false);
 
       // Must be on listing detail to verify PUBLISHED status
@@ -143,7 +143,7 @@ test.describe('UC-AM-002: Publish Asset to Marketplace', () => {
       const testUser = await getTestUser();
       await loginAndNavigateToRoute(page, testUser, '/marketplace/publish', {
         timeout: 60000,
-        contentSelector: '.listing-publish-page, h1',
+        contentSelector: '.listing-publish-page, [data-testid="listing-publish-page"], h1',
       });
       await waitForLoadingComplete(page, { timeout: 15000 });
       expect(page.url()).toContain('/marketplace/publish');

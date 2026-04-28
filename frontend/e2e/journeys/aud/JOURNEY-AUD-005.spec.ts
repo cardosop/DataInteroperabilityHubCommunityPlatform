@@ -13,7 +13,7 @@
  */
 
 import { expect, test } from '@playwright/test';
-import { clearAuthStorage, getTestUser } from '../../fixtures/auth';
+import { clearAuthStorage, getAuditorUser } from '../../fixtures/auth';
 import { assertListPageLoads, loginAndNavigateToRoute } from '../../fixtures/helpers';
 
 test.describe('JOURNEY-AUD-005: Audit Transformation Pipelines', () => {
@@ -21,23 +21,35 @@ test.describe('JOURNEY-AUD-005: Audit Transformation Pipelines', () => {
 
   test.describe('Success', () => {
     test('audit page loads with transformation event types or empty state', async ({ page }) => {
-      const testUser = await getTestUser();
-      await loginAndNavigateToRoute(page, testUser, '/audit', {
+      // The journey's named persona is Auditor; using getTestUser (DPO) here
+      // was a workaround that masked a real role-assignment problem behind a
+      // graceful test.skip on /403. Using the auditor persona aligns the test
+      // with the journey's documented persona — and if the auditor account
+      // does NOT have the audit role on staging, that's a real environment
+      // misconfiguration we want to surface, not paper over.
+      const auditorUser = await getAuditorUser();
+      await loginAndNavigateToRoute(page, auditorUser, '/audit', {
         timeout: 60000,
-        contentSelector: '.audit-event-list-page, .empty-state, .unavailable-page, .error-display',
+        contentSelector: '.audit-event-list-page, [data-testid="audit-event-list-page"], .empty-state, [data-testid="empty-state"], .unavailable-page, [data-testid="unavailable-page"], .error-display, [data-testid="error-display"]',
       });
 
       if (page.url().includes('/login')) {
         throw new Error('Unexpected redirect to login on /audit');
       }
 
-      // Accept /403 for role-gated access
+      // /403 from the AUDITOR persona on /audit is a real env issue (role not
+      // assigned by ensure_e2e_user_roles), NOT an acceptable terminal state
+      // for this journey. Fail loud so it gets fixed at the env level instead
+      // of decaying into a permanent green-skip.
       if (page.url().includes('/403')) {
-        test.skip(true, 'User lacks audit role on this environment');
-        return;
+        throw new Error(
+          'Auditor user got /403 on /audit. The auditor role is not assigned ' +
+            'on this environment. Fix: run `python manage.py ensure_e2e_user_roles` ' +
+            'on the staging API pod, or pre-seed the auditor account in the deploy step.'
+        );
       }
 
-      await assertListPageLoads(page, '.audit-event-list-page, .empty-state, .unavailable-page', {
+      await assertListPageLoads(page, '.audit-event-list-page, [data-testid="audit-event-list-page"], .empty-state, [data-testid="empty-state"], .unavailable-page, [data-testid="unavailable-page"]', {
         timeout: 60000,
       });
 
@@ -80,10 +92,12 @@ test.describe('JOURNEY-AUD-005: Audit Transformation Pipelines', () => {
 
   test.describe('Edge', () => {
     test('audit page renders without 500 errors regardless of capabilities', async ({ page }) => {
-      const testUser = await getTestUser();
-      await loginAndNavigateToRoute(page, testUser, '/audit', {
+      // Match the Success persona: auditor is the journey's documented role,
+      // and the edge assertion (no 500s) is independent of the user identity.
+      const auditorUser = await getAuditorUser();
+      await loginAndNavigateToRoute(page, auditorUser, '/audit', {
         timeout: 60000,
-        contentSelector: '.audit-event-list-page, .empty-state, .unavailable-page, .error-display',
+        contentSelector: '.audit-event-list-page, [data-testid="audit-event-list-page"], .empty-state, [data-testid="empty-state"], .unavailable-page, [data-testid="unavailable-page"], .error-display, [data-testid="error-display"]',
       });
       if (page.url().includes('/login') || page.url().includes('/403')) {
         // Auth/role redirect — acceptable edge case
@@ -94,7 +108,7 @@ test.describe('JOURNEY-AUD-005: Audit Transformation Pipelines', () => {
       expect(has500, 'Audit page must not show 500 errors').toBe(false);
       // Must render meaningful content
       const hasContent =
-        (await page.locator('.audit-event-list-page, .empty-state, .unavailable-page').count()) > 0;
+        (await page.locator('.audit-event-list-page, [data-testid="audit-event-list-page"], .empty-state, [data-testid="empty-state"], .unavailable-page, [data-testid="unavailable-page"]').count()) > 0;
       expect(hasContent, 'Expected audit content, empty state, or unavailable page').toBe(true);
     });
   });

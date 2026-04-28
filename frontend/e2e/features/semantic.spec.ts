@@ -31,15 +31,15 @@ test.describe('Feature: Semantic', () => {
       expect(url).toMatch(/\/semantic|\/login|\/403|\/unavailable|\/coming-soon/);
       if (url.includes('/semantic')) {
         await assertSuccessLoad(page, {
-          successContentSelector: '[data-testid="semantic-page"], .semantic-page, .unavailable-page',
+          successContentSelector: '[data-testid="semantic-page"], .semantic-page, .unavailable-page, [data-testid="unavailable-page"]',
         });
       } else if (url.includes('/unavailable')) {
         await assertSuccessLoad(page, {
-          successContentSelector: '[data-testid="unavailable-page"], .unavailable-page',
+          successContentSelector: '.unavailable-page, [data-testid="unavailable-page"], .unavailable-page, [data-testid="unavailable-page"]',
         });
       } else if (url.includes('/coming-soon')) {
         await assertSuccessLoad(page, {
-          successContentSelector: '[data-testid="coming-soon-page"], [data-testid="unavailable-page"], .unavailable-page',
+          successContentSelector: '[data-testid="coming-soon-page"], .unavailable-page, [data-testid="unavailable-page"], .unavailable-page, [data-testid="unavailable-page"]',
         });
       }
     });
@@ -65,7 +65,7 @@ test.describe('Feature: Semantic', () => {
       const sparqlSection = page.locator(
         '[data-testid="semantic-sparql-section"], .sparql-form, .cm-editor',
       );
-      const errorDisplay = page.locator('.error-display');
+      const errorDisplay = page.locator('.error-display, [data-testid="error-display"]').first();
       // intentional: probes optional UI presence — the branch logic below handles both rendered and missing cases deterministically; absence is a legitimate tenant/role state, not a test failure.
       await sparqlSection.or(errorDisplay).first().waitFor({ state: 'visible', timeout: 15000 }).catch(() => null);
 
@@ -103,7 +103,7 @@ test.describe('Feature: Semantic', () => {
       // Wait for either ontology tree content or error display
       const ontologyTree = page.locator('[data-testid="ontology-tree"]');
       const codeBlock = page.locator('pre, code, .code-block');
-      const errorDisplay = page.locator('.error-display');
+      const errorDisplay = page.locator('.error-display, [data-testid="error-display"]').first();
       const loadingSpinner = page.locator('.loading-spinner');
 
       // intentional: probes optional UI presence via a multi-line locator chain — the branch logic below handles both rendered and missing cases deterministically; absence is a legitimate tenant/role state.
@@ -143,20 +143,20 @@ test.describe('Feature: Semantic', () => {
       if (onSemantic) {
         // Wait for the page content to become visible — lazy bundle may still be loading
         await page
-          .locator('[data-testid="semantic-page"], .semantic-page, .unavailable-page')
+          .locator('[data-testid="semantic-page"], .semantic-page, .unavailable-page, [data-testid="unavailable-page"]')
           .first()
           .waitFor({ state: 'visible', timeout: 15000 })
           .catch(() => {});
         const hasContent =
-          (await page.locator('[data-testid="semantic-page"], .semantic-page, .unavailable-page').count()) > 0;
+          (await page.locator('[data-testid="semantic-page"], .semantic-page, .unavailable-page, [data-testid="unavailable-page"]').count()) > 0;
         expect(hasContent).toBe(true) /* acceptable states */;
       } else if (onUnavailable) {
         await assertSuccessLoad(page, {
-          successContentSelector: '[data-testid="unavailable-page"], .unavailable-page',
+          successContentSelector: '.unavailable-page, [data-testid="unavailable-page"], .unavailable-page, [data-testid="unavailable-page"]',
         });
       } else if (onComingSoon) {
         await assertSuccessLoad(page, {
-          successContentSelector: '[data-testid="coming-soon-page"], [data-testid="unavailable-page"], .unavailable-page',
+          successContentSelector: '[data-testid="coming-soon-page"], .unavailable-page, [data-testid="unavailable-page"], .unavailable-page, [data-testid="unavailable-page"]',
         });
       }
     });

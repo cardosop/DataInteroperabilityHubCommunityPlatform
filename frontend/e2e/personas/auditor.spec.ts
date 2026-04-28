@@ -24,7 +24,7 @@ test.describe('Persona RBAC: Auditor', () => {
     await page.goto('/audit');
     await waitForAppMainReady(page);
     expect(page.url()).toContain('/audit');
-    await expect(page.locator('.error-display')).not.toBeVisible({ timeout: 2000 });
+    await expect(page.locator('.error-display, [data-testid="error-display"]').first()).not.toBeVisible({ timeout: 2000 });
   });
 
   test('non-auditor cannot access /audit (RBAC boundary)', async ({ page }) => {

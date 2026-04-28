@@ -22,13 +22,13 @@ test.describe('JOURNEY-DC-012: Preview Data Before Purchase', () => {
       await loginAndNavigateToRoute(page, consumer, '/marketplace', {
         timeout: 90000,
         contentSelector:
-          '[data-testid="listing-list-page"], .listing-list-page, .listing-list-grid, .empty-state, .error-display',
+          '[data-testid="listing-list-page"], .listing-list-page, .listing-list-grid, [data-testid="listing-list-grid"], .empty-state, [data-testid="empty-state"], .error-display, [data-testid="error-display"]',
       });
       if (page.url().includes('/login')) { test.skip(true, 'Redirected to login — auth may have expired'); return; }
       // Phase 2: wait for loading spinner to resolve into a terminal state before checking links
       // intentional: probes optional UI presence via a multi-line locator chain — the branch logic below handles both rendered and missing cases deterministically; absence is a legitimate tenant/role state.
       await page
-        .locator('.listing-list-page, .listing-list-grid, .empty-state, .error-display')
+        .locator('.listing-list-page, .listing-list-grid, [data-testid="listing-list-grid"], .empty-state, [data-testid="empty-state"], .error-display, [data-testid="error-display"]')
         .first()
         .waitFor({ state: 'visible', timeout: 20000 })
         .catch(() => null);
@@ -37,16 +37,16 @@ test.describe('JOURNEY-DC-012: Preview Data Before Purchase', () => {
       if ((await listingLink.count()) > 0) {
         await listingLink.click();
         await page.waitForURL(/\/marketplace\/listings\/[^/]+/, { timeout: 15000 });
-        await page.waitForSelector('.listing-detail-main, .error-display', { timeout: 20000 });
+        await page.waitForSelector('.listing-detail-main, [data-testid="listing-detail-main"], .error-display, [data-testid="error-display"]', { timeout: 20000 });
         const previewBtn = page.locator('button:has-text("Preview"), a:has-text("Preview")');
         const hasPreview = (await previewBtn.count()) > 0;
-        const hasDetail = (await page.locator('.listing-detail-main').count()) > 0;
+        const hasDetail = (await page.locator('.listing-detail-main, [data-testid="listing-detail-main"]').first().count()) > 0;
         expect(hasDetail || hasPreview).toBe(true) /* acceptable states */;
       } else {
         // No listings available — assert empty state is shown (not a blank/silent pass)
         const hasEmptyOrError =
-          (await page.locator('.empty-state').count()) > 0 ||
-          (await page.locator('.error-display').count()) > 0;
+          (await page.locator('.empty-state, [data-testid="empty-state"]').first().count()) > 0 ||
+          (await page.locator('.error-display, [data-testid="error-display"]').first().count()) > 0;
         expect(hasEmptyOrError).toBe(true) /* acceptable states */;
         test.info().annotations.push({ type: 'note', description: 'Marketplace empty — preview CTA not tested' });
       }
@@ -63,14 +63,14 @@ test.describe('JOURNEY-DC-012: Preview Data Before Purchase', () => {
         { timeout: 90000 }
       );
       if (page.url().includes('/login')) return;
-      // Use lenient check: network errors (API restart) produce .error-display with non-"not found"
+      // Use lenient check: network errors (API restart) produce .error-display, [data-testid="error-display"] with non-"not found"
       // text — both network errors and 404s are valid error outcomes for a non-existent resource.
       // Wait for terminal state: error display or listing content.
       // Exclude #email (login form) from initial wait — waiting for the
       // API call to return 404 and render ErrorDisplay is the correct check.
       // intentional: probes optional UI presence via a multi-line locator chain — the branch logic below handles both rendered and missing cases deterministically; absence is a legitimate tenant/role state.
       await page
-        .locator('.error-display, .listing-detail-main')
+        .locator('.error-display, [data-testid="error-display"], .listing-detail-main, [data-testid="listing-detail-main"]')
         .first()
         .waitFor({ state: 'visible', timeout: 30000 })
         .catch(() => null);
@@ -81,7 +81,7 @@ test.describe('JOURNEY-DC-012: Preview Data Before Purchase', () => {
         test.skip(true, 'Auth session lost during navigation — token refresh likely failed under E2E load');
         return;
       }
-      const hasError = (await page.locator('.error-display').count()) > 0;
+      const hasError = (await page.locator('.error-display, [data-testid="error-display"]').first().count()) > 0;
       expect(hasError).toBe(true) /* acceptable states */;
     });
   });
@@ -92,7 +92,7 @@ test.describe('JOURNEY-DC-012: Preview Data Before Purchase', () => {
       await loginAndNavigateToRoute(page, consumer, '/marketplace', {
         timeout: 60000,
         contentSelector:
-          '[data-testid="listing-list-page"], .listing-list-page, .listing-list-grid, .empty-state, .error-display',
+          '[data-testid="listing-list-page"], .listing-list-page, .listing-list-grid, [data-testid="listing-list-grid"], .empty-state, [data-testid="empty-state"], .error-display, [data-testid="error-display"]',
       });
       // Accept /login redirect (connection error during navigation is a known infra issue)
       if (page.url().includes('/login')) return;

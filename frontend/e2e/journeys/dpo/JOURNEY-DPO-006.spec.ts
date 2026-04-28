@@ -18,7 +18,7 @@ import { clearAuthStorage, getTestUser } from '../../fixtures/auth';
 import { createListingViaApi, publishListingViaApi } from '../../fixtures/api-marketplace';
 import { loginAndNavigateToRoute } from '../../fixtures/helpers';
 
-test.describe('JOURNEY-DPO-006: Manage Marketplace Listings', () => {
+test.describe('JOURNEY-DPO-006: Manage Marketplace Listings @critical', () => {
   test.setTimeout(120000);
 
   test.describe('Success', () => {
@@ -26,7 +26,7 @@ test.describe('JOURNEY-DPO-006: Manage Marketplace Listings', () => {
       const testUser = await getTestUser();
       await loginAndNavigateToRoute(page, testUser, '/marketplace', {
         timeout: 90000,
-        contentSelector: '.listing-list-page, .listing-list-grid, .error-display, .empty-state, h1',
+        contentSelector: '.listing-list-page, .listing-list-grid, [data-testid="listing-list-grid"], .error-display, [data-testid="error-display"], .empty-state, [data-testid="empty-state"], h1',
       });
       if (page.url().includes('/login')) {
         throw new Error('Marketplace list redirected to login; auth may have failed under parallel load.');
@@ -35,8 +35,8 @@ test.describe('JOURNEY-DPO-006: Manage Marketplace Listings', () => {
 
       const hasContent =
         (await page.locator('.listing-list-page').count()) > 0 ||
-        (await page.locator('.listing-list-grid').count()) > 0 ||
-        (await page.locator('.empty-state').count()) > 0;
+        (await page.locator('.listing-list-grid, [data-testid="listing-list-grid"]').first().count()) > 0 ||
+        (await page.locator('.empty-state, [data-testid="empty-state"]').first().count()) > 0;
       expect(hasContent).toBe(true);
     });
 
@@ -44,7 +44,7 @@ test.describe('JOURNEY-DPO-006: Manage Marketplace Listings', () => {
       const testUser = await getTestUser();
       await loginAndNavigateToRoute(page, testUser, '/marketplace/publish', {
         timeout: 90000,
-        contentSelector: '.listing-publish-page, .error-display, h1',
+        contentSelector: '.listing-publish-page, [data-testid="listing-publish-page"], .error-display, [data-testid="error-display"], h1',
       });
       if (page.url().includes('/login')) {
         throw new Error('Marketplace publish redirected to login; auth may have failed under parallel load.');
@@ -52,7 +52,7 @@ test.describe('JOURNEY-DPO-006: Manage Marketplace Listings', () => {
       expect(page.url()).toContain('/marketplace/publish');
 
       const hasContent =
-        (await page.locator('.listing-publish-page').count()) > 0 ||
+        (await page.locator('.listing-publish-page, [data-testid="listing-publish-page"]').first().count()) > 0 ||
         (await page.locator('form').count()) > 0;
       expect(hasContent).toBe(true);
     });
@@ -84,14 +84,14 @@ test.describe('JOURNEY-DPO-006: Manage Marketplace Listings', () => {
 
       await loginAndNavigateToRoute(page, testUser, '/marketplace', {
         timeout: 90000,
-        contentSelector: '.listing-list-page, .listing-list-grid, .empty-state, .error-display, h1',
+        contentSelector: '.listing-list-page, .listing-list-grid, [data-testid="listing-list-grid"], .empty-state, [data-testid="empty-state"], .error-display, [data-testid="error-display"], h1',
       });
       if (page.url().includes('/login')) {
         throw new Error('Unexpected redirect to login on marketplace list');
       }
 
       const listingLink = page
-        .locator('.listing-list-page a[href*="/marketplace/listings/"], .listing-list-grid a[href*="/marketplace/listings/"]')
+        .locator('.listing-list-page a[href*="/marketplace/listings/"], .listing-list-grid, [data-testid="listing-list-grid"] a[href*="/marketplace/listings/"]')
         .first();
 
       if ((await listingLink.count()) === 0) {
@@ -101,7 +101,7 @@ test.describe('JOURNEY-DPO-006: Manage Marketplace Listings', () => {
         if (seededListingId) {
           await loginAndNavigateToRoute(page, testUser, `/marketplace/listings/${seededListingId}`, {
             timeout: 60000,
-            contentSelector: '.listing-detail-main, .listing-detail-page, .error-display',
+            contentSelector: '.listing-detail-main, [data-testid="listing-detail-main"], .listing-detail-page, .error-display, [data-testid="error-display"]',
           });
           if (page.url().includes('/login')) {
             throw new Error('Cannot access listing detail — redirected to login.');
@@ -113,14 +113,14 @@ test.describe('JOURNEY-DPO-006: Manage Marketplace Listings', () => {
       } else {
         await listingLink.click();
         await page.waitForURL(/\/marketplace\/listings\/[^/]+/, { timeout: 10000 });
-        await page.waitForSelector('.listing-detail-main, .listing-detail-page, .error-display', {
+        await page.waitForSelector('.listing-detail-main, [data-testid="listing-detail-main"], .listing-detail-page, .error-display, [data-testid="error-display"]', {
           timeout: 20000,
         });
       }
 
-      const hasError = (await page.locator('.error-display').count()) > 0;
+      const hasError = (await page.locator('.error-display, [data-testid="error-display"]').first().count()) > 0;
       if (hasError) {
-        const errText = (await page.locator('.error-display').first().textContent()) ?? '';
+        const errText = (await page.locator('.error-display, [data-testid="error-display"]').first().first().textContent()) ?? '';
         // DRAFT listings accessed via direct navigation may show 404/403 (not published yet).
         // Annotate rather than fail — the backend served the page (route worked), just listing state.
         if (/not found|404|forbidden|403|permission|draft/i.test(errText)) {
@@ -130,7 +130,7 @@ test.describe('JOURNEY-DPO-006: Manage Marketplace Listings', () => {
       }
 
       await expect(
-        page.locator('.listing-detail-main, .listing-detail-page').first()
+        page.locator('.listing-detail-page, .listing-detail-main, [data-testid="listing-detail-main"]').first()
       ).toBeVisible({ timeout: 10000 });
 
       // Manage actions (edit / unpublish) should be accessible to the listing owner
@@ -160,7 +160,7 @@ test.describe('JOURNEY-DPO-006: Manage Marketplace Listings', () => {
         `/marketplace/listings/${nonExistentId}`,
         {
           timeout: 60000,
-          contentSelector: '.error-display, .listing-detail-page, [role="alert"]',
+          contentSelector: '.error-display, [data-testid="error-display"], .listing-detail-page, [role="alert"]',
         }
       );
 
@@ -170,7 +170,7 @@ test.describe('JOURNEY-DPO-006: Manage Marketplace Listings', () => {
 
       // When authenticated, navigating to a non-existent listing MUST produce a visible error.
       const hasExplicitError =
-        (await page.locator('.error-display').count()) > 0 ||
+        (await page.locator('.error-display, [data-testid="error-display"]').first().count()) > 0 ||
         (await page.locator('[role="alert"]').count()) > 0;
       expect(hasExplicitError).toBe(true) /* acceptable states */;
     });
@@ -194,7 +194,7 @@ test.describe('JOURNEY-DPO-006: Manage Marketplace Listings', () => {
       const testUser = await getTestUser();
       await loginAndNavigateToRoute(page, testUser, '/marketplace', {
         timeout: 90000,
-        contentSelector: '.listing-list-page, .listing-list-grid, .error-display, .empty-state, h1',
+        contentSelector: '.listing-list-page, .listing-list-grid, [data-testid="listing-list-grid"], .error-display, [data-testid="error-display"], .empty-state, [data-testid="empty-state"], h1',
       });
       if (page.url().includes('/login')) {
         throw new Error('Marketplace list redirected to login; auth may have failed under parallel load.');
@@ -203,8 +203,8 @@ test.describe('JOURNEY-DPO-006: Manage Marketplace Listings', () => {
 
       const hasContent =
         (await page.locator('.listing-list-page').count()) > 0 ||
-        (await page.locator('.listing-list-grid').count()) > 0 ||
-        (await page.locator('.empty-state').count()) > 0;
+        (await page.locator('.listing-list-grid, [data-testid="listing-list-grid"]').first().count()) > 0 ||
+        (await page.locator('.empty-state, [data-testid="empty-state"]').first().count()) > 0;
       expect(hasContent).toBe(true);
     });
 
@@ -212,20 +212,20 @@ test.describe('JOURNEY-DPO-006: Manage Marketplace Listings', () => {
       const testUser = await getTestUser();
       await loginAndNavigateToRoute(page, testUser, '/marketplace', {
         timeout: 90000,
-        contentSelector: '.listing-list-page, .listing-list-grid, .error-display, .empty-state, .listing-list-pagination, h1',
+        contentSelector: '.listing-list-page, .listing-list-grid, [data-testid="listing-list-grid"], .error-display, [data-testid="error-display"], .empty-state, [data-testid="empty-state"], .listing-list-pagination, h1',
       });
       if (page.url().includes('/login')) {
         throw new Error('Marketplace list redirected to login; auth may have failed under parallel load.');
       }
       expect(page.url()).toContain('/marketplace');
       // Wait for the actual list/grid/empty-state to render (h1 in contentSelector may fire early)
-      await page.waitForSelector('.listing-list-page, .listing-list-grid, .empty-state', {
+      await page.waitForSelector('.listing-list-page, .listing-list-grid, [data-testid="listing-list-grid"], .empty-state, [data-testid="empty-state"]', {
         timeout: 30000,
       });
       const hasPagination = (await page.locator('.listing-list-pagination').count()) > 0;
       const hasListOrEmpty =
-        (await page.locator('.listing-list-page, .listing-list-grid').count()) > 0 ||
-        (await page.locator('.empty-state').count()) > 0;
+        (await page.locator('.listing-list-page, .listing-list-grid, [data-testid="listing-list-grid"]').count()) > 0 ||
+        (await page.locator('.empty-state, [data-testid="empty-state"]').first().count()) > 0;
       expect(hasPagination || hasListOrEmpty).toBe(true) /* acceptable states */;
     });
   });

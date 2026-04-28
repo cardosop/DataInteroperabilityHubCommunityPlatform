@@ -23,13 +23,13 @@ test.describe('JOURNEY-AUD-002: Generate Audit Reports', () => {
       const auditorUser = await getAuditorUser();
       await loginAndNavigateToRoute(page, auditorUser, '/audit', {
         timeout: 60000,
-        contentSelector: '.audit-event-list-page, .empty-state, .error-display',
+        contentSelector: '.audit-event-list-page, [data-testid="audit-event-list-page"], .empty-state, [data-testid="empty-state"], .error-display, [data-testid="error-display"]',
       });
       if (page.url().includes('/login') || page.url().includes('/403')) {
         test.skip(true, 'Auditor lacks audit role on this environment');
         return;
       }
-      await assertListPageLoads(page, '.audit-event-list-page, .empty-state', {
+      await assertListPageLoads(page, '.audit-event-list-page, [data-testid="audit-event-list-page"], .empty-state, [data-testid="empty-state"]', {
         timeout: 60000,
       });
 
@@ -51,13 +51,13 @@ test.describe('JOURNEY-AUD-002: Generate Audit Reports', () => {
       const auditorUser = await getAuditorUser();
       await loginAndNavigateToRoute(page, auditorUser, '/audit', {
         timeout: 60000,
-        contentSelector: '.audit-event-list-page, .empty-state, .error-display',
+        contentSelector: '.audit-event-list-page, [data-testid="audit-event-list-page"], .empty-state, [data-testid="empty-state"], .error-display, [data-testid="error-display"]',
       });
       if (page.url().includes('/login') || page.url().includes('/403')) {
         test.skip(true, 'Auditor lacks audit role');
         return;
       }
-      await assertListPageLoads(page, '.audit-event-list-page, .empty-state', {
+      await assertListPageLoads(page, '.audit-event-list-page, [data-testid="audit-event-list-page"], .empty-state, [data-testid="empty-state"]', {
         timeout: 60000,
       });
 
@@ -93,7 +93,7 @@ test.describe('JOURNEY-AUD-002: Generate Audit Reports', () => {
       const auditorUser = await getAuditorUser();
       await loginAndNavigateToRoute(page, auditorUser, '/audit', {
         timeout: 60000,
-        contentSelector: '.audit-event-list-page, .empty-state, .error-display',
+        contentSelector: '.audit-event-list-page, [data-testid="audit-event-list-page"], .empty-state, [data-testid="empty-state"], .error-display, [data-testid="error-display"]',
       });
       if (page.url().includes('/login') || page.url().includes('/403')) {
         test.skip(true, 'Auditor lacks role');
@@ -104,7 +104,7 @@ test.describe('JOURNEY-AUD-002: Generate Audit Reports', () => {
       expect(has500).toBe(false);
       // Must show either events or empty state
       const hasContent =
-        (await page.locator('.audit-event-list-page, .empty-state').count()) > 0;
+        (await page.locator('.audit-event-list-page, [data-testid="audit-event-list-page"], .empty-state, [data-testid="empty-state"]').count()) > 0;
       expect(hasContent, 'Expected audit list or empty state').toBe(true);
     });
   });

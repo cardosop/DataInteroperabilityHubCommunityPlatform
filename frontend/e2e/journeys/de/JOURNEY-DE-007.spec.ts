@@ -28,7 +28,7 @@ import { expect, test } from '@playwright/test';
 import { clearAuthStorage, getTestUser } from '../../fixtures/auth';
 import { loginAndNavigateToRoute, waitForLoadingComplete } from '../../fixtures/helpers';
 
-test.describe('JOURNEY-DE-007: Create Transformation Pipeline', () => {
+test.describe('JOURNEY-DE-007: Create Transformation Pipeline @critical', () => {
   test.setTimeout(120000);
 
   test.describe('Success', () => {
@@ -39,7 +39,7 @@ test.describe('JOURNEY-DE-007: Create Transformation Pipeline', () => {
       await loginAndNavigateToRoute(page, testUser, '/transformation', {
         timeout: 60000,
         contentSelector:
-          '.transformation-pipeline-list-page, .unavailable-page, .empty-state, .error-display',
+          '.transformation-pipeline-list-page, .unavailable-page, [data-testid="unavailable-page"], .empty-state, [data-testid="empty-state"], .error-display, [data-testid="error-display"]',
       });
 
       if (page.url().includes('/login')) {
@@ -49,15 +49,15 @@ test.describe('JOURNEY-DE-007: Create Transformation Pipeline', () => {
 
       // intentional: probes optional UI presence via selector — same shape as waitFor; absence is a legitimate state handled by the branch below.
       await page.waitForSelector(
-        '.transformation-pipeline-list-page, .empty-state, .unavailable-page',
+        '.transformation-pipeline-list-page, .empty-state, [data-testid="empty-state"], .unavailable-page, [data-testid="unavailable-page"]',
         { timeout: 30000 }
       ).catch(() => null);
 
       const capabilityEnabled =
         page.url().includes('/transformation') &&
-        (await page.locator('.transformation-pipeline-list-page, .empty-state').count()) > 0;
+        (await page.locator('.transformation-pipeline-list-page, .empty-state, [data-testid="empty-state"]').count()) > 0;
       const capabilityDisabled =
-        (await page.locator('.unavailable-page').count()) > 0 ||
+        (await page.locator('.unavailable-page, [data-testid="unavailable-page"]').first().count()) > 0 ||
         page.url().includes('/unavailable') ||
         page.url().includes('/403');
 
@@ -65,11 +65,11 @@ test.describe('JOURNEY-DE-007: Create Transformation Pipeline', () => {
 
       if (capabilityEnabled) {
         await expect(
-          page.locator('.transformation-pipeline-list-page, .empty-state').first()
+          page.locator('.transformation-pipeline-list-page, .empty-state, [data-testid="empty-state"]').first()
         ).toBeVisible({ timeout: 5000 });
       } else {
         await expect(
-          page.locator('.unavailable-page, [role="main"]').first()
+          page.locator('.unavailable-page, [data-testid="unavailable-page"], [role="main"]').first()
         ).toBeVisible({ timeout: 5000 });
       }
     });
@@ -114,23 +114,23 @@ test.describe('JOURNEY-DE-007: Create Transformation Pipeline', () => {
 
       // intentional: probes optional UI presence via selector — same shape as waitFor; absence is a legitimate state handled by the branch below.
       await page.waitForSelector(
-        '.transformation-detail-page, .unavailable-page, .error-display',
+        '.transformation-detail-page, .unavailable-page, [data-testid="unavailable-page"], .error-display, [data-testid="error-display"]',
         { timeout: 30000 }
       ).catch(() => null);
       await waitForLoadingComplete(page, { timeout: 30000 });
 
       const capabilityDisabled =
-        (await page.locator('.unavailable-page').count()) > 0 ||
+        (await page.locator('.unavailable-page, [data-testid="unavailable-page"]').first().count()) > 0 ||
         page.url().includes('/unavailable') ||
         page.url().includes('/403');
 
       if (capabilityDisabled) {
-        await expect(page.locator('.unavailable-page, [role="main"]').first()).toBeVisible({ timeout: 5000 });
+        await expect(page.locator('.unavailable-page, [data-testid="unavailable-page"], [role="main"]').first()).toBeVisible({ timeout: 5000 });
         return;
       }
 
       const hasExplicitError =
-        (await page.locator('.error-display').count()) > 0 ||
+        (await page.locator('.error-display, [data-testid="error-display"]').first().count()) > 0 ||
         (await page.locator('[role="alert"]').count()) > 0;
       expect(hasExplicitError).toBe(true);
     });

@@ -29,7 +29,7 @@ test.describe('Admin User Edit UI', () => {
         // Wait for users API response and React render — 1500ms is too short under load
         // intentional: probes optional UI via a multi-line waitForSelector chain — same shape as waitFor; absence is a legitimate state handled by the caller's branch below.
         await page
-          .waitForSelector('.admin-table tbody tr, .empty-state', { timeout: 15000 })
+          .waitForSelector('.admin-table tbody tr, .empty-state, [data-testid="empty-state"]', { timeout: 15000 })
           .catch(() => null);
       }
 

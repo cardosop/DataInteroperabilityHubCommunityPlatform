@@ -28,11 +28,11 @@ test.describe('JOURNEY-AUD-001: Query Audit Events / Review Audit Logs', () => {
         return;
       }
       expect(page.url()).toContain('/audit');
-      // .error-display is NOT a success — it means the audit API failed.
+      // .error-display, [data-testid="error-display"] is NOT a success — it means the audit API failed.
       // Only accept the list page or a genuine empty state.
       const hasContent =
-        (await page.locator('.audit-event-list-page').count()) > 0 ||
-        (await page.locator('.empty-state').count()) > 0;
+        (await page.locator('.audit-event-list-page, [data-testid="audit-event-list-page"]').first().count()) > 0 ||
+        (await page.locator('.empty-state, [data-testid="empty-state"]').first().count()) > 0;
       expect(hasContent).toBe(true) /* acceptable states */;
       const hasServerError = await page.locator('text=/500|internal server error/i').count();
       expect(hasServerError).toBe(0);
@@ -63,13 +63,13 @@ test.describe('JOURNEY-AUD-001: Query Audit Events / Review Audit Logs', () => {
       // Wait for page content to settle
       // intentional: probes optional UI presence via a multi-line locator chain — the branch logic below handles both rendered and missing cases deterministically; absence is a legitimate tenant/role state.
       await page
-        .locator('.audit-list-filters, .audit-event-list-page, .empty-state')
+        .locator('.audit-list-filters, .audit-event-list-page, [data-testid="audit-event-list-page"], .empty-state, [data-testid="empty-state"]')
         .first()
         .waitFor({ state: 'visible', timeout: 25000 })
         .catch(() => null);
       const hasFilters = (await page.locator('.audit-list-filters').count()) > 0;
-      const hasListPage = (await page.locator('.audit-event-list-page').count()) > 0;
-      const hasEmptyState = (await page.locator('.empty-state').count()) > 0;
+      const hasListPage = (await page.locator('.audit-event-list-page, [data-testid="audit-event-list-page"]').first().count()) > 0;
+      const hasEmptyState = (await page.locator('.empty-state, [data-testid="empty-state"]').first().count()) > 0;
       // At least one meaningful UI element must be present — no crash, no error-display
       expect(hasFilters || hasListPage || hasEmptyState).toBe(true) /* acceptable states */;
       const hasServerError = await page.locator('text=/500|internal server error/i').count();

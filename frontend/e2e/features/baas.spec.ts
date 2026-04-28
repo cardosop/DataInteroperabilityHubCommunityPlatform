@@ -18,9 +18,9 @@ test.describe('Feature: BaaS (capability-gated)', () => {
       const testUser = await getTestUser();
       await loginAndNavigateToRoute(page, testUser, '/baas', {
         timeout: 60000,
-        contentSelector: '.baas-page, .unavailable-page, .coming-soon-page, .error-display, h1',
+        contentSelector: '.baas-page, .unavailable-page, [data-testid="unavailable-page"], .coming-soon-page, .error-display, [data-testid="error-display"], h1',
       });
-      await assertCapabilityGatedPageLoads(page, '.baas-page, .unavailable-page, .coming-soon-page', {
+      await assertCapabilityGatedPageLoads(page, '.baas-page, .unavailable-page, [data-testid="unavailable-page"], .coming-soon-page', {
         timeout: 30000,
       });
     });
@@ -43,7 +43,7 @@ test.describe('Feature: BaaS (capability-gated)', () => {
       const testUser = await getTestUser();
       await loginAndNavigateToRoute(page, testUser, '/baas', {
         timeout: 60000,
-        contentSelector: '.baas-page, .unavailable-page, .coming-soon-page, .error-display, h1',
+        contentSelector: '.baas-page, .unavailable-page, [data-testid="unavailable-page"], .coming-soon-page, .error-display, [data-testid="error-display"], h1',
       });
       if (page.url().includes('/login') || page.url().includes('/403')) return;
       const has500 = (await page.locator('text=/500|internal server error/i').count()) > 0;

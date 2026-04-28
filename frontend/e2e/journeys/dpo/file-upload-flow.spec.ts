@@ -30,16 +30,16 @@ test.describe('File Upload Flow', () => {
     await loginAndNavigateToRoute(page, testUser, '/datasets/create', {
       timeout: 60000,
       contentSelector:
-        '.dataset-create-page, .file-upload-dropzone, input.file-upload-input, form',
+        '.dataset-create-page, [data-testid="dataset-create-page"], .file-upload-dropzone, [data-testid="file-upload-dropzone"], input.file-upload-input, form',
     });
     await waitForLoadingComplete(page);
 
     // Dataset Create page has FileUpload with dropzone; file input may be hidden
-    const dropzone = page.locator('.file-upload-dropzone');
+    const dropzone = page.locator('.file-upload-dropzone, [data-testid="file-upload-dropzone"]');
     await expect(dropzone.first()).toBeVisible({ timeout: 15000 });
 
     // Find file input (inside dropzone or form)
-    const fileInput = page.locator('.file-upload-dropzone input[type="file"], input.file-upload-input').first();
+    const fileInput = page.locator('.file-upload-dropzone, [data-testid="file-upload-dropzone"] input[type="file"], input.file-upload-input').first();
     await expect(fileInput).toBeAttached({ timeout: 10000 });
 
     // Upload file with retry on rate limit (429) - parse retry-after from error message
@@ -106,7 +106,7 @@ test.describe('File Upload Flow', () => {
         // intentional: best-effort .catch on an optional step — primary pass/fail is made by a downstream assertion (verifyViaApi, waitFor, explicit expect). The fallback value tolerates well-known transient or absent-UI cases without papering over real failures.
         const consoleErrors = await page
           .evaluate(() => {
-            return Array.from(document.querySelectorAll('.error-message, .error-display'))
+            return Array.from(document.querySelectorAll('.error-message, .error-display, [data-testid="error-display"]'))
               .map((el) => el.textContent)
               .join(' ');
           })

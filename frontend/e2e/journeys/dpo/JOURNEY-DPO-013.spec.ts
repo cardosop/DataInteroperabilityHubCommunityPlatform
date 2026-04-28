@@ -26,7 +26,7 @@ async function getMeshDomainUser() {
   }
 }
 
-test.describe('JOURNEY-DPO-013: Configure Data Mesh Domain', () => {
+test.describe('JOURNEY-DPO-013: Configure Data Mesh Domain @critical', () => {
   test.setTimeout(120000);
 
   test.describe('Success', () => {
@@ -34,17 +34,17 @@ test.describe('JOURNEY-DPO-013: Configure Data Mesh Domain', () => {
       const testUser = await getTestUser();
       await loginAndNavigateToRoute(page, testUser, '/mesh', {
         timeout: 90000,
-        contentSelector: '.mesh-domain-list-page, .empty-state, .error-display',
+        contentSelector: '.mesh-domain-list-page, .empty-state, [data-testid="empty-state"], .error-display, [data-testid="error-display"]',
       });
       expect(page.url()).toContain('/mesh');
       // Wait for loading to complete and actual content to appear (not just loading spinner)
       await page
-        .locator('.mesh-domain-list-page, .empty-state')
+        .locator('.mesh-domain-list-page, .empty-state, [data-testid="empty-state"]')
         .first()
         .waitFor({ state: 'visible', timeout: 20000 });
       const hasContent =
         (await page.locator('.mesh-domain-list-page').count()) > 0 ||
-        (await page.locator('.empty-state').count()) > 0;
+        (await page.locator('.empty-state, [data-testid="empty-state"]').first().count()) > 0;
       expect(hasContent).toBe(true) /* acceptable states */;
     });
 
@@ -52,7 +52,7 @@ test.describe('JOURNEY-DPO-013: Configure Data Mesh Domain', () => {
       const testUser = await getTestUser();
       await loginAndNavigateToRoute(page, testUser, '/mesh/create', {
         timeout: 90000,
-        contentSelector: '.mesh-domain-create-page, .error-display',
+        contentSelector: '.mesh-domain-create-page, .error-display, [data-testid="error-display"]',
       });
       expect(page.url()).toContain('/mesh/create');
       const hasCreateContent =
@@ -68,7 +68,7 @@ test.describe('JOURNEY-DPO-013: Configure Data Mesh Domain', () => {
       const testUser = await getMeshDomainUser();
       await loginAndNavigateToRoute(page, testUser, '/mesh/create', {
         timeout: 90000,
-        contentSelector: '.mesh-domain-create-page, .error-display',
+        contentSelector: '.mesh-domain-create-page, .error-display, [data-testid="error-display"]',
       });
       if (page.url().includes('/login')) {
         throw new Error('Unexpected redirect to login on mesh/create page');
@@ -126,7 +126,7 @@ test.describe('JOURNEY-DPO-013: Configure Data Mesh Domain', () => {
         // the UI should show an error display, not a crash.
         // intentional: tolerates non-text / streaming response body when building a diagnostic message; the `throw new Error(...)` immediately below this catch is the primary failure path — this catch is not the pass/fail decision.
         const body = await resp.text().catch(() => '');
-        const hasErrorUI = (await page.locator('.error-display, [role="alert"]').count()) > 0;
+        const hasErrorUI = (await page.locator('.error-display, [data-testid="error-display"], [role="alert"]').count()) > 0;
         if (hasErrorUI) {
           // UI handled the 403 gracefully — test passes (permission boundary verified)
           return;
@@ -158,7 +158,7 @@ test.describe('JOURNEY-DPO-013: Configure Data Mesh Domain', () => {
       const testUser = await getTestUser();
       await loginAndNavigateToRoute(page, testUser, '/mesh', {
         timeout: 90000,
-        contentSelector: '.mesh-domain-list-page, .empty-state, .error-display',
+        contentSelector: '.mesh-domain-list-page, .empty-state, [data-testid="empty-state"], .error-display, [data-testid="error-display"]',
       });
       await page.goto('/mesh/00000000-0000-0000-0000-000000000000');
       await page.waitForLoadState('domcontentloaded');
@@ -174,11 +174,11 @@ test.describe('JOURNEY-DPO-013: Configure Data Mesh Domain', () => {
       const testUser = await getTestUser();
       await loginAndNavigateToRoute(page, testUser, '/mesh', {
         timeout: 90000,
-        contentSelector: '.mesh-domain-list-page, .empty-state, .error-display',
+        contentSelector: '.mesh-domain-list-page, .empty-state, [data-testid="empty-state"], .error-display, [data-testid="error-display"]',
       });
       expect(page.url()).toContain('/mesh');
       const hasListContent =
-        (await page.locator('.mesh-domain-list-page, .empty-state').count()) > 0;
+        (await page.locator('.mesh-domain-list-page, .empty-state, [data-testid="empty-state"]').count()) > 0;
       expect(hasListContent).toBe(true);
     });
   });

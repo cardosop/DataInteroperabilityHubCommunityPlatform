@@ -112,13 +112,13 @@ test.describe('ODPS Upload with Asset Linking (AssetPicker)', () => {
     await loginAndNavigateToRoute(page, user, '/assets', {
       timeout: 60000,
       contentSelector:
-        '.asset-list-page, .empty-state, h1',
+        '.asset-list-page, [data-testid="asset-list-page"], .empty-state, [data-testid="empty-state"], h1',
     });
     await waitForLoadingComplete(page, { timeout: 30000 });
 
     const createBtn = page
       .locator('button:has-text("Create Asset")')
-      .or(page.locator('.empty-state-action:has-text("Create Asset")'));
+      .or(page.locator('[data-testid="empty-state-action"]:has-text("Create Asset")'));
     await expect(createBtn.first()).toBeVisible({ timeout: 15000 });
     await createBtn.first().click();
 
@@ -170,7 +170,7 @@ test.describe('ODPS Upload with Asset Linking (AssetPicker)', () => {
     ).first();
     await expect(workflowIndicator).toBeVisible({ timeout: 180000 });
 
-    await expect(page.locator('.error-display')).not.toBeVisible();
+    await expect(page.locator('.error-display, [data-testid="error-display"]').first()).not.toBeVisible();
     // intentional: visibility check on a transiently-attached element split across lines — treating detached-at-check-time as 'not visible' is semantically correct; the caller's if/else below consumes the boolean.
     const hasWorkflow = await page
       .locator('.odps-workflow-progress')

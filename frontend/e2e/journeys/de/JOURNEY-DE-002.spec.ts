@@ -22,13 +22,13 @@ test.describe('JOURNEY-DE-002: Set Up Scheduled Ingestion (if applicable)', () =
       await loginAndNavigateToRoute(page, testUser, '/scheduled-ingestions', {
         timeout: 90000,
         contentSelector:
-          '.scheduled-ingestion-list-page, [data-testid="scheduled-ingestion-list-page"], .empty-state, .error-display, h1',
+          '.scheduled-ingestion-list-page, [data-testid="scheduled-ingestion-list-page"], .empty-state, [data-testid="empty-state"], .error-display, [data-testid="error-display"], h1',
       });
       expect(page.url()).toContain('/scheduled-ingestions');
       const hasContent =
         (await page.locator('.scheduled-ingestion-list-page').count()) > 0 ||
-        (await page.locator('.empty-state').count()) > 0 ||
-        (await page.locator('.error-display').count()) > 0 ||
+        (await page.locator('.empty-state, [data-testid="empty-state"]').first().count()) > 0 ||
+        (await page.locator('.error-display, [data-testid="error-display"]').first().count()) > 0 ||
         (await page.locator('h1').count()) > 0;
       expect(hasContent).toBe(true);
     });
@@ -56,7 +56,7 @@ test.describe('JOURNEY-DE-002: Set Up Scheduled Ingestion (if applicable)', () =
       await loginAndNavigateToRoute(page, testUser, '/scheduled-ingestions', {
         timeout: 90000,
         contentSelector:
-          '.scheduled-ingestion-list-page, [data-testid="scheduled-ingestion-list-page"], .empty-state, .error-display, h1',
+          '.scheduled-ingestion-list-page, [data-testid="scheduled-ingestion-list-page"], .empty-state, [data-testid="empty-state"], .error-display, [data-testid="error-display"], h1',
       });
       expect(page.url()).toContain('/scheduled-ingestions');
     });

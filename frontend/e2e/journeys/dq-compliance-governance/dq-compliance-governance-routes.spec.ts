@@ -9,20 +9,20 @@ import { expect, test } from '@playwright/test';
 import { clearAuthStorage, gotoWithRetry } from '../../fixtures/auth';
 import { assertListPageLoads, navigateOrSkip, waitForAppMainReady } from '../../fixtures/helpers';
 
-test.describe('DQ, Compliance, Governance routes', () => {
+test.describe('DQ, Compliance, Governance routes @critical', () => {
   test.setTimeout(120000);
 
   test.describe('Success', () => {
     test('dq list loads (runs list or empty)', async ({ page }) => {
       const { ok } = await navigateOrSkip(page, '/dq', {
-        contentSelector: '.dq-run-list-page, .empty-state',
+        contentSelector: '.dq-run-list-page, .empty-state, [data-testid="empty-state"]',
 
       });
       if (!ok) return;
 
       expect(page.url()).toContain('/dq');
       try {
-        await assertListPageLoads(page, '.dq-run-list-page, .empty-state');
+        await assertListPageLoads(page, '.dq-run-list-page, .empty-state, [data-testid="empty-state"]');
       } catch (err) {
         if (String(err).includes('BACKEND_TIMEOUT')) {
           test.skip(true, 'Backend timeout under parallel E2E load');
@@ -34,14 +34,14 @@ test.describe('DQ, Compliance, Governance routes', () => {
 
     test('compliance list loads (runs list or empty)', async ({ page }) => {
       const { ok } = await navigateOrSkip(page, '/compliance', {
-        contentSelector: '.compliance-run-list-page, .empty-state',
+        contentSelector: '.compliance-run-list-page, [data-testid="compliance-run-list-page"], .empty-state, [data-testid="empty-state"]',
 
       });
       if (!ok) return;
 
       expect(page.url()).toContain('/compliance');
       try {
-        await assertListPageLoads(page, '.compliance-run-list-page, .empty-state');
+        await assertListPageLoads(page, '.compliance-run-list-page, [data-testid="compliance-run-list-page"], .empty-state, [data-testid="empty-state"]');
       } catch (err) {
         if (String(err).includes('BACKEND_TIMEOUT')) {
           test.skip(true, 'Backend timeout under parallel E2E load');
@@ -65,12 +65,12 @@ test.describe('DQ, Compliance, Governance routes', () => {
 
       // error-display means the governance service failed — never acceptable as a success outcome.
       const hasError =
-        (await page.locator('.error-display').count()) > 0 ||
-        (await page.locator('.error-display-title').count()) > 0;
+        (await page.locator('.error-display, [data-testid="error-display"]').first().count()) > 0 ||
+        (await page.locator('.error-display-title, [data-testid="error-display-title"]').first().count()) > 0;
       if (hasError) {
         // intentional: best-effort .catch on an optional step — primary pass/fail is made by a downstream assertion (verifyViaApi, waitFor, explicit expect). The fallback value tolerates well-known transient or absent-UI cases without papering over real failures.
         const errText = await page
-          .locator('.error-display, .error-display-title')
+          .locator('.error-display, [data-testid="error-display"], .error-display-title, [data-testid="error-display-title"]')
           .first()
           .textContent()
           .catch(() => '');
@@ -83,7 +83,7 @@ test.describe('DQ, Compliance, Governance routes', () => {
 
       // Require the actual governance content (access requests list or empty state).
       await expect(
-        page.locator('.governance-access-request-list-page, .empty-state').first()
+        page.locator('.governance-access-request-list-page, .empty-state, [data-testid="empty-state"]').first()
       ).toBeVisible({ timeout: 15000 });
     });
   });
@@ -92,15 +92,15 @@ test.describe('DQ, Compliance, Governance routes', () => {
     test('dq run detail with non-existent id shows error', async ({ page }) => {
       const nonExistentId = '00000000-0000-0000-0000-000000000000';
       const { ok } = await navigateOrSkip(page, `/dq/runs/${nonExistentId}`, {
-        contentSelector: '.error-display, .error-display-title, .dq-run-detail-page',
+        contentSelector: '.error-display, [data-testid="error-display"], .error-display-title, [data-testid="error-display-title"], .dq-run-detail-page',
       });
       if (!ok) return;
 
       // intentional: probes optional UI presence — the branch logic below handles both rendered and missing cases deterministically; absence is a legitimate tenant/role state, not a test failure.
-      await page.locator('.error-display, .error-display-title, .dq-run-detail-page')
+      await page.locator('.error-display, [data-testid="error-display"], .error-display-title, [data-testid="error-display-title"], .dq-run-detail-page')
         .first().waitFor({ state: 'visible', timeout: 30000 }).catch(() => null);
 
-      const hasErrorDisplay = (await page.locator('.error-display, .error-display-title').count()) > 0;
+      const hasErrorDisplay = (await page.locator('.error-display, [data-testid="error-display"], .error-display-title, [data-testid="error-display-title"]').count()) > 0;
       if (!hasErrorDisplay) {
         const stillLoading = (await page.locator('[data-testid="skeleton-row"], .skeleton, .loading-spinner').count()) > 0;
         if (stillLoading) {
@@ -108,13 +108,13 @@ test.describe('DQ, Compliance, Governance routes', () => {
           return;
         }
       }
-      expect(hasErrorDisplay, 'Expected .error-display for non-existent resource').toBe(true);
+      expect(hasErrorDisplay, 'Expected .error-display, [data-testid="error-display"] for non-existent resource').toBe(true);
 
       // H3: warn on non-404 errors (e.g. 500, network failure)
       if (hasErrorDisplay) {
         // intentional: best-effort .catch on an optional step — primary pass/fail is made by a downstream assertion (verifyViaApi, waitFor, explicit expect). The fallback value tolerates well-known transient or absent-UI cases without papering over real failures.
         const errText = await page
-          .locator('.error-display, .error-display-title')
+          .locator('.error-display, [data-testid="error-display"], .error-display-title, [data-testid="error-display-title"]')
           .first()
           .textContent()
           .catch(() => '');
@@ -129,15 +129,15 @@ test.describe('DQ, Compliance, Governance routes', () => {
     test('compliance run detail with non-existent id shows error', async ({ page }) => {
       const nonExistentId = '00000000-0000-0000-0000-000000000000';
       const { ok } = await navigateOrSkip(page, `/compliance/runs/${nonExistentId}`, {
-        contentSelector: '.error-display, .error-display-title, .compliance-run-detail-page',
+        contentSelector: '.error-display, [data-testid="error-display"], .error-display-title, [data-testid="error-display-title"], .compliance-run-detail-page, [data-testid="compliance-run-detail-page"]',
       });
       if (!ok) return;
 
       // intentional: probes optional UI presence — the branch logic below handles both rendered and missing cases deterministically; absence is a legitimate tenant/role state, not a test failure.
-      await page.locator('.error-display, .error-display-title, .compliance-run-detail-page')
+      await page.locator('.error-display, [data-testid="error-display"], .error-display-title, [data-testid="error-display-title"], .compliance-run-detail-page, [data-testid="compliance-run-detail-page"]')
         .first().waitFor({ state: 'visible', timeout: 30000 }).catch(() => null);
 
-      const hasErrorDisplay = (await page.locator('.error-display, .error-display-title').count()) > 0;
+      const hasErrorDisplay = (await page.locator('.error-display, [data-testid="error-display"], .error-display-title, [data-testid="error-display-title"]').count()) > 0;
       if (!hasErrorDisplay) {
         const stillLoading = (await page.locator('[data-testid="skeleton-row"], .skeleton, .loading-spinner').count()) > 0;
         if (stillLoading) {
@@ -145,13 +145,13 @@ test.describe('DQ, Compliance, Governance routes', () => {
           return;
         }
       }
-      expect(hasErrorDisplay, 'Expected .error-display for non-existent resource').toBe(true);
+      expect(hasErrorDisplay, 'Expected .error-display, [data-testid="error-display"] for non-existent resource').toBe(true);
 
       // H3: warn on non-404 errors (e.g. 500, network failure)
       if (hasErrorDisplay) {
         // intentional: best-effort .catch on an optional step — primary pass/fail is made by a downstream assertion (verifyViaApi, waitFor, explicit expect). The fallback value tolerates well-known transient or absent-UI cases without papering over real failures.
         const errText = await page
-          .locator('.error-display, .error-display-title')
+          .locator('.error-display, [data-testid="error-display"], .error-display-title, [data-testid="error-display-title"]')
           .first()
           .textContent()
           .catch(() => '');

@@ -30,9 +30,9 @@ test.describe('JOURNEY-MPA-008: Configure Advanced Observability', () => {
       }
       expect(onObservability).toBe(true);
       const hasContent =
-        (await page.locator('.observability-page, .app-main, h1').count()) > 0;
+        (await page.locator('.observability-page, .app-main, [data-testid="app-main"], h1').count()) > 0;
       expect(hasContent).toBe(true);
-      await expect(page.locator('.error-display')).not.toBeVisible();
+      await expect(page.locator('.error-display, [data-testid="error-display"]').first()).not.toBeVisible();
     });
   });
 

@@ -22,7 +22,7 @@ test.describe('JOURNEY-DC-014: Discover ODPS Products (Semantic Search)', () => 
       const consumer = await getConsumerTestUser();
       await loginAndNavigateToRoute(page, consumer, '/semantic', {
         timeout: 60000,
-        contentSelector: '.semantic-page, .unavailable-page, .empty-state, .error-display',
+        contentSelector: '.semantic-page, .unavailable-page, [data-testid="unavailable-page"], .empty-state, [data-testid="empty-state"], .error-display, [data-testid="error-display"]',
       });
       const url = page.url();
       const onLogin = url.includes('/login');
@@ -34,9 +34,9 @@ test.describe('JOURNEY-DC-014: Discover ODPS Products (Semantic Search)', () => 
       }
       expect(onSemantic).toBe(true);
       const hasContent =
-        (await page.locator('.semantic-page, .app-main').count()) > 0;
+        (await page.locator('.semantic-page, .app-main, [data-testid="app-main"]').count()) > 0;
       expect(hasContent).toBe(true);
-      await expect(page.locator('.error-display')).not.toBeVisible();
+      await expect(page.locator('.error-display, [data-testid="error-display"]').first()).not.toBeVisible();
     });
   });
 
@@ -56,7 +56,7 @@ test.describe('JOURNEY-DC-014: Discover ODPS Products (Semantic Search)', () => 
       const consumer = await getConsumerTestUser();
       await loginAndNavigateToRoute(page, consumer, '/semantic', {
         timeout: 60000,
-        contentSelector: '.semantic-page, .unavailable-page, .empty-state, .error-display',
+        contentSelector: '.semantic-page, .unavailable-page, [data-testid="unavailable-page"], .empty-state, [data-testid="empty-state"], .error-display, [data-testid="error-display"]',
       });
       const url = page.url();
       expect(url.includes('/login') || url.includes('/403') || url.includes('/semantic')).toBe(true);

@@ -22,7 +22,7 @@ test.describe('JOURNEY-DC-011: Purchase Asset with Usage-Based Pricing', () => {
       await loginAndNavigateToRoute(page, consumer, '/marketplace', {
         timeout: 90000,
         contentSelector:
-          '[data-testid="listing-list-page"], .listing-list-page, .listing-list-grid, .empty-state, .error-display',
+          '[data-testid="listing-list-page"], .listing-list-page, .listing-list-grid, [data-testid="listing-list-grid"], .empty-state, [data-testid="empty-state"], .error-display, [data-testid="error-display"]',
       });
       if (page.url().includes('/login')) {
         test.skip(true, 'Redirected to login — auth may have expired');
@@ -31,7 +31,7 @@ test.describe('JOURNEY-DC-011: Purchase Asset with Usage-Based Pricing', () => {
       // Phase 2: wait for loading spinner to resolve into a terminal state before checking links
       // intentional: probes optional UI presence via a multi-line locator chain — the branch logic below handles both rendered and missing cases deterministically; absence is a legitimate tenant/role state.
       await page
-        .locator('.listing-list-page, .listing-list-grid, .empty-state, .error-display')
+        .locator('.listing-list-page, .listing-list-grid, [data-testid="listing-list-grid"], .empty-state, [data-testid="empty-state"], .error-display, [data-testid="error-display"]')
         .first()
         .waitFor({ state: 'visible', timeout: 20000 })
         .catch(() => null);
@@ -40,14 +40,14 @@ test.describe('JOURNEY-DC-011: Purchase Asset with Usage-Based Pricing', () => {
       if ((await listingLink.count()) > 0) {
         await listingLink.click();
         await page.waitForURL(/\/marketplace\/listings\/[^/]+/, { timeout: 10000 });
-        await page.waitForSelector('.listing-detail-main, .error-display', { timeout: 15000 });
-        const hasDetail = (await page.locator('.listing-detail-main').count()) > 0;
+        await page.waitForSelector('.listing-detail-main, [data-testid="listing-detail-main"], .error-display, [data-testid="error-display"]', { timeout: 15000 });
+        const hasDetail = (await page.locator('.listing-detail-main, [data-testid="listing-detail-main"]').first().count()) > 0;
         expect(hasDetail || page.url().includes('/marketplace/listings/')).toBe(true);
       } else {
         // No listings available — assert empty state is shown (not a blank/silent pass)
         const hasEmptyOrError =
-          (await page.locator('.empty-state').count()) > 0 ||
-          (await page.locator('.error-display').count()) > 0;
+          (await page.locator('.empty-state, [data-testid="empty-state"]').first().count()) > 0 ||
+          (await page.locator('.error-display, [data-testid="error-display"]').first().count()) > 0;
         expect(hasEmptyOrError).toBe(true) /* acceptable states */;
         test.info().annotations.push({ type: 'note', description: 'Marketplace empty — pricing/CTA not tested' });
       }
@@ -63,7 +63,7 @@ test.describe('JOURNEY-DC-011: Purchase Asset with Usage-Based Pricing', () => {
         '/marketplace/listings/00000000-0000-0000-0000-000000000000',
         { timeout: 60000 }
       );
-      const hasError = (await page.locator('.error-display').count()) > 0;
+      const hasError = (await page.locator('.error-display, [data-testid="error-display"]').first().count()) > 0;
       const onLogin = page.url().includes('/login');
       if (onLogin) {
         test.skip(true, 'Auth session lost during navigation — token refresh likely failed under E2E load');
@@ -79,7 +79,7 @@ test.describe('JOURNEY-DC-011: Purchase Asset with Usage-Based Pricing', () => {
       await loginAndNavigateToRoute(page, consumer, '/marketplace', {
         timeout: 60000,
         contentSelector:
-          '[data-testid="listing-list-page"], .listing-list-page, .listing-list-grid, .empty-state, .error-display',
+          '[data-testid="listing-list-page"], .listing-list-page, .listing-list-grid, [data-testid="listing-list-grid"], .empty-state, [data-testid="empty-state"], .error-display, [data-testid="error-display"]',
       });
       // Accept /login redirect (connection error during navigation is a known infra issue)
       if (page.url().includes('/login')) return;

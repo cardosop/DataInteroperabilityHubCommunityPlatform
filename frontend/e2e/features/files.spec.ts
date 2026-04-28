@@ -24,7 +24,7 @@ test.describe('Feature: Files', () => {
       await page.goto('/files');
       await waitForAppMainReady(page, { timeout: 60000 });
       await assertSuccessLoad(page, {
-        successContentSelector: '[data-testid="file-list-page"], .file-list-page, [data-testid="file-list-empty-state"], .empty-state',
+        successContentSelector: '[data-testid="file-list-page"], .file-list-page, [data-testid="file-list-empty-state"], .empty-state, [data-testid="empty-state"]',
       });
     });
   });
@@ -53,8 +53,8 @@ test.describe('Feature: Files', () => {
       await page.goto('/files');
       await waitForAppMainReady(page, { timeout: 60000 });
       await assertEdgeBehavior(page, {
-        emptyStateSelector: '[data-testid="file-list-empty-state"], .empty-state',
-        orContentSelector: '[data-testid="file-list-table"], .file-list-table',
+        emptyStateSelector: '[data-testid="file-list-empty-state"], .empty-state, [data-testid="empty-state"]',
+        orContentSelector: '.file-list-table, [data-testid="file-list-table"]',
       });
     });
   });

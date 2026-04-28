@@ -14,7 +14,7 @@ import { createODCSContractViaApi } from '../../fixtures/api-assets';
 import { clearAuthStorage, getTestUser } from '../../fixtures/auth';
 import { assertNonExistentIdShowsError, loginAndNavigateToRoute, waitForLoadingComplete } from '../../fixtures/helpers';
 
-test.describe('JOURNEY-DPO-005: Configure Data Contracts', () => {
+test.describe('JOURNEY-DPO-005: Configure Data Contracts @critical', () => {
   test.setTimeout(120000); // 2 min default per test; individual tests override when needed
 
   test.describe('Success', () => {
@@ -22,21 +22,21 @@ test.describe('JOURNEY-DPO-005: Configure Data Contracts', () => {
       const testUser = await getTestUser();
       await loginAndNavigateToRoute(page, testUser, '/contracts', {
         timeout: 60000,
-        contentSelector: '.contract-list-page, .empty-state, .error-display, h1',
+        contentSelector: '.contract-list-page, [data-testid="contract-list-page"], .empty-state, [data-testid="empty-state"], .error-display, [data-testid="error-display"], h1',
       });
       expect(page.url()).toContain('/contracts');
       await waitForLoadingComplete(page, { timeout: 30000 });
 
       // Error display must NOT count as "contracts list loaded" — it means the API failed
-      const hasError = (await page.locator('.error-display').count()) > 0;
+      const hasError = (await page.locator('.error-display, [data-testid="error-display"]').first().count()) > 0;
       if (hasError) {
-        const errText = (await page.locator('.error-display').first().textContent()) ?? '';
+        const errText = (await page.locator('.error-display, [data-testid="error-display"]').first().first().textContent()) ?? '';
         throw new Error(`Contracts list shows backend error: ${errText.slice(0, 200)}`);
       }
 
       const hasContent =
-        (await page.locator('.contract-list-page').count()) > 0 ||
-        (await page.locator('.empty-state').count()) > 0;
+        (await page.locator('.contract-list-page, [data-testid="contract-list-page"]').first().count()) > 0 ||
+        (await page.locator('.empty-state, [data-testid="empty-state"]').first().count()) > 0;
       expect(hasContent).toBe(true) /* acceptable states */;
     });
 
@@ -49,16 +49,16 @@ test.describe('JOURNEY-DPO-005: Configure Data Contracts', () => {
       // Navigate directly to the contract detail URL using the seeded ID
       await loginAndNavigateToRoute(page, testUser, `/contracts/${contractId}`, {
         timeout: 90000,
-        contentSelector: '.contract-detail-page, .contract-detail-content, .error-display',
+        contentSelector: '.contract-detail-page, [data-testid="contract-detail-page"], .contract-detail-content, .error-display, [data-testid="error-display"]',
       });
 
       if (page.url().includes('/login')) {
         throw new Error('Unexpected redirect to login on contract detail');
       }
 
-      const hasError = (await page.locator('.error-display').count()) > 0;
+      const hasError = (await page.locator('.error-display, [data-testid="error-display"]').first().count()) > 0;
       if (hasError) {
-        const errText = (await page.locator('.error-display').first().textContent()) ?? '';
+        const errText = (await page.locator('.error-display, [data-testid="error-display"]').first().first().textContent()) ?? '';
         throw new Error(`Contract detail failed to load: ${errText.slice(0, 250)}`);
       }
 
@@ -70,7 +70,7 @@ test.describe('JOURNEY-DPO-005: Configure Data Contracts', () => {
       if ((await editBtn.count()) > 0) {
         await editBtn.click();
         await page.waitForLoadState('domcontentloaded');
-        await page.waitForSelector('.contract-editor-page, .error-display', { timeout: 15000 });
+        await page.waitForSelector('.contract-editor-page, .error-display, [data-testid="error-display"]', { timeout: 15000 });
         if (page.url().includes('/login')) {
           throw new Error('Unexpected redirect to login after clicking Edit on contract detail');
         }
@@ -92,7 +92,7 @@ test.describe('JOURNEY-DPO-005: Configure Data Contracts', () => {
       await page.goto(`/contracts/${nonExistentId}/edit`);
       await page.waitForLoadState('domcontentloaded');
       await assertNonExistentIdShowsError(page, {
-        detailContentSelector: '.contract-editor-page, .contract-detail-page',
+        detailContentSelector: '.contract-editor-page, .contract-detail-page, [data-testid="contract-detail-page"]',
         waitAfterLoad: 8000,
         selectorTimeout: 60000,
       });
@@ -117,7 +117,7 @@ test.describe('JOURNEY-DPO-005: Configure Data Contracts', () => {
       const testUser = await getTestUser();
       await loginAndNavigateToRoute(page, testUser, '/contracts', {
         timeout: 90000,
-        contentSelector: '.contract-list-page, .empty-state, .error-display, h1',
+        contentSelector: '.contract-list-page, [data-testid="contract-list-page"], .empty-state, [data-testid="empty-state"], .error-display, [data-testid="error-display"], h1',
       });
       if (page.url().includes('/login')) {
         throw new Error('Contracts list redirected to login; auth may have failed under parallel load.');
@@ -125,8 +125,8 @@ test.describe('JOURNEY-DPO-005: Configure Data Contracts', () => {
       expect(page.url()).toContain('/contracts');
 
       const hasContent =
-        (await page.locator('.contract-list-page').count()) > 0 ||
-        (await page.locator('.empty-state').count()) > 0;
+        (await page.locator('.contract-list-page, [data-testid="contract-list-page"]').first().count()) > 0 ||
+        (await page.locator('.empty-state, [data-testid="empty-state"]').first().count()) > 0;
       expect(hasContent).toBe(true);
     });
 
@@ -134,27 +134,27 @@ test.describe('JOURNEY-DPO-005: Configure Data Contracts', () => {
       const testUser = await getTestUser();
       await loginAndNavigateToRoute(page, testUser, '/contracts', {
         timeout: 90000,
-        contentSelector: '.contract-list-page, .empty-state, .error-display, .contract-list-pagination, h1',
+        contentSelector: '.contract-list-page, [data-testid="contract-list-page"], .empty-state, [data-testid="empty-state"], .error-display, [data-testid="error-display"], .contract-list-pagination, h1',
       });
       if (page.url().includes('/login')) {
         throw new Error('Contracts list redirected to login; auth may have failed under parallel load.');
       }
       expect(page.url()).toContain('/contracts');
       await page
-        .locator('.contract-list-page, .empty-state, .error-display')
+        .locator('.contract-list-page, [data-testid="contract-list-page"], .empty-state, [data-testid="empty-state"], .error-display, [data-testid="error-display"]')
         .first()
         .waitFor({ state: 'visible', timeout: 20000 });
 
-      const hasError = (await page.locator('.error-display').count()) > 0;
+      const hasError = (await page.locator('.error-display, [data-testid="error-display"]').first().count()) > 0;
       if (hasError) {
-        const errText = (await page.locator('.error-display').first().textContent()) ?? '';
+        const errText = (await page.locator('.error-display, [data-testid="error-display"]').first().first().textContent()) ?? '';
         throw new Error(`Contracts list shows backend error: ${errText.slice(0, 200)}`);
       }
 
       const hasPagination = (await page.locator('.contract-list-pagination').count()) > 0;
       const hasListOrEmpty =
-        (await page.locator('.contract-list-page table tr, .contract-list-page .list-item, .contract-list-page a[href*="/contracts/"]').count()) > 0 ||
-        (await page.locator('.empty-state').count()) > 0;
+        (await page.locator('.contract-list-page, [data-testid="contract-list-page"] table tr, .contract-list-page, [data-testid="contract-list-page"] .list-item, .contract-list-page, [data-testid="contract-list-page"] a[href*="/contracts/"]').count()) > 0 ||
+        (await page.locator('.empty-state, [data-testid="empty-state"]').first().count()) > 0;
       expect(hasPagination || hasListOrEmpty).toBe(true) /* acceptable states */;
     });
   });

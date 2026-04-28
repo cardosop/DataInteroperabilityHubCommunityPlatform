@@ -30,14 +30,14 @@ const API_BASE =
   (process.env.VITE_API_BASE_URL?.startsWith('http') ? process.env.VITE_API_BASE_URL : null) ||
   `http://localhost:${DEFAULT_API_PORT}/api/v1`;
 
-test.describe('JOURNEY-AUTH-005: User Switches Active Tenant', () => {
+test.describe('JOURNEY-AUTH-005: User Switches Active Tenant @critical', () => {
   test.setTimeout(120000);
 
   test.describe('Success', () => {
     test('tenant switcher is visible in header when user has tenants', async ({ page }) => {
       const user = await getTestUser();
       await loginUser(page, user);
-      await expect(page.locator('.app-header')).toBeVisible({ timeout: 15000 });
+      await expect(page.locator('.app-header, [data-testid="app-header"]').first()).toBeVisible({ timeout: 15000 });
 
       // Tenant switcher or tenant name should be accessible in the header
       const tenantSwitcher = page.locator('.tenant-switcher, [data-testid="tenant-switcher"]');
@@ -48,7 +48,7 @@ test.describe('JOURNEY-AUTH-005: User Switches Active Tenant', () => {
       } else {
         // Single-tenant: verify the header renders and the user is on a logged-in page
         expect(page.url()).not.toContain('/login');
-        await expect(page.locator('.app-header')).toBeVisible({ timeout: 5000 });
+        await expect(page.locator('.app-header, [data-testid="app-header"]').first()).toBeVisible({ timeout: 5000 });
         // Log switcher state for observability
         console.log(`Tenant switcher present: ${hasSwitcher}`);
       }
@@ -103,7 +103,7 @@ test.describe('JOURNEY-AUTH-005: User Switches Active Tenant', () => {
     }) => {
       const user = await getTestUser();
       await loginUser(page, user);
-      await expect(page.locator('.app-header')).toBeVisible({ timeout: 15000 });
+      await expect(page.locator('.app-header, [data-testid="app-header"]').first()).toBeVisible({ timeout: 15000 });
 
       const accessToken = await page.evaluate(() => localStorage.getItem('access_token'));
       if (!accessToken) {
@@ -185,7 +185,7 @@ test.describe('JOURNEY-AUTH-005: User Switches Active Tenant', () => {
         expect(assetsRes.status()).toBe(200);
 
         // Verify the app shell is still rendered after the switch (no crash / redirect)
-        await expect(page.locator('.app-header')).toBeVisible({ timeout: 10000 });
+        await expect(page.locator('.app-header, [data-testid="app-header"]').first()).toBeVisible({ timeout: 10000 });
         expect(page.url()).not.toContain('/login');
 
         // Phase 226 B1d finding — tenant-switch is NOT currently audited by
@@ -209,7 +209,7 @@ test.describe('JOURNEY-AUTH-005: User Switches Active Tenant', () => {
         await page.goto('/assets', { waitUntil: 'domcontentloaded' });
         // intentional: probes optional UI presence via a multi-line locator chain — the branch logic below handles both rendered and missing cases deterministically; absence is a legitimate tenant/role state.
         await page
-          .locator('.asset-list-page, .empty-state, .error-display')
+          .locator('.asset-list-page, [data-testid="asset-list-page"], .empty-state, [data-testid="empty-state"], .error-display, [data-testid="error-display"]')
           .first()
           .waitFor({ state: 'visible', timeout: 20000 })
           .catch(() => null);

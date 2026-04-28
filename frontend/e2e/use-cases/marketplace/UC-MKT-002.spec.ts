@@ -21,7 +21,7 @@ test.describe('UC-MKT-002: Browse Marketplace Listings', () => {
       const user = await getConsumerTestUser();
       await loginAndNavigateToRoute(page, user, '/marketplace', {
         timeout: 90000,
-        contentSelector: '.listing-list-page, .listing-list-grid, .empty-state',
+        contentSelector: '.listing-list-page, .listing-list-grid, [data-testid="listing-list-grid"], .empty-state, [data-testid="empty-state"]',
       });
       if (page.url().includes('/login')) {
         expect(page.url()).toContain('/login');
@@ -46,7 +46,7 @@ test.describe('UC-MKT-002: Browse Marketplace Listings', () => {
       const user = await getConsumerTestUser();
       await loginAndNavigateToRoute(page, user, '/marketplace', {
         timeout: 90000,
-        contentSelector: '.listing-list-page, .listing-list-grid, .empty-state, .error-display',
+        contentSelector: '.listing-list-page, .listing-list-grid, [data-testid="listing-list-grid"], .empty-state, [data-testid="empty-state"], .error-display, [data-testid="error-display"]',
       });
       expect(page.url()).toContain('/marketplace');
     });

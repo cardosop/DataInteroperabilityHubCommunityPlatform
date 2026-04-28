@@ -94,10 +94,10 @@ test.describe('Tenant Switch (login → switch → verify context)', () => {
     const user = await getTestUser();
 
     // Login and navigate to home so the app shell (including header) is visible.
-    // contentSelector must reference an element INSIDE .app-main (the helper evaluates
-    // main.querySelector(sel)).  .app-sidebar and .app-header are siblings of .app-main,
+    // contentSelector must reference an element INSIDE .app-main, [data-testid="app-main"] (the helper evaluates
+    // main.querySelector(sel)).  .app-sidebar and .app-header, [data-testid="app-header"] are siblings of .app-main, [data-testid="app-main"],
     // not children, so they can never be found there.  Use [data-testid="home-page"] which
-    // is rendered by HomePage.tsx directly inside .app-main.
+    // is rendered by HomePage.tsx directly inside .app-main, [data-testid="app-main"].
     await loginAndNavigateToRoute(page, user, '/', {
       timeout: 60000,
       contentSelector: '[data-testid="home-page"]',
@@ -161,15 +161,15 @@ test.describe('Tenant Switch (login → switch → verify context)', () => {
       // Sidebar not found — fall back to goto (active_tenant_id may be lost after reload).
       await page.goto('/assets', { waitUntil: 'domcontentloaded' });
     }
-    await page.waitForSelector('.asset-list-page, .empty-state, .error-display', {
+    await page.waitForSelector('.asset-list-page, [data-testid="asset-list-page"], .empty-state, [data-testid="empty-state"], .error-display, [data-testid="error-display"]', {
       timeout: 30000,
     });
 
     // Assets must load without error (validates tenant context switch worked)
-    const hasError = (await page.locator('.error-display').count()) > 0;
+    const hasError = (await page.locator('.error-display, [data-testid="error-display"]').first().count()) > 0;
     if (hasError) {
       // intentional: tolerates a detached/removed element while extracting text for a diagnostic message; the surrounding throw/expect below this catch is the primary failure path.
-      const errText = await page.locator('.error-display').first().textContent().catch(() => '');
+      const errText = await page.locator('.error-display, [data-testid="error-display"]').first().first().textContent().catch(() => '');
       if (!/403|forbidden/i.test(errText ?? '')) {
         throw new Error(`Assets page shows error after tenant switch: ${errText}`);
       }

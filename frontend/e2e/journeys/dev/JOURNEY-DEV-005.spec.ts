@@ -30,9 +30,9 @@ test.describe('JOURNEY-DEV-005: Use Natural Language Search API', () => {
         return;
       }
       expect(onSearch).toBe(true);
-      const hasContent = (await page.locator('.search-page, .app-main').count()) > 0;
+      const hasContent = (await page.locator('.search-page, .app-main, [data-testid="app-main"]').count()) > 0;
       expect(hasContent).toBe(true);
-      await expect(page.locator('.error-display')).not.toBeVisible();
+      await expect(page.locator('.error-display, [data-testid="error-display"]').first()).not.toBeVisible();
     });
 
     test('AI search page loads or redirects', async ({ page }) => {
@@ -50,9 +50,9 @@ test.describe('JOURNEY-DEV-005: Use Natural Language Search API', () => {
       }
       expect(onAISearch).toBe(true);
       const hasContent =
-        (await page.locator('.ai-search-page, .app-main').count()) > 0;
+        (await page.locator('.ai-search-page, .app-main, [data-testid="app-main"]').count()) > 0;
       expect(hasContent).toBe(true);
-      await expect(page.locator('.error-display')).not.toBeVisible();
+      await expect(page.locator('.error-display, [data-testid="error-display"]').first()).not.toBeVisible();
     });
   });
 
@@ -73,7 +73,7 @@ test.describe('JOURNEY-DEV-005: Use Natural Language Search API', () => {
       expect(url.includes('/403') || url.includes('/ai/search') || url.includes('/unavailable')).toBe(true);
       if (url.includes('/ai/search')) {
         // If capability is enabled, page content must be present
-        const hasContent = (await page.locator('.ai-search-page, .unavailable-page, .app-main').count()) > 0;
+        const hasContent = (await page.locator('.ai-search-page, .unavailable-page, [data-testid="unavailable-page"], .app-main, [data-testid="app-main"]').count()) > 0;
         expect(hasContent).toBe(true) /* acceptable states */;
       }
     });

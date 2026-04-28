@@ -16,7 +16,7 @@ test.describe('Feature: Governance', () => {
       const testUser = await getTestUser();
       await loginAndNavigateToRoute(page, testUser, '/governance', {
         timeout: 60000,
-        contentSelector: '.governance-page, .empty-state, .error-display, h1',
+        contentSelector: '.governance-page, .empty-state, [data-testid="empty-state"], .error-display, [data-testid="error-display"], h1',
       });
       const url = page.url();
       if (url.includes('/login') || url.includes('/403')) {
@@ -25,9 +25,9 @@ test.describe('Feature: Governance', () => {
         return;
       }
       // If on /governance, assert actual content rendered (not just the URL)
-      await expect(page.locator('.error-display')).not.toBeVisible({ timeout: 5000 });
+      await expect(page.locator('.error-display, [data-testid="error-display"]').first()).not.toBeVisible({ timeout: 5000 });
       const hasContent =
-        (await page.locator('.governance-page, .empty-state, h1').count()) > 0;
+        (await page.locator('.governance-page, .empty-state, [data-testid="empty-state"], h1').count()) > 0;
       expect(hasContent, 'Expected governance content to render on /governance').toBe(true);
     });
   });
@@ -65,7 +65,7 @@ test.describe('Feature: Governance', () => {
       await loginAndNavigateToRoute(page, testUser, '/governance/retention', {
         timeout: 60000,
         contentSelector:
-          '.governance-retention-policy-list-page, .empty-state, .error-display, [data-testid="forbidden-page"], h1',
+          '.governance-retention-policy-list-page, .empty-state, [data-testid="empty-state"], .error-display, [data-testid="error-display"], [data-testid="forbidden-page"], h1',
       });
       const url = page.url();
       if (url.includes('/403') || url.includes('/login')) {
@@ -76,16 +76,16 @@ test.describe('Feature: Governance', () => {
       if (url.includes('/governance/retention')) {
         const hasMeaningfulContent =
           (await page.locator('.governance-retention-policy-list-page').count()) > 0 ||
-          (await page.locator('.empty-state').count()) > 0;
-        const hasError = (await page.locator('.error-display').count()) > 0;
+          (await page.locator('.empty-state, [data-testid="empty-state"]').first().count()) > 0;
+        const hasError = (await page.locator('.error-display, [data-testid="error-display"]').first().count()) > 0;
 
         if (hasError && !hasMeaningfulContent) {
-          const errorText = await page.locator('.error-display').first().textContent();
+          const errorText = await page.locator('.error-display, [data-testid="error-display"]').first().first().textContent();
           throw new Error(`Governance retention page rendered only an error: ${errorText}`);
         }
         expect(
           hasMeaningfulContent,
-          'Expected .governance-retention-policy-list-page or .empty-state'
+          'Expected .governance-retention-policy-list-page or .empty-state, [data-testid="empty-state"]'
         ).toBe(true);
       }
     });

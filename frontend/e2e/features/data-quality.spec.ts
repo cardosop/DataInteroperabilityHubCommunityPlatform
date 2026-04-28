@@ -23,9 +23,9 @@ test.describe('Feature: Data Quality', () => {
       const testUser = await getTestUser();
       await loginAndNavigateToRoute(page, testUser, '/dq', {
         timeout: 60000,
-        contentSelector: '.dq-run-list-page, .empty-state, .error-display, h1',
+        contentSelector: '.dq-run-list-page, .empty-state, [data-testid="empty-state"], .error-display, [data-testid="error-display"], h1',
       });
-      await assertListPageLoads(page, '.dq-run-list-page, .empty-state', { timeout: 60000 });
+      await assertListPageLoads(page, '.dq-run-list-page, .empty-state, [data-testid="empty-state"]', { timeout: 60000 });
     });
   });
 
@@ -38,7 +38,7 @@ test.describe('Feature: Data Quality', () => {
         '/dq/runs/00000000-0000-0000-0000-000000000000',
         {
           timeout: 60000,
-          contentSelector: '.error-display, .dq-run-detail-page, h1',
+          contentSelector: '.error-display, [data-testid="error-display"], .dq-run-detail-page, h1',
         }
       );
       await assertNonExistentIdShowsError(page, {
@@ -62,11 +62,11 @@ test.describe('Feature: Data Quality', () => {
       const testUser = await getTestUser();
       await loginAndNavigateToRoute(page, testUser, '/dq', {
         timeout: 60000,
-        contentSelector: '.dq-run-list-page, .empty-state, .error-display, h1',
+        contentSelector: '.dq-run-list-page, .empty-state, [data-testid="empty-state"], .error-display, [data-testid="error-display"], h1',
       });
-      await expect(page.locator('.error-display')).not.toBeVisible({ timeout: 5000 });
+      await expect(page.locator('.error-display, [data-testid="error-display"]').first()).not.toBeVisible({ timeout: 5000 });
       const hasContent =
-        (await page.locator('.dq-run-list-page, .empty-state').count()) > 0;
+        (await page.locator('.dq-run-list-page, .empty-state, [data-testid="empty-state"]').count()) > 0;
       expect(hasContent, 'Expected DQ list or empty state (no crash)').toBe(true);
     });
   });
@@ -236,7 +236,7 @@ test.describe('Feature: Data Quality', () => {
       await page.waitForLoadState('domcontentloaded');
       // Wait for the detail page to render (loading spinner → content)
       // intentional: probes optional UI presence via selector — same shape as waitFor; absence is a legitimate state handled by the branch below.
-      await page.waitForSelector('.dq-run-detail-page, .error-display, .status-badge', { timeout: 30_000 }).catch(() => null);
+      await page.waitForSelector('.dq-run-detail-page, .error-display, [data-testid="error-display"], .status-badge', { timeout: 30_000 }).catch(() => null);
 
       // The page must not crash; redirect to login is also acceptable for
       // expired sessions (non-fatal for this smoke test).

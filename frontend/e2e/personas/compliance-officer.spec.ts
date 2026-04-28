@@ -20,7 +20,7 @@ import { test, expect } from '@playwright/test';
 import { loginAsPersona, getComplianceOfficerUser, getTestUser } from '../fixtures/auth';
 import { waitForAppMainReady, waitForRoleGuardResolved } from '../fixtures/helpers';
 
-test.describe('Persona RBAC: Compliance Officer', () => {
+test.describe('Persona RBAC: Compliance Officer @critical', () => {
   test.setTimeout(120000);
 
   test('CPO can access /compliance', async ({ page }) => {
@@ -32,8 +32,8 @@ test.describe('Persona RBAC: Compliance Officer', () => {
     await page.goto('/compliance', { waitUntil: 'domcontentloaded' });
     await waitForAppMainReady(page);
     expect(page.url()).toContain('/compliance');
-    await expect(page.locator('.app-main')).toBeVisible();
-    await expect(page.locator('.error-display')).not.toBeVisible({ timeout: 2000 });
+    await expect(page.locator('.app-main, [data-testid="app-main"]').first()).toBeVisible();
+    await expect(page.locator('.error-display, [data-testid="error-display"]').first()).not.toBeVisible({ timeout: 2000 });
   });
 
   test('CPO can access /governance', async ({ page }) => {
@@ -43,8 +43,8 @@ test.describe('Persona RBAC: Compliance Officer', () => {
     const url = page.url();
     if (url.includes('/403')) test.skip(true, 'CPO does not have governance access');
     expect(url).toContain('/governance');
-    await expect(page.locator('.app-main')).toBeVisible();
-    await expect(page.locator('.error-display')).not.toBeVisible({ timeout: 2000 });
+    await expect(page.locator('.app-main, [data-testid="app-main"]').first()).toBeVisible();
+    await expect(page.locator('.error-display, [data-testid="error-display"]').first()).not.toBeVisible({ timeout: 2000 });
   });
 
   test('non-CPO user cannot access /audit', async ({ page }) => {

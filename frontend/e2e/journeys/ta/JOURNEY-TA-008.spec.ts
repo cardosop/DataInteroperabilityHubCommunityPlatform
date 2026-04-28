@@ -13,7 +13,7 @@ import { expect, test } from '@playwright/test';
 import { getTenantAdminUser, loginAsPersona } from '../../fixtures/auth';
 import { assertNonExistentIdShowsError, waitForAppMainReady, waitForLoadingComplete } from '../../fixtures/helpers';
 
-test.describe('JOURNEY-TA-008: Configure Integration Ecosystem', () => {
+test.describe('JOURNEY-TA-008: Configure Integration Ecosystem @critical', () => {
   test.setTimeout(120000);
 
   test.describe('Success', () => {
@@ -21,7 +21,7 @@ test.describe('JOURNEY-TA-008: Configure Integration Ecosystem', () => {
       await loginAsPersona(page, getTenantAdminUser);
       await page.goto('/integrations/connections');
       await page.waitForLoadState('domcontentloaded');
-      await page.waitForSelector('.connection-list-page, .empty-state', {
+      await page.waitForSelector('.connection-list-page, .empty-state, [data-testid="empty-state"]', {
         timeout: 65000,
       });
       if (page.url().includes('/login') || page.url().includes('/403')) {
@@ -30,7 +30,7 @@ test.describe('JOURNEY-TA-008: Configure Integration Ecosystem', () => {
       }
       expect(page.url()).toContain('/integrations/connections');
       // D85: error-display is NOT acceptable in success test
-      await expect(page.locator('.error-display')).not.toBeVisible({ timeout: 1000 });
+      await expect(page.locator('.error-display, [data-testid="error-display"]').first()).not.toBeVisible({ timeout: 1000 });
     });
 
     test('integrations sync-jobs list loads', async ({ page }) => {
@@ -88,7 +88,7 @@ test.describe('JOURNEY-TA-008: Configure Integration Ecosystem', () => {
       const connectionList = page.locator(
         '.connection-list-page, .marketplace-connection-list-page'
       );
-      const emptyState = page.locator('.empty-state');
+      const emptyState = page.locator('.empty-state, [data-testid="empty-state"]').first();
 
       const hasCreateButton = (await createButton.count()) > 0;
       const hasConnectionList = (await connectionList.count()) > 0;
@@ -116,7 +116,7 @@ test.describe('JOURNEY-TA-008: Configure Integration Ecosystem', () => {
         expect(hasConnectionList || hasEmptyState).toBe(true);
       }
 
-      await expect(page.locator('.error-display')).not.toBeVisible();
+      await expect(page.locator('.error-display, [data-testid="error-display"]').first()).not.toBeVisible();
     });
   });
 
@@ -126,7 +126,7 @@ test.describe('JOURNEY-TA-008: Configure Integration Ecosystem', () => {
       await page.goto('/integrations/connections/00000000-0000-0000-0000-000000000000');
       await page.waitForLoadState('domcontentloaded');
       await assertNonExistentIdShowsError(page, {
-        detailContentSelector: '.connection-detail-page, .marketplace-connection-detail-page',
+        detailContentSelector: '.connection-detail-page, .marketplace-connection-detail-page, [data-testid="marketplace-connection-detail-page"]',
         waitAfterLoad: 8000,
       });
     });

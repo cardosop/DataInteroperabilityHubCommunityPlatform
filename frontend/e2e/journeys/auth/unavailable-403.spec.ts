@@ -25,7 +25,7 @@ test.describe('Unavailable and 403 pages', () => {
       await expect(
         page.getByRole('heading', { name: /Feature Unavailable|Unavailable/i })
       ).toBeVisible({ timeout: 10_000 });
-      await expect(page.locator('.unavailable-page').first()).toBeVisible({
+      await expect(page.locator('.unavailable-page, [data-testid="unavailable-page"]').first().first()).toBeVisible({
         timeout: 5_000,
       });
     });

@@ -34,16 +34,16 @@ test.describe('JOURNEY-CM-003: Assign Data Stewards', () => {
       }
       expect(onCommunities).toBe(true);
       const hasContent =
-        (await page.locator('.communities-page, .communities-tab, .app-main').count()) > 0;
+        (await page.locator('.communities-page, .communities-tab, .app-main, [data-testid="app-main"]').count()) > 0;
       expect(hasContent).toBe(true);
-      await expect(page.locator('.error-display')).not.toBeVisible();
+      await expect(page.locator('.error-display, [data-testid="error-display"]').first()).not.toBeVisible();
     });
 
     test('assets list loads for steward assignment', async ({ page }) => {
       const testUser = await getTestUser();
       await loginAndNavigateToRoute(page, testUser, '/assets', {
         timeout: 90000,
-        contentSelector: '.asset-list-page, .empty-state, .error-display',
+        contentSelector: '.asset-list-page, [data-testid="asset-list-page"], .empty-state, [data-testid="empty-state"], .error-display, [data-testid="error-display"]',
       });
       expect(page.url()).toContain('/assets');
     });
@@ -56,7 +56,7 @@ test.describe('JOURNEY-CM-003: Assign Data Stewards', () => {
       await page.goto('/assets/00000000-0000-0000-0000-000000000000');
       await page.waitForLoadState('domcontentloaded');
       await assertNonExistentIdShowsError(page, {
-        detailContentSelector: '.asset-detail-page',
+        detailContentSelector: '.asset-detail-page, [data-testid="asset-detail-page"]',
         waitAfterLoad: 8000,
       });
     });
@@ -85,7 +85,7 @@ test.describe('JOURNEY-CM-003: Assign Data Stewards', () => {
       ).toBe(true);
       await loginAndNavigateToRoute(page, testUser, '/assets', {
         timeout: 90000,
-        contentSelector: '.asset-list-page, .empty-state, .error-display',
+        contentSelector: '.asset-list-page, [data-testid="asset-list-page"], .empty-state, [data-testid="empty-state"], .error-display, [data-testid="error-display"]',
       });
       expect(page.url()).toContain('/assets');
     });

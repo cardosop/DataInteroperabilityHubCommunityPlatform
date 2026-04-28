@@ -30,7 +30,7 @@ test.describe('JOURNEY-CM-004: Manage Activity Feeds', () => {
       await page.waitForLoadState('domcontentloaded');
       // intentional: probes optional UI presence via a multi-line locator chain — the branch logic below handles both rendered and missing cases deterministically; absence is a legitimate tenant/role state.
       await page
-        .locator('.asset-detail-page')
+        .locator('.asset-detail-page, [data-testid="asset-detail-page"]').first()
         .first()
         .waitFor({ state: 'visible', timeout: 30000 })
         .catch(() => null);
@@ -40,7 +40,7 @@ test.describe('JOURNEY-CM-004: Manage Activity Feeds', () => {
         return;
       }
 
-      await expect(page.locator('.error-display')).not.toBeVisible();
+      await expect(page.locator('.error-display, [data-testid="error-display"]').first()).not.toBeVisible();
 
       // CM-004 specific: check for social section with Comments tab
       const socialSection = page.locator('[data-testid="asset-social-section"]');
@@ -60,7 +60,7 @@ test.describe('JOURNEY-CM-004: Manage Activity Feeds', () => {
       await socialSection.locator('button:has-text("Comments")').click();
       await page.waitForTimeout(500);
       const hasCommentsContent =
-        (await page.locator('.comments-tab, .empty-state, .comment-item, .comments-list').count()) > 0;
+        (await page.locator('.comments-tab, .empty-state, [data-testid="empty-state"], .comment-item, .comments-list').count()) > 0;
       expect(hasCommentsContent, 'Expected comments tab content').toBe(true);
     });
   });
@@ -71,7 +71,7 @@ test.describe('JOURNEY-CM-004: Manage Activity Feeds', () => {
       await page.waitForLoadState('domcontentloaded');
       await page.waitForTimeout(5000);
       const on403 = page.url().includes('/403');
-      const onUnavailable = (await page.locator('.unavailable-page, .error-display').count()) > 0;
+      const onUnavailable = (await page.locator('.unavailable-page, [data-testid="unavailable-page"], .error-display, [data-testid="error-display"]').count()) > 0;
       const onLogin = page.url().includes('/login');
       expect(on403 || onUnavailable || onLogin).toBe(true);
     });
@@ -86,7 +86,7 @@ test.describe('JOURNEY-CM-004: Manage Activity Feeds', () => {
       await page.waitForLoadState('domcontentloaded');
       // intentional: probes optional UI presence via a multi-line locator chain — the branch logic below handles both rendered and missing cases deterministically; absence is a legitimate tenant/role state.
       await page
-        .locator('.asset-detail-page')
+        .locator('.asset-detail-page, [data-testid="asset-detail-page"]').first()
         .first()
         .waitFor({ state: 'visible', timeout: 30000 })
         .catch(() => null);
@@ -112,7 +112,7 @@ test.describe('JOURNEY-CM-004: Manage Activity Feeds', () => {
 
       // Newly created asset should show empty comment state or comment form
       const hasCommentsArea =
-        (await page.locator('.comments-tab, .empty-state, .comments-list, textarea').count()) > 0;
+        (await page.locator('.comments-tab, .empty-state, [data-testid="empty-state"], .comments-list, textarea').count()) > 0;
       expect(hasCommentsArea, 'Expected comments area content').toBe(true);
     });
   });

@@ -20,9 +20,9 @@ test.describe('Feature: Jobs', () => {
       const testUser = await getTestUser();
       await loginAndNavigateToRoute(page, testUser, '/jobs', {
         timeout: 60000,
-        contentSelector: '.job-list-page, .empty-state, h1',
+        contentSelector: '.job-list-page, .empty-state, [data-testid="empty-state"], h1',
       });
-      await assertListPageLoads(page, '.job-list-page, .empty-state', { timeout: 60000 });
+      await assertListPageLoads(page, '.job-list-page, .empty-state, [data-testid="empty-state"]', { timeout: 60000 });
     });
   });
 
@@ -35,7 +35,7 @@ test.describe('Feature: Jobs', () => {
         '/jobs/00000000-0000-0000-0000-000000000000',
         {
           timeout: 60000,
-          contentSelector: '.error-display, .job-detail-page, h1',
+          contentSelector: '.error-display, [data-testid="error-display"], .job-detail-page, h1',
         }
       );
       await assertNonExistentIdShowsError(page, {
@@ -59,11 +59,11 @@ test.describe('Feature: Jobs', () => {
       const testUser = await getTestUser();
       await loginAndNavigateToRoute(page, testUser, '/jobs', {
         timeout: 60000,
-        contentSelector: '.job-list-page, .empty-state, h1',
+        contentSelector: '.job-list-page, .empty-state, [data-testid="empty-state"], h1',
       });
-      await expect(page.locator('.error-display')).not.toBeVisible({ timeout: 5000 });
+      await expect(page.locator('.error-display, [data-testid="error-display"]').first()).not.toBeVisible({ timeout: 5000 });
       const hasContent =
-        (await page.locator('.job-list-page, .empty-state').count()) > 0;
+        (await page.locator('.job-list-page, .empty-state, [data-testid="empty-state"]').count()) > 0;
       expect(hasContent, 'Expected job list or empty state').toBe(true);
     });
   });

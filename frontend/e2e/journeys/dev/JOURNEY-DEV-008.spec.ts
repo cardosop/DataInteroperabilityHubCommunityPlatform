@@ -22,7 +22,7 @@ test.describe('JOURNEY-DEV-008: Use Plugin System', () => {
       await loginAndNavigateToRoute(page, devUser, '/developer', {
         timeout: 90000,
         contentSelector:
-          '.developer-portal-page, .developer-page, .app-main, .unavailable-page, .error-display',
+          '.developer-portal-page, .developer-page, .app-main, [data-testid="app-main"], .unavailable-page, [data-testid="unavailable-page"], .error-display, [data-testid="error-display"]',
       });
       const onDeveloper = page.url().includes('/developer');
       const onLogin = page.url().includes('/login');
@@ -33,9 +33,9 @@ test.describe('JOURNEY-DEV-008: Use Plugin System', () => {
       }
       expect(onDeveloper).toBe(true);
       const hasContent =
-        (await page.locator('.developer-portal-page, .app-main').count()) > 0;
+        (await page.locator('.developer-portal-page, .app-main, [data-testid="app-main"]').count()) > 0;
       expect(hasContent).toBe(true);
-      await expect(page.locator('.error-display')).not.toBeVisible();
+      await expect(page.locator('.error-display, [data-testid="error-display"]').first()).not.toBeVisible();
     });
   });
 
@@ -45,7 +45,7 @@ test.describe('JOURNEY-DEV-008: Use Plugin System', () => {
       await loginAndNavigateToRoute(page, devUser, '/developer', {
         timeout: 90000,
         contentSelector:
-          '.developer-portal-page, .developer-page, .app-main, .unavailable-page, .error-display',
+          '.developer-portal-page, .developer-page, .app-main, [data-testid="app-main"], .unavailable-page, [data-testid="unavailable-page"], .error-display, [data-testid="error-display"]',
       });
       const url = page.url();
       const isGated = url.includes('/403') || url.includes('/login');

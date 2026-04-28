@@ -25,7 +25,7 @@ test.describe('Phase 8 — Hardening & Journey Closure', () => {
       // Ensure app shell is visible before tests (proves we're authenticated)
       await expect(page.locator('.app-sidebar')).toBeVisible({ timeout: 15000 });
       // Wait for main content to be ready (auth + capabilities fully initialized)
-      await page.waitForSelector('.app-main', { state: 'visible', timeout: 20000 });
+      await page.waitForSelector('.app-main, [data-testid="app-main"]', { state: 'visible', timeout: 20000 });
       await page.waitForTimeout(1500);
     } catch (error) {
       // If login fails due to rate limiting, wait and retry once
@@ -36,7 +36,7 @@ test.describe('Phase 8 — Hardening & Journey Closure', () => {
         await page.waitForLoadState('domcontentloaded');
         await page.waitForTimeout(3000);
         await expect(page.locator('.app-sidebar')).toBeVisible({ timeout: 15000 });
-        await page.waitForSelector('.app-main', { state: 'visible', timeout: 20000 });
+        await page.waitForSelector('.app-main, [data-testid="app-main"]', { state: 'visible', timeout: 20000 });
         await page.waitForTimeout(1500);
       } else {
         throw error;
@@ -50,12 +50,12 @@ test.describe('Phase 8 — Hardening & Journey Closure', () => {
     // Test that lazy-loaded routes show loading spinner initially
     await navigateToRouteFromApp(page, '/assets', {
       timeout: 60000,
-      contentSelector: '.asset-list-page, .empty-state, .error-display, h1',
+      contentSelector: '.asset-list-page, [data-testid="asset-list-page"], .empty-state, [data-testid="empty-state"], .error-display, [data-testid="error-display"], h1',
     });
 
     // Page should eventually load (either content or error)
     const finalContent = await page
-      .locator('.asset-list-page, .empty-state, .error-display, h1')
+      .locator('.asset-list-page, [data-testid="asset-list-page"], .empty-state, [data-testid="empty-state"], .error-display, [data-testid="error-display"], h1')
       .count();
     expect(finalContent).toBeGreaterThan(0);
   });
@@ -63,7 +63,7 @@ test.describe('Phase 8 — Hardening & Journey Closure', () => {
   test('10.2.1 — Accessibility: Skip link is present and functional', async ({ page }) => {
     await navigateToRouteFromApp(page, '/', {
       timeout: 60000,
-      contentSelector: 'h1, main, .app-main',
+      contentSelector: 'h1, main, .app-main, [data-testid="app-main"]',
     });
 
     // Check for skip link
@@ -91,7 +91,7 @@ test.describe('Phase 8 — Hardening & Journey Closure', () => {
   }) => {
     await navigateToRouteFromApp(page, '/', {
       timeout: 60000,
-      contentSelector: 'h1, main, .app-main',
+      contentSelector: 'h1, main, .app-main, [data-testid="app-main"]',
     });
 
     // Check for main landmark
@@ -99,7 +99,7 @@ test.describe('Phase 8 — Hardening & Journey Closure', () => {
     await expect(main).toBeVisible({ timeout: 5000 });
 
     // Check for proper heading hierarchy
-    const h1 = page.locator('main h1, .app-main h1');
+    const h1 = page.locator('main h1, .app-main, [data-testid="app-main"] h1');
     const h1Count = await h1.count();
     expect(h1Count).toBeGreaterThan(0);
   });
@@ -107,11 +107,11 @@ test.describe('Phase 8 — Hardening & Journey Closure', () => {
   test('10.2.3 — Accessibility: Table rows are keyboard accessible', async ({ page }) => {
     await navigateToRouteFromApp(page, '/assets', {
       timeout: 60000,
-      contentSelector: '.asset-list-page, .empty-state, .error-display, h1',
+      contentSelector: '.asset-list-page, [data-testid="asset-list-page"], .empty-state, [data-testid="empty-state"], .error-display, [data-testid="error-display"], h1',
     });
 
     // Wait for table or empty/error state (loading may take a moment)
-    await page.waitForSelector('.asset-list-table table, .empty-state, .error-display', {
+    await page.waitForSelector('.asset-list-table table, .empty-state, [data-testid="empty-state"], .error-display, [data-testid="error-display"]', {
       timeout: 20000,
     });
 
@@ -152,13 +152,13 @@ test.describe('Phase 8 — Hardening & Journey Closure', () => {
       }
     } else {
       // No table (empty state or error) - this is acceptable
-      const emptyState = page.locator('.empty-state');
-      const errorDisplay = page.locator('.error-display');
+      const emptyState = page.locator('.empty-state, [data-testid="empty-state"]').first();
+      const errorDisplay = page.locator('.error-display, [data-testid="error-display"]').first();
       const emptyCount = await emptyState.count();
       const errorCount = await errorDisplay.count();
       expect(
         emptyCount + errorCount,
-        `Expected .empty-state or .error-display; found empty=${emptyCount} error=${errorCount}`
+        `Expected .empty-state, [data-testid="empty-state"] or .error-display, [data-testid="error-display"]; found empty=${emptyCount} error=${errorCount}`
       ).toBeGreaterThan(0);
     }
   });
@@ -166,11 +166,11 @@ test.describe('Phase 8 — Hardening & Journey Closure', () => {
   test('10.2.4 — Accessibility: Forms have proper labels and associations', async ({ page }) => {
     await navigateToRouteFromApp(page, '/assets', {
       timeout: 60000,
-      contentSelector: '.asset-list-page, .empty-state, .error-display',
+      contentSelector: '.asset-list-page, [data-testid="asset-list-page"], .empty-state, [data-testid="empty-state"], .error-display, [data-testid="error-display"]',
     });
 
     // Wait for page to load
-    await page.waitForSelector('.asset-list-page, .empty-state, .error-display', {
+    await page.waitForSelector('.asset-list-page, [data-testid="asset-list-page"], .empty-state, [data-testid="empty-state"], .error-display, [data-testid="error-display"]', {
       timeout: 15000,
     });
 
@@ -206,7 +206,7 @@ test.describe('Phase 8 — Hardening & Journey Closure', () => {
     } else {
       // No search input found (empty state or different layout) - this is acceptable
       const hasContent =
-        (await page.locator('.asset-list-page, .empty-state, .error-display').count()) > 0;
+        (await page.locator('.asset-list-page, [data-testid="asset-list-page"], .empty-state, [data-testid="empty-state"], .error-display, [data-testid="error-display"]').count()) > 0;
       expect(hasContent).toBe(true) /* acceptable states */;
     }
   });
@@ -217,18 +217,18 @@ test.describe('Phase 8 — Hardening & Journey Closure', () => {
     const testUser = await getTestUser();
     await loginAndNavigateToRoute(page, testUser, '/assets/invalid-id-12345', {
       timeout: 60000,
-      contentSelector: '.error-display, .asset-detail-page, .asset-list-page, h1',
+      contentSelector: '.error-display, [data-testid="error-display"], .asset-detail-page, [data-testid="asset-detail-page"], .asset-list-page, [data-testid="asset-list-page"], h1',
       acceptRedirectToLogin: true,
     });
     if (page.url().includes('/login')) return;
 
     // Wait for page to load (may show error, redirect, or detail page)
-    await page.waitForSelector('.error-display, .asset-detail-page, .asset-list-page, h1', {
+    await page.waitForSelector('.error-display, [data-testid="error-display"], .asset-detail-page, [data-testid="asset-detail-page"], .asset-list-page, [data-testid="asset-list-page"], h1', {
       timeout: 10000,
     });
 
     // Check for error display
-    const errorDisplay = page.locator('.error-display');
+    const errorDisplay = page.locator('.error-display, [data-testid="error-display"]').first();
     const errorCount = await errorDisplay.count();
 
     if (errorCount > 0) {
@@ -277,7 +277,7 @@ test.describe('Phase 8 — Hardening & Journey Closure', () => {
       '/assets/00000000-0000-0000-0000-000000000000',
       {
         timeout: 60000,
-        contentSelector: '.error-display, .asset-detail-page, .unavailable-page, h1',
+        contentSelector: '.error-display, [data-testid="error-display"], .asset-detail-page, [data-testid="asset-detail-page"], .unavailable-page, [data-testid="unavailable-page"], h1',
         acceptRedirectToLogin: true,
       }
     );
@@ -289,7 +289,7 @@ test.describe('Phase 8 — Hardening & Journey Closure', () => {
 
     const hasUnhandledCrash =
       (await page.locator('text=/Something went wrong.*refresh/i').count()) > 0 &&
-      (await page.locator('.error-display').count()) === 0;
+      (await page.locator('.error-display, [data-testid="error-display"]').first().count()) === 0;
     expect(
       hasUnhandledCrash,
       'Unhandled crash message shown without ErrorBoundary wrapping'
@@ -297,7 +297,7 @@ test.describe('Phase 8 — Hardening & Journey Closure', () => {
 
     // Page must render something meaningful — error display, redirect, or content
     const hasHandledState =
-      (await page.locator('.error-display, .unavailable-page, .asset-detail-page, h1').count()) > 0;
+      (await page.locator('.error-display, [data-testid="error-display"], .unavailable-page, [data-testid="unavailable-page"], .asset-detail-page, [data-testid="asset-detail-page"], h1').count()) > 0;
     expect(hasHandledState, 'Expected a handled UI state (error-display, unavailable, or content)').toBe(true);
   });
 
@@ -307,17 +307,17 @@ test.describe('Phase 8 — Hardening & Journey Closure', () => {
     const testUser = await getTestUser();
     await loginAndNavigateToRoute(page, testUser, '/assets/invalid-id-12345', {
       timeout: 60000,
-      contentSelector: '.error-display, .asset-detail-page, .asset-list-page, h1',
+      contentSelector: '.error-display, [data-testid="error-display"], .asset-detail-page, [data-testid="asset-detail-page"], .asset-list-page, [data-testid="asset-list-page"], h1',
       acceptRedirectToLogin: true,
     });
     if (page.url().includes('/login')) return;
 
     // Wait for page to load (may show error or redirect)
-    await page.waitForSelector('.error-display, .asset-detail-page, .asset-list-page, h1', {
+    await page.waitForSelector('.error-display, [data-testid="error-display"], .asset-detail-page, [data-testid="asset-detail-page"], .asset-list-page, [data-testid="asset-list-page"], h1', {
       timeout: 10000,
     });
 
-    const errorDisplay = page.locator('.error-display');
+    const errorDisplay = page.locator('.error-display, [data-testid="error-display"]').first();
     const errorCount = await errorDisplay.count();
 
     if (errorCount > 0) {
@@ -331,16 +331,16 @@ test.describe('Phase 8 — Hardening & Journey Closure', () => {
       if (!hasRequestId) {
         // Correlation ID is expected but may not be present for all error types — warn, don't fail
         console.warn(
-          '⚠️ 10.4.2: .error-display found but no correlation/request ID in error text. ' +
+          '⚠️ 10.4.2: .error-display, [data-testid="error-display"] found but no correlation/request ID in error text. ' +
           'ErrorDisplay component should include request_id for debuggability.'
         );
       }
       // The error must be handled (ErrorDisplay rendered) — that's the contract
-      expect(errorCount, 'Expected .error-display to be visible for an invalid asset').toBeGreaterThan(0);
+      expect(errorCount, 'Expected .error-display, [data-testid="error-display"] to be visible for an invalid asset').toBeGreaterThan(0);
     } else {
       // No error displayed (page redirected or handled differently) - this is acceptable
       const hasContent =
-        (await page.locator('.asset-detail-page, .asset-list-page, h1').count()) > 0;
+        (await page.locator('.asset-detail-page, [data-testid="asset-detail-page"], .asset-list-page, [data-testid="asset-list-page"], h1').count()) > 0;
       expect(hasContent).toBe(true) /* acceptable states */;
     }
   });
@@ -350,11 +350,11 @@ test.describe('Phase 8 — Hardening & Journey Closure', () => {
   }) => {
     await navigateToRouteFromApp(page, '/', {
       timeout: 60000,
-      contentSelector: 'main, .app-main, [data-testid="home-page"], .home-page',
+      contentSelector: 'main, .app-main, [data-testid="app-main"], [data-testid="home-page"], .home-page',
     });
 
     // Wait for the app to fully initialise so PerformanceObserver has time to fire
-    await page.waitForSelector('main, .app-main, [data-testid="home-page"]', {
+    await page.waitForSelector('main, .app-main, [data-testid="app-main"], [data-testid="home-page"]', {
       state: 'visible',
       timeout: 15000,
     });
@@ -381,15 +381,15 @@ test.describe('Phase 8 — Hardening & Journey Closure', () => {
   test('10.1.2 — Performance: Lists use pagination efficiently', async ({ page }) => {
     await navigateToRouteFromApp(page, '/assets', {
       timeout: 60000,
-      contentSelector: '.asset-list-page, .empty-state, .error-display',
+      contentSelector: '.asset-list-page, [data-testid="asset-list-page"], .empty-state, [data-testid="empty-state"], .error-display, [data-testid="error-display"]',
     });
 
     // Wait for content to load
-    await page.waitForSelector('.asset-list-page, .empty-state, .error-display', {
+    await page.waitForSelector('.asset-list-page, [data-testid="asset-list-page"], .empty-state, [data-testid="empty-state"], .error-display, [data-testid="error-display"]', {
       timeout: 15000,
     });
 
-    const listPage = page.locator('.asset-list-page');
+    const listPage = page.locator('.asset-list-page, [data-testid="asset-list-page"]').first();
     const listPageCount = await listPage.count();
 
     if (listPageCount > 0) {
@@ -402,7 +402,7 @@ test.describe('Phase 8 — Hardening & Journey Closure', () => {
       expect(rowCount).toBeLessThanOrEqual(50);
     } else {
       // Empty state or error - this is acceptable
-      const hasContent = (await page.locator('.empty-state, .error-display').count()) > 0;
+      const hasContent = (await page.locator('.empty-state, [data-testid="empty-state"], .error-display, [data-testid="error-display"]').count()) > 0;
       expect(hasContent).toBe(true) /* acceptable states */;
     }
   });
@@ -410,10 +410,10 @@ test.describe('Phase 8 — Hardening & Journey Closure', () => {
   test('10.2.5 — Accessibility: Keyboard navigation works for table rows', async ({ page }) => {
     await navigateToRouteFromApp(page, '/assets', {
       timeout: 60000,
-      contentSelector: '.asset-list-table table, .empty-state, .error-display',
+      contentSelector: '.asset-list-table table, .empty-state, [data-testid="empty-state"], .error-display, [data-testid="error-display"]',
     });
 
-    await page.waitForSelector('.asset-list-table table, .empty-state, .error-display', {
+    await page.waitForSelector('.asset-list-table table, .empty-state, [data-testid="empty-state"], .error-display, [data-testid="error-display"]', {
       timeout: 20000,
     });
 
@@ -453,7 +453,7 @@ test.describe('Phase 8 — Hardening & Journey Closure', () => {
       }
     } else {
       // No table (empty state or error) - this is acceptable
-      const hasContent = (await page.locator('.empty-state, .error-display').count()) > 0;
+      const hasContent = (await page.locator('.empty-state, [data-testid="empty-state"], .error-display, [data-testid="error-display"]').count()) > 0;
       expect(hasContent).toBe(true) /* acceptable states */;
     }
   });
@@ -471,7 +471,7 @@ test.describe('Phase 8 — Hardening & Journey Closure', () => {
       await navigateToRouteFromApp(page, route, {
         timeout: 15000,
         contentSelector:
-          'main, .app-main, h1, .empty-state, .error-display, .loading-spinner, [data-testid="home-page"]',
+          'main, .app-main, [data-testid="app-main"], h1, .empty-state, [data-testid="empty-state"], .error-display, [data-testid="error-display"], .loading-spinner, [data-testid="home-page"]',
       });
 
       // Page should load without crashing
@@ -482,7 +482,7 @@ test.describe('Phase 8 — Hardening & Journey Closure', () => {
       const hasContent =
         (await page
           .locator(
-            'main, .app-main, h1, .empty-state, .error-display, .loading-spinner, [data-testid="home-page"]'
+            'main, .app-main, [data-testid="app-main"], h1, .empty-state, [data-testid="empty-state"], .error-display, [data-testid="error-display"], .loading-spinner, [data-testid="home-page"]'
           )
           .count()) > 0;
       expect(hasContent).toBe(true) /* acceptable states */;
@@ -495,7 +495,7 @@ test.describe('Phase 8 — Hardening & Journey Closure', () => {
     const adminUser = await getTenantAdminUser();
     await loginAndNavigateToRoute(page, adminUser, '/admin', {
       timeout: 15000,
-      contentSelector: 'main, h1, .empty-state, [data-testid="admin-page"]',
+      contentSelector: 'main, h1, .empty-state, [data-testid="empty-state"], .admin-page, [data-testid="admin-page"]',
       acceptRedirectToLogin: true,
     });
     if (!page.url().includes('/login')) {
@@ -503,7 +503,7 @@ test.describe('Phase 8 — Hardening & Journey Closure', () => {
       await expect(body).toBeVisible({ timeout: 15000 });
       // Admin or 403: role-gated; 403 page has "403 - Forbidden"
       const hasAdminContent =
-        (await page.locator('[data-testid="admin-page"], .empty-state, main h1').count()) > 0 ||
+        (await page.locator('.admin-page, [data-testid="admin-page"], .empty-state, [data-testid="empty-state"], main h1').count()) > 0 ||
         (await page.getByText(/403|forbidden/i).count()) > 0;
       expect(hasAdminContent).toBe(true) /* acceptable states */;
     }

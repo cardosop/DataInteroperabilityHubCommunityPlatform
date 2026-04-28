@@ -21,7 +21,7 @@ import { test, expect } from '@playwright/test';
 import { loginAsPersona, getPlatformAdminUser } from '../fixtures/auth';
 import { waitForAppMainReady, waitForRoleGuardResolved } from '../fixtures/helpers';
 
-test.describe('Persona RBAC: Platform Admin', () => {
+test.describe('Persona RBAC: Platform Admin @critical', () => {
   test.setTimeout(120000);
 
   // Note: PLATFORM_ADMIN role assignment is performed by the Django management
@@ -36,8 +36,8 @@ test.describe('Persona RBAC: Platform Admin', () => {
     await waitForAppMainReady(page);
     const url = page.url();
     expect(url.includes('/admin') || url.includes('/settings')).toBe(true);
-    await expect(page.locator('.app-main')).toBeVisible();
-    await expect(page.locator('.error-display')).not.toBeVisible({ timeout: 2000 });
+    await expect(page.locator('.app-main, [data-testid="app-main"]').first()).toBeVisible();
+    await expect(page.locator('.error-display, [data-testid="error-display"]').first()).not.toBeVisible({ timeout: 2000 });
   });
 
   test('PA can access /assets', async ({ page }) => {
@@ -45,8 +45,8 @@ test.describe('Persona RBAC: Platform Admin', () => {
     await page.goto('/assets');
     await waitForAppMainReady(page);
     expect(page.url()).toContain('/assets');
-    await expect(page.locator('.app-main')).toBeVisible();
-    await expect(page.locator('.error-display')).not.toBeVisible({ timeout: 2000 });
+    await expect(page.locator('.app-main, [data-testid="app-main"]').first()).toBeVisible();
+    await expect(page.locator('.error-display, [data-testid="error-display"]').first()).not.toBeVisible({ timeout: 2000 });
   });
 
   test('PA can access /audit', async ({ page }) => {
@@ -55,8 +55,8 @@ test.describe('Persona RBAC: Platform Admin', () => {
     await waitForAppMainReady(page);
     // PA should have full access — 403 means RBAC misconfiguration
     expect(page.url()).toContain('/audit');
-    await expect(page.locator('.app-main')).toBeVisible();
-    await expect(page.locator('.error-display')).not.toBeVisible({ timeout: 2000 });
+    await expect(page.locator('.app-main, [data-testid="app-main"]').first()).toBeVisible();
+    await expect(page.locator('.error-display, [data-testid="error-display"]').first()).not.toBeVisible({ timeout: 2000 });
   });
 
   test('PA can access /settings/tenant (full-privilege role)', async ({ page }) => {
@@ -64,7 +64,7 @@ test.describe('Persona RBAC: Platform Admin', () => {
     await page.goto('/settings/tenant');
     await waitForAppMainReady(page);
     expect(page.url()).toContain('/settings');
-    await expect(page.locator('.app-main')).toBeVisible();
-    await expect(page.locator('.error-display')).not.toBeVisible({ timeout: 2000 });
+    await expect(page.locator('.app-main, [data-testid="app-main"]').first()).toBeVisible();
+    await expect(page.locator('.error-display, [data-testid="error-display"]').first()).not.toBeVisible({ timeout: 2000 });
   });
 });

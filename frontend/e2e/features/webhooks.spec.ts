@@ -20,9 +20,9 @@ test.describe('Feature: Webhooks', () => {
       const testUser = await getTestUser();
       await loginAndNavigateToRoute(page, testUser, '/webhooks', {
         timeout: 60000,
-        contentSelector: '.webhook-list-page, .empty-state, h1',
+        contentSelector: '.webhook-list-page, .empty-state, [data-testid="empty-state"], h1',
       });
-      await assertListPageLoads(page, '.webhook-list-page, .empty-state', { timeout: 60000 });
+      await assertListPageLoads(page, '.webhook-list-page, .empty-state, [data-testid="empty-state"]', { timeout: 60000 });
     });
   });
 
@@ -43,7 +43,7 @@ test.describe('Feature: Webhooks', () => {
 
       await loginAndNavigateToRoute(page, testUser, `/webhooks/${NIL_UUID}`, {
         timeout: 60000,
-        contentSelector: '.error-display, .webhook-detail-page, h1',
+        contentSelector: '.error-display, [data-testid="error-display"], .webhook-detail-page, h1',
       });
 
       // Wait for the API response to settle before asserting
@@ -53,7 +53,7 @@ test.describe('Feature: Webhooks', () => {
 
       // Wait for terminal UI state after query settles
       await page
-        .locator('.error-display, .webhook-detail-page')
+        .locator('.webhook-detail-page, .error-display, [data-testid="error-display"]')
         .first()
         .waitFor({ state: 'visible', timeout: 15_000 })
         .catch(() => {
@@ -81,11 +81,11 @@ test.describe('Feature: Webhooks', () => {
       const testUser = await getTestUser();
       await loginAndNavigateToRoute(page, testUser, '/webhooks', {
         timeout: 60000,
-        contentSelector: '.webhook-list-page, .empty-state, h1',
+        contentSelector: '.webhook-list-page, .empty-state, [data-testid="empty-state"], h1',
       });
-      await expect(page.locator('.error-display')).not.toBeVisible({ timeout: 5000 });
+      await expect(page.locator('.error-display, [data-testid="error-display"]').first()).not.toBeVisible({ timeout: 5000 });
       const hasContent =
-        (await page.locator('.webhook-list-page, .empty-state').count()) > 0;
+        (await page.locator('.webhook-list-page, .empty-state, [data-testid="empty-state"]').count()) > 0;
       expect(hasContent, 'Expected webhook list or empty state (no crash)').toBe(true);
     });
   });

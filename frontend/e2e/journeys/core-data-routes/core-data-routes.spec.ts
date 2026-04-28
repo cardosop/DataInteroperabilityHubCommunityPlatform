@@ -48,7 +48,7 @@ test.describe('Core data routes — Assets and Datasets', () => {
         ).catch(() => null);
 
         const { ok } = await navigateOrSkip(page, '/assets', {
-          contentSelector: '.asset-list-page, .empty-state',
+          contentSelector: '.asset-list-page, [data-testid="asset-list-page"], .empty-state, [data-testid="empty-state"]',
 
         });
         if (!ok) return;
@@ -61,17 +61,17 @@ test.describe('Core data routes — Assets and Datasets', () => {
           expect(status).toBeLessThan(300);
         }
 
-        await assertListPageLoads(page, '.asset-list-page, .empty-state');
+        await assertListPageLoads(page, '.asset-list-page, [data-testid="asset-list-page"], .empty-state, [data-testid="empty-state"]');
       });
 
       test('asset create page loads', async ({ page }) => {
         const { ok } = await navigateOrSkip(page, '/assets/create', {
-          contentSelector: '.asset-create-page',
+          contentSelector: '.asset-create-page, [data-testid="asset-create-page"]',
         });
         if (!ok) return;
 
         expect(page.url()).toContain('/assets/create');
-        await expect(page.locator('.asset-create-page')).toBeVisible({ timeout: 10000 });
+        await expect(page.locator('.asset-create-page, [data-testid="asset-create-page"]').first()).toBeVisible({ timeout: 10000 });
       });
     });
 
@@ -91,7 +91,7 @@ test.describe('Core data routes — Assets and Datasets', () => {
           await waitForAppMainReady(page, {
             timeout: 60000,
             acceptRedirectToLogin: true,
-            contentSelector: '.error-display, .error-display-title, .asset-detail-page',
+            contentSelector: '.error-display, [data-testid="error-display"], .error-display-title, [data-testid="error-display-title"], .asset-detail-page, [data-testid="asset-detail-page"]',
           });
         } catch (_err) {
           if (page.url().includes('/login')) {
@@ -108,10 +108,10 @@ test.describe('Core data routes — Assets and Datasets', () => {
 
         // Wait for error display — React Query retries 404s before showing error (up to 30s)
         // intentional: core-data-routes tests page-level navigation across the catalog; per-route content checks tolerate the well-known auth-race redirects via best-effort .catch — primary assertion is the URL/heading content check.
-        await page.locator('.error-display, .error-display-title, .asset-detail-page')
+        await page.locator('.error-display, [data-testid="error-display"], .error-display-title, [data-testid="error-display-title"], .asset-detail-page, [data-testid="asset-detail-page"]')
           .first().waitFor({ state: 'visible', timeout: 30000 }).catch(() => null);
 
-        const hasErrorDisplay = (await page.locator('.error-display, .error-display-title').count()) > 0;
+        const hasErrorDisplay = (await page.locator('.error-display, [data-testid="error-display"], .error-display-title, [data-testid="error-display-title"]').count()) > 0;
         if (!hasErrorDisplay) {
           if (page.url().includes('/login')) {
             test.skip(true, 'Redirected to login during error wait');
@@ -122,17 +122,17 @@ test.describe('Core data routes — Assets and Datasets', () => {
             test.skip(true, 'Backend too slow — page still loading skeleton after 30s; error-display not yet rendered');
             return;
           }
-          const hasContent = (await page.locator('.asset-detail-page').count()) > 0;
+          const hasContent = (await page.locator('.asset-detail-page, [data-testid="asset-detail-page"]').first().count()) > 0;
           if (hasContent) return;
           throw new Error(
-            `Asset detail: neither .error-display nor .asset-detail-page appeared within 30s. URL: ${page.url()}`,
+            `Asset detail: neither .error-display, [data-testid="error-display"] nor .asset-detail-page, [data-testid="asset-detail-page"] appeared within 30s. URL: ${page.url()}`,
           );
         }
-        expect(hasErrorDisplay, 'Expected .error-display for non-existent resource').toBe(true);
+        expect(hasErrorDisplay, 'Expected .error-display, [data-testid="error-display"] for non-existent resource').toBe(true);
 
         // H3: warn when the error is NOT a 404 (timeout, network error, etc.)
         // intentional: core-data-routes tests page-level navigation across the catalog; per-route content checks tolerate the well-known auth-race redirects via best-effort .catch — primary assertion is the URL/heading content check.
-        const errText = await page.locator('.error-display').first().textContent().catch(() => '');
+        const errText = await page.locator('.error-display, [data-testid="error-display"]').first().first().textContent().catch(() => '');
         if (!/not found|404|matches the given query/i.test(errText ?? '')) {
           console.warn(`[WARN] Non-existent asset shows non-404 error: "${errText?.slice(0, 100)}". Backend may be slow.`);
         }
@@ -153,7 +153,7 @@ test.describe('Core data routes — Assets and Datasets', () => {
         ).catch(() => null);
 
         const { ok } = await navigateOrSkip(page, '/datasets', {
-          contentSelector: '.dataset-list-page, .empty-state',
+          contentSelector: '.dataset-list-page, [data-testid="dataset-list-page"], .empty-state, [data-testid="empty-state"]',
 
         });
         if (!ok) return;
@@ -166,17 +166,17 @@ test.describe('Core data routes — Assets and Datasets', () => {
           expect(status).toBeLessThan(300);
         }
 
-        await assertListPageLoads(page, '.dataset-list-page, .empty-state');
+        await assertListPageLoads(page, '.dataset-list-page, [data-testid="dataset-list-page"], .empty-state, [data-testid="empty-state"]');
       });
 
       test('dataset create page loads', async ({ page }) => {
         const { ok } = await navigateOrSkip(page, '/datasets/create', {
-          contentSelector: '.dataset-create-page',
+          contentSelector: '.dataset-create-page, [data-testid="dataset-create-page"]',
         });
         if (!ok) return;
 
         expect(page.url()).toContain('/datasets/create');
-        await expect(page.locator('.dataset-create-page')).toBeVisible({ timeout: 10000 });
+        await expect(page.locator('.dataset-create-page, [data-testid="dataset-create-page"]').first()).toBeVisible({ timeout: 10000 });
       });
     });
 
@@ -195,7 +195,7 @@ test.describe('Core data routes — Assets and Datasets', () => {
           await waitForAppMainReady(page, {
             timeout: 60000,
             acceptRedirectToLogin: true,
-            contentSelector: '.error-display, .error-display-title, .dataset-detail-page',
+            contentSelector: '.error-display, [data-testid="error-display"], .error-display-title, [data-testid="error-display-title"], .dataset-detail-page, [data-testid="dataset-detail-page"]',
           });
         } catch (_err) {
           if (page.url().includes('/login')) {
@@ -212,10 +212,10 @@ test.describe('Core data routes — Assets and Datasets', () => {
 
         // Wait for error display — React Query retries 404s before showing error (up to 30s)
         // intentional: core-data-routes tests page-level navigation across the catalog; per-route content checks tolerate the well-known auth-race redirects via best-effort .catch — primary assertion is the URL/heading content check.
-        await page.locator('.error-display, .error-display-title, .dataset-detail-page')
+        await page.locator('.error-display, [data-testid="error-display"], .error-display-title, [data-testid="error-display-title"], .dataset-detail-page, [data-testid="dataset-detail-page"]')
           .first().waitFor({ state: 'visible', timeout: 30000 }).catch(() => null);
 
-        const hasErrorDisplay = (await page.locator('.error-display, .error-display-title').count()) > 0;
+        const hasErrorDisplay = (await page.locator('.error-display, [data-testid="error-display"], .error-display-title, [data-testid="error-display-title"]').count()) > 0;
         if (!hasErrorDisplay) {
           if (page.url().includes('/login')) {
             test.skip(true, 'Redirected to login during error wait');
@@ -226,17 +226,17 @@ test.describe('Core data routes — Assets and Datasets', () => {
             test.skip(true, 'Backend too slow — page still loading skeleton after 30s; error-display not yet rendered');
             return;
           }
-          const hasContent = (await page.locator('.dataset-detail-page').count()) > 0;
+          const hasContent = (await page.locator('.dataset-detail-page, [data-testid="dataset-detail-page"]').first().count()) > 0;
           if (hasContent) return;
           throw new Error(
-            `Dataset detail: neither .error-display nor .dataset-detail-page appeared within 30s. URL: ${page.url()}`,
+            `Dataset detail: neither .error-display, [data-testid="error-display"] nor .dataset-detail-page, [data-testid="dataset-detail-page"] appeared within 30s. URL: ${page.url()}`,
           );
         }
-        expect(hasErrorDisplay, 'Expected .error-display for non-existent resource').toBe(true);
+        expect(hasErrorDisplay, 'Expected .error-display, [data-testid="error-display"] for non-existent resource').toBe(true);
 
         // H3: warn when the error is NOT a 404 (timeout, network error, etc.)
         // intentional: core-data-routes tests page-level navigation across the catalog; per-route content checks tolerate the well-known auth-race redirects via best-effort .catch — primary assertion is the URL/heading content check.
-        const errText = await page.locator('.error-display').first().textContent().catch(() => '');
+        const errText = await page.locator('.error-display, [data-testid="error-display"]').first().first().textContent().catch(() => '');
         if (!/not found|404|matches the given query/i.test(errText ?? '')) {
           console.warn(`[WARN] Non-existent dataset shows non-404 error: "${errText?.slice(0, 100)}". Backend may be slow.`);
         }

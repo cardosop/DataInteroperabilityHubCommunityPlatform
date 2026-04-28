@@ -22,7 +22,7 @@ async function getSocialTestUser() {
   }
 }
 
-test.describe('JOURNEY-DPO-011: Assign Data Stewards', () => {
+test.describe('JOURNEY-DPO-011: Assign Data Stewards @critical', () => {
   test.setTimeout(90000);
 
   test.describe('Success', () => {
@@ -35,7 +35,7 @@ test.describe('JOURNEY-DPO-011: Assign Data Stewards', () => {
       await loginAndNavigateToRoute(page, testUser, '/governance', {
         timeout: 60000,
         contentSelector:
-          '.access-request-list-page, .governance-page, .empty-state, .error-display, .unavailable-page',
+          '.access-request-list-page, .governance-page, .empty-state, [data-testid="empty-state"], .error-display, [data-testid="error-display"], .unavailable-page, [data-testid="unavailable-page"]',
         acceptRedirectToLogin: false,
       });
       await page.waitForTimeout(1000);
@@ -52,7 +52,7 @@ test.describe('JOURNEY-DPO-011: Assign Data Stewards', () => {
 
       if (on403 || onUnavailable) {
         await expect(
-          page.locator('.unavailable-page, .error-display, [role="alert"]').first()
+          page.locator('.unavailable-page, [data-testid="unavailable-page"], .error-display, [data-testid="error-display"], [role="alert"]').first()
         ).toBeVisible({ timeout: 15000 });
         return;
       }
@@ -60,11 +60,11 @@ test.describe('JOURNEY-DPO-011: Assign Data Stewards', () => {
       const hasContent =
         (await page
           .locator(
-            '.access-request-list-page, .governance-page, .empty-state'
+            '.access-request-list-page, .governance-page, .empty-state, [data-testid="empty-state"]'
           )
           .count()) > 0;
       expect(hasContent).toBe(true);
-      await expect(page.locator('.error-display')).not.toBeVisible();
+      await expect(page.locator('.error-display, [data-testid="error-display"]').first()).not.toBeVisible();
     });
   });
 
@@ -77,7 +77,7 @@ test.describe('JOURNEY-DPO-011: Assign Data Stewards', () => {
       await loginAndNavigateToRoute(page, testUser, '/governance', {
         timeout: 60000,
         contentSelector:
-          '.governance-access-request-list-page, .governance-page, .governance-create-page, .error-display, .empty-state',
+          '.governance-access-request-list-page, .governance-page, .governance-create-page, .error-display, [data-testid="error-display"], .empty-state, [data-testid="empty-state"]',
         acceptRedirectToLogin: false,
       });
       await page.waitForTimeout(1500);
@@ -116,7 +116,7 @@ test.describe('JOURNEY-DPO-011: Assign Data Stewards', () => {
       const testUser = await getTestUser();
       await loginAndNavigateToRoute(page, testUser, '/communities', {
         timeout: 60000,
-        contentSelector: '.communities-page, .communities-tab, .unavailable-page, .error-display',
+        contentSelector: '.communities-page, .communities-tab, .unavailable-page, [data-testid="unavailable-page"], .error-display, [data-testid="error-display"]',
         acceptRedirectToLogin: false,
       });
       await waitForLoadingComplete(page, { timeout: 30000 });
@@ -127,7 +127,7 @@ test.describe('JOURNEY-DPO-011: Assign Data Stewards', () => {
 
       // Must render something meaningful — not a blank or crash
       const hasContent =
-        (await page.locator('.communities-page, .communities-tab, .unavailable-page').count()) > 0 ||
+        (await page.locator('.communities-page, .communities-tab, .unavailable-page, [data-testid="unavailable-page"]').count()) > 0 ||
         page.url().includes('/403');
       expect(hasContent).toBe(true) /* acceptable states */;
     });

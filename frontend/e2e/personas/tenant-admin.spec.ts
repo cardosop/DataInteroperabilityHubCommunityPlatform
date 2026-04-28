@@ -20,7 +20,7 @@ import { test, expect } from '@playwright/test';
 import { waitForAppMainReady, waitForRoleGuardResolved } from '../fixtures/helpers';
 import { loginAsPersona, getTenantAdminUser } from '../fixtures/auth';
 
-test.describe('Persona RBAC: Tenant Admin', () => {
+test.describe('Persona RBAC: Tenant Admin @critical', () => {
   test.setTimeout(120000);
 
   // Note: TENANT_ADMIN role assignment is performed by the Django management
@@ -35,8 +35,8 @@ test.describe('Persona RBAC: Tenant Admin', () => {
     await waitForAppMainReady(page);
     const url = page.url();
     expect(url.includes('/admin') || url.includes('/settings')).toBe(true);
-    await expect(page.locator('.app-main')).toBeVisible();
-    await expect(page.locator('.error-display')).not.toBeVisible({ timeout: 2000 });
+    await expect(page.locator('.app-main, [data-testid="app-main"]').first()).toBeVisible();
+    await expect(page.locator('.error-display, [data-testid="error-display"]').first()).not.toBeVisible({ timeout: 2000 });
   });
 
   test('TA can access /settings/tenant', async ({ page }) => {
@@ -44,8 +44,8 @@ test.describe('Persona RBAC: Tenant Admin', () => {
     await page.goto('/settings/tenant');
     await waitForAppMainReady(page);
     expect(page.url()).toContain('/settings');
-    await expect(page.locator('.app-main')).toBeVisible();
-    await expect(page.locator('.error-display')).not.toBeVisible({ timeout: 2000 });
+    await expect(page.locator('.app-main, [data-testid="app-main"]').first()).toBeVisible();
+    await expect(page.locator('.error-display, [data-testid="error-display"]').first()).not.toBeVisible({ timeout: 2000 });
   });
 
   test('TA cannot access /audit (auditor-only route)', async ({ page }) => {

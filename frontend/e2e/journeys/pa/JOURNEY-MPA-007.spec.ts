@@ -30,9 +30,9 @@ test.describe('JOURNEY-MPA-007: Monitor Data Mesh Topology', () => {
       }
       expect(onTopology).toBe(true);
       const hasContent =
-        (await page.locator('.topology-visualization, .app-main, .mesh-domain-list-page').count()) > 0;
+        (await page.locator('.topology-visualization, .app-main, [data-testid="app-main"], .mesh-domain-list-page').count()) > 0;
       expect(hasContent).toBe(true);
-      await expect(page.locator('.error-display')).not.toBeVisible();
+      await expect(page.locator('.error-display, [data-testid="error-display"]').first()).not.toBeVisible();
     });
   });
 

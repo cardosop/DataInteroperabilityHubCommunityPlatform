@@ -39,7 +39,7 @@ test.describe('JOURNEY-DPO-018: Edit Dataset and Link to Asset', () => {
       try {
         await loginAndNavigateToRoute(page, testUser, `/datasets/${datasetId}`, {
           timeout: 60000,
-          contentSelector: '.dataset-detail-page, .error-display',
+          contentSelector: '.dataset-detail-page, [data-testid="dataset-detail-page"], .error-display, [data-testid="error-display"]',
         });
       } catch (navErr) {
         const msg = String(navErr);
@@ -118,7 +118,7 @@ test.describe('JOURNEY-DPO-018: Edit Dataset and Link to Asset', () => {
 
       // Must be back on dataset detail with no error
       const onDetail = page.url().includes(`/datasets/${datasetId}`);
-      const noError = (await page.locator('.error-display').count()) === 0;
+      const noError = (await page.locator('.error-display, [data-testid="error-display"]').first().count()) === 0;
       expect(onDetail && noError).toBe(true) /* acceptable states */;
 
       // Verify the asset_id was actually persisted to the backend (not just optimistic UI)
@@ -161,14 +161,14 @@ test.describe('JOURNEY-DPO-018: Edit Dataset and Link to Asset', () => {
       await loginAndNavigateToRoute(page, testUser, '/datasets', {
         timeout: 60000,
         contentSelector:
-          '[data-testid="dataset-list-page"], .dataset-list-page, .empty-state, .error-display',
+          '.dataset-list-page, [data-testid="dataset-list-page"], .dataset-list-page, [data-testid="dataset-list-page"], .empty-state, [data-testid="empty-state"], .error-display, [data-testid="error-display"]',
       });
       await waitForLoadingComplete(page, { timeout: 30000 });
       expect(page.url()).toContain('/datasets');
 
       const hasContent =
         (await page
-          .locator('[data-testid="dataset-list-page"], .dataset-list-page, .empty-state')
+          .locator('.dataset-list-page, [data-testid="dataset-list-page"], .dataset-list-page, [data-testid="dataset-list-page"], .empty-state, [data-testid="empty-state"]')
           .count()) > 0;
       expect(hasContent).toBe(true) /* acceptable states */;
     });
@@ -182,7 +182,7 @@ test.describe('JOURNEY-DPO-018: Edit Dataset and Link to Asset', () => {
       try {
         await loginAndNavigateToRoute(page, testUser, `/datasets/${datasetId}`, {
           timeout: 60000,
-          contentSelector: '.dataset-detail-page, .error-display',
+          contentSelector: '.dataset-detail-page, [data-testid="dataset-detail-page"], .error-display, [data-testid="error-display"]',
         });
       } catch (navErr) {
         const msg = String(navErr);
@@ -207,9 +207,9 @@ test.describe('JOURNEY-DPO-018: Edit Dataset and Link to Asset', () => {
 
       if ((await editBtn.count()) === 0) {
         // Edit button should always exist — check if page showed an error instead
-        const hasError = (await page.locator('.error-display').count()) > 0;
+        const hasError = (await page.locator('.error-display, [data-testid="error-display"]').first().count()) > 0;
         if (hasError) {
-          const errText = (await page.locator('.error-display').first().textContent()) ?? '';
+          const errText = (await page.locator('.error-display, [data-testid="error-display"]').first().first().textContent()) ?? '';
           throw new Error(`Dataset detail showed error instead of content: ${errText.slice(0, 200)}`);
         }
         test.skip(true, 'Edit button not found on dataset detail — page may not have fully rendered');
@@ -231,7 +231,7 @@ test.describe('JOURNEY-DPO-018: Edit Dataset and Link to Asset', () => {
         .or(page.locator('button:has-text("Save")'))
         .first();
       await saveBtn.click();
-      await page.waitForSelector('[data-testid="dataset-edit-form"], .dataset-detail-page, .error-display', {
+      await page.waitForSelector('[data-testid="dataset-edit-form"], .dataset-detail-page, [data-testid="dataset-detail-page"], .error-display, [data-testid="error-display"]', {
         timeout: 10000,
       });
 
@@ -240,7 +240,7 @@ test.describe('JOURNEY-DPO-018: Edit Dataset and Link to Asset', () => {
       expect(onDatasets).toBe(true) /* acceptable states */;
       // Verify the form or detail page is still visible (not a blank screen)
       const hasVisibleContent =
-        (await page.locator('[data-testid="dataset-edit-form"], .dataset-detail-page').count()) > 0;
+        (await page.locator('[data-testid="dataset-edit-form"], .dataset-detail-page, [data-testid="dataset-detail-page"]').count()) > 0;
       expect(hasVisibleContent).toBe(true);
     });
 
@@ -265,7 +265,7 @@ test.describe('JOURNEY-DPO-018: Edit Dataset and Link to Asset', () => {
       try {
         await loginAndNavigateToRoute(page, testUser, `/datasets/${datasetId}`, {
           timeout: 60000,
-          contentSelector: '.dataset-detail-page, .error-display',
+          contentSelector: '.dataset-detail-page, [data-testid="dataset-detail-page"], .error-display, [data-testid="error-display"]',
         });
       } catch (navErr) {
         const msg = String(navErr);

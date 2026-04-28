@@ -20,7 +20,7 @@ import {
   loginAndNavigateToRoute,
 } from '../../fixtures/helpers';
 
-test.describe('JOURNEY-DE-001: Programmatic Contract-First Onboarding', () => {
+test.describe('JOURNEY-DE-001: Programmatic Contract-First Onboarding @critical', () => {
   // 240s: staging with 1 worker — by test #30+, auth rate-limit budget is exhausted.
   // loginAndNavigateToRoute retries with 15s backoff × 3 attempts = 45s auth overhead,
   // plus 60s navigation + 60s content assertion. 180s was too tight for tail tests.
@@ -31,18 +31,18 @@ test.describe('JOURNEY-DE-001: Programmatic Contract-First Onboarding', () => {
       const testUser = await getTestUser();
       await loginAndNavigateToRoute(page, testUser, '/contracts', {
         timeout: 60000,
-        contentSelector: '.contract-list-page, .empty-state, .error-display',
+        contentSelector: '.contract-list-page, [data-testid="contract-list-page"], .empty-state, [data-testid="empty-state"], .error-display, [data-testid="error-display"]',
       });
-      await assertListPageLoads(page, '.contract-list-page, .empty-state', { timeout: 60000 });
+      await assertListPageLoads(page, '.contract-list-page, [data-testid="contract-list-page"], .empty-state, [data-testid="empty-state"]', { timeout: 60000 });
       // Verify no server errors rendered
-      await expect(page.locator('.error-display')).not.toBeVisible({ timeout: 3000 });
+      await expect(page.locator('.error-display, [data-testid="error-display"]').first()).not.toBeVisible({ timeout: 3000 });
     });
 
     test('contract create page renders upload form', async ({ page }) => {
       const testUser = await getTestUser();
       await loginAndNavigateToRoute(page, testUser, '/contracts/create', {
         timeout: 60000,
-        contentSelector: '.contract-create-page, form, h1',
+        contentSelector: '.contract-create-page, [data-testid="contract-create-page"], form, h1',
       });
       const url = page.url();
       expect(url).toMatch(/\/(odps\/upload|contracts\/create)/);
@@ -105,19 +105,19 @@ test.describe('JOURNEY-DE-001: Programmatic Contract-First Onboarding', () => {
       // Step 3: Navigate to contracts list and verify the new contract appears
       await loginAndNavigateToRoute(page, testUser, '/contracts', {
         timeout: 60000,
-        contentSelector: '.contract-list-page, .empty-state, .error-display',
+        contentSelector: '.contract-list-page, [data-testid="contract-list-page"], .empty-state, [data-testid="empty-state"], .error-display, [data-testid="error-display"]',
       });
-      await assertListPageLoads(page, '.contract-list-page, .empty-state', { timeout: 60000 });
+      await assertListPageLoads(page, '.contract-list-page, [data-testid="contract-list-page"], .empty-state, [data-testid="empty-state"]', { timeout: 60000 });
 
       // The list should now contain at least one contract (the one we just created)
       const hasContracts =
-        (await page.locator('.contract-list-page').count()) > 0 &&
-        (await page.locator('.empty-state').count()) === 0;
+        (await page.locator('.contract-list-page, [data-testid="contract-list-page"]').first().count()) > 0 &&
+        (await page.locator('.empty-state, [data-testid="empty-state"]').first().count()) === 0;
 
       // If list has contracts, the API creation worked and the UI reflects it
       // If empty-state shows, the contract may not be visible due to tenant/filtering
       expect(
-        hasContracts || (await page.locator('.empty-state').count()) > 0,
+        hasContracts || (await page.locator('.empty-state, [data-testid="empty-state"]').first().count()) > 0,
         'Expected contract list or empty state after API contract creation'
       ).toBe(true);
     });
@@ -133,11 +133,11 @@ test.describe('JOURNEY-DE-001: Programmatic Contract-First Onboarding', () => {
         {
           // 120s: auth retry on rate-limited staging (15s backoff × 3) + navigation + content wait
           timeout: 120000,
-          contentSelector: '.error-display, .contract-editor-page, .contract-detail-page, h1',
+          contentSelector: '.error-display, [data-testid="error-display"], .contract-editor-page, .contract-detail-page, [data-testid="contract-detail-page"], h1',
         }
       );
       await assertNonExistentIdShowsError(page, {
-        detailContentSelector: '.contract-editor-page, .contract-detail-page',
+        detailContentSelector: '.contract-editor-page, .contract-detail-page, [data-testid="contract-detail-page"]',
       });
     });
 
@@ -161,11 +161,11 @@ test.describe('JOURNEY-DE-001: Programmatic Contract-First Onboarding', () => {
         '/contracts/00000000-0000-0000-0000-000000000000/link-odps',
         {
           timeout: 120000,
-          contentSelector: '.error-display, .contract-link-odps-page, h1',
+          contentSelector: '.error-display, [data-testid="error-display"], .contract-link-odps-page, h1',
         }
       );
       await assertNonExistentIdShowsError(page, {
-        detailContentSelector: '.contract-link-odps-page, .contract-detail-page',
+        detailContentSelector: '.contract-link-odps-page, .contract-detail-page, [data-testid="contract-detail-page"]',
       });
     });
   });

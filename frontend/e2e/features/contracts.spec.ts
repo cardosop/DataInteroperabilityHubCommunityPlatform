@@ -21,14 +21,14 @@ test.describe('Feature: Contracts', () => {
       await loginAndNavigateToRoute(page, testUser, '/contracts', {
         timeout: 60000,
         contentSelector:
-          '[data-testid="contract-list-page"], .contract-list-page, .empty-state, .error-display',
+          '.contract-list-page, [data-testid="contract-list-page"], .contract-list-page, [data-testid="contract-list-page"], .empty-state, [data-testid="empty-state"], .error-display, [data-testid="error-display"]',
       });
       if (page.url().includes('/login')) {
         throw new Error('contracts list loads: still on /login after loginAndNavigateToRoute');
       }
       await assertListPageLoads(
         page,
-        '[data-testid="contract-list-page"], .contract-list-page, .empty-state',
+        '.contract-list-page, [data-testid="contract-list-page"], .contract-list-page, [data-testid="contract-list-page"], .empty-state, [data-testid="empty-state"]',
         { timeout: 60000 }
       );
     });
@@ -43,7 +43,7 @@ test.describe('Feature: Contracts', () => {
         '/contracts/00000000-0000-0000-0000-000000000000/edit',
         {
           timeout: 60000,
-          contentSelector: '.error-display, .contract-edit-page, h1',
+          contentSelector: '.error-display, [data-testid="error-display"], .contract-edit-page, h1',
         }
       );
       await assertNonExistentIdShowsError(page, {
@@ -111,7 +111,7 @@ test.describe('Feature: Contracts', () => {
         '/contracts/00000000-0000-0000-0000-000000000000/link-odps',
         {
           timeout: 60000,
-          contentSelector: '.error-display, .contract-link-odps-page, h1',
+          contentSelector: '.error-display, [data-testid="error-display"], .contract-link-odps-page, h1',
         }
       );
       await assertNonExistentIdShowsError(page, {

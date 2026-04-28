@@ -23,17 +23,17 @@ test.describe('JOURNEY-DA-003: Query Virtual Dataset', () => {
       await page.goto('/virtualization');
       await page.waitForLoadState('domcontentloaded');
       await page.waitForSelector(
-        '.virtual-dataset-list-page, .empty-state',
+        '.virtual-dataset-list-page, [data-testid="virtual-dataset-list-page"], .empty-state, [data-testid="empty-state"]',
         { timeout: 65000 }
       );
       if (page.url().includes('/login') || page.url().includes('/403')) {
         throw new Error(`Unexpected redirect to ${page.url()} — verify DA user has virtualization access`);
       }
       expect(page.url()).toContain('/virtualization');
-      await expect(page.locator('.error-display')).not.toBeVisible();
+      await expect(page.locator('.error-display, [data-testid="error-display"]').first()).not.toBeVisible();
       const hasContent =
-        (await page.locator('.virtual-dataset-list-page').count()) > 0 ||
-        (await page.locator('.empty-state').count()) > 0;
+        (await page.locator('.virtual-dataset-list-page, [data-testid="virtual-dataset-list-page"]').first().count()) > 0 ||
+        (await page.locator('.empty-state, [data-testid="empty-state"]').first().count()) > 0;
       expect(hasContent).toBe(true);
     });
   });
@@ -56,7 +56,7 @@ test.describe('JOURNEY-DA-003: Query Virtual Dataset', () => {
       const da = await getConsumerTestUser();
       await loginAndNavigateToRoute(page, da, '/virtualization', {
         timeout: 60000,
-        contentSelector: '.virtual-dataset-list-page, .empty-state, .error-display',
+        contentSelector: '.virtual-dataset-list-page, [data-testid="virtual-dataset-list-page"], .empty-state, [data-testid="empty-state"], .error-display, [data-testid="error-display"]',
       });
       expect(page.url()).toContain('/virtualization');
     });

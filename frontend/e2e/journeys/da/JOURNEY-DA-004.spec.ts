@@ -36,11 +36,11 @@ test.describe('JOURNEY-DA-004: Execute Federated Query', () => {
       expect(onSemantic || onComingSoon || onUnavailable).toBe(true);
       if (onSemantic) {
         const hasContent =
-          (await page.locator('.semantic-page, .app-main').count()) > 0;
+          (await page.locator('.semantic-page, .app-main, [data-testid="app-main"]').count()) > 0;
         expect(hasContent).toBe(true);
-        await expect(page.locator('.error-display')).not.toBeVisible();
+        await expect(page.locator('.error-display, [data-testid="error-display"]').first()).not.toBeVisible();
       } else {
-        await expect(page.locator('.unavailable-page').first()).toBeVisible({ timeout: 15000 });
+        await expect(page.locator('.unavailable-page, [data-testid="unavailable-page"]').first().first()).toBeVisible({ timeout: 15000 });
       }
     });
 
@@ -50,7 +50,7 @@ test.describe('JOURNEY-DA-004: Execute Federated Query', () => {
       await page.goto('/virtualization');
       await page.waitForLoadState('domcontentloaded');
       await page.waitForSelector(
-        '.virtual-dataset-list-page, .error-display, .empty-state, .app-main',
+        '.virtual-dataset-list-page, [data-testid="virtual-dataset-list-page"], .error-display, [data-testid="error-display"], .empty-state, [data-testid="empty-state"], .app-main, [data-testid="app-main"]',
         { timeout: 90000 }
       );
       if (page.url().includes('/login')) {
@@ -58,7 +58,7 @@ test.describe('JOURNEY-DA-004: Execute Federated Query', () => {
         return;
       }
       expect(page.url()).toContain('/virtualization');
-      await expect(page.locator('.error-display')).not.toBeVisible();
+      await expect(page.locator('.error-display, [data-testid="error-display"]').first()).not.toBeVisible();
     });
   });
 
@@ -72,7 +72,7 @@ test.describe('JOURNEY-DA-004: Execute Federated Query', () => {
       const url = page.url();
       const on403 = url.includes('/403');
       const onUnavailableDom =
-        (await page.locator('.unavailable-page, .error-display').count()) > 0;
+        (await page.locator('.unavailable-page, [data-testid="unavailable-page"], .error-display, [data-testid="error-display"]').count()) > 0;
       const onLogin = url.includes('/login');
       const onUnavailableUrl = url.includes('/unavailable');
       const onComingSoon = url.includes('/coming-soon');

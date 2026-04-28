@@ -25,13 +25,13 @@ test.describe('Asset-Dataset-DQ Flow (UX)', () => {
     const testUser = await getTestUser();
     await loginAndNavigateToRoute(page, testUser, '/assets', {
       timeout: 60000,
-      contentSelector: '.asset-list-page, .empty-state, h1',
+      contentSelector: '.asset-list-page, [data-testid="asset-list-page"], .empty-state, [data-testid="empty-state"], h1',
     });
     await waitForLoadingComplete(page, { timeout: 30000 });
 
     const createButton = page
       .locator('button:has-text("Create Asset")')
-      .or(page.locator('.empty-state-action:has-text("Create Asset")'));
+      .or(page.locator('[data-testid="empty-state-action"]:has-text("Create Asset")'));
     await expect(createButton.first()).toBeVisible({ timeout: 15000 });
     await createButton.first().click();
 
@@ -46,14 +46,14 @@ test.describe('Asset-Dataset-DQ Flow (UX)', () => {
 
     await expect(page).toHaveURL(/\/assets\/[^/]+$/, { timeout: 15000 });
     await waitForLoadingComplete(page, { timeout: 45000 });
-    await page.waitForSelector('.asset-detail-page, .error-display', { timeout: 60000 });
+    await page.waitForSelector('.asset-detail-page, [data-testid="asset-detail-page"], .error-display, [data-testid="error-display"]', { timeout: 60000 });
 
-    if ((await page.locator('.error-display').count()) > 0) {
-      const errText = (await page.locator('.error-display').first().textContent()) ?? '';
+    if ((await page.locator('.error-display, [data-testid="error-display"]').first().count()) > 0) {
+      const errText = (await page.locator('.error-display, [data-testid="error-display"]').first().first().textContent()) ?? '';
       throw new Error(`Asset creation failed: ${errText.slice(0, 250)}`);
     }
 
-    await expect(page.locator('.asset-detail-page')).toBeVisible({ timeout: 10000 });
+    await expect(page.locator('.asset-detail-page, [data-testid="asset-detail-page"]').first()).toBeVisible({ timeout: 10000 });
 
     const uploadBtn = page.locator('button:has-text("Upload File")');
     await expect(uploadBtn).toBeVisible({ timeout: 10000 });
@@ -62,7 +62,7 @@ test.describe('Asset-Dataset-DQ Flow (UX)', () => {
     const fileInput = page.locator('input[type="file"][accept*="csv"]');
     const hasInput = (await fileInput.count()) > 0;
     if (!hasInput) {
-      await expect(page.locator('.file-upload-dropzone')).toBeVisible({ timeout: 5000 });
+      await expect(page.locator('.file-upload-dropzone, [data-testid="file-upload-dropzone"]')).toBeVisible({ timeout: 5000 });
       return;
     }
 
@@ -76,7 +76,7 @@ test.describe('Asset-Dataset-DQ Flow (UX)', () => {
       await page.waitForTimeout(5000);
       const uploadSuccess = (await page.locator('.file-upload-success, .upload-success').count()) > 0;
       const toastSuccess = (await page.getByText(/dataset created|uploaded successfully/i).count()) > 0;
-      const hasError = (await page.locator('.error-display').count()) > 0;
+      const hasError = (await page.locator('.error-display, [data-testid="error-display"]').first().count()) > 0;
       if (!uploadSuccess && !toastSuccess && !hasError) {
         await page.waitForTimeout(5000);
       }
@@ -110,13 +110,13 @@ test.describe('Asset-Dataset-DQ Flow (UX)', () => {
     const testUser = await getTestUser();
     await loginAndNavigateToRoute(page, testUser, '/assets', {
       timeout: 60000,
-      contentSelector: '.asset-list-page, .empty-state, h1',
+      contentSelector: '.asset-list-page, [data-testid="asset-list-page"], .empty-state, [data-testid="empty-state"], h1',
     });
     await waitForLoadingComplete(page, { timeout: 30000 });
 
     const createButton = page
       .locator('button:has-text("Create Asset")')
-      .or(page.locator('.empty-state-action:has-text("Create Asset")'));
+      .or(page.locator('[data-testid="empty-state-action"]:has-text("Create Asset")'));
     await expect(createButton.first()).toBeVisible({ timeout: 15000 });
     await createButton.first().click();
 
@@ -135,20 +135,20 @@ test.describe('Asset-Dataset-DQ Flow (UX)', () => {
 
     await expect(page).toHaveURL(/\/assets\/[^/]+$/, { timeout: 15000 });
     await waitForLoadingComplete(page, { timeout: 45000 });
-    await page.waitForSelector('.asset-detail-page, .error-display', { timeout: 60000 });
+    await page.waitForSelector('.asset-detail-page, [data-testid="asset-detail-page"], .error-display, [data-testid="error-display"]', { timeout: 60000 });
 
-    const hasError = (await page.locator('.error-display').count()) > 0;
+    const hasError = (await page.locator('.error-display, [data-testid="error-display"]').first().count()) > 0;
     if (hasError) {
-      const errText = (await page.locator('.error-display').first().textContent()) ?? '';
+      const errText = (await page.locator('.error-display, [data-testid="error-display"]').first().first().textContent()) ?? '';
       throw new Error(`Asset creation failed: ${errText.slice(0, 250)}`);
     }
 
-    await expect(page.locator('.asset-detail-page')).toBeVisible({ timeout: 10000 });
+    await expect(page.locator('.asset-detail-page, [data-testid="asset-detail-page"]').first()).toBeVisible({ timeout: 10000 });
 
     // Navigate to datasets create (asset-dataset flow)
     await page.goto('/datasets/create', { waitUntil: 'domcontentloaded' });
     await waitForLoadingComplete(page, { timeout: 30000 });
-    await expect(page.locator('[data-testid="dataset-create-page"]')).toBeVisible({ timeout: 15000 });
+    await expect(page.locator('.dataset-create-page, [data-testid="dataset-create-page"]')).toBeVisible({ timeout: 15000 });
     await expect(page.locator('h1:has-text("Create Dataset")')).toBeVisible({ timeout: 5000 });
   });
 
@@ -156,20 +156,20 @@ test.describe('Asset-Dataset-DQ Flow (UX)', () => {
     const testUser = await getTestUser();
     await loginAndNavigateToRoute(page, testUser, '/datasets', {
       timeout: 60000,
-      contentSelector: '[data-testid="dataset-list-page"], .empty-state',
+      contentSelector: '.dataset-list-page, [data-testid="dataset-list-page"], .empty-state, [data-testid="empty-state"]',
     });
     await waitForLoadingComplete(page, { timeout: 30000 });
 
     const createBtn = page
       .locator('button:has-text("Create Dataset")')
-      .or(page.locator('.empty-state-action:has-text("Create Dataset")'))
+      .or(page.locator('[data-testid="empty-state-action"]:has-text("Create Dataset")'))
       .or(page.locator('a:has-text("Create Dataset")'));
     await expect(createBtn.first()).toBeVisible({ timeout: 15000 });
     await createBtn.first().click();
 
     await expect(page).toHaveURL(/\/datasets\/create/, { timeout: 10000 });
     await waitForLoadingComplete(page);
-    await expect(page.locator('[data-testid="dataset-create-page"]')).toBeVisible({ timeout: 15000 });
+    await expect(page.locator('.dataset-create-page, [data-testid="dataset-create-page"]')).toBeVisible({ timeout: 15000 });
     await expect(page.locator('h2:has-text("Upload File")')).toBeVisible({ timeout: 5000 });
   });
 });

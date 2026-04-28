@@ -375,7 +375,7 @@ async function createListingViaAPI(
   return result as { listingId: string } | { success: false; error: string };
 }
 
-test.describe('Phase 4 Marketplace Journey', () => {
+test.describe('Phase 4 Marketplace Journey @deprecated', () => {
   test('complete journey: browse listing → purchase → entitlement visible', async ({ page }) => {
     test.setTimeout(120000);
     const t0 = Date.now();
@@ -403,14 +403,14 @@ test.describe('Phase 4 Marketplace Journey', () => {
     console.log('Step 1: Creating asset...');
     await loginAndNavigateToRoute(page, testUser, '/assets', {
       timeout: 60000,
-      contentSelector: '.asset-list-page, .empty-state, .error-display, h1',
+      contentSelector: '.asset-list-page, [data-testid="asset-list-page"], .empty-state, [data-testid="empty-state"], .error-display, [data-testid="error-display"], h1',
     });
 
     await page.waitForTimeout(2000);
 
     const createButton = page
       .locator('button:has-text("Create Asset")')
-      .or(page.locator('.empty-state-action:has-text("Create Asset")'));
+      .or(page.locator('[data-testid="empty-state-action"]:has-text("Create Asset")'));
     await createButton.first().waitFor({ timeout: 10000 });
     await createButton.first().click();
 
@@ -458,7 +458,7 @@ test.describe('Phase 4 Marketplace Journey', () => {
       const finalMatch = assetUrl.match(/\/assets\/([^/]+)/);
       if (!finalMatch || finalMatch[1] === 'create') {
         // intentional: tolerates a detached/removed element while extracting text for a diagnostic message; the surrounding throw/expect below this catch is the primary failure path.
-        const errEl = await page.locator('.error-display').first().textContent().catch(() => '');
+        const errEl = await page.locator('.error-display, [data-testid="error-display"]').first().first().textContent().catch(() => '');
         const errHint = errEl ? ` Backend error: ${errEl.slice(0, 200)}` : '';
         throw new Error(
           `Asset creation failed (URL still on create). Current URL: ${assetUrl}.${errHint}`
@@ -469,7 +469,7 @@ test.describe('Phase 4 Marketplace Journey', () => {
     const assetId = assetUrl.match(/\/assets\/([^/]+)/)?.[1] ?? '';
 
     // Verify asset was created - wait for asset detail page
-    await page.waitForSelector('.asset-detail-page, .asset-detail-content', { timeout: 10000 });
+    await page.waitForSelector('.asset-detail-content, .asset-detail-page, [data-testid="asset-detail-page"]', { timeout: 10000 });
     await page.waitForTimeout(2000);
     stepTiming('Step 1: create asset', t1);
     const t2 = Date.now();
@@ -624,7 +624,7 @@ test.describe('Phase 4 Marketplace Journey', () => {
     console.log(`📝 Looking for listing ID: ${listingId}`);
     await loginAndNavigateToRoute(page, testUser, '/marketplace', {
       timeout: 90000,
-      contentSelector: '.listing-list-page, .listing-list-grid, .empty-state, h1',
+      contentSelector: '.listing-list-page, .listing-list-grid, [data-testid="listing-list-grid"], .empty-state, [data-testid="empty-state"], h1',
     });
     console.log('📍 Navigated to /marketplace');
     console.log('✅ Marketplace content loaded');
@@ -650,12 +650,12 @@ test.describe('Phase 4 Marketplace Journey', () => {
     }
 
     console.log('⏳ Waiting for listing detail page to load...');
-    await page.waitForSelector('.listing-detail-page, .error-display', { timeout: 30000 });
+    await page.waitForSelector('.listing-detail-page, .error-display, [data-testid="error-display"]', { timeout: 30000 });
     if (page.url().includes('/login')) {
       throw new Error('Provider auth redirect: listing page redirected to login.');
     }
-    if ((await page.locator('.error-display').count()) > 0) {
-      const errText = await page.locator('.error-display').first().textContent();
+    if ((await page.locator('.error-display, [data-testid="error-display"]').first().count()) > 0) {
+      const errText = await page.locator('.error-display, [data-testid="error-display"]').first().first().textContent();
       throw new Error(`Listing detail failed: ${errText}`);
     }
     console.log('✅ Listing detail page loaded');
@@ -687,7 +687,7 @@ test.describe('Phase 4 Marketplace Journey', () => {
       try {
         await loginAndNavigateToRoute(page, consumerUser, listingUrl, {
           timeout: 60000,
-          contentSelector: '.listing-detail-page, .error-display',
+          contentSelector: '.listing-detail-page, .error-display, [data-testid="error-display"]',
         });
         consumerOnListing = !page.url().includes('/login');
       } catch (err) {
@@ -705,8 +705,8 @@ test.describe('Phase 4 Marketplace Journey', () => {
         { cause: lastErr }
       );
     }
-    if ((await page.locator('.error-display').count()) > 0) {
-      const errText = await page.locator('.error-display').first().textContent();
+    if ((await page.locator('.error-display, [data-testid="error-display"]').first().count()) > 0) {
+      const errText = await page.locator('.error-display, [data-testid="error-display"]').first().first().textContent();
       throw new Error(`Listing detail failed for consumer: ${errText}`);
     }
     console.log('✅ Listing page loaded for consumer');
@@ -818,7 +818,7 @@ test.describe('Phase 4 Marketplace Journey', () => {
     await page.goto('/marketplace/entitlements');
     await waitForAppMainReady(page, {
       timeout: 60000,
-      contentSelector: '.entitlement-list-page, .entitlement-list-table, .empty-state, h1',
+      contentSelector: '.entitlement-list-page, .entitlement-list-table, .empty-state, [data-testid="empty-state"], h1',
     });
     console.log('✅ Entitlements page content loaded');
 

@@ -26,7 +26,7 @@ test.describe('JOURNEY-DE-015: Upload Data File', () => {
       await loginAndNavigateToRoute(page, testUser, '/datasets/create', {
         timeout: 60000,
         contentSelector:
-          '.dataset-create-page, .file-upload-dropzone, input.file-upload-input, form',
+          '.dataset-create-page, [data-testid="dataset-create-page"], .file-upload-dropzone, [data-testid="file-upload-dropzone"], input.file-upload-input, form',
       });
       if (page.url().includes('/login')) {
         test.skip(true, 'Redirected to login — auth may have expired');
@@ -34,16 +34,16 @@ test.describe('JOURNEY-DE-015: Upload Data File', () => {
       }
       await waitForLoadingComplete(page);
 
-      // Success test must NOT accept .error-display
-      await expect(page.locator('.error-display')).not.toBeVisible();
+      // Success test must NOT accept .error-display, [data-testid="error-display"]
+      await expect(page.locator('.error-display, [data-testid="error-display"]').first()).not.toBeVisible();
 
       // Dataset Create page has FileUpload with dropzone; file input may be hidden
-      const dropzone = page.locator('.file-upload-dropzone');
+      const dropzone = page.locator('.file-upload-dropzone, [data-testid="file-upload-dropzone"]');
       await expect(dropzone.first()).toBeVisible({ timeout: 15000 });
 
       // Find file input (inside dropzone or form)
       const fileInput = page
-        .locator('.file-upload-dropzone input[type="file"], input.file-upload-input')
+        .locator('.file-upload-dropzone, [data-testid="file-upload-dropzone"] input[type="file"], input.file-upload-input')
         .first();
       await expect(fileInput).toBeAttached({ timeout: 10000 });
 
@@ -142,7 +142,7 @@ test.describe('JOURNEY-DE-015: Upload Data File', () => {
       await loginAndNavigateToRoute(page, testUser, '/datasets/create', {
         timeout: 60000,
         contentSelector:
-          '.dataset-create-page, .file-upload-dropzone, form',
+          '.dataset-create-page, [data-testid="dataset-create-page"], .file-upload-dropzone, [data-testid="file-upload-dropzone"], form',
       });
       if (page.url().includes('/login')) {
         test.skip(true, 'Redirected to login — auth may have expired');
@@ -151,7 +151,7 @@ test.describe('JOURNEY-DE-015: Upload Data File', () => {
       await waitForLoadingComplete(page);
 
       // The create page must render either a file upload dropzone or a form
-      const hasDropzone = (await page.locator('.file-upload-dropzone').count()) > 0;
+      const hasDropzone = (await page.locator('.file-upload-dropzone, [data-testid="file-upload-dropzone"]').count()) > 0;
       const hasForm = (await page.locator('form').count()) > 0;
       expect(
         hasDropzone || hasForm,

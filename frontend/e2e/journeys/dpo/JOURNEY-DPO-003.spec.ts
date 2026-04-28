@@ -39,11 +39,11 @@ test.describe('JOURNEY-DPO-003: Manage Asset Lifecycle @critical', () => {
       const testUser = await getTestUser();
       await loginAndNavigateToRoute(page, testUser, '/assets', {
         timeout: 60000,
-        contentSelector: '.asset-list-page, .empty-state, .error-display, h1',
+        contentSelector: '.asset-list-page, [data-testid="asset-list-page"], .empty-state, [data-testid="empty-state"], .error-display, [data-testid="error-display"], h1',
       });
       expect(page.url()).toContain('/assets');
       // Content assertion: verify the asset list page or empty state rendered (not just URL)
-      const assetListOrEmpty = page.locator('.asset-list-page, .empty-state');
+      const assetListOrEmpty = page.locator('.asset-list-page, [data-testid="asset-list-page"], .empty-state, [data-testid="empty-state"]');
       await expect(assetListOrEmpty.first()).toBeVisible({ timeout: 15000 });
     });
 
@@ -54,20 +54,20 @@ test.describe('JOURNEY-DPO-003: Manage Asset Lifecycle @critical', () => {
       const assetId = await createAssetViaApi(testUser);
       await loginAndNavigateToRoute(page, testUser, `/assets/${assetId}`, {
         timeout: 60000,
-        contentSelector: '.asset-detail-page, .asset-detail-content, .error-display',
+        contentSelector: '.asset-detail-page, [data-testid="asset-detail-page"], .asset-detail-content, .error-display, [data-testid="error-display"]',
       });
       if (page.url().includes('/login')) {
         throw new Error('Unexpected redirect to login on asset detail');
       }
-      await page.waitForSelector('.asset-detail-page, .asset-detail-content, .error-display', {
+      await page.waitForSelector('.asset-detail-page, [data-testid="asset-detail-page"], .asset-detail-content, .error-display, [data-testid="error-display"]', {
         timeout: 15000,
       });
-      const hasError = (await page.locator('.error-display').count()) > 0;
+      const hasError = (await page.locator('.error-display, [data-testid="error-display"]').first().count()) > 0;
       if (hasError) {
-        const errText = (await page.locator('.error-display').first().textContent()) ?? '';
+        const errText = (await page.locator('.error-display, [data-testid="error-display"]').first().first().textContent()) ?? '';
         throw new Error(`Asset detail failed to load: ${errText.slice(0, 250)}`);
       }
-      const statusBadge = page.locator('.asset-detail-page .status-badge, .status-badge').first();
+      const statusBadge = page.locator('.asset-detail-page, [data-testid="asset-detail-page"] .status-badge, .status-badge').first();
       await expect(statusBadge).toBeVisible({ timeout: 10000 });
       // createAssetViaApi reuses existing assets (first match) which may already be ACTIVE;
       // the test verifies the detail page loads with a valid lifecycle status badge.
@@ -105,7 +105,7 @@ test.describe('JOURNEY-DPO-003: Manage Asset Lifecycle @critical', () => {
 
       await loginAndNavigateToRoute(page, testUser, `/assets/${assetId}`, {
         timeout: 60000,
-        contentSelector: '.asset-detail-page, .asset-detail-content, .error-display',
+        contentSelector: '.asset-detail-page, [data-testid="asset-detail-page"], .asset-detail-content, .error-display, [data-testid="error-display"]',
       });
       if (page.url().includes('/login')) {
         throw new Error('Unexpected redirect to login on asset detail');
@@ -115,7 +115,7 @@ test.describe('JOURNEY-DPO-003: Manage Asset Lifecycle @critical', () => {
       // but assert anyway so a regression in activation-prereq seeding
       // surfaces at the exact step where it matters rather than as a
       // mystery retire failure downstream.
-      const statusBadge = page.locator('.asset-detail-page .status-badge, .status-badge').first();
+      const statusBadge = page.locator('.asset-detail-page, [data-testid="asset-detail-page"] .status-badge, .status-badge').first();
       await expect(statusBadge).toBeVisible({ timeout: 15000 });
       const statusText = (await statusBadge.textContent()) ?? '';
       if (!statusText.includes('ACTIVE')) {
@@ -149,7 +149,7 @@ test.describe('JOURNEY-DPO-003: Manage Asset Lifecycle @critical', () => {
           // 400 often means version conflict — reload and retry once with the page's fresh version
           if (retireResp.status() === 400) {
             await page.reload({ waitUntil: 'domcontentloaded' });
-            await page.waitForSelector('.asset-detail-page, .asset-detail-content', { timeout: 15000 });
+            await page.waitForSelector('.asset-detail-content, .asset-detail-page, [data-testid="asset-detail-page"]', { timeout: 15000 });
             const retireBtn2 = page
               .locator('button:has-text("Retire"), button:has-text("Retire Asset")')
               .first();
@@ -187,9 +187,9 @@ test.describe('JOURNEY-DPO-003: Manage Asset Lifecycle @critical', () => {
       // Re-navigate to get fresh state from backend (loginAndNavigateToRoute preserves auth)
       await loginAndNavigateToRoute(page, testUser, `/assets/${assetId}`, {
         timeout: 60000,
-        contentSelector: '.asset-detail-page, .asset-detail-content, .error-display',
+        contentSelector: '.asset-detail-page, [data-testid="asset-detail-page"], .asset-detail-content, .error-display, [data-testid="error-display"]',
       });
-      const updatedBadge = page.locator('.asset-detail-page .status-badge, .status-badge').first();
+      const updatedBadge = page.locator('.asset-detail-page, [data-testid="asset-detail-page"] .status-badge, .status-badge').first();
       await expect(updatedBadge).toBeVisible({ timeout: 10000 });
       await expect(updatedBadge).toContainText(/RETIRED|DEPRECATED/, { timeout: 10000 });
 
@@ -213,12 +213,12 @@ test.describe('JOURNEY-DPO-003: Manage Asset Lifecycle @critical', () => {
       const testUser = await getTestUser();
       await loginAndNavigateToRoute(page, testUser, '/assets', {
         timeout: 60000,
-        contentSelector: '.asset-list-page, .empty-state, .error-display, h1',
+        contentSelector: '.asset-list-page, [data-testid="asset-list-page"], .empty-state, [data-testid="empty-state"], .error-display, [data-testid="error-display"], h1',
       });
       await page.goto('/assets/00000000-0000-0000-0000-000000000000');
       await page.waitForLoadState('domcontentloaded');
       await assertNonExistentIdShowsError(page, {
-        detailContentSelector: '.asset-detail-page',
+        detailContentSelector: '.asset-detail-page, [data-testid="asset-detail-page"]',
         waitAfterLoad: 8000,
         selectorTimeout: 60000,
       });
@@ -243,7 +243,7 @@ test.describe('JOURNEY-DPO-003: Manage Asset Lifecycle @critical', () => {
       const testUser = await getTestUser();
       await loginAndNavigateToRoute(page, testUser, '/assets', {
         timeout: 60000,
-        contentSelector: '.asset-list-page, .empty-state, .error-display',
+        contentSelector: '.asset-list-page, [data-testid="asset-list-page"], .empty-state, [data-testid="empty-state"], .error-display, [data-testid="error-display"]',
       });
       // Use the actual element id from AssetListPage.tsx — more reliable than text-based filter
       const statusSelect = page.locator('#asset-status-filter, select[aria-label="Filter by status"]').first();
@@ -254,11 +254,11 @@ test.describe('JOURNEY-DPO-003: Manage Asset Lifecycle @critical', () => {
       await statusSelect.selectOption({ index: 1 });
       await page.waitForTimeout(500);
       // After applying filter, verify list or empty state is shown (no error)
-      const afterFilterContent = page.locator('.asset-list-page, .empty-state');
+      const afterFilterContent = page.locator('.asset-list-page, [data-testid="asset-list-page"], .empty-state, [data-testid="empty-state"]');
       await expect(afterFilterContent.first()).toBeVisible({ timeout: 15000 });
-      const hasError = (await page.locator('.error-display').count()) > 0;
+      const hasError = (await page.locator('.error-display, [data-testid="error-display"]').first().count()) > 0;
       if (hasError) {
-        const errText = (await page.locator('.error-display').first().textContent()) ?? '';
+        const errText = (await page.locator('.error-display, [data-testid="error-display"]').first().first().textContent()) ?? '';
         throw new Error(`Status filter caused an error: ${errText.slice(0, 200)}`);
       }
       expect(page.url()).toContain('/assets');
@@ -268,18 +268,18 @@ test.describe('JOURNEY-DPO-003: Manage Asset Lifecycle @critical', () => {
       const testUser = await getTestUser();
       await loginAndNavigateToRoute(page, testUser, '/assets', {
         timeout: 60000,
-        contentSelector: '.asset-list-page, .empty-state, .error-display',
+        contentSelector: '.asset-list-page, [data-testid="asset-list-page"], .empty-state, [data-testid="empty-state"], .error-display, [data-testid="error-display"]',
       });
       expect(page.url()).toContain('/assets');
       // Wait for loading to complete before interacting
       await page
-        .locator('.asset-list-page, .empty-state, .error-display')
+        .locator('.asset-list-page, [data-testid="asset-list-page"], .empty-state, [data-testid="empty-state"], .error-display, [data-testid="error-display"]')
         .first()
         .waitFor({ state: 'visible', timeout: 20000 });
       // Error display means backend failure — not acceptable for a simple empty-string search
-      const hasError = (await page.locator('.error-display').count()) > 0;
+      const hasError = (await page.locator('.error-display, [data-testid="error-display"]').first().count()) > 0;
       if (hasError) {
-        const errText = (await page.locator('.error-display').first().textContent()) ?? '';
+        const errText = (await page.locator('.error-display, [data-testid="error-display"]').first().first().textContent()) ?? '';
         throw new Error(`Asset list shows backend error before search: ${errText.slice(0, 200)}`);
       }
       const searchInput = page.getByRole('textbox', { name: 'Search assets' });
@@ -288,8 +288,8 @@ test.describe('JOURNEY-DPO-003: Manage Asset Lifecycle @critical', () => {
         await page.waitForTimeout(500);
       }
       const hasContent =
-        (await page.locator('.asset-list-page').count()) > 0 ||
-        (await page.locator('.empty-state').count()) > 0;
+        (await page.locator('.asset-list-page, [data-testid="asset-list-page"]').first().count()) > 0 ||
+        (await page.locator('.empty-state, [data-testid="empty-state"]').first().count()) > 0;
       expect(hasContent).toBe(true);
     });
   });

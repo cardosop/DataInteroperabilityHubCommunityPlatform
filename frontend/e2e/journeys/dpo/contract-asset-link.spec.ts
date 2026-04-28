@@ -29,10 +29,10 @@ test.describe('Contract-Asset Linking', () => {
 
     await loginAndNavigateToRoute(page, testUser, `/contracts/${contractId}`, {
       timeout: 60000,
-      contentSelector: '.contract-detail-page, .error-display, h1',
+      contentSelector: '.contract-detail-page, [data-testid="contract-detail-page"], .error-display, [data-testid="error-display"], h1',
     });
     await waitForLoadingComplete(page, { timeout: 30000 });
-    await page.waitForSelector('.contract-detail-page, .error-display', { timeout: 20000 });
+    await page.waitForSelector('.contract-detail-page, [data-testid="contract-detail-page"], .error-display, [data-testid="error-display"]', { timeout: 20000 });
 
     const linkedAsset = page.locator('[data-testid="contract-linked-asset"]');
     await expect(linkedAsset).toBeVisible({ timeout: 15000 });
@@ -50,16 +50,16 @@ test.describe('Contract-Asset Linking', () => {
 
     await loginAndNavigateToRoute(page, testUser, `/contracts/${contractId}`, {
       timeout: 60000,
-      contentSelector: '.contract-detail-page, .error-display, h1',
+      contentSelector: '.contract-detail-page, [data-testid="contract-detail-page"], .error-display, [data-testid="error-display"], h1',
     });
     await waitForLoadingComplete(page, { timeout: 30000 });
-    await page.waitForSelector('.contract-detail-page, .error-display', { timeout: 20000 });
+    await page.waitForSelector('.contract-detail-page, [data-testid="contract-detail-page"], .error-display, [data-testid="error-display"]', { timeout: 20000 });
 
     const viewBtn = page.locator('[data-testid="contract-linked-asset-view"]');
     await viewBtn.click();
     await expect(page).toHaveURL(new RegExp(`/assets/${assetId}`), { timeout: 20000 });
     await waitForLoadingComplete(page, { timeout: 20000 });
-    await page.waitForSelector('.asset-detail-page, .error-display', { timeout: 20000 });
+    await page.waitForSelector('.asset-detail-page, [data-testid="asset-detail-page"], .error-display, [data-testid="error-display"]', { timeout: 20000 });
   });
 
   test('should display "Linked Asset" section on ODPS detail when asset_id is set', async ({
@@ -70,10 +70,10 @@ test.describe('Contract-Asset Linking', () => {
 
     await loginAndNavigateToRoute(page, testUser, `/odps/${odpsContractId}`, {
       timeout: 60000,
-      contentSelector: '.odps-detail-page, .error-display, h1',
+      contentSelector: '.odps-detail-page, .error-display, [data-testid="error-display"], h1',
     });
     await waitForLoadingComplete(page, { timeout: 30000 });
-    await page.waitForSelector('.odps-detail-page, .error-display', { timeout: 20000 });
+    await page.waitForSelector('.odps-detail-page, .error-display, [data-testid="error-display"]', { timeout: 20000 });
 
     const linkedAsset = page.locator('[data-testid="odps-linked-asset"]');
     await expect(linkedAsset).toBeVisible({ timeout: 20000 });
@@ -89,10 +89,10 @@ test.describe('Contract-Asset Linking', () => {
 
     await loginAndNavigateToRoute(page, testUser, `/assets/${assetId}`, {
       timeout: 60000,
-      contentSelector: '.asset-detail-page, .error-display, h1',
+      contentSelector: '.asset-detail-page, [data-testid="asset-detail-page"], .error-display, [data-testid="error-display"], h1',
     });
     await waitForLoadingComplete(page, { timeout: 30000 });
-    await page.waitForSelector('.asset-detail-page, .error-display', { timeout: 20000 });
+    await page.waitForSelector('.asset-detail-page, [data-testid="asset-detail-page"], .error-display, [data-testid="error-display"]', { timeout: 20000 });
 
     const contractsSection = page.locator('[data-testid="asset-contracts-section"]');
     await expect(contractsSection).toBeVisible({ timeout: 10000 });
@@ -115,10 +115,10 @@ test.describe('Contract-Asset Linking', () => {
 
     await loginAndNavigateToRoute(page, testUser, `/assets/${assetId}`, {
       timeout: 60000,
-      contentSelector: '.asset-detail-page, .error-display, h1',
+      contentSelector: '.asset-detail-page, [data-testid="asset-detail-page"], .error-display, [data-testid="error-display"], h1',
     });
     await waitForLoadingComplete(page, { timeout: 30000 });
-    await page.waitForSelector('.asset-detail-page, .error-display', { timeout: 20000 });
+    await page.waitForSelector('.asset-detail-page, [data-testid="asset-detail-page"], .error-display, [data-testid="error-display"]', { timeout: 20000 });
 
     const datasetsSection = page.locator('[data-testid="asset-datasets-section"]');
     await expect(datasetsSection).toBeVisible({ timeout: 10000 });

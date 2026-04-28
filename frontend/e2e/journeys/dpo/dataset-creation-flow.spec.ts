@@ -9,6 +9,8 @@ import { hasLoginPrompt, loginAndNavigateToRoute, waitForLoadingComplete } from 
 // Phase 226 B1a — dual-channel verification on dataset-create mutation.
 import { verifyViaApi } from '../../fixtures/verifyViaApi';
 import { verifyAuditEvent } from '../../fixtures/verifyAuditEvent';
+// Phase 226 G7 — semantic-IRI guarantee on dataset-create.
+import { verifySemanticIri } from '../../fixtures/verifySemantic';
 
 test.describe('Dataset Creation Flow', () => {
   test.setTimeout(120000);
@@ -32,19 +34,19 @@ test.describe('Dataset Creation Flow', () => {
     const testUser = await getTestUser();
     await loginAndNavigateToRoute(page, testUser, '/datasets/create', {
       timeout: 90000,
-      contentSelector: '.dataset-create-page, .error-display, .file-upload, h1',
+      contentSelector: '.dataset-create-page, [data-testid="dataset-create-page"], .error-display, [data-testid="error-display"], .file-upload, [data-testid="file-upload"], h1',
     });
     await waitForLoadingComplete(page);
 
     // Wait for create page to load - use first() to avoid strict mode violation
     await expect(
-      page.locator('.dataset-create-page').or(page.locator('h1:has-text("Create Dataset")')).first()
+      page.locator('.dataset-create-page, [data-testid="dataset-create-page"]').first().or(page.locator('h1:has-text("Create Dataset")')).first()
     ).toBeVisible({
       timeout: 10000,
     });
 
     // Upload file if dropzone present - handle rate limiting (429)
-    const dropzone = page.locator('.file-upload-dropzone');
+    const dropzone = page.locator('.file-upload-dropzone, [data-testid="file-upload-dropzone"]');
     if ((await dropzone.count()) === 0) {
       test.skip(true, 'File upload dropzone not found — UI may have changed');
     }
@@ -125,7 +127,7 @@ test.describe('Dataset Creation Flow', () => {
             // intentional: best-effort .catch on an optional step — primary pass/fail is made by a downstream assertion (verifyViaApi, waitFor, explicit expect). The fallback value tolerates well-known transient or absent-UI cases without papering over real failures.
             const consoleErrors = await page
               .evaluate(() => {
-                return Array.from(document.querySelectorAll('.error-message, .error-display'))
+                return Array.from(document.querySelectorAll('.error-message, .error-display, [data-testid="error-display"]'))
                   .map((el) => el.textContent)
                   .join(' ');
               })
@@ -182,16 +184,16 @@ test.describe('Dataset Creation Flow', () => {
     // leave the backend processing the dataset record for 30-40s before the detail renders.
     await waitForLoadingComplete(page, { timeout: 45000 });
     await page.waitForSelector(
-      '.dataset-detail-page, .dataset-detail-content, .dataset-detail-metadata, .error-display, .empty-state',
+      '.dataset-detail-page, [data-testid="dataset-detail-page"], .dataset-detail-content, .dataset-detail-metadata, .error-display, [data-testid="error-display"], .empty-state, [data-testid="empty-state"]',
       { timeout: 40000 }
     );
-    const hasError = (await page.locator('.error-display').count()) > 0;
+    const hasError = (await page.locator('.error-display, [data-testid="error-display"]').first().count()) > 0;
     if (hasError) {
-      const errText = (await page.locator('.error-display').first().textContent()) ?? '';
+      const errText = (await page.locator('.error-display, [data-testid="error-display"]').first().first().textContent()) ?? '';
       throw new Error(`Dataset creation failed: ${errText.slice(0, 300)}`);
     }
     await expect(
-      page.locator('.dataset-detail-page, .dataset-detail-content, .dataset-detail-metadata').first()
+      page.locator('.dataset-detail-page, [data-testid="dataset-detail-page"], .dataset-detail-content, .dataset-detail-metadata').first()
     ).toBeVisible({ timeout: 5000 });
 
     // Phase 226 B1a — dual-channel verification.
@@ -203,6 +205,12 @@ test.describe('Dataset Creation Flow', () => {
       action: 'DATASET_CREATED',
       resourceType: 'DATASET',
       resourceId: datasetId,
+    });
+
+    // Phase 226 G7 — JSON-LD dereference guarantee on dataset-create.
+    await verifySemanticIri(page, 'dataset', datasetId, {
+      testInfo: test.info(),
+      skipSparqlOn: ({ status }) => status === 404 || status === 501 || status === 503,
     });
   });
 });

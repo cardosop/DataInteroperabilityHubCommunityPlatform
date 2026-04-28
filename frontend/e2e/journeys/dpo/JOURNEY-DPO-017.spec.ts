@@ -14,7 +14,7 @@ import { createODPSProductViaApi } from '../../fixtures/api-assets';
 import { getTestUser } from '../../fixtures/auth';
 import { loginAndNavigateToRoute } from '../../fixtures/helpers';
 
-test.describe('JOURNEY-DPO-017: Export ODPS Product', () => {
+test.describe('JOURNEY-DPO-017: Export ODPS Product @critical', () => {
   test.setTimeout(90000);
 
   test.describe('Success', () => {
@@ -26,16 +26,16 @@ test.describe('JOURNEY-DPO-017: Export ODPS Product', () => {
 
       await loginAndNavigateToRoute(page, testUser, `/odps/${odpsContractId}`, {
         timeout: 60000,
-        contentSelector: '.odps-detail-main, .odps-detail-page, .error-display',
+        contentSelector: '.odps-detail-main, .odps-detail-page, .error-display, [data-testid="error-display"]',
       });
 
       if (page.url().includes('/login')) {
         throw new Error('Unexpected redirect to login on ODPS detail page');
       }
 
-      const hasError = (await page.locator('.error-display').count()) > 0;
+      const hasError = (await page.locator('.error-display, [data-testid="error-display"]').first().count()) > 0;
       if (hasError) {
-        const errText = (await page.locator('.error-display').first().textContent()) ?? '';
+        const errText = (await page.locator('.error-display, [data-testid="error-display"]').first().first().textContent()) ?? '';
         throw new Error(`ODPS detail page failed to load: ${errText.slice(0, 250)}`);
       }
 
@@ -64,7 +64,7 @@ test.describe('JOURNEY-DPO-017: Export ODPS Product', () => {
         '/odps/00000000-0000-0000-0000-000000000000',
         {
           timeout: 60000,
-          contentSelector: '.error-display, .odps-detail-page, [role="alert"]',
+          contentSelector: '.error-display, [data-testid="error-display"], .odps-detail-page, [role="alert"]',
         }
       );
 
@@ -73,7 +73,7 @@ test.describe('JOURNEY-DPO-017: Export ODPS Product', () => {
       }
 
       const hasExplicitError =
-        (await page.locator('.error-display').count()) > 0 ||
+        (await page.locator('.error-display, [data-testid="error-display"]').first().count()) > 0 ||
         (await page.locator('[role="alert"]').count()) > 0;
       expect(hasExplicitError).toBe(true);
     });
@@ -84,12 +84,12 @@ test.describe('JOURNEY-DPO-017: Export ODPS Product', () => {
       const testUser = await getTestUser();
       await loginAndNavigateToRoute(page, testUser, '/odps', {
         timeout: 60000,
-        contentSelector: '.odps-list-page, .odps-empty-state, .error-display',
+        contentSelector: '.odps-list-page, .odps-empty-state, .error-display, [data-testid="error-display"]',
       });
       test.skip(page.url().includes('/login'), 'Redirected to login');
       expect(page.url()).toContain('/odps');
       const hasContent =
-        (await page.locator('.odps-list-page, .odps-empty-state, .empty-state').count()) > 0;
+        (await page.locator('.odps-list-page, .odps-empty-state, .empty-state, [data-testid="empty-state"]').count()) > 0;
       expect(hasContent).toBe(true);
     });
   });

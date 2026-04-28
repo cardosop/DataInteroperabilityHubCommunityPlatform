@@ -31,9 +31,9 @@ test.describe('JOURNEY-DEV-002: Integrate via SDK', () => {
       }
       expect(onDeveloper).toBe(true);
       const hasContent =
-        (await page.locator('.developer-portal-page, .app-main').count()) > 0;
+        (await page.locator('.developer-portal-page, .app-main, [data-testid="app-main"]').count()) > 0;
       expect(hasContent).toBe(true);
-      await expect(page.locator('.error-display')).not.toBeVisible();
+      await expect(page.locator('.error-display, [data-testid="error-display"]').first()).not.toBeVisible();
     });
 
     test('baas page loads for API keys', async ({ page }) => {
@@ -50,9 +50,9 @@ test.describe('JOURNEY-DEV-002: Integrate via SDK', () => {
       }
       expect(onBaas).toBe(true);
       const hasContent =
-        (await page.locator('.baas-page, .app-main').count()) > 0;
+        (await page.locator('.baas-page, .app-main, [data-testid="app-main"]').count()) > 0;
       expect(hasContent).toBe(true);
-      await expect(page.locator('.error-display')).not.toBeVisible();
+      await expect(page.locator('.error-display, [data-testid="error-display"]').first()).not.toBeVisible();
     });
   });
 

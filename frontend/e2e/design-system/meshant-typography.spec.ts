@@ -25,7 +25,7 @@ test.describe('Meshant Typography (Phase 29.0)', () => {
 
   test('key headings use design tokens (smoke)', async ({ page }) => {
     // loginUser in beforeEach already navigated to '/' — no reload needed.
-    await page.waitForSelector('.app-main, h1', { state: 'visible', timeout: 15000 });
+    await page.waitForSelector('.app-main, [data-testid="app-main"], h1', { state: 'visible', timeout: 15000 });
 
     const h1 = page.locator('h1').first();
     await expect(h1).toBeVisible();

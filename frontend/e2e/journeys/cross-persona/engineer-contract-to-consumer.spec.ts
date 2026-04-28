@@ -67,14 +67,14 @@ test.describe('Cross-Persona: Engineer Contract → DPO Asset → Consumer Disco
     await page.goto('/marketplace');
     await page.waitForLoadState('domcontentloaded');
     await page.waitForSelector(
-      '.listing-list-page, .listing-list-grid, .empty-state',
+      '.listing-list-page, .listing-list-grid, [data-testid="listing-list-grid"], .empty-state, [data-testid="empty-state"]',
       { timeout: 30000 }
     );
     test.skip(page.url().includes('/login'), 'DC auth redirect — infra issue');
     await waitForLoadingComplete(page, { timeout: 15000 });
 
     // D85: no error-display in success verification
-    await expect(page.locator('.error-display')).not.toBeVisible({ timeout: 2000 });
+    await expect(page.locator('.error-display, [data-testid="error-display"]').first()).not.toBeVisible({ timeout: 2000 });
 
     // Check if listing is visible in marketplace
     const listingVisible = (await page.locator(`text="${listingTitle}"`).count()) > 0;
@@ -85,16 +85,16 @@ test.describe('Cross-Persona: Engineer Contract → DPO Asset → Consumer Disco
       await page.waitForURL(/\/marketplace\/listings\/[^/]+/, { timeout: 15000 });
       await waitForLoadingComplete(page, { timeout: 15000 });
 
-      await expect(page.locator('.error-display')).not.toBeVisible({ timeout: 2000 });
+      await expect(page.locator('.error-display, [data-testid="error-display"]').first()).not.toBeVisible({ timeout: 2000 });
 
       // Listing detail should show the asset info (contract info may be in metadata section)
-      const hasDetail = (await page.locator('.listing-detail-main, .listing-detail-page').count()) > 0;
+      const hasDetail = (await page.locator('.listing-detail-page, .listing-detail-main, [data-testid="listing-detail-main"]').count()) > 0;
       expect(hasDetail).toBe(true);
     } else {
       // Cross-tenant: listing may not be visible to DC. Verify marketplace page rendered.
       const hasMarketplace =
-        (await page.locator('.listing-list-page, .listing-list-grid').count()) > 0 ||
-        (await page.locator('.empty-state').count()) > 0;
+        (await page.locator('.listing-list-page, .listing-list-grid, [data-testid="listing-list-grid"]').count()) > 0 ||
+        (await page.locator('.empty-state, [data-testid="empty-state"]').first().count()) > 0;
       expect(hasMarketplace).toBe(true);
       test.info().annotations.push({
         type: 'cross-tenant',
@@ -107,17 +107,17 @@ test.describe('Cross-Persona: Engineer Contract → DPO Asset → Consumer Disco
     await page.goto('/contracts');
     await page.waitForLoadState('domcontentloaded');
     await page.waitForSelector(
-      '.contract-list-page, .empty-state',
+      '.contract-list-page, [data-testid="contract-list-page"], .empty-state, [data-testid="empty-state"]',
       { timeout: 30000 }
     );
     test.skip(page.url().includes('/login'), 'DE auth redirect — infra issue');
     await waitForLoadingComplete(page, { timeout: 15000 });
 
-    await expect(page.locator('.error-display')).not.toBeVisible({ timeout: 2000 });
+    await expect(page.locator('.error-display, [data-testid="error-display"]').first()).not.toBeVisible({ timeout: 2000 });
 
     const hasContracts =
-      (await page.locator('.contract-list-page').count()) > 0 ||
-      (await page.locator('.empty-state').count()) > 0;
+      (await page.locator('.contract-list-page, [data-testid="contract-list-page"]').first().count()) > 0 ||
+      (await page.locator('.empty-state, [data-testid="empty-state"]').first().count()) > 0;
     expect(hasContracts).toBe(true);
   });
 });

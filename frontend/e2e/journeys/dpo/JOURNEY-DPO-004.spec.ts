@@ -17,7 +17,7 @@ import {
   waitForLoadingComplete,
 } from '../../fixtures/helpers';
 
-test.describe('JOURNEY-DPO-004: Monitor Asset Quality', () => {
+test.describe('JOURNEY-DPO-004: Monitor Asset Quality @critical', () => {
   test.setTimeout(90000);
 
   test.describe('Success', () => {
@@ -25,21 +25,21 @@ test.describe('JOURNEY-DPO-004: Monitor Asset Quality', () => {
       const testUser = await getTestUser();
       await loginAndNavigateToRoute(page, testUser, '/dq', {
         timeout: 60000,
-        contentSelector: '.dq-run-list-page, .empty-state, .error-display',
+        contentSelector: '.dq-run-list-page, .empty-state, [data-testid="empty-state"], .error-display, [data-testid="error-display"]',
       });
       await waitForLoadingComplete(page, { timeout: 30000 });
       expect(page.url()).toContain('/dq');
 
       // Error display must not count as "loaded" — it means the API failed
-      const hasError = (await page.locator('.error-display').count()) > 0;
+      const hasError = (await page.locator('.error-display, [data-testid="error-display"]').first().count()) > 0;
       if (hasError) {
-        const errText = (await page.locator('.error-display').first().textContent()) ?? '';
+        const errText = (await page.locator('.error-display, [data-testid="error-display"]').first().first().textContent()) ?? '';
         throw new Error(`DQ runs list shows backend error: ${errText.slice(0, 200)}`);
       }
 
       const hasContent =
         (await page.locator('.dq-run-list-page').count()) > 0 ||
-        (await page.locator('.empty-state').count()) > 0 ||
+        (await page.locator('.empty-state, [data-testid="empty-state"]').first().count()) > 0 ||
         (await page.locator('h1:has-text("Data Quality Runs")').count()) > 0;
       expect(hasContent).toBe(true) /* acceptable states */;
     });
@@ -78,7 +78,7 @@ test.describe('JOURNEY-DPO-004: Monitor Asset Quality', () => {
       // ListPageSkeleton before asserting (plain goto + loginUser can sit on skeleton until timeout).
       await loginAndNavigateToRoute(page, testUser, '/dq', {
         timeout: 60000,
-        contentSelector: '.dq-run-list-page, .empty-state, .error-display',
+        contentSelector: '.dq-run-list-page, .empty-state, [data-testid="empty-state"], .error-display, [data-testid="error-display"]',
       });
       test.skip(page.url().includes('/login'), 'Redirected to login');
       await waitForLoadingComplete(page, { timeout: 30000 });
@@ -86,7 +86,7 @@ test.describe('JOURNEY-DPO-004: Monitor Asset Quality', () => {
 
       const hasContent =
         (await page.locator('.dq-run-list-page').count()) > 0 ||
-        (await page.locator('.empty-state').count()) > 0 ||
+        (await page.locator('.empty-state, [data-testid="empty-state"]').first().count()) > 0 ||
         (await page.locator('h1:has-text("Data Quality Runs")').count()) > 0 ||
         (await page.locator('h1:has-text("Data Quality"), h1:has-text("Quality Runs"), [data-testid="dq-page"]').count()) > 0 ||
         (await page.locator('.dq-page, .dq-runs-page, .data-quality-page').count()) > 0;
@@ -98,7 +98,7 @@ test.describe('JOURNEY-DPO-004: Monitor Asset Quality', () => {
       // Use loginAndNavigateToRoute to ensure auth tokens survive navigation.
       await loginAndNavigateToRoute(page, testUser, '/dq', {
         timeout: 60000,
-        contentSelector: '.dq-run-list-page, .empty-state, .error-display',
+        contentSelector: '.dq-run-list-page, .empty-state, [data-testid="empty-state"], .error-display, [data-testid="error-display"]',
       });
       if (page.url().includes('/login')) {
         throw new Error('Unexpected redirect to login on /dq edge test');
@@ -106,16 +106,16 @@ test.describe('JOURNEY-DPO-004: Monitor Asset Quality', () => {
       expect(page.url()).toContain('/dq');
       await waitForLoadingComplete(page, { timeout: 30000 });
 
-      const hasError = (await page.locator('.error-display').count()) > 0;
+      const hasError = (await page.locator('.error-display, [data-testid="error-display"]').first().count()) > 0;
       if (hasError) {
-        const errText = (await page.locator('.error-display').first().textContent()) ?? '';
+        const errText = (await page.locator('.error-display, [data-testid="error-display"]').first().first().textContent()) ?? '';
         throw new Error(`DQ list shows backend error: ${errText.slice(0, 200)}`);
       }
 
       const hasPagination = (await page.locator('.dq-run-list-pagination').count()) > 0;
       const hasListOrEmpty =
         (await page.locator('.dq-run-list-page table tr, .dq-run-list-page .list-item').count()) > 0 ||
-        (await page.locator('.empty-state').count()) > 0;
+        (await page.locator('.empty-state, [data-testid="empty-state"]').first().count()) > 0;
       expect(hasPagination || hasListOrEmpty).toBe(true) /* acceptable states */;
     });
   });

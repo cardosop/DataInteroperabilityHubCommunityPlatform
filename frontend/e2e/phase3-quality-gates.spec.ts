@@ -16,7 +16,7 @@ import {
 } from './fixtures/helpers';
 import { verifyViaApi } from './fixtures/verifyViaApi';
 
-test.describe('Phase 3 Quality Gates', () => {
+test.describe('Phase 3 Quality Gates @deprecated', () => {
   test('complete journey: run compliance + DQ → handle fail → rerun → pass', async ({ page }) => {
     test.setTimeout(120000);
 
@@ -25,7 +25,7 @@ test.describe('Phase 3 Quality Gates', () => {
     console.log('Navigating to /assets');
     await loginAndNavigateToRoute(page, testUser, '/assets', {
       timeout: 60000,
-      contentSelector: '.asset-list-page, .empty-state, .error-display, .asset-list-header, h1',
+      contentSelector: '.asset-list-page, [data-testid="asset-list-page"], .empty-state, [data-testid="empty-state"], .error-display, [data-testid="error-display"], .asset-list-header, h1',
     });
     console.log('Asset list page content found');
 
@@ -35,7 +35,7 @@ test.describe('Phase 3 Quality Gates', () => {
     console.log('Looking for Create Asset button...');
     const createButton = page
       .locator('button:has-text("Create Asset")')
-      .or(page.locator('.empty-state-action:has-text("Create Asset")'))
+      .or(page.locator('[data-testid="empty-state-action"]:has-text("Create Asset")'))
       .first();
     try {
       await createButton.waitFor({ state: 'visible', timeout: 45000 });
@@ -44,7 +44,7 @@ test.describe('Phase 3 Quality Gates', () => {
       console.log('Create Asset button not visible, reloading assets page...');
       await page.goto('/assets', { waitUntil: 'domcontentloaded', timeout: 30000 });
       await page.waitForSelector(
-        '.asset-list-page, .empty-state, .error-display, .asset-list-header, h1:has-text("Assets")',
+        '.asset-list-page, [data-testid="asset-list-page"], .empty-state, [data-testid="empty-state"], .error-display, [data-testid="error-display"], .asset-list-header, h1:has-text("Assets")',
         {
           timeout: 30000,
         }
@@ -102,7 +102,7 @@ test.describe('Phase 3 Quality Gates', () => {
     }
     if (page.url().includes('/assets/create')) {
       // intentional: tolerates a detached/removed element while extracting text for a diagnostic message; the surrounding throw/expect below this catch is the primary failure path.
-      const errEl = await page.locator('.error-display').first().textContent().catch(() => '');
+      const errEl = await page.locator('.error-display, [data-testid="error-display"]').first().first().textContent().catch(() => '');
       const errHint = errEl ? ` Backend error: ${errEl.slice(0, 200)}` : '';
       throw new Error(`Asset creation redirect failed. Still on create page.${errHint}`);
     }
@@ -133,11 +133,11 @@ test.describe('Phase 3 Quality Gates', () => {
     await page.waitForLoadState('domcontentloaded');
     await page.waitForTimeout(2000);
 
-    await page.waitForSelector('.asset-detail-page, .asset-detail-content', { timeout: 30000 });
+    await page.waitForSelector('.asset-detail-content, .asset-detail-page, [data-testid="asset-detail-page"]', { timeout: 30000 });
     console.log('Asset detail page loaded');
 
     // Verify asset heading
-    const assetHeading = page.locator('.asset-detail-page h1, .asset-detail-content h1').first();
+    const assetHeading = page.locator('.asset-detail-page, [data-testid="asset-detail-page"] h1, .asset-detail-content h1').first();
     await expect(assetHeading).toContainText('Test Asset for Quality Gates', { timeout: 30000 });
     console.log('Asset heading verified');
 
@@ -149,9 +149,9 @@ test.describe('Phase 3 Quality Gates', () => {
     console.log('Navigating to dataset create page...');
     await navigateToRouteFromApp(page, '/datasets/create', {
       timeout: 30000,
-      contentSelector: '.dataset-create-page',
+      contentSelector: '.dataset-create-page, [data-testid="dataset-create-page"]',
     });
-    await page.waitForSelector('.dataset-create-page, h1:has-text("Create Dataset")', {
+    await page.waitForSelector('.dataset-create-page, [data-testid="dataset-create-page"], h1:has-text("Create Dataset")', {
       timeout: 30000,
     });
     console.log('Dataset create page loaded');
@@ -177,7 +177,7 @@ test.describe('Phase 3 Quality Gates', () => {
     // (visually hidden) so setInputFiles works without needing a dropzone click.
     const phase3FileBase = `test-p3-qg-${Date.now()}`;
     console.log('Uploading file...');
-    const datasetFileInput = page.locator('.dataset-create-page input[type="file"]');
+    const datasetFileInput = page.locator('.dataset-create-page, [data-testid="dataset-create-page"] input[type="file"]');
     await datasetFileInput.waitFor({ state: 'attached', timeout: 30000 });
     await datasetFileInput.setInputFiles({
       name: `${phase3FileBase}.csv`,
@@ -187,7 +187,7 @@ test.describe('Phase 3 Quality Gates', () => {
       ),
     });
     console.log('File selected, waiting for upload to complete...');
-    await page.waitForSelector('.file-upload-dropzone.upload-success', { timeout: 45000 });
+    await page.waitForSelector('.file-upload-dropzone, [data-testid="file-upload-dropzone"].upload-success', { timeout: 45000 });
     console.log('File upload completed');
 
     // Submit — button enables once both uploadedFile and selectedAssetId are set
@@ -212,7 +212,7 @@ test.describe('Phase 3 Quality Gates', () => {
     try {
       await navigateToRouteFromApp(page, `/assets/${assetId}`, {
         timeout: 60000,
-        contentSelector: '.asset-detail-page, .asset-detail-content, .error-display',
+        contentSelector: '.asset-detail-page, [data-testid="asset-detail-page"], .asset-detail-content, .error-display, [data-testid="error-display"]',
         user: testUser,
       });
     } catch (err) {
@@ -220,13 +220,13 @@ test.describe('Phase 3 Quality Gates', () => {
       if (msg.includes('Redirected to login') || msg.includes('Still on login')) {
         await loginAndNavigateToRoute(page, testUser, `/assets/${assetId}`, {
           timeout: 60000,
-          contentSelector: '.asset-detail-page, .asset-detail-content, .error-display',
+          contentSelector: '.asset-detail-page, [data-testid="asset-detail-page"], .asset-detail-content, .error-display, [data-testid="error-display"]',
         });
       } else {
         throw err;
       }
     }
-    await page.waitForSelector('.asset-detail-page, .asset-detail-content, .error-display', {
+    await page.waitForSelector('.asset-detail-page, [data-testid="asset-detail-page"], .asset-detail-content, .error-display, [data-testid="error-display"]', {
       timeout: 45000,
     });
     console.log('Asset detail page loaded');
@@ -309,7 +309,7 @@ test.describe('Phase 3 Quality Gates', () => {
     console.log('Navigating to DQ run detail page...');
     await navigateToRouteFromApp(page, `/dq/runs/${dqRunId}`, {
       timeout: 30000,
-      contentSelector: '.dq-run-detail-page, .dq-run-detail-content, .error-display',
+      contentSelector: '.dq-run-detail-page, .dq-run-detail-content, .error-display, [data-testid="error-display"]',
       user: testUser,
     });
     await page.waitForSelector('.dq-run-detail-page, .dq-run-detail-content', {
@@ -349,10 +349,10 @@ test.describe('Phase 3 Quality Gates', () => {
     console.log('Navigating back to asset detail...');
     await navigateToRouteFromApp(page, `/assets/${assetId}`, {
       timeout: 30000,
-      contentSelector: '.asset-detail-page, .asset-detail-content, .error-display',
+      contentSelector: '.asset-detail-page, [data-testid="asset-detail-page"], .asset-detail-content, .error-display, [data-testid="error-display"]',
       user: testUser,
     });
-    await page.waitForSelector('.asset-detail-page, .asset-detail-content', { timeout: 30000 });
+    await page.waitForSelector('.asset-detail-content, .asset-detail-page, [data-testid="asset-detail-page"]', { timeout: 30000 });
 
     // Step 5: Run Compliance Check — same pattern as DQ: observe POST
     // response + poll via API, no page reloads (which can redirect to /login
@@ -423,11 +423,11 @@ test.describe('Phase 3 Quality Gates', () => {
     console.log('Navigating to compliance run detail page...');
     await navigateToRouteFromApp(page, `/compliance/runs/${complianceRunId}`, {
       timeout: 30000,
-      contentSelector: '.compliance-run-detail-page, .compliance-run-detail-content, .error-display',
+      contentSelector: '.compliance-run-detail-page, [data-testid="compliance-run-detail-page"], .compliance-run-detail-content, .error-display, [data-testid="error-display"]',
       user: testUser,
     });
     await page.waitForSelector(
-      '.compliance-run-detail-page, .compliance-run-detail-content',
+      '.compliance-run-detail-content, .compliance-run-detail-page, [data-testid="compliance-run-detail-page"]',
       { timeout: 30000 },
     );
 
@@ -470,10 +470,10 @@ test.describe('Phase 3 Quality Gates', () => {
     // Step 6: back to asset detail; verify retry button present+enabled
     await navigateToRouteFromApp(page, `/assets/${assetId}`, {
       timeout: 30000,
-      contentSelector: '.asset-detail-page, .asset-detail-content, .error-display',
+      contentSelector: '.asset-detail-page, [data-testid="asset-detail-page"], .asset-detail-content, .error-display, [data-testid="error-display"]',
       user: testUser,
     });
-    await page.waitForSelector('.asset-detail-page, .asset-detail-content', { timeout: 30000 });
+    await page.waitForSelector('.asset-detail-content, .asset-detail-page, [data-testid="asset-detail-page"]', { timeout: 30000 });
     // Scoped to the Quality Gates section for the same reason as the
     // primary compliance-run button above (onboarding-label collision
     // resilience).
@@ -498,7 +498,7 @@ test.describe('Phase 3 Quality Gates', () => {
     console.log('Navigating to DQ runs list page...');
     await navigateToRouteFromApp(page, '/dq', {
       timeout: 30000,
-      contentSelector: '.dq-run-list-page, .error-display',
+      contentSelector: '.dq-run-list-page, .error-display, [data-testid="error-display"]',
       user: testUser,
     });
     console.log('DQ runs list page loaded');
@@ -530,7 +530,7 @@ test.describe('Phase 3 Quality Gates', () => {
     console.log('Navigating to Compliance runs list page...');
     await navigateToRouteFromApp(page, '/compliance', {
       timeout: 30000,
-      contentSelector: '.compliance-run-list-page, .error-display',
+      contentSelector: '.compliance-run-list-page, [data-testid="compliance-run-list-page"], .error-display, [data-testid="error-display"]',
       user: testUser,
     });
     console.log('Compliance runs list page loaded');

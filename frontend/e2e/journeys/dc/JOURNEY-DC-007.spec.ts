@@ -26,7 +26,7 @@ import { expect, test } from '@playwright/test';
 import { clearAuthStorage, getTestUser } from '../../fixtures/auth';
 import { loginAndNavigateToRoute, waitForLoadingComplete } from '../../fixtures/helpers';
 
-test.describe('JOURNEY-DC-007: Create Transformation Pipeline for Data', () => {
+test.describe('JOURNEY-DC-007: Create Transformation Pipeline for Data @critical', () => {
   test.setTimeout(120000);
 
   test.describe('Success', () => {
@@ -37,7 +37,7 @@ test.describe('JOURNEY-DC-007: Create Transformation Pipeline for Data', () => {
       await loginAndNavigateToRoute(page, testUser, '/transformation', {
         timeout: 60000,
         contentSelector:
-          '.transformation-pipeline-list-page, .unavailable-page, .empty-state, .error-display',
+          '.transformation-pipeline-list-page, .unavailable-page, [data-testid="unavailable-page"], .empty-state, [data-testid="empty-state"], .error-display, [data-testid="error-display"]',
       });
 
       if (page.url().includes('/login')) {
@@ -47,15 +47,15 @@ test.describe('JOURNEY-DC-007: Create Transformation Pipeline for Data', () => {
 
       // intentional: probes optional UI presence via selector — same shape as waitFor; absence is a legitimate state handled by the branch below.
       await page.waitForSelector(
-        '.transformation-pipeline-list-page, .empty-state, .unavailable-page',
+        '.transformation-pipeline-list-page, .empty-state, [data-testid="empty-state"], .unavailable-page, [data-testid="unavailable-page"]',
         { timeout: 30000 }
       ).catch(() => null);
 
       const capabilityEnabled =
         page.url().includes('/transformation') &&
-        (await page.locator('.transformation-pipeline-list-page, .empty-state').count()) > 0;
+        (await page.locator('.transformation-pipeline-list-page, .empty-state, [data-testid="empty-state"]').count()) > 0;
       const capabilityDisabled =
-        (await page.locator('.unavailable-page').count()) > 0 ||
+        (await page.locator('.unavailable-page, [data-testid="unavailable-page"]').first().count()) > 0 ||
         page.url().includes('/unavailable') ||
         page.url().includes('/403');
 
@@ -63,11 +63,11 @@ test.describe('JOURNEY-DC-007: Create Transformation Pipeline for Data', () => {
 
       if (capabilityEnabled) {
         await expect(
-          page.locator('.transformation-pipeline-list-page, .empty-state').first()
+          page.locator('.transformation-pipeline-list-page, .empty-state, [data-testid="empty-state"]').first()
         ).toBeVisible({ timeout: 5000 });
       } else {
         await expect(
-          page.locator('.unavailable-page, [role="main"]').first()
+          page.locator('.unavailable-page, [data-testid="unavailable-page"], [role="main"]').first()
         ).toBeVisible({ timeout: 5000 });
       }
     });
@@ -103,11 +103,11 @@ test.describe('JOURNEY-DC-007: Create Transformation Pipeline for Data', () => {
       await loginAndNavigateToRoute(page, testUser, '/transformation', {
         timeout: 60000,
         contentSelector:
-          '.transformation-pipeline-list-page, .unavailable-page, .empty-state, .error-display',
+          '.transformation-pipeline-list-page, .unavailable-page, [data-testid="unavailable-page"], .empty-state, [data-testid="empty-state"], .error-display, [data-testid="error-display"]',
       });
       // intentional: probes optional UI presence via a multi-line locator chain — the branch logic below handles both rendered and missing cases deterministically; absence is a legitimate tenant/role state.
       await page
-        .locator('.transformation-pipeline-list-page, .unavailable-page, .app-main')
+        .locator('.transformation-pipeline-list-page, .unavailable-page, [data-testid="unavailable-page"], .app-main, [data-testid="app-main"]')
         .first()
         .waitFor({ state: 'visible', timeout: 10000 })
         .catch(() => null);
@@ -119,9 +119,9 @@ test.describe('JOURNEY-DC-007: Create Transformation Pipeline for Data', () => {
       }
 
       const capabilityEnabled =
-        (await page.locator('.transformation-pipeline-list-page, .empty-state').count()) > 0;
+        (await page.locator('.transformation-pipeline-list-page, .empty-state, [data-testid="empty-state"]').count()) > 0;
       const capabilityDisabled =
-        (await page.locator('.unavailable-page').count()) > 0 ||
+        (await page.locator('.unavailable-page, [data-testid="unavailable-page"]').first().count()) > 0 ||
         page.url().includes('/unavailable') ||
         page.url().includes('/403');
 
@@ -130,11 +130,11 @@ test.describe('JOURNEY-DC-007: Create Transformation Pipeline for Data', () => {
 
       if (capabilityEnabled) {
         await expect(
-          page.locator('.transformation-pipeline-list-page, .empty-state').first()
+          page.locator('.transformation-pipeline-list-page, .empty-state, [data-testid="empty-state"]').first()
         ).toBeVisible({ timeout: 5000 });
       } else {
         await expect(
-          page.locator('.unavailable-page, [role="main"]').first()
+          page.locator('.unavailable-page, [data-testid="unavailable-page"], [role="main"]').first()
         ).toBeVisible({ timeout: 5000 });
       }
     });

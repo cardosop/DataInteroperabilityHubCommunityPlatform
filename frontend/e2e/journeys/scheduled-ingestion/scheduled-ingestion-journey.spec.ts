@@ -179,7 +179,7 @@ async function pollRunUntilTerminal(
   return lastRun;
 }
 
-test.describe('Scheduled Ingestion Journey', () => {
+test.describe('Scheduled Ingestion Journey @critical', () => {
   // 8 min: login (~90s) + create + trigger (~60s) + poll (~240s) under parallel E2E load
   test.setTimeout(90000);
 
@@ -228,7 +228,7 @@ test.describe('Scheduled Ingestion Journey', () => {
       await loginAndNavigateToRoute(page, testUser, '/scheduled-ingestions', {
         timeout: 60000,
         contentSelector:
-          '.scheduled-ingestion-list-page, .empty-state, .error-display, h1',
+          '.scheduled-ingestion-list-page, .empty-state, [data-testid="empty-state"], .error-display, [data-testid="error-display"], h1',
       });
       if (page.url().includes('/login') || page.url().includes('/403')) {
         test.skip(
@@ -259,10 +259,10 @@ test.describe('Scheduled Ingestion Journey', () => {
           }
         );
       } catch {
-        const hasError = (await page.locator('.error-display').count()) > 0;
+        const hasError = (await page.locator('.error-display, [data-testid="error-display"]').first().count()) > 0;
         const errText = hasError
           // intentional: scheduled-ingestion journey same shape as scheduled-export — best-effort optional steps; primary assertions via verifyViaApi.
-          ? (await page.locator('.error-display').first().textContent().catch(() => '')) || ''
+          ? (await page.locator('.error-display, [data-testid="error-display"]').first().first().textContent().catch(() => '')) || ''
           : '';
         throw new Error(
           `Scheduled ingestion create did not navigate to detail within 30s. ${errText ? `Error: ${errText.slice(0, 150)}` : 'Check backend and Prefect availability.'}`
@@ -271,13 +271,13 @@ test.describe('Scheduled Ingestion Journey', () => {
       // Detail page may show loading, then content; or error/empty if create failed
       // Use .first() to avoid strict mode violation when both detail page and runs-section empty-state exist
       await page
-        .locator('[data-testid="scheduled-ingestion-detail-page"], .error-display, .empty-state')
+        .locator('[data-testid="scheduled-ingestion-detail-page"], .error-display, [data-testid="error-display"], .empty-state, [data-testid="empty-state"]')
         .first()
         .waitFor({ state: 'visible', timeout: 20000 });
       // Only skip on page-level error or "not found" empty - not the runs section "No runs" empty state
-      const hasPageError = (await page.locator('.error-display').count()) > 0;
+      const hasPageError = (await page.locator('.error-display, [data-testid="error-display"]').first().count()) > 0;
       const hasNotFoundEmpty =
-        (await page.locator('.empty-state:has-text("not found"), .empty-state:has-text("could not be found")').count()) >
+        (await page.locator('.empty-state, [data-testid="empty-state"]:has-text("not found"), .empty-state, [data-testid="empty-state"]:has-text("could not be found")').count()) >
         0;
       if (hasPageError || (hasNotFoundEmpty && (await page.locator('[data-testid="scheduled-ingestion-detail-page"]').count()) === 0)) {
         throw new Error(
@@ -339,9 +339,9 @@ test.describe('Scheduled Ingestion Journey', () => {
 
           // Dismiss any lingering ConfirmDialog from a previous failed attempt.
           // Use Escape key — more reliable than clicking btn-secondary (which may not be present).
-          if ((await page.locator('.modal-overlay').count()) > 0) {
+          if ((await page.locator('.modal-overlay, [data-testid="modal-overlay"]').first().count()) > 0) {
             await page.keyboard.press('Escape').catch(() => {});
-            await page.locator('.modal-overlay').waitFor({ state: 'hidden', timeout: 3000 }).catch(() => {});
+            await page.locator('.modal-overlay, [data-testid="modal-overlay"]').first().waitFor({ state: 'hidden', timeout: 3000 }).catch(() => {});
           }
 
           await triggerBtn.click();
@@ -349,8 +349,8 @@ test.describe('Scheduled Ingestion Journey', () => {
           // ScheduledIngestionDetailPage uses a React ConfirmDialog (not a browser dialog).
           // page.once('dialog') only handles window.confirm/alert — it has no effect here.
           // After clicking "Trigger Now", the ConfirmDialog opens with a "Trigger Now"
-          // confirm button (btn-primary inside .modal-overlay). Click it to fire the API.
-          const confirmBtn = page.locator('.modal-overlay button.btn-primary').first();
+          // confirm button (btn-primary inside .modal-overlay, [data-testid="modal-overlay"]). Click it to fire the API.
+          const confirmBtn = page.locator('.modal-overlay, [data-testid="modal-overlay"] button.btn-primary').first();
           await confirmBtn.waitFor({ state: 'visible', timeout: 5000 });
           await confirmBtn.click();
 
@@ -477,7 +477,7 @@ test.describe('Scheduled Ingestion Journey', () => {
         'button:has-text("Edit"), a:has-text("Edit"), [data-testid="edit-ingestion-button"]'
       );
       await expect(editBtn.first()).toBeVisible({ timeout: 30000 });
-      if (page.url().includes('/login') || (await page.locator('.error-display').count()) > 0) {
+      if (page.url().includes('/login') || (await page.locator('.error-display, [data-testid="error-display"]').first().count()) > 0) {
         return;
       }
       await editBtn.first().click();
@@ -558,7 +558,7 @@ test.describe('Scheduled Ingestion Journey', () => {
         'button:has-text("Delete"), [data-testid="delete-ingestion-button"]'
       );
       await expect(deleteBtn.first()).toBeVisible({ timeout: 30000 });
-      if (page.url().includes('/login') || (await page.locator('.error-display').count()) > 0) {
+      if (page.url().includes('/login') || (await page.locator('.error-display, [data-testid="error-display"]').first().count()) > 0) {
         return;
       }
 
