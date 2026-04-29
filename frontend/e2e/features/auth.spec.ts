@@ -5,7 +5,7 @@
  */
 
 import { expect, test } from '@playwright/test';
-import { clearAuthStorage, getTestUser, loginUser } from '../fixtures/auth';
+import { clearAuthStorage, getTestUser, gotoWithRetry, loginUser } from '../fixtures/auth';
 import { loginAndNavigateToRoute } from '../fixtures/helpers';
 
 test.describe('Feature: Auth', () => {
@@ -106,7 +106,12 @@ test.describe('Feature: Auth', () => {
       // Instead: login first to establish auth, then navigate directly.
       const testUser = await getTestUser();
       await loginUser(page, testUser);
-      await page.goto('/nonexistent-auth-route-xyz', { waitUntil: 'domcontentloaded' });
+      // Cycle-2026-04-29 flake fix — `page.goto: net::ERR_NETWORK_CHANGED at
+      // /nonexistent-auth-route-xyz`. Bare `page.goto` propagated the transient
+      // Chromium net error to the test; `gotoWithRetry` matches the regex
+      // (auth.ts isConnectionError) and retries with backoff so the next
+      // attempt usually succeeds.
+      await gotoWithRetry(page, '/nonexistent-auth-route-xyz', { waitUntil: 'domcontentloaded' });
 
       // Wait for any terminal state — 404 content, app shell, or loading
       // intentional: probes optional UI presence via a multi-line locator chain — the branch logic below handles both rendered and missing cases deterministically; absence is a legitimate tenant/role state.

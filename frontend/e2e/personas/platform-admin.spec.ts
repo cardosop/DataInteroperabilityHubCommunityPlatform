@@ -18,8 +18,8 @@ import '../journeys/pa/JOURNEY-MPA-009.spec';
 import '../journeys/pa/JOURNEY-PA-010.spec';
 
 import { test, expect } from '@playwright/test';
-import { loginAsPersona, getPlatformAdminUser } from '../fixtures/auth';
-import { waitForAppMainReady, waitForRoleGuardResolved } from '../fixtures/helpers';
+import { loginAsPersona, getPlatformAdminUser, gotoWithRetry } from '../fixtures/auth';
+import { injectTokensBeforeGotoForUser, waitForAppMainReady } from '../fixtures/helpers';
 
 test.describe('Persona RBAC: Platform Admin @critical', () => {
   test.setTimeout(120000);
@@ -32,7 +32,7 @@ test.describe('Persona RBAC: Platform Admin @critical', () => {
 
   test('PA can access /admin', async ({ page }) => {
     await loginAsPersona(page, getPlatformAdminUser);
-    await page.goto('/admin');
+    await gotoWithRetry(page, '/admin');
     await waitForAppMainReady(page);
     const url = page.url();
     expect(url.includes('/admin') || url.includes('/settings')).toBe(true);
@@ -42,7 +42,7 @@ test.describe('Persona RBAC: Platform Admin @critical', () => {
 
   test('PA can access /assets', async ({ page }) => {
     await loginAsPersona(page, getPlatformAdminUser);
-    await page.goto('/assets');
+    await gotoWithRetry(page, '/assets');
     await waitForAppMainReady(page);
     expect(page.url()).toContain('/assets');
     await expect(page.locator('.app-main, [data-testid="app-main"]').first()).toBeVisible();
@@ -50,8 +50,14 @@ test.describe('Persona RBAC: Platform Admin @critical', () => {
   });
 
   test('PA can access /audit', async ({ page }) => {
+    const paUser = await getPlatformAdminUser();
     await loginAsPersona(page, getPlatformAdminUser);
-    await page.goto('/audit');
+    // Cycle-2026-04-29 Pattern-B flake fix — same root cause as
+    // data-engineer:30: storageState's access_token is stale mid-suite, a
+    // background 401 clears in-memory state, and the next nav redirects to
+    // /login. Re-inject before goto.
+    await injectTokensBeforeGotoForUser(page, paUser);
+    await gotoWithRetry(page, '/audit');
     await waitForAppMainReady(page);
     // PA should have full access — 403 means RBAC misconfiguration
     expect(page.url()).toContain('/audit');
@@ -61,7 +67,11 @@ test.describe('Persona RBAC: Platform Admin @critical', () => {
 
   test('PA can access /settings/tenant (full-privilege role)', async ({ page }) => {
     await loginAsPersona(page, getPlatformAdminUser);
-    await page.goto('/settings/tenant');
+    // gotoWithRetry — Wi-Fi/VPN net::ERR_NETWORK_CHANGED retry. Cycle-2026-04-29 flake fix:
+    // first attempt failed with `page.goto: net::ERR_NETWORK_CHANGED at /settings/tenant`,
+    // retry passed. The bare `page.goto` propagated the transient Chromium net error;
+    // the wrapper's regex (auth.ts isConnectionError) matches and retries with backoff.
+    await gotoWithRetry(page, '/settings/tenant');
     await waitForAppMainReady(page);
     expect(page.url()).toContain('/settings');
     await expect(page.locator('.app-main, [data-testid="app-main"]').first()).toBeVisible();

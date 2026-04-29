@@ -21,14 +21,28 @@ import '../journeys/de/JOURNEY-DE-013.spec';
 import '../journeys/de/JOURNEY-DE-014.spec';
 
 import { test, expect } from '@playwright/test';
-import { waitForAppMainReady, waitForRoleGuardResolved } from '../fixtures/helpers';
+import {
+  injectTokensBeforeGotoForUser,
+  waitForAppMainReady,
+  waitForRoleGuardResolved,
+} from '../fixtures/helpers';
 import { loginAsPersona, getTestUser, gotoWithRetry } from '../fixtures/auth';
 
 test.describe('Persona RBAC: Data Engineer @critical', () => {
   test.setTimeout(120000);
 
   test('DE can access /contracts', async ({ page }) => {
+    const user = await getTestUser();
     await loginAsPersona(page, getTestUser);
+    // Cycle-2026-04-29 Pattern-B flake fix — `waitForAppMainReady: Redirected
+    // to login`. By the time this persona test runs (~mid-suite) the
+    // storageState's access_token may already be stale, the loginAsPersona
+    // fast-path may have succeeded but a background React Query refetch can
+    // 401 between the goto and the readiness check, clearing the in-memory
+    // token. Re-inject right before the goto so the SPA's auth-store
+    // initialize() reads coherent fresh tokens. Same root-cause + fix as
+    // multi-tenancy-isolation:235 / data-quality:235.
+    await injectTokensBeforeGotoForUser(page, user);
     // gotoWithRetry — Wi-Fi/VPN net::ERR_NETWORK_CHANGED retry (Fix 27).
     await gotoWithRetry(page, '/contracts');
     await waitForAppMainReady(page);
@@ -39,7 +53,11 @@ test.describe('Persona RBAC: Data Engineer @critical', () => {
 
   test('DE sees scheduled-ingestion gated in MVP mode', async ({ page }) => {
     await loginAsPersona(page, getTestUser);
-    await page.goto('/scheduled-ingestions');
+    // gotoWithRetry — Wi-Fi/VPN net::ERR_NETWORK_CHANGED retry. Cycle-2026-04-29 flake fix:
+    // first attempt failed with `page.goto: net::ERR_NETWORK_CHANGED at /scheduled-ingestions`,
+    // retry passed. The bare `page.goto` propagated the transient Chromium net error; the
+    // wrapper's regex (auth.ts isConnectionError) matches it and the next attempt succeeds.
+    await gotoWithRetry(page, '/scheduled-ingestions');
     await waitForAppMainReady(page);
     // Scheduled ingestion is MVP-gated — expect unavailable/coming-soon page
     const url = page.url();
@@ -53,7 +71,7 @@ test.describe('Persona RBAC: Data Engineer @critical', () => {
 
   test('DE cannot access /admin', async ({ page }) => {
     await loginAsPersona(page, getTestUser);
-    await page.goto('/admin');
+    await gotoWithRetry(page, '/admin');
     await page.waitForLoadState('domcontentloaded');
     const resolvedPath = await waitForRoleGuardResolved(page, { forbiddenPathPrefix: '/admin' });
     if (resolvedPath.includes('/login')) {

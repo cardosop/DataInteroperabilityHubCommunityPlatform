@@ -16,6 +16,7 @@ import { clearAuthStorage, getTestUser } from '../../fixtures/auth';
 import {
   assertNonExistentIdShowsError,
   ensureAssetActivationPrerequisites,
+  injectTokensBeforeGotoForUser,
   isRemoteApiTarget,
   loginAndNavigateToRoute,
   navigateToRouteFromApp,
@@ -130,11 +131,50 @@ test.describe('JOURNEY-DPO-001: Onboard New Asset via Data-First Flow @critical'
       await submitButton.waitFor({ timeout: 15000 });
       await submitButton.click();
 
-      // Wait for redirect to asset detail (visible project has slowMo; backend can be slow under load)
-      await page.waitForURL(/\/assets\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i, {
-        timeout: 60000,
-        waitUntil: 'domcontentloaded',
-      });
+      // Wait for redirect to asset detail (visible project has slowMo; backend can be slow under load).
+      //
+      // Cycle-2026-04-29 hard-fail fix — `page.waitForURL: Timeout 60000ms
+      // exceeded` here. If the POST /assets/ hangs or returns 4xx/5xx, the
+      // form stays on /assets/create with an inline error and the bare
+      // waitForURL burns the full 60 s budget without any diagnostic — the
+      // entire 360 s test timeout then kicks in downstream because the
+      // /assets/<uuid>$ url will never appear.
+      //
+      // Race the redirect against an inline error display on /assets/create.
+      // If error fires, throw with the error text so the next reviewer sees
+      // "POST /assets/ rejected: validation/quota/duplicate-key" immediately
+      // instead of an opaque waitForURL timeout. Same shape as the
+      // waitForRegisterRedirectOrError helper added in JOURNEY-AUTH-001.
+      const detailUrlPattern = /\/assets\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+      const errorLocator = page
+        .locator('.error-message, .error-display, [data-testid="error-display"], [role="alert"]')
+        .first();
+      const submitOutcome = await Promise.race([
+        page
+          .waitForURL(detailUrlPattern, { timeout: 60000, waitUntil: 'domcontentloaded' })
+          .then(() => 'redirect' as const),
+        errorLocator
+          .waitFor({ state: 'visible', timeout: 60000 })
+          .then(() => 'error' as const),
+        // intentional: race uses .catch on the outer Promise.race to convert any rejection into a 'timeout' literal so the caller sees a single, classified outcome rather than three different rejection shapes.
+      ]).catch(() => 'timeout' as const);
+
+      if (submitOutcome === 'error') {
+        // intentional: textContent is best-effort; primary failure assertion is the throw below.
+        const errText = await errorLocator.textContent().catch(() => '');
+        throw new Error(
+          `JOURNEY-DPO-001 Create Asset submit failed — error shown on /assets/create: ${(errText ?? '').slice(0, 300)}. ` +
+            'Likely causes: POST /assets/ returned 4xx (duplicate key, plan-cap, validation), ' +
+            'a transient 5xx, or rate-limit. Check the assets endpoint and the test-tenant plan limits.',
+        );
+      }
+      if (submitOutcome === 'timeout') {
+        throw new Error(
+          'JOURNEY-DPO-001 Create Asset: neither /assets/<uuid> redirect nor an inline ' +
+            `error display appeared within 60 s. Current URL: ${page.url()}. The form POST ` +
+            'is hung — check backend latency on POST /api/v1/assets/.',
+        );
+      }
       const assetUrl = page.url();
       // Extract UUID from path (avoids query/hash; backend requires valid UUID for asset_id)
       const pathParts = new URL(assetUrl).pathname.split('/').filter(Boolean);
@@ -309,6 +349,18 @@ test.describe('JOURNEY-DPO-001: Onboard New Asset via Data-First Flow @critical'
             await page.waitForTimeout(5000);
             attempts++;
           }
+          // Cycle-2026-04-29 Pattern-B flake fix — `waitForAppMainReady:
+          // Redirected to login` on the dataset detail page. By this point the
+          // journey has been running ≥4-5 min (asset-create → upload-poll →
+          // dataset-create-form). Background React Query refetches firing on
+          // a transient 401 during the upload-poll loop can clear the
+          // in-memory access_token; the Create-Dataset POST then succeeds OR
+          // 401s, but in EITHER case the immediately-following
+          // dataset-detail-page fetch on /datasets/<id> sees no token and the
+          // SPA redirects to /login. Re-inject *before* the click so the
+          // POST and the detail-page fetch both run with a coherent fresh
+          // session — same root-cause + fix as JOURNEY-CPO-001:155.
+          await injectTokensBeforeGotoForUser(page, testUser);
           await createDatasetButton.click();
 
           await page.waitForURL(/\/datasets\/[^/]+$/, { timeout: 30000 });
@@ -376,11 +428,29 @@ test.describe('JOURNEY-DPO-001: Onboard New Asset via Data-First Flow @critical'
         expect(dqResult.httpStatus).toBeLessThan(300);
         if (dqRunId) {
           // Phase 226 G8 — audit-trail guarantee.
-          await verifyAuditEvent(page, {
-            action: 'DQ_RUN_TRIGGERED',
-            resourceType: 'DQ_RUN',
-            resourceId: dqRunId,
-          });
+          //
+          // Cycle-2026-04-29 hard-fail fix — `verifyAuditEvent: exhausted
+          // 3000 ms retry budget without finding audit row`. The default 3 s
+          // poll budget is set on the assumption that the audit row commits
+          // in the same DB transaction as the API response; on a contended
+          // staging Postgres + a hot audit-list endpoint (RBAC checks, full
+          // tenant filter), GET /audit/audit-events/ can take 2 s per query
+          // — meaning only ~1 useful poll fires inside a 3 s budget, and a
+          // commit-time of >2 s after response is enough to miss the row.
+          //
+          // 15 s gives ~30 polls at 500 ms intervals, which absorbs the
+          // 95th-percentile audit-list latency on staging without masking a
+          // real "audit row never written" regression — that path still
+          // throws after the budget exhausts.
+          await verifyAuditEvent(
+            page,
+            {
+              action: 'DQ_RUN_TRIGGERED',
+              resourceType: 'DQ_RUN',
+              resourceId: dqRunId,
+            },
+            { retryBudgetMs: 15_000 },
+          );
         }
         // Poll until terminal. D88: if run doesn't finish, that is a real failure — not acceptable.
         const dqFinal = await _waitDQ(testUser, dqRunId, DQ_POLL_TIMEOUT_MS);
@@ -793,6 +863,17 @@ test.describe('JOURNEY-DPO-001: Onboard New Asset via Data-First Flow @critical'
       // The frontend has NO client-side regex check on key format (only required-not-empty).
       // The lowercase/hyphen rule is enforced server-side in the assets API. The test must
       // intercept the POST and assert the API returns a 4xx with a key-format error.
+      //
+      // Cycle-2026-04-29 flake fix — `Test timeout of 60000ms exceeded` in
+      // safeWait → waitForAppMainReady. The default 60 s budget is exactly the
+      // budget passed to `loginAndNavigateToRoute` below, leaving 0 slack for
+      // the 5 prompts that follow. Login+nav on a cold staging pod can take
+      // 30-50 s; under that load `waitForAppMainReady`'s polling loop then
+      // exhausts the test budget in `safeWait`. Bump to 120 s — same fix as
+      // the sibling Edge tests (line 927, 1001). Login (≤30 s) + nav (≤60 s) +
+      // form fill + waitForResponse (15 s) ≈ 110 s worst-case; 120 s is the
+      // right floor without masking real hangs.
+      test.setTimeout(120000);
       const testUser = await getTestUser();
       await loginAndNavigateToRoute(page, testUser, '/assets/create', {
         timeout: 60000,
@@ -899,6 +980,19 @@ test.describe('JOURNEY-DPO-001: Onboard New Asset via Data-First Flow @critical'
 
   test.describe('Edge', () => {
     test('asset list with filters (search, status, visibility)', async ({ page }) => {
+      // Cycle-2026-04-29 flake fix — `Test timeout of 60000ms exceeded` in
+      // safeWait/waitForAppMainReady. The default 60s budget is too tight on
+      // staging: loginAndNavigateToRoute alone is granted 60s for nav, and
+      // login+app-shell hydration on a cold staging pod can take 20-40s before
+      // the polling loop in waitForAppMainReady even starts producing useful
+      // results — the test budget exhausts in `page.waitForTimeout` inside
+      // the poll. The retry passed because the second attempt hit a warm
+      // worker. Match the sibling Edge test ("asset detail for non-existent
+      // id…") at line 975, which raised the budget to 120s for the same
+      // staging-cold-start reason. Login (≤30s) + nav (≤60s) + 2s settle +
+      // 3×15s filter waits ≈ 137s worst case; 120s is the right floor for the
+      // 95th-percentile path while still tight enough to catch real hangs.
+      test.setTimeout(120000);
       const testUser = await getTestUser();
       await loginAndNavigateToRoute(page, testUser, '/assets', {
         timeout: 60000,

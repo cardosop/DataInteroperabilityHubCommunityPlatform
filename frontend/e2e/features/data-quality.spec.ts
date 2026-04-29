@@ -8,7 +8,12 @@
  */
 
 import { expect, test } from '../fixtures/test-data-cleanup';
-import { getTestUser, loginUser, getTenantAdminUser } from '../fixtures/auth';
+import {
+  getTestUser,
+  loginUser,
+  loginViaApi,
+  getTenantAdminUser,
+} from '../fixtures/auth';
 import {
   assertListPageLoads,
   assertNonExistentIdShowsError,
@@ -224,14 +229,47 @@ test.describe('Feature: Data Quality', () => {
       }
 
       // -- Step 5: Navigate to run detail page and assert UI shows violations --
-      // Re-inject auth tokens before full-page navigation — the poll loop above
-      // takes 30-60s, and the in-memory auth state can expire or be cleared by
-      // React Query background refetches that trigger 401 → logout. Without this,
-      // page.goto() lands on /login and the test skips with "session expired".
+      // Re-establish FULL auth state (access_token + refresh_token + user) before
+      // the full-page navigation. Cycle-2026-04-29 root-cause: previously only
+      // `access_token` was re-injected, but the poll loop above runs ~30-60s and
+      // any 401 from a React Query background refetch could clear `user` and
+      // `refresh_token` from localStorage. On the next page.goto(), the auth
+      // store's initialize() then sees a stale set (token-only) and the token
+      // validation request races against a refresh-cookie that is also stale —
+      // the user lands on /login and the test silently skips with
+      // "Auth redirect — session expired", masking real DQ regressions.
+      //
+      // Calling loginViaApi() forces a fresh `/auth/login/` round-trip which
+      // returns a *new* access_token, refresh_token (Set-Cookie), and user
+      // payload. We then write all three to localStorage and re-attach the
+      // refresh cookie so the auth store hydrates a coherent session on
+      // navigation, regardless of what the poll loop left behind.
+      const freshAuth = await loginViaApi(user.email, user.password);
       await page.evaluate(
-        (t) => { if (t) localStorage.setItem('access_token', t); },
-        token
+        ({ access_token, refresh_token, usr }) => {
+          localStorage.setItem('access_token', access_token);
+          if (refresh_token) localStorage.setItem('refresh_token', refresh_token);
+          localStorage.setItem('user', JSON.stringify(usr));
+        },
+        {
+          access_token: freshAuth.access_token,
+          refresh_token: freshAuth.refresh_token,
+          usr: freshAuth.user,
+        }
       );
+      if (freshAuth.refresh_token) {
+        const pageUrl = page.url();
+        const cookieDomain = pageUrl.startsWith('http') ? new URL(pageUrl).hostname : 'localhost';
+        await page.context().addCookies([{
+          name: 'refresh_token',
+          value: freshAuth.refresh_token,
+          domain: cookieDomain,
+          path: '/',
+          httpOnly: true,
+          secure: false,
+          sameSite: 'Strict' as const,
+        }]).catch(() => {});
+      }
       await page.goto(`/dq/runs/${runId}`);
       await page.waitForLoadState('domcontentloaded');
       // Wait for the detail page to render (loading spinner → content)

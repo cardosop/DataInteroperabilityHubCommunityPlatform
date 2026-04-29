@@ -15,10 +15,15 @@ import { clearAuthStorage } from '../../fixtures/auth';
 import {
   buildMailhogRequestHeaders,
   isMailhogProxyUrl,
+  resolveMailhogBaseUrl,
   runJOURNEY_AUTH_003_Success,
 } from '../../fixtures/auth-journey-steps';
 
-const MAILHOG_BASE_URL = process.env.MAILHOG_URL || 'http://localhost:8025';
+// Centralised resolution: when running against an external target (staging),
+// auto-derive the MailHog proxy URL from API_BASE so the Success spec runs
+// end-to-end without manual MAILHOG_URL plumbing. Auth-journey-steps and the
+// spec must agree on the same URL — sharing the helper guarantees they do.
+const MAILHOG_BASE_URL = resolveMailhogBaseUrl();
 const WORKER_HEALTH_URL = process.env.WORKER_HEALTH_URL || 'http://localhost:8087/healthz';
 
 test.describe('JOURNEY-AUTH-003: User Resets Password @critical', () => {
@@ -154,10 +159,17 @@ test.describe('JOURNEY-AUTH-003: User Resets Password @critical', () => {
       await page.goto('/password-reset/confirm?token=00000000-0000-0000-0000-000000000000', {
         waitUntil: 'domcontentloaded',
       });
-      // CapabilityRoute blocks with LoadingSpinner until capabilities load (up to 30s)
+      // CapabilityRoute blocks with LoadingSpinner until capabilities load.
+      // Cycle-2026-04-29 flake fix — bumped 35 s → 60 s with explicit
+      // investigation note. The "up to 30 s" envelope is for healthy
+      // staging; mid-suite the capabilities API has been observed to take
+      // 40-55 s under sustained load (auth + capabilities round-trips
+      // serialised behind a hot rate-limiter). 60 s gives a real ceiling
+      // without masking a crashed-page regression — a fully-broken render
+      // would still fail in the same shape (locator never visible).
       await expect(
         page.getByRole('heading', { name: /Set a new password/i }).or(page.locator('.unavailable-page, [data-testid="unavailable-page"] h1'))
-      ).toBeVisible({ timeout: 35_000 });
+      ).toBeVisible({ timeout: 60_000 });
       if (page.url().includes('/unavailable')) {
         throw new Error(
           'Password reset confirm unavailable (capabilities/schema). JOURNEY-AUTH-003 requires password reset to be enabled. ' +
@@ -182,11 +194,13 @@ test.describe('JOURNEY-AUTH-003: User Resets Password @critical', () => {
         await page.getByRole('link', { name: /Forgot your password/i }).click();
         await page.waitForURL((url) => url.pathname.includes('password-reset'), { timeout: 5000 });
       }
-      // CapabilityRoute blocks with LoadingSpinner until capabilities load (up to 30s)
+      // CapabilityRoute blocks with LoadingSpinner until capabilities load.
+      // 60 s ceiling for the same reason as JOURNEY-AUTH-003.spec.ts:163 — see
+      // its comment for the mid-suite capabilities-API latency rationale.
       const resetOrUnavailable = page
         .getByRole('heading', { name: /Reset password/i })
         .or(page.locator('.unavailable-page, [data-testid="unavailable-page"] h1'));
-      await expect(resetOrUnavailable.first()).toBeVisible({ timeout: 35_000 });
+      await expect(resetOrUnavailable.first()).toBeVisible({ timeout: 60_000 });
       if (page.url().includes('/unavailable')) {
         throw new Error(
           'Password reset unavailable (capabilities/schema). JOURNEY-AUTH-003 requires password reset to be enabled. ' +

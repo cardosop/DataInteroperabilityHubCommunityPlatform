@@ -16,6 +16,7 @@ import { expect, test } from '../../fixtures/test-data-cleanup';
 import { getComplianceOfficerUser, getTestUser, gotoWithRetry, loginAsPersona } from '../../fixtures/auth';
 import {
   assertNonExistentIdShowsError,
+  injectTokensBeforeGotoForUser,
   isRemoteApiTarget,
   triggerComplianceScanViaUI,
   waitForAppMainReady,
@@ -151,7 +152,17 @@ test.describe('JOURNEY-CPO-001: Review Compliance for Asset @critical', () => {
         throw new Error(`Compliance scan trigger failed: ${errStr}`);
       }
 
-      // Navigate to the compliance list and verify it loaded with at least one run row
+      // Navigate to the compliance list and verify it loaded with at least one run row.
+      //
+      // Cycle-2026-04-29 Pattern-B flake fix — `waitForAppMainReady: Redirected
+      // to login`. By this point the test has been running ≥45 s (asset-create
+      // → dataset-create → CPO login → compliance-scan-via-UI → audit-verify).
+      // A background React Query refetch that hits a transient 401 during that
+      // window clears the in-memory auth state; the bare page.goto then loads
+      // /compliance with no token, the SPA redirects to /login, and
+      // waitForAppMainReady throws. Re-injecting the token before the nav
+      // restores a coherent session so the goto lands on the real page.
+      await injectTokensBeforeGotoForUser(page, await getComplianceOfficerUser());
       await page.goto('/compliance');
       await page.waitForLoadState('domcontentloaded');
       await waitForAppMainReady(page, {

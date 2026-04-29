@@ -18,6 +18,7 @@ import {
   strongPassword,
   uniqueEmail,
   waitForRegisterPageReady,
+  waitForRegisterRedirectOrError,
 } from '../../fixtures/auth-journey-steps';
 import { waitForLoadingComplete } from '../../fixtures/helpers';
 import { getMeViaApi } from '../../fixtures/api-users';
@@ -254,7 +255,15 @@ test.describe('JOURNEY-AUTH-001: First-Time Visitor Registers @critical', () => 
       await page.fill('input#email', email);
       await page.fill('input#password', password);
       await page.click('button[type="submit"]');
-      await page.waitForURL(/\/login/, { timeout: 60000 });
+      // Cycle-2026-04-29 flake fix — `page.waitForURL: Timeout 60000ms exceeded`:
+      // when /auth/register/ returns a transient 500/503/rate-limit on staging
+      // the FE renders the error inline and stays on /register; the bare
+      // waitForURL then burns the full 60 s budget waiting for a redirect that
+      // never fires. waitForRegisterRedirectOrError races both outcomes and
+      // surfaces the *real* failure (inline error text, or "neither happened"
+      // diagnostic) instead of an opaque waitForURL timeout. Same helper used
+      // by runJOURNEY_AUTH_001_Success — single source of truth.
+      await waitForRegisterRedirectOrError(page, { timeout: 60_000 });
       // Verify name persisted via API
       const meData = await getMeViaApi({ email, password });
       expect(meData.tenant_id).toBeTruthy();

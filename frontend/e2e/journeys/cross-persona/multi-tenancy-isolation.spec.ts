@@ -228,6 +228,38 @@ test.describe('Multi-Tenancy Isolation (UI-verified)', () => {
       // completed before asserting on the rendered state. Without this,
       // a busy-staging slow response can stretch past `expect.toBeVisible`'s
       // window with no useful diagnostic ("element not found" only).
+      //
+      // Cycle-2026-04-29 flake fix — `Auth state lost mid-test`: between
+      // step 1's login and this final navigation (~2 min elapsed), the
+      // access_token persisted in localStorage can be cleared by a 401
+      // response from a background refetch that fired during the long
+      // switchTenantViaUI flow. The browser then loads /assets/<id>, the
+      // auth store finds no token, and the page redirects to /login — a
+      // transient, non-deterministic outcome that surfaced once per ~7 runs.
+      //
+      // Root-cause fix: re-write the originally captured `accessToken` AND
+      // the active_tenant_id back into localStorage before navigating, so
+      // a coherent session is present even if a 401 mid-test transiently
+      // cleared it. We deliberately do NOT call loginViaApi here — that
+      // would issue a fresh JWT with the user's *default* tenant context
+      // and could mask a real isolation bug. Re-writing the captured token
+      // preserves the post-switch tenant context end-to-end.
+      const currentAccessToken = await page.evaluate(
+        () => localStorage.getItem('access_token'),
+      );
+      const tokenForNav = currentAccessToken ?? accessToken;
+      await page.evaluate(
+        ({ token, primaryTenantId }) => {
+          localStorage.setItem('access_token', token);
+          // The auth store reads active_tenant_id from this exact key
+          // (frontend/src/features/auth/store/authStore.ts:65 —
+          // ACTIVE_TENANT_STORAGE_KEY = 'active_tenant_id'). Re-write so the
+          // post-switch tenant context survives any 401-driven clear.
+          localStorage.setItem('active_tenant_id', primaryTenantId);
+        },
+        { token: tokenForNav, primaryTenantId: setup.primary_tenant_id },
+      );
+
       const assetDetailFetch = page.waitForResponse(
         (resp) => resp.url().includes(`/assets/${assetId}`) && resp.request().method() === 'GET',
         { timeout: 30_000 },
