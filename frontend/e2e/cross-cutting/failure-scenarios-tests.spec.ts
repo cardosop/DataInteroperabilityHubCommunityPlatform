@@ -8,7 +8,7 @@
  */
 
 import { type Response, expect, test } from '@playwright/test';
-import { clearAuthStorage, getTestUser } from '../fixtures/auth';
+import { clearAuthStorage, getTestUser, gotoWithRetry } from '../fixtures/auth';
 import { loginAndNavigateToRoute } from '../fixtures/helpers';
 
 test.describe('Failure Scenarios (real tests)', () => {
@@ -310,7 +310,13 @@ test.describe('Failure Scenarios (real tests)', () => {
     // unauthenticated, so the loop always ends on /login regardless of rate-limit behavior.
     // Fix: assert only on the meaningful signal — a visible error message in the UI.
     await clearAuthStorage(page);
-    await page.goto('/login', { waitUntil: 'domcontentloaded' });
+    // gotoWithRetry — without retry, a Wi-Fi/VPN blip during the goto would
+    // hang inside Playwright's default 30s navigation timeout; that, plus the
+    // 6×~16s login loop below + the per-step waitForResponse and waitForTimeouts,
+    // can blow through the test's 5-min budget. Cycle-9 surfaced this as a
+    // 300s timeout on this exact test. Fix 27 routes the goto through the
+    // shared retry path that Fix 13's regex extension already covers.
+    await gotoWithRetry(page, '/login', { waitUntil: 'domcontentloaded' });
     let hitRateLimit = false;
     let lastStatus: number | null = null;
     for (let i = 0; i < 6; i++) {

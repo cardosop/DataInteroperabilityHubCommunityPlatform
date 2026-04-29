@@ -5,7 +5,7 @@
  */
 
 import { expect, test } from '@playwright/test';
-import { getTestUser } from '../fixtures/auth';
+import { getTestUser, gotoWithRetry } from '../fixtures/auth';
 import {
   assertListPageLoads,
   assertNonExistentIdShowsError,
@@ -44,7 +44,10 @@ test.describe('Feature: Jobs', () => {
     });
 
     test('unauthenticated access to jobs redirects to login', async ({ page }) => {
-      await page.goto('/jobs');
+      // gotoWithRetry — Wi-Fi/VPN net::ERR_NETWORK_CHANGED blips during long
+      // staging runs are transient; Fix-13's regex covers them but only via
+      // gotoWithRetry, not bare page.goto. Cycle-9 flake fix.
+      await gotoWithRetry(page, '/jobs');
       await page.waitForLoadState('domcontentloaded');
       const url = page.url();
       expect(

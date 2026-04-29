@@ -13,7 +13,7 @@
  */
 
 import { expect, test } from '../../fixtures/test-data-cleanup';
-import { getComplianceOfficerUser, getTestUser, loginAsPersona } from '../../fixtures/auth';
+import { getComplianceOfficerUser, getTestUser, gotoWithRetry, loginAsPersona } from '../../fixtures/auth';
 import {
   assertNonExistentIdShowsError,
   isRemoteApiTarget,
@@ -222,7 +222,8 @@ test.describe('JOURNEY-CPO-001: Review Compliance for Asset @critical', () => {
   test.describe('Edge', () => {
     test('compliance list shows empty state when no runs exist (no crash)', async ({ page }) => {
       await loginAsPersona(page, getComplianceOfficerUser);
-      await page.goto('/compliance');
+      // gotoWithRetry — Wi-Fi/VPN net::ERR_NETWORK_CHANGED retry (Fix 27).
+      await gotoWithRetry(page, '/compliance');
       await page.waitForLoadState('domcontentloaded');
       try {
         await waitForAppMainReady(page, {

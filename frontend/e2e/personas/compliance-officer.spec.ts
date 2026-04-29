@@ -17,7 +17,7 @@ import '../journeys/cpo/JOURNEY-CPO-009.spec';
 import '../journeys/cpo/JOURNEY-CPO-010.spec';
 
 import { test, expect } from '@playwright/test';
-import { loginAsPersona, getComplianceOfficerUser, getTestUser } from '../fixtures/auth';
+import { loginAsPersona, getComplianceOfficerUser, getTestUser, gotoWithRetry } from '../fixtures/auth';
 import { waitForAppMainReady, waitForRoleGuardResolved } from '../fixtures/helpers';
 
 test.describe('Persona RBAC: Compliance Officer @critical', () => {
@@ -50,7 +50,8 @@ test.describe('Persona RBAC: Compliance Officer @critical', () => {
   test('non-CPO user cannot access /audit', async ({ page }) => {
     // storageState already has the default DATA_PROVIDER user (non-CPO).
     // No need for loginAsPersona — saves an API login call and avoids rate limits.
-    await page.goto('/audit');
+    // gotoWithRetry — Wi-Fi/VPN net::ERR_NETWORK_CHANGED retry (Fix 27).
+    await gotoWithRetry(page, '/audit');
     await page.waitForLoadState('domcontentloaded');
     const resolvedPath = await waitForRoleGuardResolved(page, { forbiddenPathPrefix: '/audit' });
     if (resolvedPath.includes('/login')) {

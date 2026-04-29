@@ -11,7 +11,7 @@
  */
 
 import { expect, test } from '../../fixtures/test-data-cleanup';
-import { clearAuthStorage, loginUser } from '../../fixtures/auth';
+import { clearAuthStorage, gotoWithRetry, loginUser } from '../../fixtures/auth';
 import {
   registerViaApi,
   runJOURNEY_AUTH_001_Success,
@@ -35,7 +35,9 @@ import { verifyAuditEvent } from '../../fixtures/verifyAuditEvent';
  */
 async function navigateToRegisterPage(page: import('@playwright/test').Page): Promise<void> {
   await clearAuthStorage(page);
-  await page.goto('/register', { waitUntil: 'domcontentloaded' });
+  // gotoWithRetry — net::ERR_NETWORK_CHANGED on long staging runs is matched
+  // by Fix 13's regex but only via gotoWithRetry, not bare page.goto. Cycle 9 Fix 27.
+  await gotoWithRetry(page, '/register', { waitUntil: 'domcontentloaded' });
   if (page.url().includes('/login')) {
     const createLink = page.getByRole('link', { name: /Create an account/i });
     await createLink.waitFor({ state: 'visible', timeout: 35_000 });

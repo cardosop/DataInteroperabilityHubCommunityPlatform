@@ -22,14 +22,15 @@ import '../journeys/de/JOURNEY-DE-014.spec';
 
 import { test, expect } from '@playwright/test';
 import { waitForAppMainReady, waitForRoleGuardResolved } from '../fixtures/helpers';
-import { loginAsPersona, getTestUser } from '../fixtures/auth';
+import { loginAsPersona, getTestUser, gotoWithRetry } from '../fixtures/auth';
 
 test.describe('Persona RBAC: Data Engineer @critical', () => {
   test.setTimeout(120000);
 
   test('DE can access /contracts', async ({ page }) => {
     await loginAsPersona(page, getTestUser);
-    await page.goto('/contracts');
+    // gotoWithRetry — Wi-Fi/VPN net::ERR_NETWORK_CHANGED retry (Fix 27).
+    await gotoWithRetry(page, '/contracts');
     await waitForAppMainReady(page);
     expect(page.url()).toContain('/contracts');
     await expect(page.locator('.app-main, [data-testid="app-main"]').first()).toBeVisible();

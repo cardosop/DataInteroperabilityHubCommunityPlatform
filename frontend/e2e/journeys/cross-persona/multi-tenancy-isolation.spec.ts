@@ -17,7 +17,7 @@
 // Phase 225.4 P0.5 — use the cleanup fixture so the asset created by this test
 // is torn down on pass OR fail; otherwise repeated runs accumulate orphans.
 import { expect, test } from '../../fixtures/test-data-cleanup';
-import { clearAuthStorage, getTestUser } from '../../fixtures/auth';
+import { clearAuthStorage, getTestUser, gotoWithRetry } from '../../fixtures/auth';
 import { e2eTestHeaders } from '../../fixtures/e2e-token';
 import { loginAndNavigateToRoute, switchTenantViaUI } from '../../fixtures/helpers';
 
@@ -153,7 +153,8 @@ test.describe('Multi-Tenancy Isolation (UI-verified)', () => {
       const assetIdentifier = assetData.key ?? uniqueAssetKey;
 
       // ── Step 2: Switch to secondary tenant via UI dropdown ────────────────
-      await page.goto('/');
+      // gotoWithRetry — Wi-Fi/VPN net::ERR_NETWORK_CHANGED retry (Fix 27).
+      await gotoWithRetry(page, '/');
       await page.waitForSelector('.app-sidebar, .app-header, [data-testid="app-header"]', { timeout: 15000 });
 
       const { newTenantName } = await switchTenantViaUI(page, setup.secondary_tenant_name);

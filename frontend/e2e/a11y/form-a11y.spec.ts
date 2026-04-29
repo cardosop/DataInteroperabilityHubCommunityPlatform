@@ -6,11 +6,17 @@
  * Gated behind E2E_A11Y env var; skips gracefully when the app is unavailable.
  */
 import { test, expect } from '@playwright/test';
+import { gotoWithRetry } from '../fixtures/auth';
 
 test.describe('Form Accessibility', () => {
 
   test('login form has proper labels', async ({ page }) => {
-    await page.goto('/login', { waitUntil: 'domcontentloaded' });
+    // gotoWithRetry instead of page.goto — Chromium's
+    // net::ERR_NETWORK_CHANGED / ERR_NETWORK_IO_SUSPENDED on Wi-Fi/VPN
+    // blips during long staging runs is matched by the Fix-13 retry regex
+    // in isConnectionError; bare page.goto bypasses that retry. See
+    // tasks.md § 226.H.staging-run cycle 9 — Fix 27.
+    await gotoWithRetry(page, '/login', { waitUntil: 'domcontentloaded' });
     if (!(await page.title())) {
       test.skip(true, 'App not running');
       return;
@@ -31,7 +37,7 @@ test.describe('Form Accessibility', () => {
   });
 
   test('required fields have indicators', async ({ page }) => {
-    await page.goto('/login', { waitUntil: 'domcontentloaded' });
+    await gotoWithRetry(page, '/login', { waitUntil: 'domcontentloaded' });
     if (!(await page.title())) {
       test.skip(true, 'App not running');
       return;
