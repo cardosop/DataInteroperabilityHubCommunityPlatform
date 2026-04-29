@@ -12,8 +12,18 @@ export { isBenignConsoleError } from './console-utils';
  * Inject fresh auth tokens into localStorage + httpOnly cookie before a page.goto().
  * Full-page navigation resets the JS context, losing in-memory auth tokens.
  * By writing to localStorage first, authStore.initialize() picks them up on reload.
+ *
+ * Exported so long-running journey specs (CPO-001, DPO-001, multi-tenancy-isolation)
+ * can re-establish auth before a critical mid-test navigation. Background React
+ * Query refetches that hit a transient 401 during the multi-step flow can clear
+ * the in-memory auth state — without a re-injection, the next page.goto then
+ * redirects to /login and `waitForAppMainReady` throws "Redirected to login".
+ *
+ * Cycle-2026-04-29: surfaced in JOURNEY-CPO-001:80 (post-scan navigation to
+ * /compliance) and JOURNEY-DPO-001:67 (post-dataset-create navigation to
+ * /datasets/<id>). Both paths now call this before the failing nav.
  */
-async function injectTokensBeforeGotoForUser(page: Page, user?: TestUser): Promise<void> {
+export async function injectTokensBeforeGotoForUser(page: Page, user?: TestUser): Promise<void> {
   try {
     const u = user ?? (await getTestUser());
     const apiAuth = await loginViaApi(u.email, u.password);
@@ -2746,7 +2756,12 @@ export async function switchTenantViaUI(
       // intentional: dropdown close-and-reopen is a defensive refetch — the surrounding waitForFunction below this branch is the canonical assertion.
       await page.keyboard.press('Escape').catch(() => undefined);
       await page.waitForTimeout(500);
-      await switcherButton.first().click();
+      // Cycle-2026-04-29 flake fix — `locator.click: Test timeout of 120000ms
+      // exceeded` here. After Escape, the dropdown's closing animation can
+      // overlap the switcher button; an unbounded click() then waits for the
+      // button to be actionable for the FULL test budget (120 s). Bound to
+      // 15 s so the catch fires fast and the outer caller's retry path runs.
+      await switcherButton.first().click({ timeout: 15000 });
       await expect(dropdown.first()).toBeVisible({ timeout: 8000 });
     }
   }
@@ -2852,12 +2867,23 @@ export async function triggerDQRunViaUI(
     { timeout: 30000 }
   );
 
-  // Click the "Create DQ run" modal trigger button (stable data-testid preferred)
+  // Click the "Create DQ run" modal trigger button (stable data-testid preferred).
+  //
+  // Cycle-2026-04-29 flake fix — `Test timeout of 360000ms exceeded` at
+  // `locator.click`: when the DQ service is degraded on staging the button
+  // resolves but its click handler never fires (overlay spinner, list still
+  // loading rows). Without an explicit per-action timeout, click() inherits
+  // the test budget (360s for JOURNEY-DPO-001 success) and consumes it
+  // entirely — the caller's `dq-service-unavailable` annotation never fires
+  // because the test is killed by the global timeout instead. Bound the
+  // click to 30s so the caller's catch block receives a normal timeout error,
+  // surfaces the proper annotation, and the rest of the journey (compliance,
+  // ODPS, activate) still runs within budget.
   const triggerBtn = page
     .locator('[data-testid="btn-create-dq-run"], button.dq-create-run-btn')
     .first();
   await triggerBtn.waitFor({ state: 'visible', timeout: 10000 });
-  await triggerBtn.click();
+  await triggerBtn.click({ timeout: 30000 });
 
   // Wait for modal dialog
   const modal = page.locator('[role="dialog"][aria-labelledby="dq-create-modal-title"]');
@@ -3006,12 +3032,15 @@ export async function triggerComplianceScanViaUI(
     { timeout: 45000 }
   );
 
-  // Click the modal trigger (stable data-testid preferred)
+  // Click the modal trigger (stable data-testid preferred). Same Cycle-2026-04-29
+  // bound as triggerDQRunViaUI: an unbounded click() inherits the 360s test budget
+  // when the upstream service is degraded; explicit 30s timeout ensures the
+  // calling test's `compliance-service-unavailable` catch block surfaces.
   const triggerBtn = page
     .locator('[data-testid="btn-create-compliance-run"], button.compliance-create-run-btn')
     .first();
   await triggerBtn.waitFor({ state: 'visible', timeout: 10000 });
-  await triggerBtn.click();
+  await triggerBtn.click({ timeout: 30000 });
 
   // Wait for modal dialog
   const modal = page.locator('[role="dialog"][aria-labelledby="compliance-create-modal-title"]');

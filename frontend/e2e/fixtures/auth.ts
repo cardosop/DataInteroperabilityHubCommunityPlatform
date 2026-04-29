@@ -364,10 +364,108 @@ function isRetryable500(err: unknown): boolean {
   return /translate host name|name resolution|getaddrinfo|ENOTFOUND|could not translate|postgres|statement timeout|canceling statement|deadlock|lock timeout|too many connections|too many clients/i.test(msg);
 }
 
+/**
+ * Per-worker token cache for `loginViaApi`.
+ *
+ * Why this exists — Cycle-2026-04-29 flake fix. The MVP suite calls
+ * `loginViaApi` ~287 times (one+ per test). Under heavy staging load each
+ * `/auth/login/` POST can backoff up to 40 s on rate-limit retries
+ * (LOGIN_RETRY_DELAYS_MS). Aggregated across the suite this consumes the
+ * test budgets of Failure/Edge specs that have a 60-120 s ceiling, surfacing
+ * as `loginUser: Page/context/browser was closed (test likely timed out)`.
+ *
+ * The fix: cache the `{access_token, refresh_token, user}` triad keyed by
+ * email in module scope. Re-issue only when the cached access_token's `exp`
+ * claim is within 60 s of expiry (refresh-ahead window). On a healthy run
+ * with 15-min JWTs, this turns ~287 `/auth/login/` calls into ~9.
+ *
+ * Safety:
+ *   - Module-scoped, so each Playwright worker has its own cache. Single-worker
+ *     runs against staging share one cache; multi-worker still does N logins.
+ *   - We cache the response, not the request. Token rotation (Phase 11.1) is
+ *     triggered only by REFRESH calls, and the cache holds the original
+ *     `/auth/login/` access+refresh — there is no replay risk.
+ *   - On token expiry the cache fetches a fresh tuple; concurrent fetches for
+ *     the same email serialise on the same in-flight Promise to avoid herding.
+ */
+interface CachedAuthEntry {
+  apiAuth: ApiAuth;
+  expiresAtMs: number;
+}
+const _loginViaApiCache = new Map<string, CachedAuthEntry>();
+const _loginViaApiInFlight = new Map<string, Promise<ApiAuth>>();
+
+/** Parse JWT `exp` claim (seconds since epoch) → ms-epoch. Returns 0 if unparseable. */
+function parseJwtExpiresAtMs(token: string): number {
+  try {
+    const segments = token.split('.');
+    if (segments.length < 2) return 0;
+    const payloadJson = Buffer.from(segments[1] ?? '', 'base64').toString('utf8');
+    const payload = JSON.parse(payloadJson) as { exp?: number };
+    return typeof payload.exp === 'number' ? payload.exp * 1000 : 0;
+  } catch {
+    return 0;
+  }
+}
+
+/** True when cached token is within the refresh-ahead window. */
+function isCachedAuthFresh(entry: CachedAuthEntry, refreshAheadMs = 60_000): boolean {
+  return entry.expiresAtMs > Date.now() + refreshAheadMs;
+}
+
+/**
+ * Reset the per-worker token cache. Call from tests that need a guaranteed
+ * fresh /auth/login/ round-trip (token-rotation security tests, post-logout
+ * paths). Default behaviour relies on JWT-exp expiry.
+ */
+export function clearLoginViaApiCache(email?: string): void {
+  if (email) {
+    _loginViaApiCache.delete(email);
+    _loginViaApiInFlight.delete(email);
+    return;
+  }
+  _loginViaApiCache.clear();
+  _loginViaApiInFlight.clear();
+}
+
 /** Login via backend API from Node; returns tokens and user for storage injection.
  * Retries on transient connection errors and 500 host-resolution. Tries alternate port (8000 <-> 8001) on ECONNREFUSED.
- * When both ports fail (API restart during E2E), retries once after 10s delay. */
+ * When both ports fail (API restart during E2E), retries once after 10s delay.
+ *
+ * Token cache: the result is cached in `_loginViaApiCache` keyed by email until
+ * the access_token's JWT `exp` is within 60 s. See `clearLoginViaApiCache`.
+ */
 export async function loginViaApi(
+  email: string,
+  password: string,
+  options?: { connectionRetryCount?: number }
+): Promise<ApiAuth> {
+  const cached = _loginViaApiCache.get(email);
+  if (cached && isCachedAuthFresh(cached)) {
+    return cached.apiAuth;
+  }
+  const inFlight = _loginViaApiInFlight.get(email);
+  if (inFlight) {
+    return inFlight;
+  }
+  const promise = (async (): Promise<ApiAuth> => {
+    const fresh = await loginViaApiUncached(email, password, options);
+    const expiresAtMs = parseJwtExpiresAtMs(fresh.access_token)
+      // Conservative fallback when the token is opaque (no JWT structure):
+      // assume 12 minutes — shorter than the 15-min default so we re-issue
+      // before any reasonable backend lifetime ends.
+      || Date.now() + 12 * 60_000;
+    _loginViaApiCache.set(email, { apiAuth: fresh, expiresAtMs });
+    return fresh;
+  })().finally(() => {
+    _loginViaApiInFlight.delete(email);
+  });
+  _loginViaApiInFlight.set(email, promise);
+  return promise;
+}
+
+/** Internal — actual /auth/login/ HTTP path. Public callers go through `loginViaApi`. */
+async function loginViaApiUncached(
   email: string,
   password: string,
   options?: { connectionRetryCount?: number }
@@ -472,14 +570,17 @@ export async function loginViaApi(
       }
     }
   }
-  // When both bases failed with connection error, API may be restarting during E2E; retry once after delay
+  // When both bases failed with connection error, API may be restarting during E2E; retry once after delay.
+  // NOTE: recurse into the *uncached* path explicitly. Re-entering `loginViaApi`
+  // would hit the in-flight Promise the outer caller registered for this email
+  // and deadlock on its own resolution.
   if (
     lastErr &&
     connectionRetryCount < 1 &&
     (isConnectionRefused(lastErr) || isConnectionError(lastErr))
   ) {
     await new Promise((resolve) => setTimeout(resolve, 10000));
-    return loginViaApi(email, password, { connectionRetryCount: connectionRetryCount + 1 });
+    return loginViaApiUncached(email, password, { connectionRetryCount: connectionRetryCount + 1 });
   }
   throw lastErr ?? new Error('loginViaApi: unexpected');
 }
@@ -785,9 +886,30 @@ export async function loginUser(
       try {
         const apiAuth = await loginViaApi(user.email, user.password);
         await syncPageWithApiAuth(page, apiAuth);
-        // Reload so authStore.initialize() picks up storage + cookie consistently
-        await page.reload({ waitUntil: 'domcontentloaded' });
-        await page.locator('.app-sidebar').waitFor({ state: 'visible', timeout: 30000 });
+        // Reload so authStore.initialize() picks up storage + cookie consistently.
+        //
+        // Cycle-2026-04-29 Pattern-A flake fix — the fast-path's reload + sidebar
+        // wait used to default to 30 s + 30 s (Playwright defaults). Combined with
+        // gotoWithRetry('/') (≤30 s) and loginViaApi (≤30 s under rate-limit),
+        // the worst-case fast-path consumed ~120 s — i.e. the entire test budget
+        // — leaving 0 s for the test body and surfacing as
+        // `loginUser: Page/context/browser was closed (test likely timed out)`
+        // on Failure/Edge specs scattered through long staging suites.
+        //
+        // We bound BOTH waits to 15 s. Rationale:
+        //   - reload is fast under healthy staging (<5 s); 15 s is 3× the median
+        //     and still leaves the calling test ≥75 s of budget at 120 s setTimeout.
+        //   - sidebar render after a successful auth-with-token reload is sub-2 s;
+        //     a 15 s ceiling is generous, and exceeding it indicates the reload
+        //     actually failed (Vite chunk hung, capabilities API 5xx).
+        //   - On bound exceeded, the catch falls through to fresh UI login which
+        //     has its own bounded budget — strictly faster than letting the slow
+        //     fast-path consume the entire 120 s.
+        // See `loginAndNavigateToRoute` (helpers.ts) — caller does its own
+        // sidebar wait (10 s) after `doLogin`, so this 15 s ceiling is the
+        // INNER verification only, not the canonical readiness gate.
+        await page.reload({ waitUntil: 'domcontentloaded', timeout: 15_000 });
+        await page.locator('.app-sidebar').waitFor({ state: 'visible', timeout: 15_000 });
         if (!page.url().includes('/login')) {
           return; // Auth is valid, app shell loaded — skip login form entirely
         }
@@ -820,7 +942,22 @@ export async function loginUser(
       h1Found = true;
     } catch {
       if (attempt < 2) {
-        await page.waitForTimeout(3000);
+        // Cycle-2026-04-29 flake fix — JOURNEY-AUD-005 surfaced this: when
+        // the initial gotoWithRetry succeeds but the navigation lands on a
+        // `chrome-error://chromewebdata/` origin (transient
+        // ERR_NETWORK_CHANGED that committed before retrying), all three
+        // h1-wait attempts on the chrome-error origin necessarily fail —
+        // it has no h1 and no body. Re-navigate to /login so the next
+        // h1 wait runs against the real login page after the network
+        // recovers. The original sleep is preserved for the non-chrome-
+        // error case (page IS on /login, h1 just not yet hydrated).
+        const currentUrl = page.url();
+        if (currentUrl.startsWith('chrome-error://')) {
+          await gotoWithRetry(page, '/login');
+          await page.waitForLoadState('domcontentloaded');
+        } else {
+          await page.waitForTimeout(3000);
+        }
       } else {
         // Capture the page URL alongside the body so reviewers can
         // distinguish:

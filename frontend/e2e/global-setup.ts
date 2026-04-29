@@ -45,6 +45,91 @@ async function checkApiReachable(baseUrl: string): Promise<boolean> {
   }
 }
 
+/**
+ * Determine whether the resolved API target is an external (deployed)
+ * environment as opposed to a local docker-compose backend. External targets
+ * have specific preconditions (E2E_TEST_SECRET injected, user pre-seeded via
+ * kubectl) that the local Docker path doesn't share.
+ */
+function isExternalApiTarget(apiBaseUrl: string): boolean {
+  try {
+    const host = new URL(apiBaseUrl).hostname;
+    return host !== 'localhost' && host !== '127.0.0.1' && host !== '0.0.0.0';
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Hard-fail the run early when running against an external target without
+ * `E2E_TEST_SECRET`. Multiple specs hit `/api/v1/test/*` endpoints that are
+ * gated by the `@require_e2e_token` decorator (hub/apps/api/decorators.py);
+ * without the secret each request returns 404 Resource not found. The
+ * symptom is several test failures with cryptic 404 bodies appearing tens
+ * of minutes into the run — every developer sees the same wall of
+ * confusing errors before realising the env var is missing.
+ *
+ * Fail-fast at setup converts that ~30 min mystery into a one-line
+ * actionable error before any worker even starts.
+ *
+ * Affected specs (non-exhaustive):
+ *   - journeys/cross-persona/multi-tenancy-isolation.spec.ts
+ *     (`/api/v1/test/ensure-e2e-tenant-switch-setup/`)
+ *   - journeys/auth/JOURNEY-AUTH-003.spec.ts Success
+ *     (MailHog proxy at `/api/v1/test/mailhog`)
+ *   - reset_e2e_auth_rate_limits warmup (already 404-warns soft)
+ *
+ * Override: set `E2E_ALLOW_MISSING_TEST_SECRET=1` to downgrade to a warning
+ * (e.g. for the few specs that don't touch the gated endpoints — currently
+ * none of the MVP set, but the override lets a developer probe behaviour
+ * without hunting down the secret).
+ */
+function ensureE2ETestSecretForExternalTarget(apiBaseUrl: string): void {
+  if (!isExternalApiTarget(apiBaseUrl)) return;
+  const secret = process.env.E2E_TEST_SECRET ?? '';
+  if (secret.length > 0) {
+    console.log(`✅ E2E_TEST_SECRET present (length=${secret.length}) — token-gated /test/* endpoints reachable`);
+    return;
+  }
+  if (process.env.E2E_ALLOW_MISSING_TEST_SECRET === '1') {
+    console.warn(
+      '⚠️  E2E_TEST_SECRET is empty AND E2E_ALLOW_MISSING_TEST_SECRET=1 — ' +
+        'token-gated /test/* endpoints will return 404. Specs that depend on ' +
+        '`/api/v1/test/ensure-e2e-tenant-switch-setup/`, `/api/v1/test/mailhog/*`, ' +
+        'or `/api/v1/test/reset-e2e-auth-rate-limits/` will fail or skip.',
+    );
+    return;
+  }
+  throw new Error(
+    [
+      '',
+      '❌ E2E_TEST_SECRET is required for runs against external targets but is not set.',
+      '',
+      `   Resolved API base:        ${apiBaseUrl}`,
+      `   PLAYWRIGHT_BASE_URL:      ${process.env.PLAYWRIGHT_BASE_URL ?? '(unset)'}`,
+      `   E2E_TEST_SECRET length:   0`,
+      '',
+      'Why this matters:',
+      '   The backend gates `/api/v1/test/*` endpoints on the X-E2E-Token header',
+      '   (hub/apps/api/decorators.py @require_e2e_token). Without a matching token,',
+      '   every gated request returns "404 Resource not found" — and several MVP',
+      '   journeys depend on those endpoints (multi-tenancy isolation setup, MailHog',
+      '   proxy for password-reset, auth rate-limit reset between runs).',
+      '',
+      'How to fix (staging — region us-east-1, profile staging):',
+      '   export E2E_TEST_SECRET="$(aws secretsmanager get-secret-value \\',
+      '     --profile staging --region us-east-1 \\',
+      '     --secret-id staging/hub/e2e \\',
+      '     --query SecretString --output text | jq -r .E2E_TEST_SECRET)"',
+      '',
+      'Or — to bypass this check for a probe run — set:',
+      '   E2E_ALLOW_MISSING_TEST_SECRET=1',
+      '   (gated tests will fail/skip with their own diagnostics; non-gated ones still run.)',
+      '',
+    ].join('\n'),
+  );
+}
+
 async function globalSetup(config: FullConfig) {
   // Ensure test-results exists to reduce ENOENT artifact race (Playwright trace/video writes)
   const outputDir = config.outputDir ?? path.join(process.cwd(), 'test-results');
@@ -63,6 +148,11 @@ async function globalSetup(config: FullConfig) {
   }
 
   let API_BASE_URL = getDefaultApiBase();
+
+  // Fail-fast precondition for external-target runs. Must run BEFORE the
+  // API health-check loop so the developer sees the actionable diagnostic
+  // immediately rather than after waiting for staging to respond.
+  ensureE2ETestSecretForExternalTarget(API_BASE_URL);
   const maxRetries = 15;
   const retryDelay = 2000;
 

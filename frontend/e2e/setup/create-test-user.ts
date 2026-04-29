@@ -186,14 +186,27 @@ async function withRetry<T>(fn: () => Promise<T>, label: string): Promise<T> {
       if (i < maxAttempts - 1 && retryable) {
         // Use longer delays for rate limits to let the limiter window expire
         const baseDelay = RETRY_DELAYS_MS[Math.min(i, RETRY_DELAYS_MS.length - 1)] ?? 8000;
-        const delay = isRateLimitError(error) ? Math.max(baseDelay, 5000) : baseDelay;
+        // 503 from staging nginx-ingress typically clears within 30-60s of pod
+        // recovery (rolling restart, OOMKill) — use a slightly longer delay than
+        // the default so the same 8-attempt budget covers the 95th-percentile
+        // recovery window. Cycle-2026-04-29: features/auth.spec.ts:108 flaked
+        // because the 503 burst lasted 50+ seconds and the original 2-12s
+        // schedule consumed most of its budget on the early attempts.
+        const isHttp5xx = isTransientServerError(error);
+        const delay = isRateLimitError(error)
+          ? Math.max(baseDelay, 5000)
+          : isHttp5xx
+            ? Math.max(baseDelay, 8000)
+            : baseDelay;
         const reason = isTooManyClientsError(error)
           ? 'Postgres pool exhausted'
           : isHostResolutionRetryable(error)
             ? 'host resolution (API recovering)'
             : isRateLimitError(error)
               ? 'rate limited / account locked (429)'
-              : 'connection error';
+              : isHttp5xx
+                ? 'transient server error (5xx — pod restarting / pool exhausted)'
+                : 'connection error';
         console.log(
           `⚠️ ${label} failed (${reason}), retrying in ${delay}ms (attempt ${i + 1}/${maxAttempts})...`
         );

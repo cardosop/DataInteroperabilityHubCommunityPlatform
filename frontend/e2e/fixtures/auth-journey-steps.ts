@@ -18,7 +18,39 @@ const API_BASE_URL =
     : null) ||
   (process.env.VITE_API_BASE_URL?.startsWith?.('http') ? process.env.VITE_API_BASE_URL : null) ||
   `http://localhost:${DEFAULT_API_PORT}/api/v1`;
-const MAILHOG_BASE_URL = process.env.MAILHOG_URL || 'http://localhost:8025';
+
+/**
+ * Resolve the MailHog base URL with sensible defaults per target environment.
+ *
+ *   1. If `MAILHOG_URL` env var is set explicitly, honour it (operator override).
+ *   2. Else if running against an external/staging target (PLAYWRIGHT_BASE_URL is
+ *      non-localhost), default to the staging proxy at `${API_BASE}/test/mailhog`.
+ *      This proxy is gated by `X-E2E-Token` (E2E_TEST_SECRET) which the spec
+ *      already attaches via `buildMailhogRequestHeaders`; so the moment a
+ *      developer or CI job runs against staging with a valid `E2E_TEST_SECRET`,
+ *      JOURNEY-AUTH-003 Success is exercised end-to-end without manual env
+ *      plumbing. Cycle-2026-04-29 skip fix: the previous default of
+ *      `http://localhost:8025` caused the spec to skip on every external-target
+ *      run unless deploy.yml's MAILHOG_URL injection was active.
+ *   3. Else (local dev / docker-compose), keep `http://localhost:8025` so the
+ *      MailHog container in `docker-compose.test.yml` is the sink.
+ *
+ * Pure helper — exported so unit tests can pin the boundary.
+ */
+export function resolveMailhogBaseUrl(env: NodeJS.ProcessEnv = process.env): string {
+  if (env.MAILHOG_URL) return env.MAILHOG_URL;
+  const playwrightBase = env.PLAYWRIGHT_BASE_URL ?? '';
+  const isExternalTarget = /^https?:\/\/(?!localhost|127\.|0\.0\.0\.0)/.test(playwrightBase);
+  if (isExternalTarget) {
+    const apiBase = env.E2E_API_BASE_URL
+      || (env.VITE_PROXY_TARGET ? `${String(env.VITE_PROXY_TARGET).replace(/\/$/, '')}/api/v1` : null)
+      || `${playwrightBase.replace(/\/$/, '')}/api/v1`;
+    return `${apiBase.replace(/\/$/, '')}/test/mailhog`;
+  }
+  return 'http://localhost:8025';
+}
+
+const MAILHOG_BASE_URL = resolveMailhogBaseUrl();
 
 /** True when MAILHOG_BASE_URL points at a non-localhost host (i.e. the
  * staging proxy). In that case the proxy is token-gated and we MUST
@@ -329,6 +361,64 @@ export async function assertUserHasPersonalTenant(_page: Page, user?: TestUser):
   }
 }
 
+/**
+ * After clicking the Register form's submit button, wait for ONE of three
+ * outcomes: the redirect to /login (success), an error/alert displayed inline
+ * (server rejected — 4xx/5xx, validation, rate-limit), or a timeout (neither
+ * happened — backend hung).
+ *
+ * The previous "wait 60 s for /login" pattern in JOURNEY-AUTH-001 Security
+ * tests turned a 500 / 503 from /auth/register/ into a meaningless
+ * `TimeoutError: page.waitForURL`, masking the real failure mode and
+ * burning the full 60 s budget on every flake. This helper:
+ *
+ *   1. surfaces the inline error text in the thrown message so a single
+ *      report line names the cause instead of "test timed out";
+ *   2. surfaces *which* outcome was missed when neither path fires (URL
+ *      stays where it is — usually /register), so the next reviewer can
+ *      tell auth-rate-limit from FE-stuck-spinner from network blip.
+ *
+ * Pure helper-shaped — exported for reuse across every register-then-wait
+ * call-site (JOURNEY-AUTH-001 Security, etc.) so the diagnostic shape
+ * doesn't drift between specs.
+ */
+export async function waitForRegisterRedirectOrError(
+  page: Page,
+  options: { timeout?: number } = {}
+): Promise<void> {
+  const timeout = options.timeout ?? 60_000;
+  const errorLocator = page
+    .locator('.error-message, .error-display, [data-testid="error-display"], [role="alert"]')
+    .first();
+  const postSubmit = await Promise.race([
+    page
+      .waitForURL((url) => url.pathname === '/login', { timeout })
+      .then(() => 'redirect' as const),
+    errorLocator
+      .waitFor({ state: 'visible', timeout })
+      .then(() => 'error' as const),
+    // intentional: race uses .catch on the outer Promise.race to convert any rejection into a 'timeout' literal so the caller sees a single, classified outcome rather than three different rejection shapes.
+  ]).catch(() => 'timeout' as const);
+
+  if (postSubmit === 'error') {
+    // intentional: textContent on a freshly-resolved locator is best-effort —
+    // primary failure assertion is the throw below; missing text just yields ''.
+    const errText = await errorLocator.textContent().catch(() => '');
+    throw new Error(
+      `Registration failed — error shown on page: ${(errText ?? '').slice(0, 300)}`
+    );
+  }
+  if (postSubmit === 'timeout') {
+    throw new Error(
+      `Registration: neither /login redirect nor error display appeared within ${timeout}ms. ` +
+        `Current URL: ${page.url()}. Likely cause: backend register endpoint hung ` +
+        `(staging worker rate-limit, DB pool exhausted, or 5xx burst); the FE ` +
+        `submit handler awaits authService.register() and never reached the ` +
+        `setSuccess+navigate('/login') branch.`
+    );
+  }
+}
+
 /** Run JOURNEY-AUTH-001 success: register via UI then login */
 export async function runJOURNEY_AUTH_001_Success(page: Page): Promise<void> {
   const email = uniqueEmail('e2e_register');
@@ -353,25 +443,11 @@ export async function runJOURNEY_AUTH_001_Success(page: Page): Promise<void> {
   await page.fill('input#email', email);
   await page.fill('input#password', password);
   await page.click('button[type="submit"]');
-  // Registration navigates to /login with state on success.  If the API fails (500, 503,
-  // rate-limit, validation), the page stays on /register with an error display.
-  // Wait for EITHER the redirect OR an error — don't wait 60s for a redirect that may never come.
-  const postSubmit = await Promise.race([
-    page.waitForURL((url) => url.pathname === '/login', { timeout: 60_000 }).then(() => 'redirect' as const),
-    page.locator('.error-message, .error-display, [data-testid="error-display"]').first().waitFor({ state: 'visible', timeout: 60_000 }).then(() => 'error' as const),
-  ]).catch(() => 'timeout' as const);
-
-  if (postSubmit === 'error') {
-    // intentional: auth journey steps wrap optional UI element waits; primary auth-success assertion is in the calling spec.
-    const errText = await page.locator('.error-message, .error-display, [data-testid="error-display"]').first().textContent().catch(() => '');
-    throw new Error(`Registration failed — error shown on page: ${(errText ?? '').slice(0, 200)}`);
-  }
-  if (postSubmit === 'timeout') {
-    throw new Error(
-      'Registration: neither /login redirect nor error display appeared within 60s. ' +
-      `Current URL: ${page.url()}`
-    );
-  }
+  // Registration navigates to /login with state on success. If the API fails
+  // (500, 503, rate-limit, validation), the page stays on /register with an
+  // error display. Race redirect vs error so we don't burn 60 s waiting for
+  // a redirect that may never come — see waitForRegisterRedirectOrError.
+  await waitForRegisterRedirectOrError(page, { timeout: 60_000 });
 
   await page.locator('.success-message').waitFor({ state: 'visible', timeout: 15_000 });
   const successText = await page.locator('.success-message').textContent();
