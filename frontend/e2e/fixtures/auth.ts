@@ -364,108 +364,21 @@ function isRetryable500(err: unknown): boolean {
   return /translate host name|name resolution|getaddrinfo|ENOTFOUND|could not translate|postgres|statement timeout|canceling statement|deadlock|lock timeout|too many connections|too many clients/i.test(msg);
 }
 
-/**
- * Per-worker token cache for `loginViaApi`.
- *
- * Why this exists — Cycle-2026-04-29 flake fix. The MVP suite calls
- * `loginViaApi` ~287 times (one+ per test). Under heavy staging load each
- * `/auth/login/` POST can backoff up to 40 s on rate-limit retries
- * (LOGIN_RETRY_DELAYS_MS). Aggregated across the suite this consumes the
- * test budgets of Failure/Edge specs that have a 60-120 s ceiling, surfacing
- * as `loginUser: Page/context/browser was closed (test likely timed out)`.
- *
- * The fix: cache the `{access_token, refresh_token, user}` triad keyed by
- * email in module scope. Re-issue only when the cached access_token's `exp`
- * claim is within 60 s of expiry (refresh-ahead window). On a healthy run
- * with 15-min JWTs, this turns ~287 `/auth/login/` calls into ~9.
- *
- * Safety:
- *   - Module-scoped, so each Playwright worker has its own cache. Single-worker
- *     runs against staging share one cache; multi-worker still does N logins.
- *   - We cache the response, not the request. Token rotation (Phase 11.1) is
- *     triggered only by REFRESH calls, and the cache holds the original
- *     `/auth/login/` access+refresh — there is no replay risk.
- *   - On token expiry the cache fetches a fresh tuple; concurrent fetches for
- *     the same email serialise on the same in-flight Promise to avoid herding.
- */
-interface CachedAuthEntry {
-  apiAuth: ApiAuth;
-  expiresAtMs: number;
-}
-const _loginViaApiCache = new Map<string, CachedAuthEntry>();
-const _loginViaApiInFlight = new Map<string, Promise<ApiAuth>>();
-
-/** Parse JWT `exp` claim (seconds since epoch) → ms-epoch. Returns 0 if unparseable. */
-function parseJwtExpiresAtMs(token: string): number {
-  try {
-    const segments = token.split('.');
-    if (segments.length < 2) return 0;
-    const payloadJson = Buffer.from(segments[1] ?? '', 'base64').toString('utf8');
-    const payload = JSON.parse(payloadJson) as { exp?: number };
-    return typeof payload.exp === 'number' ? payload.exp * 1000 : 0;
-  } catch {
-    return 0;
-  }
-}
-
-/** True when cached token is within the refresh-ahead window. */
-function isCachedAuthFresh(entry: CachedAuthEntry, refreshAheadMs = 60_000): boolean {
-  return entry.expiresAtMs > Date.now() + refreshAheadMs;
-}
-
-/**
- * Reset the per-worker token cache. Call from tests that need a guaranteed
- * fresh /auth/login/ round-trip (token-rotation security tests, post-logout
- * paths). Default behaviour relies on JWT-exp expiry.
- */
-export function clearLoginViaApiCache(email?: string): void {
-  if (email) {
-    _loginViaApiCache.delete(email);
-    _loginViaApiInFlight.delete(email);
-    return;
-  }
-  _loginViaApiCache.clear();
-  _loginViaApiInFlight.clear();
-}
-
 /** Login via backend API from Node; returns tokens and user for storage injection.
  * Retries on transient connection errors and 500 host-resolution. Tries alternate port (8000 <-> 8001) on ECONNREFUSED.
  * When both ports fail (API restart during E2E), retries once after 10s delay.
  *
- * Token cache: the result is cached in `_loginViaApiCache` keyed by email until
- * the access_token's JWT `exp` is within 60 s. See `clearLoginViaApiCache`.
+ * Cycle-2026-04-29 lesson — DO NOT cache the response across calls. An earlier
+ * commit added a per-worker JWT-exp keyed cache to reduce /auth/login/ pressure
+ * but it broke Phase 11.1 token rotation: when one test's FE consumes the
+ * refresh_token (rotating it backend-side) the cached value becomes invalid,
+ * and the next test that injects the cached refresh_token triggers replay
+ * detection — the backend revokes the entire token family, every subsequent
+ * test redirects to /login. The MVP run with the cache went from 1.9 h /
+ * 13 flaky → 2.8 h / 70 flaky / 5 hard fails. Fix the rate-limit pressure at
+ * the auth-level (e.g. ensure_e2e_auth_rate_limits seeding) instead.
  */
 export async function loginViaApi(
-  email: string,
-  password: string,
-  options?: { connectionRetryCount?: number }
-): Promise<ApiAuth> {
-  const cached = _loginViaApiCache.get(email);
-  if (cached && isCachedAuthFresh(cached)) {
-    return cached.apiAuth;
-  }
-  const inFlight = _loginViaApiInFlight.get(email);
-  if (inFlight) {
-    return inFlight;
-  }
-  const promise = (async (): Promise<ApiAuth> => {
-    const fresh = await loginViaApiUncached(email, password, options);
-    const expiresAtMs = parseJwtExpiresAtMs(fresh.access_token)
-      // Conservative fallback when the token is opaque (no JWT structure):
-      // assume 12 minutes — shorter than the 15-min default so we re-issue
-      // before any reasonable backend lifetime ends.
-      || Date.now() + 12 * 60_000;
-    _loginViaApiCache.set(email, { apiAuth: fresh, expiresAtMs });
-    return fresh;
-  })().finally(() => {
-    _loginViaApiInFlight.delete(email);
-  });
-  _loginViaApiInFlight.set(email, promise);
-  return promise;
-}
-
-/** Internal — actual /auth/login/ HTTP path. Public callers go through `loginViaApi`. */
-async function loginViaApiUncached(
   email: string,
   password: string,
   options?: { connectionRetryCount?: number }
@@ -570,17 +483,14 @@ async function loginViaApiUncached(
       }
     }
   }
-  // When both bases failed with connection error, API may be restarting during E2E; retry once after delay.
-  // NOTE: recurse into the *uncached* path explicitly. Re-entering `loginViaApi`
-  // would hit the in-flight Promise the outer caller registered for this email
-  // and deadlock on its own resolution.
+  // When both bases failed with connection error, API may be restarting during E2E; retry once after delay
   if (
     lastErr &&
     connectionRetryCount < 1 &&
     (isConnectionRefused(lastErr) || isConnectionError(lastErr))
   ) {
     await new Promise((resolve) => setTimeout(resolve, 10000));
-    return loginViaApiUncached(email, password, { connectionRetryCount: connectionRetryCount + 1 });
+    return loginViaApi(email, password, { connectionRetryCount: connectionRetryCount + 1 });
   }
   throw lastErr ?? new Error('loginViaApi: unexpected');
 }
