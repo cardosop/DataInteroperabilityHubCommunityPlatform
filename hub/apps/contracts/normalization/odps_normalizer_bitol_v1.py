@@ -212,13 +212,25 @@ class ODPSBitolNormalizerV1_0_0(ODPSNormalizerBase):
         warnings: List[str],
     ) -> None:
         """
-        Map Bitol ODPS ``outputPorts`` to extensions.
+        Phase 227 Wave 1 — port METADATA only.
 
-        Each port may have:
-        - contractId: UUID linking to an ODCS contract
-        - customProperties: list of key/value dicts
-        - tags: list of strings
-        - authoritativeDefinitions: list of definition refs
+        Schema → ``models[]`` extraction is performed once in the base
+        normaliser via :func:`_ports_helper.normalize_models_from_ports`
+        (called from :meth:`ODPSNormalizerBase._normalize_ports_to_models`
+        BEFORE this method runs). This method's sole remaining job is
+        to preserve the Bitol-specific port-level metadata that does
+        NOT belong on a model entry:
+
+        * ``contractId`` — already used for resolution by the helper,
+          but kept here as an audit breadcrumb under ``extensions``.
+        * ``customProperties`` — arbitrary key/value pairs.
+        * ``tags`` — taxonomy labels.
+        * ``authoritativeDefinitions`` — definition refs.
+
+        Removing this method entirely would lose those non-schema
+        attributes from the canonical HubContract (frontends and
+        downstream consumers read them via
+        ``extensions.x_odps.output_ports``).
         """
         ports = self._get_ports(contract_data, "outputPorts")
         if not ports:
@@ -244,7 +256,13 @@ class ODPSBitolNormalizerV1_0_0(ODPSNormalizerBase):
         hub_contract: Dict[str, Any],
         warnings: List[str],
     ) -> None:
-        """Map Bitol ODPS ``inputPorts`` to extensions."""
+        """Bitol ``inputPorts`` METADATA only.
+
+        Phase 227 Wave 1 — see :meth:`_map_output_ports` for the
+        rationale. The schema/lineage extraction is in the base helper;
+        we retain only the per-port custom metadata under
+        ``extensions.x_odps.input_ports``.
+        """
         ports = self._get_ports(contract_data, "inputPorts")
         if not ports:
             return

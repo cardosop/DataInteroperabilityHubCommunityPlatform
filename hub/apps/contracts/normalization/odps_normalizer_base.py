@@ -178,6 +178,15 @@ class ODPSNormalizerBase(ODPSNormalizer, ABC):
             # ODPS contract extraction
             self._extract_contract(contract_data, hub_contract, warnings)
 
+            # Phase 227 Wave 1 — outputPorts/inputPorts → models[]/lineage.
+            # Wired in the base so every version (1.x/2.x/3.x/4.0/4.1/4.2/Bitol)
+            # gets the same port → models[] mapping with a single helper call.
+            # Root cause for the structureless population: the previous
+            # implementation only stored port metadata under
+            # `extensions.x_odps.output_ports` and never extracted the
+            # schema body into `models[]`.
+            self._normalize_ports_to_models(contract_data, hub_contract, warnings)
+
             # Version-specific field mappings (hook for subclasses)
             self._map_version_specific_fields(contract_data, hub_contract, warnings, spec_version)
 
@@ -1196,6 +1205,71 @@ class ODPSNormalizerBase(ODPSNormalizer, ABC):
         except Exception as e:
             # Don't fail normalization if schema extraction fails
             warnings.append(f"Failed to extract schema: {str(e)}")
+
+    # ------------------------------------------------------------------
+    # Phase 227 Wave 1 — outputPorts/inputPorts → models[]/lineage
+    # ------------------------------------------------------------------
+
+    def _normalize_ports_to_models(
+        self,
+        contract_data: Dict[str, Any],
+        hub_contract: Dict[str, Any],
+        warnings: List[str],
+    ) -> None:
+        """Bridge to the canonical ports helper.
+
+        Why this lives in the base
+        --------------------------
+        Pre-Phase-227, only the Bitol-v1 normaliser touched
+        ``outputPorts`` / ``inputPorts``, and even there it only
+        recorded port metadata under ``extensions.x_odps.output_ports``.
+        Spec versions 1.x / 2.x / 3.x / 4.0 / 4.1 / 4.2 ignored ports
+        entirely. Wave 1's root-cause fix is to call the shared helper
+        once from the base so every ODPS variant maps ports → models[]
+        with identical semantics — no per-subclass duplication.
+
+        Subclasses with extra port semantics (Bitol v1's
+        ``customProperties`` / ``tags`` / ``authoritativeDefinitions``)
+        run AFTER this in ``_map_version_specific_fields``; they retain
+        their own metadata-extraction call but no longer claim
+        responsibility for schema-to-models extraction.
+
+        ``visited_contract_ids`` is seeded with the contract currently
+        being normalised (when its ID is reachable through
+        ``hub_contract['extensions']['x_odps_self_id']``) so a
+        self-referential port short-circuits cleanly. In the absence of
+        that hint we pass an empty visited set; cycle protection at the
+        helper level is then the caller's responsibility (typically the
+        management command / RQ task).
+        """
+        try:
+            from hub.apps.contracts.normalization import _ports_helper
+        except Exception as exc:  # pragma: no cover — defensive
+            warnings.append(
+                f"Failed to import ports helper: {exc}. Ports → models "
+                f"mapping skipped."
+            )
+            return
+
+        try:
+            _ports_helper.normalize_models_from_ports(
+                contract_data=contract_data,
+                hub_contract=hub_contract,
+                warnings=warnings,
+            )
+        except Exception as exc:
+            # Fail-soft: a port-mapping failure must not break the rest
+            # of normalisation. The warning surfaces in the dry-run /
+            # live audit trail so ops can locate the offending contract.
+            warnings.append(
+                f"Ports → models mapping failed: "
+                f"{type(exc).__name__}: {exc}"
+            )
+            logger.warning(
+                "odps_ports_to_models_failed",
+                error=str(exc),
+                error_type=type(exc).__name__,
+            )
 
     # Helper methods for language extraction (shared across all versions)
 
