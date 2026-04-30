@@ -337,6 +337,16 @@ class Command(BaseCommand):
         # contracts we want to surface in the email. Drift-guard at
         # iteration time so a contract remediated between cohort
         # selection and dispatch is excluded.
+        #
+        # SELF-AUDIT-1: skip empty-residue tenants in ALL modes. The
+        # email body says "you have N structureless contracts" — sending
+        # to a tenant with N=0 is a lie. Pre-fix, ``--all-tenants`` and
+        # ``--tenant-id`` bypassed this check; both spec and template
+        # contract require the residue precondition. ``--all-tenants``
+        # still has value as a debug enumeration (it cross-checks the
+        # default scope query by walking the Tenant table directly
+        # rather than deriving from Contract rows), but it must not
+        # email clean tenants.
         rows: list[dict[str, Any]] = []
         for tenant in tenants:
             residue: list[Any] = []
@@ -346,11 +356,7 @@ class Command(BaseCommand):
             ):
                 if is_structureless(c):
                     residue.append(c)
-            # In default scope skip tenants whose residue cleared
-            # between picking the universe and re-querying. With
-            # ``--tenant-id`` or ``--all-tenants`` we still emit
-            # (operator explicitly asked for that tenant).
-            if not residue and not (tenant_id or all_tenants):
+            if not residue:
                 continue
             rows.append({"tenant": tenant, "contracts": residue})
         return rows

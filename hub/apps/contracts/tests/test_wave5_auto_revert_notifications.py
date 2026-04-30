@@ -355,6 +355,85 @@ class FinalWarningDriverScopeTests(TestCase):
             tenant=t2, action="ASSET_AUTO_REVERT_WARNING_NOTIFIED"
         ).count() == 0
 
+    def test_tenant_id_with_clean_tenant_skips_send(self):
+        """SELF-AUDIT-1 regression guard — passing ``--tenant-id`` for
+        a tenant that has NO structureless ACTIVE contracts must NOT
+        send the final-warning email. The email body says ``you have N
+        structureless contracts`` — sending it to a clean tenant is a
+        lie. Pre-fix the operator override would have done that;
+        post-fix the cohort loader applies the residue precondition
+        in every mode."""
+        from hub.apps.audit.models import AuditEvent
+        from hub.apps.contracts.models import Contract
+
+        clean_tenant = _create_tenant("CLEANID")
+        admin = _create_user("cleanid@example.com", clean_tenant)
+        _grant_tenant_admin_role(admin, clean_tenant)
+        # Well-formed contract — NOT structureless.
+        Contract.objects.create(
+            tenant=clean_tenant,
+            version=1,
+            original_spec_type="ODCS",
+            original_spec_version="3.0.2",
+            original_format="YAML",
+            original_raw="kind: DataContract\nid: c\nname: c\nversion: 1.0.0\nstatus: active\n",
+            hub_contract_json={"models": [{"name": "m", "fields": [{"name": "id", "type": "string"}]}]},
+            normalization_status="NORMALIZED_OK",
+            validation_status="VALID",
+            status="ACTIVE",
+        )
+
+        deadline = (_dt.date.today() + _dt.timedelta(days=14)).isoformat()
+        out, _ = _run_w51(f"--deadline={deadline}", f"--tenant-id={clean_tenant.id}")
+
+        # No NOTIFIED row, no-op summary.
+        assert AuditEvent.objects.filter(
+            tenant=clean_tenant, action="ASSET_AUTO_REVERT_WARNING_NOTIFIED"
+        ).count() == 0
+        assert "[no-op]" in out or "sent=0" in out
+
+    def test_all_tenants_excludes_clean_tenants_too(self):
+        """SELF-AUDIT-1 regression guard — ``--all-tenants`` is a
+        cross-check enumeration mode (walks the Tenant table directly
+        to validate the default scope query), but it must NOT email
+        tenants with no structureless contracts. The flag bypasses
+        the scope-query, not the residue precondition."""
+        from hub.apps.audit.models import AuditEvent
+        from hub.apps.contracts.models import Contract
+
+        clean_tenant = _create_tenant("ALLCLEAN")
+        admin_clean = _create_user("allclean@example.com", clean_tenant)
+        _grant_tenant_admin_role(admin_clean, clean_tenant)
+        Contract.objects.create(
+            tenant=clean_tenant,
+            version=1,
+            original_spec_type="ODCS",
+            original_spec_version="3.0.2",
+            original_format="YAML",
+            original_raw="kind: DataContract\nid: c\nname: c\nversion: 1.0.0\nstatus: active\n",
+            hub_contract_json={"models": [{"name": "m", "fields": [{"name": "id", "type": "string"}]}]},
+            normalization_status="NORMALIZED_OK",
+            validation_status="VALID",
+            status="ACTIVE",
+        )
+
+        residue_tenant = _create_tenant("ALLRESID")
+        admin_res = _create_user("allresid@example.com", residue_tenant)
+        _grant_tenant_admin_role(admin_res, residue_tenant)
+        _create_structureless_active_contract(residue_tenant)
+
+        deadline = (_dt.date.today() + _dt.timedelta(days=14)).isoformat()
+        _run_w51(f"--deadline={deadline}", "--all-tenants")
+
+        # Clean tenant: zero NOTIFIED rows.
+        assert AuditEvent.objects.filter(
+            tenant=clean_tenant, action="ASSET_AUTO_REVERT_WARNING_NOTIFIED"
+        ).count() == 0
+        # Residue tenant: exactly one NOTIFIED row.
+        assert AuditEvent.objects.filter(
+            tenant=residue_tenant, action="ASSET_AUTO_REVERT_WARNING_NOTIFIED"
+        ).count() == 1
+
 
 @pytest.mark.django_db(transaction=True)
 class FinalWarningDriverIdempotencyTests(TestCase):
