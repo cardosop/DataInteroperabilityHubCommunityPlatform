@@ -1974,6 +1974,22 @@ ODPS_VERSIONS_SUPPORTED = env.list(
     ],
 )
 
+# Phase 227 Wave 1 (227.L2.3) — recursive nested-properties walker depth.
+#
+# ODCS schemas allow arbitrarily nested ``object``/``array`` field types
+# via ``properties`` or ``fields``/``items``. The recursive walker in
+# :func:`hub.apps.contracts.normalization_engine._map_field` enforces this
+# upper bound and raises ``ValidationError(code="SCHEMA_TOO_DEEP")`` BEFORE
+# Python's own 1000-level recursion limit fires (which would 500 the API).
+#
+# Default of 20 covers every realistic schema we have observed in
+# production while still rejecting pathological inputs. Override via
+# ``CONTRACTS_MAX_NESTING_DEPTH`` env var on a per-tenant basis if a
+# legitimate deeper schema appears.
+CONTRACTS_MAX_NESTING_DEPTH = env.int(
+    "CONTRACTS_MAX_NESTING_DEPTH", default=20,
+)
+
 # ============================================================================
 # Django 6 Security Enhancements
 # ============================================================================

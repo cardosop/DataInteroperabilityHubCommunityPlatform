@@ -28,6 +28,10 @@ pip-audit>=2.6.1
 # Testing Utilities
 daphne>=4.1.0  # Required for channels.testing (WebsocketCommunicator)
 factory-boy>=3.3.0
+# Phase 227 Wave 1 (227.L2.6) — property-based tests for the recursive
+# nested-properties walker (test_odcs_nested_properties.py). The test
+# uses pytest.importorskip so missing dep skips gracefully.
+hypothesis>=6.100.0
 pytest-timeout>=2.2.0
 faker>=20.0.0
 freezegun>=1.4.0

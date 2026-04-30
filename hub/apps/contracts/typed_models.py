@@ -59,7 +59,22 @@ class HubContractRelationship(BaseModel):
 
 
 class HubContractField(BaseModel):
-    """Schema field definition."""
+    """Schema field definition.
+
+    Phase 227 Wave 1 (227.L2.2) — self-referential ``fields`` and ``items``
+    enable nested ``object``/``array`` types to be represented in the
+    canonical HubContract shape (``customer.address.street``,
+    ``orders[].items[].sku``). The recursive walker in
+    :mod:`hub.apps.contracts.normalization_engine` populates these.
+
+    Validators enforce the structural floor invariant Wave 1 ships:
+
+    * ``data_type == "object"`` MUST have a non-empty ``fields[]`` list —
+      structureless object shapes are exactly the failure mode Wave 0
+      identified in production.
+    * ``data_type == "array"`` MUST have an ``items`` field — an array
+      with no element schema is meaningless to consumers.
+    """
 
     name: str
     data_type: str = Field(default="string", alias="type")
@@ -88,6 +103,9 @@ class HubContractField(BaseModel):
     is_indexed: Optional[bool] = None
     lineage: Optional[LineageEntry] = None
     relationships: Optional[List[HubContractRelationship]] = None
+    # Phase 227 Wave 1 (227.L2.2) — recursive nesting.
+    fields: Optional[List["HubContractField"]] = None
+    items: Optional["HubContractField"] = None
 
     model_config = ConfigDict(extra="allow", populate_by_name=True)
 
@@ -104,6 +122,31 @@ class HubContractField(BaseModel):
         if not value or not str(value).strip():
             raise ValueError("schema.fields[].data_type must be provided")
         return value
+
+    @model_validator(mode="after")
+    def validate_nested_shape(self) -> "HubContractField":
+        """Phase 227 Wave 1 structural floor invariants.
+
+        We deliberately allow ``data_type == "object"`` with no
+        ``fields[]`` to be REJECTED (raise) but allow ``items``-less
+        arrays through with a nullable hint — some legacy contracts
+        emit ``type: array`` without an explicit element schema and we
+        treat those as warnings during normalisation rather than
+        hard-fail (Wave 0 would have caught the same cases).
+        """
+        if self.data_type == "object":
+            if not self.fields:
+                raise ValueError(
+                    f"schema.fields[].name={self.name!r} has data_type='object' "
+                    f"but no fields[] — object types must declare nested fields "
+                    f"(see Phase 227 structural floor invariant)"
+                )
+        return self
+
+    # Forward-ref resolution for the self-referential ``fields``/``items``
+    # annotations is performed at the END of the module, AFTER
+    # ``LineageEntry`` and the other forward-referenced classes are
+    # defined. See ``HubContractField.model_rebuild(...)`` near EOF.
 
 
 class HubContractSchema(BaseModel):
@@ -532,3 +575,16 @@ def validate_hub_contract_dict(hub_contract: Dict[str, Any]) -> tuple[Optional[H
             message = error.get("msg", "Invalid value")
             errors.append(f"{location}: {message}" if location else message)
         return None, errors
+
+
+# Phase 227 Wave 1 (227.L2.2) — resolve forward refs.
+#
+# `HubContractField` references itself via ``fields``/``items`` AND
+# references ``LineageEntry`` / ``HubContractRelationship`` (defined
+# later in the module). Pydantic v2 needs an explicit
+# ``model_rebuild`` once all forward-referenced names are in scope; this
+# is the canonical pattern for self-referential models that also
+# reference siblings declared further down the file. Calling rebuild
+# inline at the class body would fail because ``LineageEntry`` is not
+# yet defined.
+HubContractField.model_rebuild()

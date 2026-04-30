@@ -945,10 +945,30 @@ class NormalizationEdgeCaseTest(TestCase):
 
         self.assertIsNotNone(hub_contract)
         self.assertEqual(status, NormalizationStatus.NORMALIZED_OK)
-        # Nested structures should be preserved
+        # Nested structures should be preserved.
+        #
+        # Phase 227 Wave 1: the canonical HubContract dict uses ``type``
+        # (Pydantic by_alias=True output) post-roundtrip, but historic
+        # internal helpers used ``data_type``. Accept either so the
+        # assertion is robust to which side of the Pydantic boundary
+        # this hub_contract was sampled from.
         fields = hub_contract.get("schema", {}).get("fields", [])
         field = self._get_field_by_name(fields, "field1")
-        self.assertEqual(field.get("data_type"), "object")
+        observed_type = field.get("data_type") or field.get("type")
+        self.assertEqual(observed_type, "object")
+        # Phase 227 L2 — recursive walker now preserves the nested
+        # children too. Verify the chain `field1 → nested1 → nested2`
+        # survived normalisation.
+        sub_fields = field.get("fields") or []
+        self.assertTrue(sub_fields, f"field1 lost its nested fields: {field}")
+        nested1 = self._get_field_by_name(sub_fields, "nested1")
+        self.assertTrue(nested1, f"nested1 missing from field1.fields: {sub_fields}")
+        nested1_sub = nested1.get("fields") or []
+        self.assertTrue(nested1_sub, f"nested1 lost its nested fields: {nested1}")
+        nested2 = self._get_field_by_name(nested1_sub, "nested2")
+        self.assertTrue(nested2, f"nested2 missing: {nested1_sub}")
+        observed_nested2_type = nested2.get("data_type") or nested2.get("type")
+        self.assertEqual(observed_nested2_type, "string")
 
     def test_normalize_contract_array_fields(self):
         """Test normalization with array/list fields"""
@@ -1011,7 +1031,11 @@ class NormalizationEdgeCaseTest(TestCase):
         self.assertEqual(status, NormalizationStatus.NORMALIZED_OK)
         fields = hub_contract.get("schema", {}).get("fields", [])
         is_active = self._get_field_by_name(fields, "is_active")
-        self.assertEqual(is_active.get("data_type"), "boolean")
+        # Accept either canonical key (Pydantic alias renames data_type ↔ type).
+        self.assertEqual(
+            is_active.get("data_type") or is_active.get("type"),
+            "boolean",
+        )
 
     def test_normalize_contract_date_time_fields(self):
         """Test normalization with date/time fields"""
@@ -1568,8 +1592,10 @@ class NormalizationEdgeCaseTest(TestCase):
         self.assertEqual(field.get("pattern"), "^[a-z0-9._%+-]+@[a-z0-9.-]+\\.[a-z]{2,}$")
         self.assertEqual(field.get("enum"), ["value1", "value2"])
         self.assertEqual(field.get("default"), "value1")
-        self.assertEqual(field.get("min_length"), 5)
-        self.assertEqual(field.get("max_length"), 100)
+        # Pydantic emits the alias forms (minLength/maxLength) post-roundtrip;
+        # accept either canonical name (Phase 227 Wave 1 alias-tolerance).
+        self.assertEqual(field.get("min_length") or field.get("minLength"), 5)
+        self.assertEqual(field.get("max_length") or field.get("maxLength"), 100)
         self.assertEqual(field.get("minimum"), 0)
         self.assertEqual(field.get("maximum"), 1000)
         self.assertEqual(field.get("nullable"), False)
@@ -1718,8 +1744,9 @@ class NormalizationEdgeCaseTest(TestCase):
         self.assertIsNotNone(hub_contract)
         fields = hub_contract.get("schema", {}).get("fields", [])
         field = next((f for f in fields if f.get("name") == "field1"), None)
-        # Type should default to "string"
-        self.assertEqual(field.get("data_type"), "string")
+        # Type should default to "string". Accept either canonical key
+        # (Pydantic alias renames data_type ↔ type).
+        self.assertEqual(field.get("data_type") or field.get("type"), "string")
 
     def test_normalize_contract_quality_rule_without_dimension(self):
         """Test normalization with quality rule missing dimension"""

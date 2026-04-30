@@ -662,65 +662,135 @@ def _map_terms(contract_data: Dict[str, Any]) -> Optional[dict]:
     return terms or None
 
 
-def _map_fields(
-    odcs_schema: Dict[str, Any],
-    primary_key_fields: list,
-    unique_constraint_fields: list,
-    indexed_fields: list,
-) -> list:
-    """Map schema fields into canonical field definitions."""
-    mapped_fields = []
-    for field in odcs_schema.get("fields", []) or []:
-        if not isinstance(field, dict):
-            continue
-        field_name = field.get("name", "")
-        hub_field = {
-            "name": field_name,
-            "data_type": field.get("type", "string"),
-            "nullable": field.get("nullable", True),
-        }
-        if "description" in field:
-            hub_field["description"] = field["description"]
-        if "semantic_type" in field:
-            hub_field["semantic_type"] = field["semantic_type"]
-        elif "semanticType" in field:
-            hub_field["semantic_type"] = field["semanticType"]
-        if "format" in field:
-            hub_field["format"] = field["format"]
-        if "pattern" in field:
-            hub_field["pattern"] = field["pattern"]
-        if "enum" in field:
-            hub_field["enum"] = field["enum"]
-        if "default" in field:
-            hub_field["default"] = field["default"]
-        if "min_length" in field or "minLength" in field:
-            hub_field["min_length"] = field.get("min_length") or field.get("minLength")
-        if "max_length" in field or "maxLength" in field:
-            hub_field["max_length"] = field.get("max_length") or field.get("maxLength")
-        if "minimum" in field:
-            hub_field["minimum"] = field["minimum"]
-            hub_field["min"] = field["minimum"]
-        if "maximum" in field:
-            hub_field["maximum"] = field["maximum"]
-            hub_field["max"] = field["maximum"]
-        if "min" in field and "minimum" not in field:
-            hub_field["min"] = field["min"]
-            hub_field["minimum"] = field["min"]
-        if "max" in field and "maximum" not in field:
-            hub_field["max"] = field["max"]
-            hub_field["maximum"] = field["max"]
-        if "exclusiveMinimum" in field:
-            hub_field["exclusiveMinimum"] = field["exclusiveMinimum"]
-        if "exclusiveMaximum" in field:
-            hub_field["exclusiveMaximum"] = field["exclusiveMaximum"]
-        if "logicalTypeOptions" in field or "logical_type_options" in field:
-            hub_field["logicalTypeOptions"] = (
-                field.get("logicalTypeOptions")
-                or field.get("logical_type_options")
-            )
-        if "metadata" in field:
-            hub_field["metadata"] = field["metadata"]
+def _get_max_nesting_depth() -> int:
+    """Return the configured maximum nesting depth (Phase 227 L2.3).
 
+    Reads ``CONTRACTS_MAX_NESTING_DEPTH`` from Django settings; falls
+    back to 20 when the setting is missing (e.g., minimal test settings
+    that don't pull in the full ``hub.settings`` block).
+    """
+    try:
+        from django.conf import settings as _dj_settings
+        return int(getattr(_dj_settings, "CONTRACTS_MAX_NESTING_DEPTH", 20))
+    except Exception:
+        return 20
+
+
+def _map_field(
+    field: Dict[str, Any],
+    *,
+    parent_path: str = "",
+    depth: int = 0,
+    max_depth: Optional[int] = None,
+    primary_key_fields: Optional[list] = None,
+    unique_constraint_fields: Optional[list] = None,
+    indexed_fields: Optional[list] = None,
+) -> Dict[str, Any]:
+    """Phase 227 Wave 1 (227.L2.1) — recursive field walker.
+
+    Maps ONE ODCS-shaped field dict to its canonical HubContract shape,
+    descending into nested ``object``/``array`` types via either
+    ``properties`` (JSON-Schema-style dict, post-v3.0.x) or ``fields``
+    (ODCS-style list, ≤v3.0.x), and ``items`` (for arrays).
+
+    Depth bound
+    -----------
+    The walker tracks ``depth`` per call. When ``depth > max_depth`` it
+    raises :class:`django.core.exceptions.ValidationError` with
+    ``code="SCHEMA_TOO_DEEP"`` BEFORE Python's own 1000-level recursion
+    limit fires (which would surface as a generic 500). The default
+    20-level limit covers every realistic schema we have observed and
+    rejects pathological inputs cheaply at the API edge.
+
+    Parameters
+    ----------
+    field
+        The ODCS-shaped field dict to convert.
+    parent_path
+        Dotted path of ancestor field names for error messages.
+    depth
+        Current recursion depth (0 at the top level).
+    max_depth
+        Inclusive upper bound. ``None`` reads
+        ``settings.CONTRACTS_MAX_NESTING_DEPTH`` (default 20).
+    primary_key_fields, unique_constraint_fields, indexed_fields
+        Top-level constraint name lists; only consulted at depth 0
+        because nested fields don't participate in row-level uniqueness.
+    """
+    if max_depth is None:
+        max_depth = _get_max_nesting_depth()
+
+    field_name = field.get("name", "") or ""
+    current_path = (
+        f"{parent_path}.{field_name}" if parent_path and field_name else
+        field_name or parent_path or "<unnamed>"
+    )
+
+    if depth > max_depth:
+        from django.core.exceptions import ValidationError
+        raise ValidationError(
+            f"Schema nesting depth {depth} at path '{current_path}' "
+            f"exceeds limit {max_depth} "
+            f"(CONTRACTS_MAX_NESTING_DEPTH). Increase the setting only "
+            f"if a legitimate deeper schema is required.",
+            code="SCHEMA_TOO_DEEP",
+        )
+
+    primary_key_fields = primary_key_fields or []
+    unique_constraint_fields = unique_constraint_fields or []
+    indexed_fields = indexed_fields or []
+
+    hub_field: Dict[str, Any] = {
+        "name": field_name,
+        "data_type": field.get("type", "string"),
+        "nullable": field.get("nullable", True),
+    }
+    if "description" in field:
+        hub_field["description"] = field["description"]
+    if "semantic_type" in field:
+        hub_field["semantic_type"] = field["semantic_type"]
+    elif "semanticType" in field:
+        hub_field["semantic_type"] = field["semanticType"]
+    if "format" in field:
+        hub_field["format"] = field["format"]
+    if "pattern" in field:
+        hub_field["pattern"] = field["pattern"]
+    if "enum" in field:
+        hub_field["enum"] = field["enum"]
+    if "default" in field:
+        hub_field["default"] = field["default"]
+    if "min_length" in field or "minLength" in field:
+        hub_field["min_length"] = field.get("min_length") or field.get("minLength")
+    if "max_length" in field or "maxLength" in field:
+        hub_field["max_length"] = field.get("max_length") or field.get("maxLength")
+    if "minimum" in field:
+        hub_field["minimum"] = field["minimum"]
+        hub_field["min"] = field["minimum"]
+    if "maximum" in field:
+        hub_field["maximum"] = field["maximum"]
+        hub_field["max"] = field["maximum"]
+    if "min" in field and "minimum" not in field:
+        hub_field["min"] = field["min"]
+        hub_field["minimum"] = field["min"]
+    if "max" in field and "maximum" not in field:
+        hub_field["max"] = field["max"]
+        hub_field["maximum"] = field["max"]
+    if "exclusiveMinimum" in field:
+        hub_field["exclusiveMinimum"] = field["exclusiveMinimum"]
+    if "exclusiveMaximum" in field:
+        hub_field["exclusiveMaximum"] = field["exclusiveMaximum"]
+    if "logicalTypeOptions" in field or "logical_type_options" in field:
+        hub_field["logicalTypeOptions"] = (
+            field.get("logicalTypeOptions")
+            or field.get("logical_type_options")
+        )
+    if "metadata" in field:
+        hub_field["metadata"] = field["metadata"]
+
+    # Constraints only apply at the top level (depth 0). A nested
+    # `customer.address.street` cannot itself be a primary_key of the
+    # row even if some other contract names a top-level field "street".
+    if depth == 0:
         if field_name in primary_key_fields or field.get("is_primary_key"):
             hub_field["is_primary_key"] = True
         if field_name in unique_constraint_fields or field.get("is_unique"):
@@ -728,14 +798,118 @@ def _map_fields(
         if field_name in indexed_fields or field.get("is_indexed"):
             hub_field["is_indexed"] = True
 
-        # Extract field-level lineage
-        from hub.apps.contracts.lineage import extract_field_level_lineage
+    # Extract field-level lineage
+    from hub.apps.contracts.lineage import extract_field_level_lineage
 
-        field_lineage = extract_field_level_lineage(field)
-        if field_lineage:
-            hub_field["lineage"] = field_lineage
+    field_lineage = extract_field_level_lineage(field)
+    if field_lineage:
+        hub_field["lineage"] = field_lineage
 
-        mapped_fields.append(hub_field)
+    # ---- Recurse into nested object/array shapes ----------------------
+    data_type = hub_field["data_type"]
+
+    if data_type == "object":
+        nested = _extract_nested_object_children(field)
+        if nested:
+            hub_field["fields"] = [
+                _map_field(
+                    child,
+                    parent_path=current_path,
+                    depth=depth + 1,
+                    max_depth=max_depth,
+                )
+                for child in nested
+            ]
+
+    elif data_type == "array":
+        items = field.get("items")
+        if isinstance(items, dict):
+            # ODCS spec allows the items schema to be anonymous; use
+            # the conventional placeholder name "items" in the path.
+            merged_items = dict(items)
+            merged_items.setdefault("name", "items")
+            hub_field["items"] = _map_field(
+                merged_items,
+                parent_path=f"{current_path}[]",
+                depth=depth + 1,
+                max_depth=max_depth,
+            )
+
+    return hub_field
+
+
+def _extract_nested_object_children(
+    field: Dict[str, Any],
+) -> List[Dict[str, Any]]:
+    """Phase 227 Wave 1 (227.L2.5) — `properties` ↔ `fields` equivalence.
+
+    Returns the child-field dicts of an ``object``-typed parent in the
+    same shape ``_map_field`` expects (each carries its own ``name``).
+
+    Two ODCS dialects are accepted:
+
+    * ``properties`` — dict of ``{name: subfield_dict}`` (post-v3.0.x,
+      JSON-Schema style). The subfield dict may omit ``name``; we
+      inject the dict key as the name.
+    * ``fields`` — list of named subfield dicts (≤v3.0.x and many
+      hand-written contracts).
+
+    Order preference
+    ----------------
+    ``properties`` wins over ``fields`` when both are present — the
+    JSON-Schema style is more recent and more authoritative. A warning
+    surfaces upstream if both keys appear (we don't add it here to keep
+    the walker pure).
+    """
+    children: List[Dict[str, Any]] = []
+    properties = field.get("properties")
+    if isinstance(properties, dict) and properties:
+        for sub_name, sub_field in properties.items():
+            if not isinstance(sub_field, dict):
+                continue
+            merged = dict(sub_field)
+            # The dict key is the canonical name; do not silently
+            # overwrite an explicit per-subfield ``name``.
+            merged.setdefault("name", sub_name)
+            children.append(merged)
+        return children
+
+    nested_fields = field.get("fields")
+    if isinstance(nested_fields, list) and nested_fields:
+        for sub in nested_fields:
+            if isinstance(sub, dict):
+                children.append(sub)
+    return children
+
+
+def _map_fields(
+    odcs_schema: Dict[str, Any],
+    primary_key_fields: list,
+    unique_constraint_fields: list,
+    indexed_fields: list,
+) -> list:
+    """Map schema fields into canonical field definitions.
+
+    Phase 227 Wave 1 (227.L2.1) — delegates to the recursive
+    :func:`_map_field` worker per top-level field; depth tracking
+    starts at 0 and the walker enforces ``CONTRACTS_MAX_NESTING_DEPTH``.
+    """
+    max_depth = _get_max_nesting_depth()
+    mapped_fields = []
+    for field in odcs_schema.get("fields", []) or []:
+        if not isinstance(field, dict):
+            continue
+        mapped_fields.append(
+            _map_field(
+                field,
+                parent_path="",
+                depth=0,
+                max_depth=max_depth,
+                primary_key_fields=primary_key_fields,
+                unique_constraint_fields=unique_constraint_fields,
+                indexed_fields=indexed_fields,
+            )
+        )
     return mapped_fields
 
 
@@ -1170,17 +1344,25 @@ def normalize_contract(
                 [],
             )
 
-        # For ODCS fallback: if we got a 3.0.2 normalizer for an unknown version,
-        # use "3.0.2" as the spec_version for normalization
+        # ODCS fallback: when an unknown spec_version (e.g. "1.0.0") is
+        # detected, ``get_normalizer`` falls back to the latest available
+        # ODCS normalizer (v3.1.0 preferred, v3.0.2 secondary). We must
+        # ALSO re-map ``normalization_version`` so the chosen normaliser
+        # accepts it — otherwise the normaliser's own
+        # ``_supports_version`` check inside ``normalize()`` would reject
+        # the unknown version and produce a "not supported" error even
+        # though the engine had successfully picked a fallback. Phase 227
+        # Wave 1 — root-causes a class of historic edge-case failures.
         from hub.apps.contracts.normalization.odcs_normalizer_v3_0_2 import ODCSNormalizerV3_0_2
+        from hub.apps.contracts.normalization.odcs_normalizer_v3_1_0 import ODCSNormalizerV3_1_0
 
-        if (
-            spec_type == OriginalSpecType.ODCS
-            and spec_version != "3.0.2"
-            and isinstance(normalizer, ODCSNormalizerV3_0_2)
-        ):
-            # Use 3.0.2 as the version for normalization when using fallback
-            normalization_version = "3.0.2"
+        if spec_type == OriginalSpecType.ODCS:
+            if isinstance(normalizer, ODCSNormalizerV3_1_0) and spec_version != "3.1.0":
+                normalization_version = "3.1.0"
+            elif isinstance(normalizer, ODCSNormalizerV3_0_2) and spec_version != "3.0.2":
+                normalization_version = "3.0.2"
+            else:
+                normalization_version = spec_version
         else:
             normalization_version = spec_version
 
