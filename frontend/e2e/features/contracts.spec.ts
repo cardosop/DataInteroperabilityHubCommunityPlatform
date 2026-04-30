@@ -100,6 +100,57 @@ test.describe('Feature: Contracts', () => {
         ).toBeDisabled();
       }
     });
+
+    /*
+     * Phase 227 Wave 1 (227.L5.15) — STRUCTURELESS_CONTRACT error code
+     * surfaces in the Create flow.
+     *
+     * Pre-Wave-1, posting an ODCS body with no schema/models would
+     * succeed and persist a structureless row. Post-Wave-1 the backend
+     * returns 400 ``STRUCTURELESS_CONTRACT`` and the frontend surfaces
+     * the typed error code. We assert the error appears somewhere in
+     * the validation panel so future copy edits don't drop it silently.
+     */
+    test('contract create surfaces STRUCTURELESS_CONTRACT for empty schema', async ({ page }) => {
+      const testUser = await getTestUser();
+      await loginUser(page, testUser);
+      await page.goto('/contracts/create', { waitUntil: 'domcontentloaded' });
+
+      if (page.url().includes('/login')) {
+        test.skip(true, 'Redirected to /login — auth token expired');
+        return;
+      }
+
+      const textarea = page
+        .locator(
+          'textarea[aria-label*="contract" i], textarea[aria-label*="content" i], .contract-file-reader textarea, .contract-file-reader__textarea'
+        )
+        .first();
+      await textarea.waitFor({ state: 'visible', timeout: 20000 });
+      // Well-formed ODCS envelope but no schema or models — exactly the
+      // structureless-population shape the floor enforcer rejects.
+      await textarea.fill(
+        JSON.stringify({
+          apiVersion: 'odcs.io/v3.0.2',
+          kind: 'DataContract',
+          id: 'structureless-e2e',
+          name: 'structureless-e2e',
+          version: '1.0.0',
+          status: 'active',
+          info: { description: 'no schema or models declared' },
+        })
+      );
+
+      const validationPanel = page.locator('.validation-result-panel');
+      await expect(validationPanel).toBeVisible({ timeout: 30000 });
+
+      // The error panel must surface the STRUCTURELESS_CONTRACT code or
+      // its friendly remediation copy ("models or schema fields").
+      const errorPanel = page.locator('.validation-result-panel--error');
+      await expect(errorPanel.first()).toBeVisible({ timeout: 15000 });
+      const errorText = await errorPanel.first().textContent();
+      expect(errorText ?? '').toMatch(/structureless|no resolvable|schema fields|models/i);
+    });
   });
 
   test.describe('Edge', () => {

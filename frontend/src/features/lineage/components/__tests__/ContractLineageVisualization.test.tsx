@@ -95,4 +95,54 @@ describe('ContractLineageVisualization', () => {
     // The depth slider should be visible (proves component rendered)
     expect(screen.getByText(/depth/i)).toBeTruthy();
   });
+
+  /* ----------------------------------------------------------------------
+   * Phase 227 Wave 1 (227.L5.7) — two-tier empty state.
+   * Tier 1: nodes.length <= 1 → structureless contract (deep-link to
+   *   Schema editor).
+   * Tier 2: nodes.length > 1 && links.length === 0 → existing copy.
+   * ---------------------------------------------------------------------- */
+
+  it('shows STRUCTURELESS empty state when nodes <= 1', () => {
+    mockUseContractLineageVisualization.mockReturnValue({
+      data: {
+        // Just the contract node itself — no models, no fields. This is
+        // the structureless-population shape Wave 0 catalogued.
+        nodes: [
+          { id: 'c1', type: 'contract', name: 'Orders', contract_id: 'c1', label: null },
+        ],
+        links: [],
+      },
+      isLoading: false,
+      error: null,
+      refetch: vi.fn(),
+    });
+    renderWithProviders(<ContractLineageVisualization contractId="c1" />);
+    const empty = screen.getByTestId('contract-lineage-empty-structureless');
+    expect(empty).toBeTruthy();
+    // The CTA must deep-link to the Schema tab on the editor.
+    const link = screen.getByTestId('empty-state-action-link') as HTMLAnchorElement;
+    expect(link).toBeTruthy();
+    expect(link.getAttribute('href')).toContain('/edit?tab=schema');
+    expect(link.getAttribute('href')).toContain('c1');
+  });
+
+  it('shows the existing "no relationships" empty state when nodes > 1 but no links', () => {
+    mockUseContractLineageVisualization.mockReturnValue({
+      data: {
+        nodes: [
+          { id: 'c1', type: 'contract', name: 'Orders', contract_id: 'c1', label: null },
+          { id: 'm1', type: 'model', name: 'Items', contract_id: null, label: null },
+        ],
+        links: [],
+      },
+      isLoading: false,
+      error: null,
+      refetch: vi.fn(),
+    });
+    renderWithProviders(<ContractLineageVisualization contractId="c1" />);
+    expect(screen.getByTestId('contract-lineage-empty')).toBeTruthy();
+    // Tier 1 must NOT also fire.
+    expect(screen.queryByTestId('contract-lineage-empty-structureless')).toBeNull();
+  });
 });

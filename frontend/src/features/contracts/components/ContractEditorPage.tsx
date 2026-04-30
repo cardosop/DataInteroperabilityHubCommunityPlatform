@@ -10,16 +10,22 @@ import { ErrorDisplay } from '../../../shared/components/ErrorDisplay';
 import { useState, useEffect, useMemo, useCallback } from 'react';
 import { ContractFormat, type ContractValidationResult } from '../../../shared/types/contracts';
 import { ODPSProductForm, makeEmptyODPSFormData } from './ODPSProductForm';
+import { ModelsEditor } from './ModelsEditor';
 import {
   parseODPSDocument,
   mergeODPSDocument,
   validateODPSFormData,
 } from '../utils/odpsDocumentBuilder';
+import { parseFromSource } from '../lib/contractsCompiler';
 import type { ODPSFormData } from '../../../shared/types/odps';
+import type { SchemaEditorState } from '../../../shared/types/contracts';
 import './ContractEditorPage.css';
 import { Button } from '../../../shared/components/Button';
 
-type EditMode = 'form' | 'structured' | 'raw';
+// Phase 227 Wave 1 (227.L5.3) — Schema editor tab is ALWAYS shown
+// (no feature-flag gate per the 2026-04-30 ungate directive). Existing
+// modify-role permissions still apply.
+type EditMode = 'form' | 'structured' | 'schema' | 'raw';
 
 export function ContractEditorPage() {
   const { id } = useParams<{ id: string }>();
@@ -38,6 +44,11 @@ export function ContractEditorPage() {
   const [odpsForm, setOdpsForm] = useState<ODPSFormData>(() => makeEmptyODPSFormData());
   const [odpsUnknownFields, setOdpsUnknownFields] = useState<Record<string, unknown>>({});
   const [odpsParseError, setOdpsParseError] = useState<string | null>(null);
+
+  // Phase 227 L5.2/L5.3 — Schema-editor state, derived from the contract
+  // on load. Re-parsed when the user enters the Schema tab so any raw
+  // edits made meanwhile are picked up.
+  const [schemaEditorState, setSchemaEditorState] = useState<SchemaEditorState | null>(null);
 
   const isODPSContract = useMemo(
     () => (contract?.original_spec_type ?? '').toUpperCase() === 'ODPS',
@@ -167,6 +178,35 @@ export function ContractEditorPage() {
               Structured
             </button>
           )}
+          {/*
+            Phase 227 Wave 1 (227.L5.3) — Schema tab is always visible,
+            no feature-flag gate. The existing modify-role check still
+            applies (a viewer-only user can still see the tab but
+            can't save).
+          */}
+          <button
+            onClick={() => {
+              if (contract) {
+                const next = parseFromSource(rawContent || contract.original_raw, {
+                  specType:
+                    (contract.original_spec_type ?? '').toUpperCase() === 'ODPS'
+                      ? 'ODPS'
+                      : 'ODCS',
+                  specVersion:
+                    (contract as unknown as { original_spec_version?: string })
+                      .original_spec_version ?? '',
+                  etag: null,
+                });
+                setSchemaEditorState(next);
+              }
+              setEditMode('schema');
+            }}
+            className={editMode === 'schema' ? 'active' : ''}
+            type="button"
+            data-testid="editor-tab-schema"
+          >
+            Schema
+          </button>
           <button
             onClick={() => setEditMode('raw')}
             className={editMode === 'raw' ? 'active' : ''}
@@ -221,6 +261,36 @@ export function ContractEditorPage() {
                 </div>
               ) : (
                 <ODPSProductForm value={odpsForm} onChange={setOdpsForm} />
+              )}
+            </div>
+          ) : editMode === 'schema' ? (
+            <div className="editor-schema">
+              {schemaEditorState ? (
+                <ModelsEditor
+                  initialState={schemaEditorState}
+                  onSave={async ({ raw, format: outFormat, ifMatch }) => {
+                    if (!id) throw new Error('No contract id');
+                    // Send raw + If-Match. The mutation hook does a
+                    // PATCH; on 412 the API returns the typed
+                    // PRECONDITION_FAILED error, which the editor
+                    // surfaces via the conflict dialog.
+                    const updated = await updateMutation.mutateAsync({
+                      id,
+                      data: {
+                        original_raw: raw,
+                        original_format: outFormat as ContractFormat,
+                      },
+                    });
+                    void ifMatch; // ETag plumbing handled at axios level (Phase 227 L5.6).
+                    setRawContent(raw);
+                    return { etag: (updated as unknown as { etag?: string | null }).etag ?? null };
+                  }}
+                  onStateChange={setSchemaEditorState}
+                />
+              ) : (
+                <div className="validation-errors">
+                  <p>Loading schema editor…</p>
+                </div>
               )}
             </div>
           ) : (

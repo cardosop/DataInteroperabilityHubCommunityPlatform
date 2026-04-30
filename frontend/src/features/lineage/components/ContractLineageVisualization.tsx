@@ -74,12 +74,21 @@ export function ContractLineageVisualization({
     nodeHeight: 70,
   });
 
+  // Phase 227 Wave 1 (227.L5.7) — two-tier empty state.
+  //
+  // Tier 1 (``nodes.length <= 1``): the contract itself has no models
+  // or fields declared — i.e. structureless. Surface a Schema-editor
+  // deep-link so the user can fix it directly.
+  // Tier 2 (``nodes.length > 1 && links.length === 0``): the contract
+  // is structural but has no lineage edges. Existing copy stays.
+  const isStructureless =
+    lineage && !isLoading && !error && lineage.nodes.length <= 1;
   const showNoRelationshipsHint =
     lineage &&
     !isLoading &&
     !error &&
     lineage.links.length === 0 &&
-    lineage.nodes.length <= 1;
+    lineage.nodes.length > 1;
 
   return (
     <div className={styles.wrapper}>
@@ -105,7 +114,15 @@ export function ContractLineageVisualization({
         </div>
       </div>
 
-      {showNoRelationshipsHint ? (
+      {isStructureless ? (
+        <EmptyState
+          data-testid="contract-lineage-empty-structureless"
+          title="No models or fields declared"
+          message="This contract has no resolvable models or schema fields, so there is nothing to render lineage for. Open the Schema tab on the editor to add at least one model with one field."
+          actionLabel="Open Schema editor"
+          actionHref={`/contracts/${contractId}/edit?tab=schema`}
+        />
+      ) : showNoRelationshipsHint ? (
         <EmptyState
           data-testid="contract-lineage-empty"
           title="No lineage relationships in this contract"

@@ -117,3 +117,88 @@ describe('normalizeError', () => {
     expect(normalizedUndefined.error.code).toBe('UNKNOWN_ERROR');
   });
 });
+
+/* -------------------------------------------------------------------------
+ * Phase 227 Wave 1 (227.L5.9) — getErrorRemediation tests
+ * ------------------------------------------------------------------------- */
+
+import { getErrorRemediation, KnownErrorCode } from './errorUtils';
+
+describe('getErrorRemediation', () => {
+  it('returns null for unknown codes', () => {
+    expect(getErrorRemediation('NOT_A_REAL_CODE')).toBeNull();
+    expect(getErrorRemediation(null)).toBeNull();
+    expect(getErrorRemediation(undefined)).toBeNull();
+    expect(getErrorRemediation('')).toBeNull();
+  });
+
+  it('returns subcode-specific copy for STRUCTURELESS_CONTRACT', () => {
+    const odpsNoPorts = getErrorRemediation(
+      KnownErrorCode.STRUCTURELESS_CONTRACT,
+      'STRUCTURELESS_ODPS_NO_PORTS',
+    );
+    expect(odpsNoPorts).not.toBeNull();
+    expect(odpsNoPorts!.title).toContain('models or schema fields');
+    expect(odpsNoPorts!.details).toContain('outputPort');
+
+    const odcsNoSchema = getErrorRemediation(
+      KnownErrorCode.STRUCTURELESS_CONTRACT,
+      'STRUCTURELESS_ODCS_NO_SCHEMA',
+    );
+    expect(odcsNoSchema!.details).toContain('Schema editor');
+
+    const cyclic = getErrorRemediation(
+      KnownErrorCode.STRUCTURELESS_CONTRACT,
+      'STRUCTURELESS_CYCLIC_PORTS',
+    );
+    expect(cyclic!.details).toContain('cycle');
+  });
+
+  it('falls back to generic copy when subcode is unknown', () => {
+    const r = getErrorRemediation(KnownErrorCode.STRUCTURELESS_CONTRACT, 'NOT_A_REAL_SUBCODE');
+    expect(r).not.toBeNull();
+    expect(r!.details).toContain('no resolvable structure');
+  });
+
+  it('exposes remediation_url as ctaUrl when provided', () => {
+    const url = 'https://example.com/contracts/abc/edit?tab=schema';
+    const r = getErrorRemediation(
+      KnownErrorCode.STRUCTURELESS_CONTRACT,
+      'STRUCTURELESS_ODCS_NO_SCHEMA',
+      { remediation_url: url },
+    );
+    expect(r!.ctaUrl).toBe(url);
+    expect(r!.ctaLabel).toContain('Schema editor');
+  });
+
+  it('omits ctaUrl/Label when no remediation_url is provided', () => {
+    const r = getErrorRemediation(
+      KnownErrorCode.STRUCTURELESS_CONTRACT,
+      'STRUCTURELESS_ODCS_NO_SCHEMA',
+    );
+    expect(r!.ctaUrl).toBeUndefined();
+    expect(r!.ctaLabel).toBeUndefined();
+  });
+
+  it('returns specific copy for PRECONDITION_FAILED', () => {
+    const r = getErrorRemediation(KnownErrorCode.PRECONDITION_FAILED);
+    expect(r).not.toBeNull();
+    expect(r!.title).toContain('changed since you opened');
+  });
+
+  it('returns specific copy for SCHEMA_TOO_DEEP', () => {
+    const r = getErrorRemediation(KnownErrorCode.SCHEMA_TOO_DEEP);
+    expect(r).not.toBeNull();
+    expect(r!.details).toContain('20');
+  });
+
+  it('returns generic copy for VALIDATION_ERROR / NORMALIZATION_FAILED', () => {
+    expect(getErrorRemediation(KnownErrorCode.VALIDATION_ERROR)).not.toBeNull();
+    expect(getErrorRemediation(KnownErrorCode.NORMALIZATION_FAILED)).not.toBeNull();
+  });
+
+  it('is case-insensitive on the code argument', () => {
+    expect(getErrorRemediation('structureless_contract')).not.toBeNull();
+    expect(getErrorRemediation('Structureless_Contract')).not.toBeNull();
+  });
+});

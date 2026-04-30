@@ -166,3 +166,108 @@ export interface ContractSchemaObject {
   relationships?: ContractRelationship[];
   [key: string]: unknown;
 }
+
+/* -------------------------------------------------------------------------
+ * Phase 227 Wave 1 (227.L5.10) — Schema editor state types
+ *
+ * The editor is hub-shaped (models[*].fields[*]) regardless of the
+ * source spec; the compiler at ``contractsCompiler.ts`` projects the
+ * editor state to ODCS or ODPS source on save and parses incoming raw
+ * back into editor state on load.
+ * ------------------------------------------------------------------------- */
+
+/** Canonical data-types accepted by the editor; matches HubContractField. */
+export const FIELD_DATA_TYPES = [
+  'string',
+  'integer',
+  'number',
+  'boolean',
+  'date',
+  'date-time',
+  'time',
+  'object',
+  'array',
+] as const;
+export type EditorFieldDataType = (typeof FIELD_DATA_TYPES)[number];
+
+/**
+ * One field row in the editor — the recursive shape mirrors
+ * HubContractField (Phase 227 L2.2). ``fields`` is populated when
+ * ``data_type === 'object'``; ``items`` when ``'array'``.
+ *
+ * The editor stores extra UI-only state under leading-underscore keys
+ * (``_uiKey``) so they can be stripped before compilation.
+ */
+export interface EditorField {
+  /** Stable client-side identity for React keys. */
+  _uiKey: string;
+  name: string;
+  data_type: EditorFieldDataType;
+  description?: string;
+  nullable?: boolean;
+  format?: string;
+  pattern?: string;
+  enum?: Array<string | number>;
+  default?: unknown;
+  min_length?: number;
+  max_length?: number;
+  minimum?: number;
+  maximum?: number;
+  is_primary_key?: boolean;
+  is_unique?: boolean;
+  is_indexed?: boolean;
+  /** Object-typed fields carry nested children. */
+  fields?: EditorField[];
+  /** Array-typed fields carry one item schema. */
+  items?: EditorField;
+}
+
+/** One model in the editor. */
+export interface EditorModel {
+  _uiKey: string;
+  name: string;
+  description?: string;
+  fields: EditorField[];
+  primary_key?: string[];
+  tags?: string[];
+}
+
+/** Top-level editor state — what ``ModelsEditor`` reads/writes. */
+export interface SchemaEditorState {
+  /** Source spec the contract was loaded from. */
+  specType: 'ODCS' | 'ODPS';
+  /** Source spec version (e.g. "3.1.0", "bitol-1.0.0"). */
+  specVersion: string;
+  /** Top-level info preserved across edit/save round-trip. */
+  info: {
+    name?: string;
+    description?: string;
+    version?: string;
+    status?: string;
+  };
+  models: EditorModel[];
+  /** ETag from the GET that loaded this state — sent as If-Match on save. */
+  etag?: string | null;
+  /** Original raw content; carried so we can preserve unrecognised fields. */
+  originalRaw?: string;
+}
+
+/** Result envelope from ``GET /contracts/schema/json-schema/``. */
+export interface ContractJsonSchemaResponse {
+  spec: 'odcs' | 'odps' | null;
+  schema: Record<string, unknown>;
+}
+
+/** Per-model client-side validation issue surfaced in the editor UI. */
+export interface EditorValidationIssue {
+  modelIndex: number;
+  fieldPath?: string;
+  message: string;
+  code:
+    | 'MODEL_NAME_REQUIRED'
+    | 'MODEL_FIELDS_REQUIRED'
+    | 'FIELD_NAME_REQUIRED'
+    | 'FIELD_NAME_DUPLICATE'
+    | 'OBJECT_FIELD_REQUIRES_NESTED_FIELDS'
+    | 'ARRAY_FIELD_REQUIRES_ITEMS';
+}

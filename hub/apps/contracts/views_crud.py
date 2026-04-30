@@ -11,6 +11,7 @@ from django.core.exceptions import FieldError
 from django.db import transaction
 from drf_spectacular.utils import extend_schema, extend_schema_view
 from rest_framework import status
+from rest_framework.decorators import action
 from rest_framework.exceptions import PermissionDenied
 from rest_framework.response import Response
 
@@ -610,3 +611,69 @@ class ContractCRUDMixin:
             # endpoint — just skip the header.
             pass
         return response
+
+    # ------------------------------------------------------------------
+    # Phase 227 Wave 1 (227.L5.4) — JSON Schema endpoint
+    # ------------------------------------------------------------------
+
+    @action(
+        detail=False,
+        methods=["get"],
+        url_path="schema/json-schema",
+        url_name="schema-json-schema",
+    )
+    def schema_json_schema(self, request):
+        """Return the JSON Schema describing valid HubContract payloads.
+
+        ``GET /api/v1/contracts/schema/json-schema/?spec=<odcs|odps>``
+
+        The frontend Schema editor (Phase 227 L5.5) fetches this at load
+        and uses it to drive client-side field-level validation —
+        rejecting empty model names, duplicate fields within a model,
+        and ``object``-typed fields with no nested ``fields[]`` BEFORE
+        the user clicks Save. The schema returned is derived from the
+        canonical ``HubContractModel.model_json_schema()`` so server +
+        client speak the same Pydantic-defined contract.
+
+        Query params
+        ------------
+        * ``spec`` — optional, ``odcs`` or ``odps``. Reserved for future
+          spec-specific narrowing; currently both values return the
+          same canonical HubContract schema (the editor compiles to
+          either ODCS or ODPS source via the client-side compiler).
+
+        Response
+        --------
+        ::
+
+            {
+              "spec": "odcs" | "odps" | null,
+              "schema": <JSON-Schema dict>
+            }
+        """
+        spec = (request.query_params.get("spec") or "").strip().lower() or None
+        if spec is not None and spec not in ("odcs", "odps"):
+            return Response(
+                {
+                    "error": "Invalid 'spec' query parameter",
+                    "code": "INVALID_SPEC",
+                    "details": {
+                        "spec": spec,
+                        "allowed": ["odcs", "odps"],
+                    },
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        from hub.apps.contracts.typed_models import HubContractModel
+        try:
+            json_schema = HubContractModel.model_json_schema(by_alias=True)
+        except Exception as exc:  # pragma: no cover — defensive
+            return Response(
+                {
+                    "error": "Failed to build HubContract JSON Schema",
+                    "code": "SCHEMA_BUILD_FAILED",
+                    "details": {"error": str(exc)},
+                },
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
+        return Response({"spec": spec, "schema": json_schema})
