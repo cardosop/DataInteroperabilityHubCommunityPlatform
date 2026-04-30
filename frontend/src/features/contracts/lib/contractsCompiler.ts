@@ -64,16 +64,6 @@ export interface CompileResult {
   doc: Record<string, unknown>;
 }
 
-/** Strip ``_uiKey`` and any other editor-internal keys before serialising. */
-function _stripUiKeys<T extends Record<string, unknown>>(value: T): T {
-  const out: Record<string, unknown> = {};
-  for (const [k, v] of Object.entries(value)) {
-    if (k.startsWith('_')) continue;
-    out[k] = v;
-  }
-  return out as T;
-}
-
 function _editorFieldToOdcs(field: EditorField): Record<string, unknown> {
   const out: Record<string, unknown> = {
     name: field.name,

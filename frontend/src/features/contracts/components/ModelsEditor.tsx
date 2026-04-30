@@ -39,6 +39,7 @@ import type {
 import { FIELD_DATA_TYPES } from '../../../shared/types/contracts';
 import { getErrorRemediation } from '../../../shared/utils/errorUtils';
 import { compileToSource, makeUiKey } from '../lib/contractsCompiler';
+import { useContractJsonSchema } from '../hooks/useContracts';
 
 /* -------------------------------------------------------------------------
  * State + reducer
@@ -178,12 +179,50 @@ function reducer(state: SchemaEditorState, action: EditorAction): SchemaEditorSt
 
 /* -------------------------------------------------------------------------
  * Validation (Phase 227 L5.5)
+ *
+ * The hand-coded rules below cover the structural floor invariants the
+ * editor must enforce client-side. ``deriveAllowedDataTypes`` reads the
+ * JSON Schema response (when supplied) to keep the field-type dropdown
+ * in sync with the Pydantic-defined source of truth — so adding a new
+ * type to ``HubContractField.data_type`` flows through automatically
+ * without a UI patch. Without a schema we fall back to the static
+ * ``FIELD_DATA_TYPES`` constant.
  * ------------------------------------------------------------------------- */
+
+/**
+ * Walk the JSON-Schema ``$defs`` for the ``HubContractField`` definition
+ * and return its ``data_type`` enum. Returns ``null`` when the shape
+ * doesn't match expectations so callers can fall back to the static set.
+ */
+export function deriveAllowedDataTypes(
+  jsonSchema: Record<string, unknown> | null | undefined,
+): string[] | null {
+  if (!jsonSchema || typeof jsonSchema !== 'object') return null;
+  const defs = (jsonSchema.$defs ?? jsonSchema.definitions) as
+    | Record<string, unknown>
+    | undefined;
+  if (!defs) return null;
+  // Pydantic v2 emits ``$defs`` keyed by class name.
+  const fieldDef = defs.HubContractField as Record<string, unknown> | undefined;
+  if (!fieldDef || typeof fieldDef !== 'object') return null;
+  const props = fieldDef.properties as Record<string, unknown> | undefined;
+  if (!props) return null;
+  const typeProp = (props.type ?? props.data_type) as
+    | { enum?: unknown[] }
+    | undefined;
+  if (!typeProp || !Array.isArray(typeProp.enum)) return null;
+  return typeProp.enum.filter((v): v is string => typeof v === 'string');
+}
 
 export function validateEditorState(
   state: SchemaEditorState,
+  jsonSchema?: Record<string, unknown> | null,
 ): EditorValidationIssue[] {
   const issues: EditorValidationIssue[] = [];
+  // When a JSON Schema is supplied, narrow the allowed data_type set
+  // to whatever the backend Pydantic model permits. Otherwise fall
+  // back to the static ``FIELD_DATA_TYPES`` constant.
+  const allowedTypes = (deriveAllowedDataTypes(jsonSchema) ?? FIELD_DATA_TYPES) as readonly string[];
   state.models.forEach((model, modelIndex) => {
     if (!model.name || !model.name.trim()) {
       issues.push({
@@ -218,6 +257,15 @@ export function validateEditorState(
         });
       } else {
         seenNames.add(field.name);
+      }
+      // JSON-Schema-driven check: data_type must be in the allowed set.
+      if (field.data_type && !allowedTypes.includes(field.data_type)) {
+        issues.push({
+          modelIndex,
+          fieldPath,
+          message: `Field "${field.name || '?'}" has unsupported type "${field.data_type}". Allowed: ${allowedTypes.join(', ')}.`,
+          code: 'FIELD_NAME_REQUIRED', // closest fit; see EditorValidationIssue codes
+        });
       }
       if (field.data_type === 'object' && (!field.fields || field.fields.length === 0)) {
         issues.push({
@@ -289,7 +337,16 @@ export function ModelsEditor(props: ModelsEditorProps) {
     onStateChange?.(state);
   }, [state, onStateChange]);
 
-  const issues = useMemo(() => validateEditorState(state), [state]);
+  // Phase 227 Wave 1 (227.L5.5) — drive client-side validation from
+  // the canonical JSON Schema response so the field-type enum stays
+  // in sync with the Pydantic source of truth. Cached for an hour.
+  const { data: schemaResponse } = useContractJsonSchema(
+    state.specType === 'ODPS' ? 'odps' : 'odcs',
+  );
+  const issues = useMemo(
+    () => validateEditorState(state, schemaResponse?.schema ?? null),
+    [state, schemaResponse],
+  );
   const canSave = !readOnly && !saving && issues.length === 0 && state.models.length > 0;
 
   const handleSave = useCallback(async () => {
@@ -533,7 +590,9 @@ function FieldsList({ modelIndex, fields, dispatch, readOnly }: FieldsListProps)
           <th>Description</th>
           <th>Nullable</th>
           <th>Constraints</th>
-          <th aria-label="Actions" />
+          <th aria-label="Actions">
+            <span className="sr-only">Actions</span>
+          </th>
         </tr>
       </thead>
       <tbody>

@@ -83,6 +83,14 @@ export interface ContractListFilters {
   asset_id?: string;
   /** Filter by original_spec_type (e.g. ODPS, ODCS) for ODPS Link page */
   spec_type?: string;
+  /**
+   * Phase 227 Wave 1 (227.L5.8) — special filter for the TENANT_ADMIN
+   * Contract Health triage page. ``structureless`` returns rows whose
+   * normalised payload carries no resolvable models or schema fields
+   * (the structureless population Wave 0 diagnosed). The backend
+   * implements this on the contract list endpoint.
+   */
+  filter?: 'structureless';
 }
 
 export interface ContractValidationResult {

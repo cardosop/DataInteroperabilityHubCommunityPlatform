@@ -33,7 +33,7 @@ export function ContractHealthPage() {
     // doesn't yet include a ``filter`` member. The backend filter is
     // tenant-scoped at the queryset layer.
     contractService
-      .list({ filter: 'structureless' } as unknown as Parameters<typeof contractService.list>[0])
+      .list({ filter: 'structureless' })
       .then((page) => {
         if (cancelled) return;
         setData(page.results);
@@ -86,7 +86,9 @@ export function ContractHealthPage() {
             <th>Spec version</th>
             <th>Status</th>
             <th>Updated</th>
-            <th aria-label="Actions" />
+            <th aria-label="Actions">
+              <span className="sr-only">Actions</span>
+            </th>
           </tr>
         </thead>
         <tbody>

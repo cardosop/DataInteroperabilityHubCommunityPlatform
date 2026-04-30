@@ -3,7 +3,7 @@
  * Edit contract with form + raw YAML/JSON editor + validation panel
  */
 
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { useContract, useUpdateContract, useValidateContract } from '../hooks/useContracts';
 import { LoadingSpinner } from '../../../shared/components/LoadingSpinner';
 import { ErrorDisplay } from '../../../shared/components/ErrorDisplay';
@@ -30,6 +30,11 @@ type EditMode = 'form' | 'structured' | 'schema' | 'raw';
 export function ContractEditorPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
+  // Phase 227 Wave 1 (227.L5.3 + L5.7) — read ``?tab=schema`` so deep
+  // links from the lineage empty-state CTA and the ContractHealthPage
+  // open the editor directly on the Schema tab.
+  const [searchParams] = useSearchParams();
+  const initialTab = searchParams.get('tab');
   const { data: contract, isLoading, error, refetch } = useContract(id || null);
   const updateMutation = useUpdateContract();
   const validateMutation = useValidateContract();
@@ -79,7 +84,24 @@ export function ContractEditorPage() {
       // Default to the richest editor we can offer for ODPS contracts.
       setEditMode('structured');
     }
-  }, [contract, parseRawIntoODPSForm]);
+
+    // Phase 227 Wave 1 (227.L5.3) — honour the ``?tab=schema`` deep
+    // link. Done after the default-mode logic above so the URL
+    // parameter wins. Pre-seed the editor state from the just-loaded
+    // contract so the user lands on a populated editor, not a
+    // "Loading…" placeholder.
+    if (initialTab === 'schema') {
+      const next = parseFromSource(contract.original_raw, {
+        specType:
+          (contract.original_spec_type ?? '').toUpperCase() === 'ODPS' ? 'ODPS' : 'ODCS',
+        specVersion:
+          (contract as unknown as { original_spec_version?: string }).original_spec_version ?? '',
+        etag: (contract as unknown as { etag?: string | null }).etag ?? null,
+      });
+      setSchemaEditorState(next);
+      setEditMode('schema');
+    }
+  }, [contract, parseRawIntoODPSForm, initialTab]);
 
   /**
    * When the user switches into structured mode, re-seed the form from the
@@ -270,18 +292,19 @@ export function ContractEditorPage() {
                   initialState={schemaEditorState}
                   onSave={async ({ raw, format: outFormat, ifMatch }) => {
                     if (!id) throw new Error('No contract id');
-                    // Send raw + If-Match. The mutation hook does a
-                    // PATCH; on 412 the API returns the typed
-                    // PRECONDITION_FAILED error, which the editor
-                    // surfaces via the conflict dialog.
+                    // Phase 227 L5.6 — pass the editor's stored ETag
+                    // through to the mutation hook so axios attaches
+                    // ``If-Match`` to the PATCH. On 412 the response
+                    // body carries the typed PRECONDITION_FAILED code
+                    // and the conflict dialog opens.
                     const updated = await updateMutation.mutateAsync({
                       id,
                       data: {
                         original_raw: raw,
                         original_format: outFormat as ContractFormat,
                       },
+                      ifMatch: ifMatch ?? schemaEditorState?.etag ?? null,
                     });
-                    void ifMatch; // ETag plumbing handled at axios level (Phase 227 L5.6).
                     setRawContent(raw);
                     return { etag: (updated as unknown as { etag?: string | null }).etag ?? null };
                   }}

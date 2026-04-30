@@ -47,6 +47,20 @@ export function useContract(id: string | null) {
   });
 }
 
+/**
+ * Phase 227 Wave 1 (227.L5.4 + L5.5) — fetch the canonical HubContract
+ * JSON Schema for client-side validation in the Schema editor. The
+ * schema is tenant-agnostic and stable across navigations, so we cache
+ * it for an hour.
+ */
+export function useContractJsonSchema(spec?: 'odcs' | 'odps') {
+  return useQuery({
+    queryKey: ['contracts', 'json-schema', spec ?? 'all'],
+    queryFn: () => contractService.getJsonSchema(spec),
+    staleTime: 60 * 60 * 1000,
+  });
+}
+
 export function useCreateContract() {
   const queryClient = useQueryClient();
 
@@ -64,8 +78,19 @@ export function useUpdateContract() {
   const queryClient = useQueryClient();
 
   return useMutationWithNotification({
-    mutationFn: ({ id, data }: { id: string; data: ContractUpdateRequest }) =>
-      contractService.update(id, data),
+    // Phase 227 Wave 1 (227.L5.6) — accept optional ``ifMatch`` so the
+    // Schema editor can send an ``If-Match`` header for optimistic
+    // concurrency. Existing call sites that don't pass ``ifMatch``
+    // keep the pre-Wave-1 last-write-wins semantics.
+    mutationFn: ({
+      id,
+      data,
+      ifMatch,
+    }: {
+      id: string;
+      data: ContractUpdateRequest;
+      ifMatch?: string | null;
+    }) => contractService.update(id, data, { ifMatch }),
     successMessage: 'Contract updated',
     errorMessage: 'Failed to update contract',
     onSuccess: (_, variables) => {

@@ -452,6 +452,35 @@ class ContractCRUDMixin:
 
             # Optimize queryset for pagination
             queryset = self.filter_queryset(self.get_queryset())
+
+            # Phase 227 Wave 1 (227.L5.8) — ``?filter=structureless`` support.
+            # The TENANT_ADMIN ``ContractHealthPage`` calls this endpoint
+            # with ``filter=structureless`` to triage contracts whose
+            # normalised payload carries no resolvable models or schema
+            # fields. Same coarse + Python-refined approach the Wave 0
+            # diagnosis command uses (`structureless_filter_q` is a
+            # cheap Q expression for the bulk of cases; `is_structureless`
+            # then refines per-row to catch the
+            # ``models=[{"fields":[]}]`` corner-case that the ORM cannot
+            # express directly).
+            filter_kind = (request.query_params.get("filter") or "").strip().lower()
+            if filter_kind == "structureless":
+                from hub.apps.contracts.structureless import (
+                    is_structureless,
+                )
+
+                # Iterate the (already tenant-scoped) queryset and
+                # drop rows that pass the floor predicate. Wave 0's
+                # empirical staging finding: 0 structureless of 218,
+                # so the linear scan is fine at MVP scale. If we ever
+                # see >1k contracts/tenant we can revisit with a
+                # generated column.
+                offending_ids = [
+                    c.id for c in queryset.iterator(chunk_size=200)
+                    if is_structureless(c)
+                ]
+                queryset = queryset.filter(id__in=offending_ids).order_by("-updated_at")
+
             queryset = optimize_queryset_for_pagination(queryset)
 
             # Get pagination parameters

@@ -471,6 +471,13 @@ const IntegrationsLayout = lazy(() =>
 );
 
 // Lazy load heavy pages for code splitting
+// Phase 227 Wave 1 (227.L5.8) — TENANT_ADMIN structureless triage page.
+const ContractHealthPage = lazy(() =>
+  import('../../features/admin/components/ContractHealthPage').then((m) => ({
+    default: m.ContractHealthPage,
+  })),
+);
+
 const AdminPage = lazy(() =>
   import('../../features/admin/components/AdminPage').then((m) => ({
     default: m.AdminPage,
@@ -1363,6 +1370,20 @@ export const appRoutes: Parameters<typeof createBrowserRouter>[0] = [
           <ProtectedRoute requiredRole={['TENANT_ADMIN', 'PLATFORM_ADMIN']}>
             <EB fallbackMsg="Loading...">
               <UserEditPage />
+            </EB>
+          </ProtectedRoute>
+        ),
+      },
+      {
+        // Phase 227 Wave 1 (227.L5.8) — TENANT_ADMIN structureless-
+        // contract triage page. Lists contracts whose normalised
+        // payload has no resolvable models or schema fields with
+        // per-row deep-links into the Schema editor.
+        path: 'admin/contract-health',
+        element: (
+          <ProtectedRoute requiredRole={['TENANT_ADMIN', 'PLATFORM_ADMIN']}>
+            <EB fallbackMsg="Loading contract health...">
+              <ContractHealthPage />
             </EB>
           </ProtectedRoute>
         ),

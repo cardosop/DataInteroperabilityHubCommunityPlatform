@@ -13,7 +13,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 
-import { ModelsEditor, validateEditorState } from './ModelsEditor';
+import { ModelsEditor, validateEditorState, deriveAllowedDataTypes } from './ModelsEditor';
 import type { SchemaEditorState } from '../../../shared/types/contracts';
 
 function makeInitialState(): SchemaEditorState {
@@ -93,6 +93,58 @@ describe('validateEditorState', () => {
   it('reports nothing on a clean state', () => {
     const issues = validateEditorState(makeInitialState());
     expect(issues).toEqual([]);
+  });
+
+  it('uses the JSON Schema response to drive the allowed-types check', () => {
+    // Phase 227 L5.5 — when the backend Pydantic model adds or removes
+    // a data_type, the editor's validation should follow.
+    const state = makeInitialState();
+    state.models[0].fields = [
+      { _uiKey: 'f-1', name: 'id', data_type: 'string' },
+    ];
+    const restrictiveSchema = {
+      $defs: {
+        HubContractField: {
+          properties: {
+            type: { enum: ['integer', 'number'] }, // string NOT allowed
+          },
+        },
+      },
+    };
+    const issues = validateEditorState(state, restrictiveSchema);
+    expect(issues.some((i) => i.message.includes('unsupported type'))).toBe(true);
+  });
+});
+
+describe('deriveAllowedDataTypes', () => {
+  it('returns null for missing schema', () => {
+    expect(deriveAllowedDataTypes(null)).toBeNull();
+    expect(deriveAllowedDataTypes(undefined)).toBeNull();
+    expect(deriveAllowedDataTypes({})).toBeNull();
+  });
+
+  it('extracts the data_type enum from $defs.HubContractField.properties.type', () => {
+    const schema = {
+      $defs: {
+        HubContractField: {
+          properties: {
+            type: { enum: ['string', 'integer', 'object'] },
+          },
+        },
+      },
+    };
+    expect(deriveAllowedDataTypes(schema)).toEqual(['string', 'integer', 'object']);
+  });
+
+  it('supports the v1-style ``definitions`` key as a fallback', () => {
+    const schema = {
+      definitions: {
+        HubContractField: {
+          properties: { type: { enum: ['string'] } },
+        },
+      },
+    };
+    expect(deriveAllowedDataTypes(schema)).toEqual(['string']);
   });
 });
 

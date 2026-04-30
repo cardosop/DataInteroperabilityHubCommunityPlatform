@@ -50,6 +50,7 @@ export const contractService = {
     if (filters.compliance_regime) params.append('compliance_regime', filters.compliance_regime);
     if (filters.asset_id) params.append('asset_id', filters.asset_id);
     if (filters.spec_type) params.append('spec_type', filters.spec_type);
+    if (filters.filter) params.append('filter', filters.filter);
 
     const response = await apiClient.getClient().get<PaginatedResponse<Contract>>(
       `${CONTRACTS_BASE_PATH}/${params.toString() ? `?${params.toString()}` : ''}`
@@ -58,11 +59,22 @@ export const contractService = {
   },
 
   /**
-   * Get contract by ID
+   * Get contract by ID.
+   *
+   * Phase 227 Wave 1 (227.L5.6) — captures the ``ETag`` response header
+   * (RFC 7232 weak validator) and surfaces it on the returned object as
+   * ``etag``. The Schema editor stores this and sends it back as
+   * ``If-Match`` on PATCH for optimistic-concurrency control.
    */
-  async getById(id: string): Promise<Contract> {
-    const response = await apiClient.getClient().get<Contract>(`${CONTRACTS_BASE_PATH}/${id}/`);
-    return response.data;
+  async getById(id: string): Promise<Contract & { etag?: string | null }> {
+    const response = await apiClient
+      .getClient()
+      .get<Contract>(`${CONTRACTS_BASE_PATH}/${id}/`);
+    const etag =
+      (response.headers as Record<string, string | undefined> | undefined)?.['etag'] ??
+      (response.headers as Record<string, string | undefined> | undefined)?.['ETag'] ??
+      null;
+    return { ...response.data, etag };
   },
 
   /**
@@ -74,11 +86,38 @@ export const contractService = {
   },
 
   /**
-   * Update a contract
+   * Update a contract.
+   *
+   * Phase 227 Wave 1 (227.L4.3 + 227.L5.6) — supports optional
+   * ``If-Match`` header for optimistic concurrency. The backend
+   * compares against the contract's current weak ETag and returns
+   * HTTP 412 ``PRECONDITION_FAILED`` when stale; the editor's
+   * conflict-dialog flow consumes that error.
+   *
+   * Returns ``{...contract, etag?}`` — the new ETag value is taken
+   * from the ``ETag`` response header so callers can chain the next
+   * PATCH without a fresh GET.
    */
-  async update(id: string, data: ContractUpdateRequest): Promise<Contract> {
-    const response = await apiClient.getClient().put<Contract>(`${CONTRACTS_BASE_PATH}/${id}/`, data);
-    return response.data;
+  async update(
+    id: string,
+    data: ContractUpdateRequest,
+    opts: { ifMatch?: string | null } = {},
+  ): Promise<Contract & { etag?: string | null }> {
+    const headers: Record<string, string> = {};
+    if (opts.ifMatch) {
+      headers['If-Match'] = opts.ifMatch;
+    }
+    const response = await apiClient
+      .getClient()
+      .patch<Contract>(`${CONTRACTS_BASE_PATH}/${id}/`, data, { headers });
+    // The backend emits a fresh ETag header on every successful PATCH;
+    // surface it on the returned object so the editor can update its
+    // stored value without an extra GET.
+    const etag =
+      (response.headers as Record<string, string | undefined> | undefined)?.['etag'] ??
+      (response.headers as Record<string, string | undefined> | undefined)?.['ETag'] ??
+      null;
+    return { ...response.data, etag };
   },
 
   /**
@@ -86,6 +125,29 @@ export const contractService = {
    */
   async delete(id: string): Promise<void> {
     await apiClient.getClient().delete(`${CONTRACTS_BASE_PATH}/${id}/`);
+  },
+
+  /**
+   * Phase 227 Wave 1 (227.L5.4) — fetch the canonical HubContract JSON
+   * Schema. The Schema editor uses this to drive client-side validation
+   * (allowed ``data_type`` enum, required fields, alias renames) so the
+   * server + client speak the same Pydantic-defined contract.
+   *
+   * The optional ``spec`` query param is currently advisory — both
+   * values return the same canonical schema; the editor compiles to
+   * either ODCS or ODPS source via the client-side compiler.
+   */
+  async getJsonSchema(spec?: 'odcs' | 'odps'): Promise<{
+    spec: 'odcs' | 'odps' | null;
+    schema: Record<string, unknown>;
+  }> {
+    const path = spec
+      ? `${CONTRACTS_BASE_PATH}/schema/json-schema/?spec=${spec}`
+      : `${CONTRACTS_BASE_PATH}/schema/json-schema/`;
+    const response = await apiClient
+      .getClient()
+      .get<{ spec: 'odcs' | 'odps' | null; schema: Record<string, unknown> }>(path);
+    return response.data;
   },
 
   /**
