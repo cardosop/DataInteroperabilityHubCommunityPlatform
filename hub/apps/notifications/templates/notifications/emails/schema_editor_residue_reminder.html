@@ -1,0 +1,87 @@
+{% extends "notifications/emails/base.html" %}
+
+{% block title %}Action required by {{ deadline_iso }} — residue contracts in {{ tenant_name }}{% endblock %}
+
+{% block content %}
+<h2>Residue contracts in {{ tenant_name }} — please remediate by {{ deadline_iso }}</h2>
+
+<p>Hi{% if admin_first_name %} {{ admin_first_name }}{% else %} there{% endif %},</p>
+
+<p>
+  This is a follow-up to the Wave&nbsp;2 announcement: the
+  <strong>Schema editor</strong> is live in {{ tenant_name }}, but
+  <strong>{{ residue_count }}</strong> contract{{ residue_count|pluralize }}
+  in your tenant {{ residue_count|pluralize:"is,are" }} still missing
+  the structural floor (no resolvable models or schema fields).
+</p>
+
+<p>
+  Customers using these contracts cannot publish data products against
+  them, and any new contract upload that lacks structure is rejected
+  at the API edge with a typed
+  <code>STRUCTURELESS_CONTRACT</code> error.
+</p>
+
+<h3>What we need from you by {{ deadline_iso }}</h3>
+
+<ol>
+  <li>Open <a href="{{ contract_health_url }}"><strong>Contract Health</strong></a>
+      to see every residue contract at a glance.</li>
+  <li>For each row below, click <em>Open Schema editor</em> and add
+      at least one model with one field.</li>
+  <li>Save.  The editor uses optimistic concurrency (ETag&nbsp;/
+      If-Match) so a teammate's concurrent edit will surface a
+      conflict dialog rather than silently overwrite.</li>
+</ol>
+
+<h3>Residue contracts in your tenant</h3>
+
+{% if contracts %}
+<table cellpadding="6" cellspacing="0" border="1" style="border-collapse: collapse;">
+  <thead>
+    <tr>
+      <th align="left">Contract</th>
+      <th align="left">Spec</th>
+      <th align="left">Action</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for c in contracts %}
+    <tr>
+      <td>{{ c.name|default:c.id }}</td>
+      <td>{{ c.spec_type }}</td>
+      <td>
+        {% if c.schema_editor_url %}
+          <a href="{{ c.schema_editor_url }}">Open Schema editor</a>
+        {% else %}
+          Use the Schema editor in {{ app_name }}.
+        {% endif %}
+      </td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% else %}
+<p><em>No specific contracts attached — please check Contract Health for the latest list.</em></p>
+{% endif %}
+
+<h3>What happens after {{ deadline_iso }}</h3>
+
+<p>
+  The W4.3 escalation cron records a
+  <code>STRUCTURELESS_RESIDUE_DEADLINE_PASSED</code> audit event for
+  every tenant whose residue persists past this date and notifies the
+  platform-admin team.  We'd much rather close out the residue with
+  you in-product than escalate.
+</p>
+
+<p>
+  <a href="{{ contract_health_url }}"
+     style="display: inline-block; background: #d9534f; color: #fff; padding: 10px 16px; border-radius: 4px; text-decoration: none;">
+    Triage residue → Contract Health
+  </a>
+</p>
+
+<p>Thank you,<br>
+The {{ app_name }} team</p>
+{% endblock %}

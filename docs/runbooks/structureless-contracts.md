@@ -268,17 +268,49 @@ python /app/hub/manage.py renormalize_contracts \
 | ---- | ------- |
 | `--apply` | Switches from diagnosis to action — feeds each candidate back through `NormalizationService.normalize_contract`. |
 | `--checkpoint-table=<name>` | Per-contract progress in `MigrationCheckpoint` rows partitioned by name. Re-runs with the same name skip already-done contracts (resume after a kill). |
-| `--silent-events` | Suppresses per-contract webhook events; emits a single `CONTRACT_BATCH_RENORMALIZED` audit event with summary counts at the end. Use for runs touching >100 contracts. |
+| `--silent-events` | Suppresses per-contract `contract.updated` webhook events; emits a single `CONTRACT_BATCH_RENORMALIZED` audit event with summary counts at the end. Use for runs touching >100 contracts. (See §"Wave 3 outputs" below for the per-batch-per-tenant `contract.batch_renormalized` webhook event that fires regardless of this flag — that's the rollup signal subscribers should subscribe to instead of the per-row stream.) |
 | `--output=json` | One JSONL row per processed contract on stdout: `{contract_id, result: healed/residual/failed, asset_id, run_id}`. |
 | `--apply-asset-revert` | **Wave 5 only** — see §"Wave 5 — Asset auto-revert" below. |
 
-The summary line at the end of stdout:
+The summary line at the end of stdout (Phase 227 W3.5):
 
 ```text
 # {"run_id": "renorm-...", "total_candidates": N, "processed": N,
 #   "healed": <count>, "residual": <still_structureless>,
-#   "failed": <raised>, "reverted_asset_ids": [...]}
+#   "failed": <raised>, "reverted_asset_ids": [...],
+#   "per_tenant": {"<tenant_uuid>": {"processed": N, "healed": N,
+#                                     "residual": N, "failed": N},
+#                   ...},
+#   "residue_tenants": ["<tenant_uuid>", ...]}
 ```
+
+### Wave 3 outputs (subscribers + ops)
+
+The apply path emits these signals — separate from the per-contract
+stream — so downstream systems can react to bulk operations without
+the per-row storm:
+
+| Signal | Where | When | Payload |
+| ------ | ----- | ---- | ------- |
+| `CONTRACT_BATCH_RENORMALIZED` audit event | `audit_events` table | Once per run, end of run, when `--silent-events` is set AND `processed > 0`. | Run-level totals + reverted_asset_ids |
+| `contract.batch_renormalized` webhook event | Subscribers' webhook URLs | **Once per batch per affected tenant**, regardless of `--silent-events`. Skipped for tenants with no `ACTIVE` webhook subscribed to the event type. | `data: {run_id, tenant_id, processed, healed, residual, failed}`; `resource_type="TENANT"`; `resource_id=<tenant_uuid>` |
+| `per_tenant` summary block | stdout JSON summary | End of run. | `{<tenant_uuid>: {processed, healed, residual, failed}}` aggregated across batches |
+| `residue_tenants` list | stdout JSON summary | End of run. | Sorted list of `tenant_uuid`s where `residual + failed > 0`. Drives Wave-4 follow-up email scoping. |
+
+Subscribers wanting the per-batch summary subscribe to
+`contract.batch_renormalized`. The legacy `contract.updated` event is
+suppressed by `--silent-events` to avoid the per-row storm; without
+`--silent-events` it still fires per healed row.
+
+#### Driving Wave 4 follow-up emails from `residue_tenants`
+
+```bash
+jq -r '.residue_tenants[]' /tmp/self-heal-${TENANT_UUID}-$(date +%F).jsonl \
+    | xargs -I{} python /app/hub/manage.py wave4_send_residue_email --tenant-id={}
+```
+
+(The `wave4_send_residue_email` driver lands in Wave 4 — the
+`residue_tenants` field is the input contract.)
 
 **Resume after kill** — re-running with the same `--checkpoint-table` name skips contracts already marked `done` or `failed`. To force a retry of a `failed` row, delete the checkpoint:
 

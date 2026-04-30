@@ -62,6 +62,14 @@ class EmailType(models.TextChoices):
         "SCHEMA_EDITOR_AVAILABLE",
         "Schema editor now available — triage your contracts",
     )
+    # Phase 227 Wave 4 (227.W4.2) — T+7 reminder for tenants whose
+    # contracts are still structureless one week after the W2 GA
+    # announcement. Carries the per-contract residue list + a 30-day
+    # deadline that matches the W4.3 escalation cron.
+    SCHEMA_EDITOR_RESIDUE_REMINDER = (
+        "SCHEMA_EDITOR_RESIDUE_REMINDER",
+        "Schema editor — residue reminder + 30-day deadline",
+    )
 
 
 class EmailDelivery(models.Model):

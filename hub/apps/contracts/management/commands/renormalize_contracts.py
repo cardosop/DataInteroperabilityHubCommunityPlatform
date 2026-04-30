@@ -180,6 +180,19 @@ class Command(BaseCommand):
                 "Required for --apply on prod-scale data."
             ),
         )
+        # Phase 227 Wave 4 (227.W4.4)
+        parser.add_argument(
+            "--include-active-only",
+            action="store_true",
+            default=False,
+            help=(
+                "Phase 227 Wave 4: restrict the structureless filter to "
+                "contracts whose status is ACTIVE. Used by the post-deploy "
+                "smoke gate (deploy.yml) — DRAFT/RETIRED residue is the "
+                "data-engineer's edit buffer / tombstone and must not "
+                "fail a deploy. Requires --filter=structureless."
+            ),
+        )
 
     # ------------------------------------------------------------------
     # Entry point
@@ -197,6 +210,7 @@ class Command(BaseCommand):
         apply_asset_revert = options.get("apply_asset_revert", False)
         silent_events = options.get("silent_events", False)
         checkpoint_table = options.get("checkpoint_table")
+        include_active_only = options.get("include_active_only", False)
 
         if spec_version != "3.1.0":
             self.stderr.write(
@@ -227,6 +241,17 @@ class Command(BaseCommand):
             )
             return
 
+        # Phase 227 Wave 4 (227.W4.4): the active-only restriction only
+        # composes with the structureless filter — it shouldn't silently
+        # no-op against the legacy v3.1.0-backfill path.
+        if include_active_only and filter_kind != "structureless":
+            self.stderr.write(
+                self.style.ERROR(
+                    "--include-active-only requires --filter=structureless"
+                )
+            )
+            return
+
         # Phase 227 Wave 0/3: --filter=structureless. Diagnosis-only by
         # default; --apply switches to the self-heal path.
         if filter_kind == "structureless":
@@ -238,12 +263,14 @@ class Command(BaseCommand):
                     apply_asset_revert=apply_asset_revert,
                     silent_events=silent_events,
                     checkpoint_table=checkpoint_table,
+                    include_active_only=include_active_only,
                 )
             else:
                 self._handle_structureless_filter(
                     tenant_id=tenant_id,
                     output_format=output_format,
                     dry_run=dry_run,
+                    include_active_only=include_active_only,
                 )
             return
 
@@ -306,6 +333,7 @@ class Command(BaseCommand):
         tenant_id,
         output_format,
         dry_run,
+        include_active_only=False,
     ):
         """Emit a diagnosis report for structureless contracts.
 
@@ -314,7 +342,7 @@ class Command(BaseCommand):
         produce a stable, reproducible JSONL artefact for triage and
         customer comms.
         """
-        from hub.apps.contracts.models import Contract
+        from hub.apps.contracts.models import Contract, ContractStatus
         from hub.apps.contracts.structureless import (
             classify_structureless_contract,
             is_structureless,
@@ -329,6 +357,12 @@ class Command(BaseCommand):
         qs = Contract.objects.all().order_by("id")
         if tenant_id:
             qs = qs.filter(tenant_id=tenant_id)
+        if include_active_only:
+            # Phase 227 Wave 4 (227.W4.4) — the post-deploy smoke gate
+            # only fails on ACTIVE residue. DRAFT is the data engineer's
+            # local edit buffer; RETIRED is a tombstone the customer
+            # has signed off on. Neither should block a deploy.
+            qs = qs.filter(status=ContractStatus.ACTIVE)
 
         if output_format == "json":
             self.stdout.write(
@@ -441,6 +475,7 @@ class Command(BaseCommand):
         apply_asset_revert,
         silent_events,
         checkpoint_table,
+        include_active_only=False,
     ):
         """Re-normalize each structureless contract; optionally revert
         residue assets to DRAFT.
@@ -491,6 +526,13 @@ class Command(BaseCommand):
         qs = Contract.objects.all().order_by("id")
         if tenant_id:
             qs = qs.filter(tenant_id=tenant_id)
+        if include_active_only:
+            # Phase 227 Wave 4 (227.W4.4) — apply path stays consistent
+            # with the diagnosis path: an operator running the smoke
+            # gate's exact invocation with --apply still scopes to
+            # ACTIVE residue.
+            from hub.apps.contracts.models import ContractStatus
+            qs = qs.filter(status=ContractStatus.ACTIVE)
 
         # Resume — exclude already-completed checkpoints. ``done`` AND
         # ``failed`` rows both skip on resume; ops can clear ``failed``
@@ -530,6 +572,10 @@ class Command(BaseCommand):
         residual = 0  # remained structureless after re-normalization
         failed = 0
         reverted_asset_ids: list = []
+        # Phase 227 W3.5 — aggregate per-tenant counts across batches
+        # for the residue report. Wave-4 follow-up emails target the
+        # tenants that appear with ``residual + failed > 0``.
+        per_tenant_totals: dict = {}
 
         if output_format == "json":
             self.stdout.write(
@@ -552,6 +598,18 @@ class Command(BaseCommand):
             residual += batch_outcomes["residual"]
             failed += batch_outcomes["failed"]
             reverted_asset_ids.extend(batch_outcomes["reverted_asset_ids"])
+            for tid, counts in batch_outcomes.get("per_tenant", {}).items():
+                bucket = per_tenant_totals.setdefault(
+                    tid,
+                    {
+                        "processed": 0,
+                        "healed": 0,
+                        "residual": 0,
+                        "failed": 0,
+                    },
+                )
+                for key in ("processed", "healed", "residual", "failed"):
+                    bucket[key] += counts.get(key, 0)
 
         # Phase 227 Wave 3 (227.L6.1) — emit a single batch summary
         # audit event when --silent-events. This is the "one batch
@@ -587,6 +645,23 @@ class Command(BaseCommand):
                     error=str(exc),
                 )
 
+        # Phase 227 W3.5 — per-tenant residue report. Wave-4 ops uses
+        # ``residue_tenants`` as the input to the customer-action
+        # follow-up email job ("you still have N structureless
+        # contracts after the bulk self-heal — please open the Schema
+        # editor"). Drop the synthetic ``None`` key (tenantless test
+        # fixtures) before serializing — it's never a real Wave-4 target.
+        per_tenant_clean = {
+            tid: counts
+            for tid, counts in per_tenant_totals.items()
+            if tid is not None
+        }
+        residue_tenants = sorted(
+            tid
+            for tid, counts in per_tenant_clean.items()
+            if counts.get("residual", 0) + counts.get("failed", 0) > 0
+        )
+
         summary = {
             "run_id": run_id,
             "total_candidates": total,
@@ -595,6 +670,8 @@ class Command(BaseCommand):
             "residual": residual,
             "failed": failed,
             "reverted_asset_ids": [str(a) for a in reverted_asset_ids],
+            "per_tenant": per_tenant_clean,
+            "residue_tenants": residue_tenants,
         }
 
         if output_format == "json":
@@ -606,7 +683,8 @@ class Command(BaseCommand):
                 self.style.SUCCESS(
                     f"Apply complete: total={total} processed={processed} "
                     f"healed={healed} residual={residual} failed={failed} "
-                    f"reverted_assets={len(reverted_asset_ids)}"
+                    f"reverted_assets={len(reverted_asset_ids)} "
+                    f"residue_tenants={len(residue_tenants)}"
                 )
             )
 
@@ -654,6 +732,10 @@ class Command(BaseCommand):
             "residual": 0,
             "failed": 0,
             "reverted_asset_ids": [],
+            # Phase 227 W3.4 + W3.5 — per-tenant breakdown so the
+            # batch webhook routes to the right subscribers and the
+            # run summary can drive Wave-4 follow-up emails.
+            "per_tenant": {},
         }
 
         batch_started_at = time.time()
@@ -674,6 +756,19 @@ class Command(BaseCommand):
             for contract in locked_rows:
                 outcome["processed"] += 1
                 contract_id = str(contract.id)
+                tenant_key = (
+                    str(contract.tenant_id) if contract.tenant_id else None
+                )
+                tenant_bucket = outcome["per_tenant"].setdefault(
+                    tenant_key,
+                    {
+                        "processed": 0,
+                        "healed": 0,
+                        "residual": 0,
+                        "failed": 0,
+                    },
+                )
+                tenant_bucket["processed"] += 1
 
                 try:
                     healed = self._renormalize_one(contract, silent_events)
@@ -684,9 +779,11 @@ class Command(BaseCommand):
 
                     if not is_structureless(contract):
                         outcome["healed"] += 1
+                        tenant_bucket["healed"] += 1
                         result_status = "healed"
                     else:
                         outcome["residual"] += 1
+                        tenant_bucket["residual"] += 1
                         result_status = "residual"
 
                         # Customer-action cohort: revert ACTIVE assets
@@ -731,6 +828,7 @@ class Command(BaseCommand):
 
                 except Exception as exc:  # noqa: BLE001 — per-contract isolation
                     outcome["failed"] += 1
+                    tenant_bucket["failed"] += 1
                     logger.warning(
                         "renormalize_contract_failed",
                         run_id=run_id,
@@ -792,7 +890,83 @@ class Command(BaseCommand):
             # Metric backend outage MUST NOT break the migration.
             pass
 
+        # Phase 227 W3.4 — emit one ``contract.batch_renormalized``
+        # webhook per affected tenant (NOT per contract). The summary
+        # payload carries the per-tenant counts so downstream systems
+        # (ops dashboards, customer notification pipelines) can branch
+        # without subscribing to per-row contract.updated events. Pre-
+        # W3.4, only a single global audit event was emitted; webhook
+        # subscribers had no signal at all.
+        if outcome["per_tenant"]:
+            self._dispatch_batch_renormalized_webhooks(
+                per_tenant=outcome["per_tenant"],
+                run_id=run_id,
+                logger=logger,
+            )
+
         return outcome
+
+    @staticmethod
+    def _dispatch_batch_renormalized_webhooks(*, per_tenant, run_id, logger):
+        """Fan out one ``contract.batch_renormalized`` webhook
+        delivery per affected tenant. Best-effort: a delivery error
+        for tenant A MUST NOT block tenant B's delivery, and a
+        delivery raise MUST NOT roll back the contract writes already
+        committed in the batch.
+
+        The payload's ``data`` carries the per-tenant counts the
+        spec promises subscribers can branch on:
+        ``run_id``, ``tenant_id``, ``processed``, ``healed``,
+        ``residual``, ``failed``.
+        """
+        try:
+            from hub.apps.webhooks.models import WebhookEventType
+            from hub.apps.webhooks.service import WebhookDeliveryService
+        except ImportError as exc:
+            logger.warning(
+                "renormalize_batch_webhook_import_failed",
+                run_id=run_id,
+                error=str(exc),
+            )
+            return
+
+        event_type = WebhookEventType.CONTRACT_BATCH_RENORMALIZED.value
+        for tenant_id, counts in per_tenant.items():
+            if not tenant_id:
+                # Tenantless contracts (test fixtures or orphaned
+                # rows) have no subscriber, so skip the dispatch.
+                continue
+            try:
+                WebhookDeliveryService.trigger_webhook(
+                    tenant_id=str(tenant_id),
+                    event_type=event_type,
+                    # Phase 227 W3 self-audit-1 — the batch event is
+                    # tenant-scoped (the recipient is the tenant; the
+                    # subject of the operation is the tenant's set of
+                    # contracts). ``resource_type="CONTRACT"`` with
+                    # ``resource_id=run_id`` would have been a type
+                    # mismatch — a subscriber joining ``resource_id``
+                    # against the contracts table would have silently
+                    # gotten zero rows. Use TENANT + tenant_id so the
+                    # routing metadata matches the event's actual subject.
+                    resource_type="TENANT",
+                    resource_id=str(tenant_id),
+                    event_data={
+                        "run_id": run_id,
+                        "tenant_id": str(tenant_id),
+                        "processed": counts.get("processed", 0),
+                        "healed": counts.get("healed", 0),
+                        "residual": counts.get("residual", 0),
+                        "failed": counts.get("failed", 0),
+                    },
+                )
+            except Exception as exc:  # noqa: BLE001 — best-effort fanout
+                logger.warning(
+                    "renormalize_batch_webhook_dispatch_failed",
+                    run_id=run_id,
+                    tenant_id=str(tenant_id),
+                    error=str(exc),
+                )
 
     def _renormalize_one(self, contract, silent_events: bool) -> bool:
         """Re-normalize a single contract using the production
@@ -882,6 +1056,29 @@ class Command(BaseCommand):
                 "updated_at",
             ]
         )
+
+        # Phase 227 W3.3 — push the now-populated schema/lineage to the
+        # search index so post-migration queries surface the healed
+        # fields. Best-effort: a search-backend outage MUST NOT roll
+        # back the contract write (the migration is the load-bearing
+        # operation; search is a read-side projection).
+        try:
+            from hub.apps.search.indexing import SearchIndexer
+
+            SearchIndexer.index_contract(contract)
+        except Exception as exc:  # noqa: BLE001 — best-effort projection
+            try:
+                import structlog
+                _logger = structlog.get_logger(__name__)
+            except ImportError:
+                import logging
+                _logger = logging.getLogger(__name__)
+            _logger.warning(
+                "renormalize_search_reindex_failed",
+                contract_id=str(contract.id),
+                error=str(exc),
+            )
+
         return True
 
     def _maybe_revert_asset(self, contract, *, run_id: str) -> bool:

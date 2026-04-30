@@ -84,6 +84,23 @@ editor.
   models-per-contract distribution, batch duration, schema-editor
   adoption funnel, time-to-first-save, asset auto-reverts
 
+**New webhook event types** (Phase 227 W3.4):
+
+- `contract.batch_renormalized` — emitted once per `renormalize_contracts
+  --apply` batch per affected tenant. Resource is the tenant
+  (`resource_type="TENANT"`, `resource_id=<tenant_uuid>`); payload `data`
+  carries `{run_id, tenant_id, processed, healed, residual, failed}`.
+  Subscribers wanting the rollup of bulk migrations subscribe here
+  instead of `contract.updated` (which fires per-row when
+  `--silent-events` is omitted).
+
+**New `renormalize_contracts --apply` summary fields** (Phase 227 W3.5):
+
+- `per_tenant` — map of `<tenant_uuid>` → `{processed, healed, residual,
+  failed}` aggregated across batches.
+- `residue_tenants` — sorted list of `<tenant_uuid>`s where `residual +
+  failed > 0`. Drives Wave 4 follow-up email scoping.
+
 **New management-command flags** on `renormalize_contracts`:
 
 - `--apply` — re-normalise structureless contracts (vs. default

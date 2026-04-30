@@ -29,6 +29,15 @@ class WebhookEventType(models.TextChoices):
     CONTRACT_CREATED = "contract.created", "Contract Created"
     CONTRACT_UPDATED = "contract.updated", "Contract Updated"
     CONTRACT_DELETED = "contract.deleted", "Contract Deleted"
+    # Phase 227 Wave 3 (227.W3.4) — batched migration summary.
+    # Emitted once per ``--apply`` batch per affected tenant by the
+    # ``renormalize_contracts`` management command, instead of one
+    # ``contract.updated`` per healed row (which would storm
+    # subscribers on a million-row migration).
+    CONTRACT_BATCH_RENORMALIZED = (
+        "contract.batch_renormalized",
+        "Contract Batch Re-normalized",
+    )
 
     # Asset events
     ASSET_CREATED = "asset.created", "Asset Created"
