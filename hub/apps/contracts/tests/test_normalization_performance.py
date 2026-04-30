@@ -38,7 +38,6 @@ Implementation notes
 from __future__ import annotations
 
 import json
-import sys
 from typing import Any, Dict, List
 
 import pytest
@@ -113,20 +112,27 @@ def _odps_contract_with_n_ports(n: int, fields_per_port: int) -> str:
     return json.dumps(doc)
 
 
-def _resident_memory_mb() -> float | None:
-    """Return resident memory in MB, or ``None`` on platforms that
-    don't expose it (e.g. Windows)."""
-    try:
-        import resource
+def _measure_normalize_memory_mb(raw: str, spec_type: str) -> float:
+    """Measure the **peak Python heap delta** during a single
+    normalisation run, in MB. Uses :mod:`tracemalloc` so the
+    measurement is scoped to the operation under test, not the
+    process-wide RSS (which is polluted by Django's startup heap, the
+    test harness, etc.).
 
-        rss_kb_or_bytes = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
-        # Linux reports KB; macOS reports bytes. Heuristic: a value
-        # below 1e7 is KB, above is bytes (1 GB = 1e9 bytes vs. 1e6 KB).
-        if sys.platform == "darwin":
-            return rss_kb_or_bytes / (1024 * 1024)
-        return rss_kb_or_bytes / 1024
-    except (ImportError, AttributeError):
-        return None
+    Note: ``tracemalloc`` measures Python-allocated memory only.
+    C-extension allocations (e.g. yaml's libyaml backing) don't show
+    up. That's acceptable for our SLO — the contract walker is pure
+    Python and dominates the budget.
+    """
+    import tracemalloc
+
+    tracemalloc.start()
+    try:
+        _normalize(raw, spec_type)
+        _current, peak = tracemalloc.get_traced_memory()
+    finally:
+        tracemalloc.stop()
+    return peak / (1024 * 1024)
 
 
 # ---------------------------------------------------------------------------
@@ -169,13 +175,15 @@ def test_perf_odps_100_ports_10_fields_each(benchmark):
 
 @pytest.mark.benchmark(group="normalize-odcs-50000-fields")
 def test_perf_odcs_50000_fields(benchmark):
-    """SLO: p99 < 5 s, < 500 MB resident."""
+    """SLO: p99 < 5 s, peak Python-heap delta < 500 MB."""
     raw = _odcs_contract_with_n_fields(50_000)
     result = benchmark(lambda: _normalize(raw, "ODCS"))
     assert result is not None
-    # Memory budget — best-effort. ``resource`` is Linux/macOS only.
-    rss_mb = _resident_memory_mb()
-    if rss_mb is not None:
-        assert rss_mb < 500, (
-            f"Resident memory {rss_mb:.1f} MB exceeds 500 MB budget"
-        )
+    # Memory budget — separate run via ``tracemalloc`` so we measure
+    # the operation's heap delta (not process RSS polluted by other
+    # tests). ``benchmark`` re-runs the function multiple times for
+    # statistical accuracy; we measure once with tracemalloc here.
+    peak_mb = _measure_normalize_memory_mb(raw, "ODCS")
+    assert peak_mb < 500, (
+        f"Peak Python-heap delta {peak_mb:.1f} MB exceeds 500 MB budget"
+    )

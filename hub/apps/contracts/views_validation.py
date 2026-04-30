@@ -83,6 +83,13 @@ class ContractValidationMixin:
 
         logger = logging.getLogger(__name__)
 
+        # Phase 227 Wave 1 (227.L8.1) — 2 MB cap on validate-draft too.
+        # Pre-Wave-1 this endpoint accepted unbounded raw bodies, so
+        # it was a 413 bypass route around the create/update cap.
+        from .serializers import payload_size_envelope
+        envelope = payload_size_envelope(request.data)
+        if envelope is not None:
+            return Response(envelope, status=413)
         serializer = ContractValidateDraftSerializer(
             data=request.data,
         )

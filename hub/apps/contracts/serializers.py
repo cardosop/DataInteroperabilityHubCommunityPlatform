@@ -791,16 +791,24 @@ class ContractSerializer(serializers.ModelSerializer):
 
 # Phase 227 Wave 1 (227.L8.1) — payload-size cap.
 #
-# The serializer caps ``original_raw`` at 2 MB. Anything over that is
-# rejected with HTTP 413 ``PAYLOAD_TOO_LARGE`` carrying ``limit_bytes``
-# + ``size_bytes`` in ``details`` so frontends can render an actionable
-# "your payload is N KB; the limit is M KB" hint.
+# Hard cap on ``original_raw`` (and any other large blob field) at
+# 2 MB. The check is centralised in :func:`payload_size_envelope` and
+# invoked from EVERY view that writes contract content (create,
+# update, validate-draft, products, link-odps) BEFORE serializer
+# instantiation. Centralising at the view boundary (rather than via a
+# CharField subclass) gives:
+#
+#   * Deterministic 413 mapping — no reliance on DRF's ``ValidationError``
+#     detail-shape preservation through ``serializer.errors``.
+#   * Cheap rejection — we don't even build the serializer for bodies
+#     we will reject.
+#   * DRF-version independence.
 #
 # **Aligned with Helm ingress** ``nginx.ingress.kubernetes.io/proxy-body-size``
 # (see helm/values.yaml: 100m). The serializer cap fires first and emits
 # the structured error; the nginx ceiling is the defence-in-depth layer
 # that prevents the gunicorn worker from buffering pathological multi-MB
-# bodies into memory before the serializer sees them.
+# bodies into memory before the application sees them.
 #
 # 2 MB chosen as a comfortable headroom over the largest realistic
 # contract observed in the wild (~1.2 MB ODCS with 5000 fields). Raise
@@ -809,34 +817,56 @@ class ContractSerializer(serializers.ModelSerializer):
 PAYLOAD_LIMIT_BYTES = 2_000_000
 
 
+def payload_size_envelope(
+    data: Any,
+    *,
+    field_name: str = "original_raw",
+) -> Optional[Dict[str, Any]]:
+    """Audit the request body's ``original_raw`` field for size.
+
+    Returns a ready-to-respond envelope dict when the body exceeds the
+    cap; returns ``None`` otherwise. Callers typically:
+
+        envelope = payload_size_envelope(request.data)
+        if envelope is not None:
+            return Response(envelope, status=413)
+
+    The envelope shape mirrors the existing service-layer error format
+    (``error`` + ``code`` + ``details``) so the frontend's
+    ``getErrorRemediation`` helper can identify the case via
+    ``code == "PAYLOAD_TOO_LARGE"``.
+    """
+    if not isinstance(data, dict):
+        return None
+    raw = data.get(field_name)
+    if not isinstance(raw, str):
+        return None
+    size_bytes = len(raw.encode("utf-8"))
+    if size_bytes <= PAYLOAD_LIMIT_BYTES:
+        return None
+    return {
+        "error": (
+            f"Contract content exceeds {PAYLOAD_LIMIT_BYTES} bytes "
+            f"({size_bytes} bytes)."
+        ),
+        "code": "PAYLOAD_TOO_LARGE",
+        "details": {
+            "limit_bytes": PAYLOAD_LIMIT_BYTES,
+            "size_bytes": size_bytes,
+            "field": field_name,
+        },
+    }
+
+
 class _RawCharField(serializers.CharField):
-    """``CharField`` whose ``max_length`` violation surfaces a typed
-    ``PAYLOAD_TOO_LARGE`` error with structured details, instead of
-    DRF's default ``"Ensure this field has no more than N characters."``
-    free-text message. The view layer routes this to HTTP 413.
+    """``CharField`` whose ``max_length`` violation is surfaced via
+    :func:`payload_size_envelope` at the view layer. This subclass
+    keeps the schema-doc ``max_length`` advertised in OpenAPI but the
+    actual rejection is centralised in the view so the 413 envelope
+    is deterministic regardless of DRF's error-shape vagaries.
     """
 
-    def run_validation(self, data: Any = serializers.empty) -> Any:  # type: ignore[override]
-        # Compute byte length (UTF-8) BEFORE invoking the parent so we
-        # can surface the actual size in the error envelope.
-        if isinstance(data, str):
-            size_bytes = len(data.encode("utf-8"))
-            if size_bytes > PAYLOAD_LIMIT_BYTES:
-                raise serializers.ValidationError(
-                    detail={
-                        "code": "PAYLOAD_TOO_LARGE",
-                        "message": (
-                            f"Contract content exceeds {PAYLOAD_LIMIT_BYTES} "
-                            f"bytes ({size_bytes} bytes)."
-                        ),
-                        "limit_bytes": PAYLOAD_LIMIT_BYTES,
-                        "size_bytes": size_bytes,
-                    },
-                )
-        # ``run_validation`` accepts the ``empty`` sentinel as default
-        # but DRF stubs don't model that as ``Any``; tell pyright we
-        # know what we're doing.
-        return super().run_validation(data)  # type: ignore[arg-type]
+    pass
 
 
 class ContractCreateSerializer(serializers.Serializer):
@@ -872,8 +902,11 @@ class ContractValidateDraftSerializer(serializers.Serializer):
     Accepts raw contract content for normalization without persisting.
     """
 
-    original_raw = serializers.CharField(
-        help_text="Raw contract content (JSON or YAML) to validate"
+    # Phase 227 Wave 1 (227.L8.1) — same 2 MB cap as create/update.
+    # Enforced at the view layer via ``payload_size_envelope``.
+    original_raw = _RawCharField(
+        max_length=PAYLOAD_LIMIT_BYTES,
+        help_text="Raw contract content (JSON or YAML) to validate. Max 2 MB.",
     )
     original_format = serializers.ChoiceField(
         choices=OriginalFormat.choices,
@@ -922,8 +955,12 @@ class ContractUpdateSerializer(serializers.Serializer):
 
 class ProductCreateSerializer(serializers.Serializer):
     """Serializer for Product-First creation (ODPS)"""
-    original_raw = serializers.CharField(
-        help_text="ODPS document content (JSON or YAML)"
+    # Phase 227 Wave 1 (227.L8.1) — same 2 MB cap as ContractCreate.
+    # Without this, ODPS bodies could route around the
+    # ``ContractCreateSerializer`` cap via ``/contracts/products/``.
+    original_raw = _RawCharField(
+        max_length=PAYLOAD_LIMIT_BYTES,
+        help_text="ODPS document content (JSON or YAML). Max 2 MB.",
     )
     original_format = serializers.ChoiceField(
         choices=OriginalFormat.choices,
@@ -989,10 +1026,16 @@ class ODPSLinkSerializer(serializers.Serializer):
         allow_null=True,
         help_text="Existing ODPS contract ID to link (mutually exclusive with original_raw)"
     )
-    original_raw = serializers.CharField(
+    # Phase 227 Wave 1 (227.L8.1) — same 2 MB cap as ContractCreate.
+    # ODPS link path was a 413 bypass route prior to this change.
+    original_raw = _RawCharField(
         required=False,
         allow_null=True,
-        help_text="ODPS document content (JSON or YAML) - mutually exclusive with odps_contract_id"
+        max_length=PAYLOAD_LIMIT_BYTES,
+        help_text=(
+            "ODPS document content (JSON or YAML) - mutually exclusive "
+            "with odps_contract_id. Max 2 MB."
+        ),
     )
     original_format = serializers.ChoiceField(
         choices=OriginalFormat.choices,

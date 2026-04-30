@@ -84,6 +84,14 @@ class ContractProductMixin:
         }
         """
         self.check_auditor_permissions(request, "create")
+        # Phase 227 Wave 1 (227.L8.1) — 2 MB cap. Same envelope as
+        # the standard contract-create path. Without this, ODPS
+        # bodies could route around the cap via /contracts/products/.
+        from rest_framework.response import Response
+        from .serializers import payload_size_envelope
+        envelope = payload_size_envelope(request.data)
+        if envelope is not None:
+            return Response(envelope, status=413)
         serializer = ProductCreateSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
 

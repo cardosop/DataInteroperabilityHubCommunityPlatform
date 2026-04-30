@@ -73,6 +73,13 @@ class ContractODPSMixin:
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
+        # Phase 227 Wave 1 (227.L8.1) — 2 MB cap on the ODPS link
+        # path. Without this, large ODPS bodies could bypass the
+        # contract-create cap by routing through /link-odps/.
+        from .serializers import payload_size_envelope
+        envelope = payload_size_envelope(request.data)
+        if envelope is not None:
+            return Response(envelope, status=413)
         serializer = ODPSLinkSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
 

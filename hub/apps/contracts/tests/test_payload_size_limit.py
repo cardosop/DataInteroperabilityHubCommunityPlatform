@@ -113,6 +113,39 @@ class PayloadSizeLimitCreateTest(ContractsAPITransactionTestBase):
         self.assertGreater(details.get("size_bytes"), 2_000_000)
 
 
+class PayloadSizeLimitAlternateWritePathsTest(ContractsAPITransactionTestBase):
+    """The 2 MB cap is enforced uniformly across every contract write
+    surface — not just create/update. Pre-fix audit found three bypass
+    routes: ``validate-draft``, ``products``, and the ODPS-link path.
+    """
+
+    def test_validate_draft_rejects_oversize(self):
+        raw = _build_padded_odcs(int(2.01 * _MIB))
+        response = self.client.post(
+            "/api/v1/contracts/validate-draft/",
+            data={"original_raw": raw, "original_format": "JSON"},
+            format="json",
+        )
+        self.assertEqual(
+            response.status_code, status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+            f"validate-draft must enforce the cap; got {response.status_code}",
+        )
+        self.assertEqual(response.data.get("code"), "PAYLOAD_TOO_LARGE")
+
+    def test_products_endpoint_rejects_oversize(self):
+        raw = _build_padded_odcs(int(2.01 * _MIB))
+        response = self.client.post(
+            "/api/v1/contracts/products/",
+            data={"original_raw": raw, "original_format": "JSON"},
+            format="json",
+        )
+        self.assertEqual(
+            response.status_code, status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+            f"products endpoint must enforce the cap; got {response.status_code}",
+        )
+        self.assertEqual(response.data.get("code"), "PAYLOAD_TOO_LARGE")
+
+
 class PayloadSizeLimitUpdateTest(ContractsAPITransactionTestBase):
     """``PATCH /api/v1/contracts/{id}/`` enforces the same cap."""
 

@@ -132,58 +132,70 @@ def test_safe_load_rejects_python_object_tags(label, body):
         yaml.safe_load(body)
 
 
-@pytest.mark.parametrize(
-    "label, body",
-    _MALICIOUS_PAYLOADS,
-    ids=[label for label, _ in _MALICIOUS_PAYLOADS],
-)
-def test_create_contract_rejects_python_object_yaml(label, body):
-    """End-to-end: posting a malicious YAML contract to the create
-    endpoint MUST result in a 4xx (parse / validation rejection) and
-    MUST NOT persist a ``Contract`` row. Anything 2xx here would mean
-    the request reached the DB after deserialising attacker-controlled
-    Python.
-    """
-    from rest_framework.test import APIClient
+class CreateContractRejectsMaliciousYamlTest:
+    """End-to-end behavioural pin — the ``ContractsAPITransactionTestBase``
+    fixture wires the full middleware stack (auth, tenant, subscription,
+    role) so we exercise the actual API surface attackers would hit.
 
+    Implemented as a non-Django test class with ``self`` plumbed through
+    a setup helper so ``pytest`` collects each parametrised case as a
+    separate test (instead of one ginormous test).
+    """
+
+
+def _build_yaml_safety_e2e_class():
+    """Return a TestCase subclass with one method per malicious tag.
+
+    Defining the class via a builder keeps the parametrisation static
+    (clear test names) and avoids the awkward ``_pre_setup`` /
+    ``_post_teardown`` hack the previous version used.
+    """
     from hub.apps.contracts.models import Contract
     from hub.apps.contracts.tests.test_base import (
         ContractsAPITransactionTestBase,
     )
 
-    # Ad-hoc setup — re-use the existing transaction base class's
-    # ``setUp`` to bootstrap an authenticated tenant + role + active
-    # subscription middleware prereqs in one shot.
-    tc = ContractsAPITransactionTestBase()
-    tc._pre_setup()  # type: ignore[attr-defined]
-    try:
-        tc.setUp()
-        before = Contract.objects.count()
-        response = tc.client.post(
-            "/api/v1/contracts/",
-            data={
-                "original_raw": body,
-                "original_format": "YAML",
-                "original_spec_type": "ODCS",
-            },
-            format="json",
+    namespace: dict = {}
+
+    def _make_test(label: str, body: str):
+        def _test(self):
+            before = Contract.objects.count()
+            response = self.client.post(
+                "/api/v1/contracts/",
+                data={
+                    "original_raw": body,
+                    "original_format": "YAML",
+                    "original_spec_type": "ODCS",
+                },
+                format="json",
+            )
+            self.assertGreaterEqual(
+                response.status_code, 400,
+                f"Malicious YAML must be rejected with 4xx; got "
+                f"{response.status_code}: {getattr(response, 'data', None)}",
+            )
+            self.assertLess(response.status_code, 500)
+            self.assertEqual(
+                Contract.objects.count(), before,
+                "Malicious YAML caused a Contract row to be persisted — "
+                "the parse path is unsafe.",
+            )
+        _test.__name__ = f"test_rejects_{label}"
+        _test.__doc__ = (
+            f"End-to-end: ``{label}`` MUST be rejected with 4xx and MUST NOT "
+            f"persist a row. Tag: {body!r}"
         )
-        # 4xx required; 2xx would mean we deserialised attacker Python.
-        assert 400 <= response.status_code < 500, (
-            f"Malicious YAML must be rejected with 4xx; got {response.status_code}"
-            f" body={getattr(response, 'data', None)}"
-        )
-        # Belt-and-braces: no row persisted.
-        assert Contract.objects.count() == before, (
-            "Malicious YAML caused a Contract row to be persisted — "
-            "the parse path is unsafe."
-        )
-    finally:
-        try:
-            tc.tearDown()
-        except Exception:
-            pass
-        try:
-            tc._post_teardown()  # type: ignore[attr-defined]
-        except Exception:
-            pass
+        return _test
+
+    for label, body in _MALICIOUS_PAYLOADS:
+        method = _make_test(label, body)
+        namespace[method.__name__] = method
+
+    return type(
+        "CreateContractRejectsMaliciousYamlE2E",
+        (ContractsAPITransactionTestBase,),
+        namespace,
+    )
+
+
+CreateContractRejectsMaliciousYamlE2E = _build_yaml_safety_e2e_class()

@@ -7,6 +7,8 @@ and pagination support.
 SAVING CHECKPOINT: This module contains the core CRUD operations.
 """
 
+from typing import Optional
+
 from django.core.exceptions import FieldError
 from django.db import transaction
 from drf_spectacular.utils import extend_schema, extend_schema_view
@@ -64,42 +66,25 @@ from .serializers import (
     ContractSerializer,
     ContractUpdateSerializer,
 )
+from .serializers import payload_size_envelope
 from .services import ContractService
 
 
 # Phase 227 Wave 1 (227.L8.1) — payload-size 413 routing.
 #
-# The serializers cap ``original_raw`` at 2 MB and raise a typed
-# ``PAYLOAD_TOO_LARGE`` error. DRF's default exception handler maps any
-# ``ValidationError`` to HTTP 400, so we intercept here: validate
-# without ``raise_exception=True``, detect the typed code, and return a
-# structured 413 with the byte-size details embedded. Anything else
-# falls through to the normal ``raise_exception=True`` flow.
-def _payload_too_large_response(serializer):
-    """Return an HTTP 413 ``Response`` if the serializer's ``original_raw``
-    field rejected for payload size, otherwise ``None``.
-    """
-    field_errors = serializer.errors.get("original_raw") if hasattr(serializer, "errors") else None
-    if not field_errors:
+# Centralised at the view boundary: ``payload_size_envelope`` (in
+# ``serializers.py``) returns a ready-to-respond envelope dict when the
+# request body's ``original_raw`` exceeds the 2 MB cap. We check
+# BEFORE serializer instantiation so:
+#   * No DRF error-shape vagaries to navigate.
+#   * No serializer object built for bodies we will reject.
+#   * The same helper is reusable from every other write surface
+#     (`/contracts/validate-draft/`, `/contracts/products/`, ODPS link).
+def _check_payload_too_large(request) -> Optional[Response]:
+    envelope = payload_size_envelope(request.data)
+    if envelope is None:
         return None
-    candidates = field_errors if isinstance(field_errors, list) else [field_errors]
-    for err in candidates:
-        # DRF's ErrorDetail subclass behaves like a string but our
-        # ``_RawCharField`` raised ``ValidationError(detail=<dict>)``,
-        # which DRF preserves as a dict on ``errors[field]``.
-        if isinstance(err, dict) and err.get("code") == "PAYLOAD_TOO_LARGE":
-            return Response(
-                {
-                    "error": err.get("message") or "Payload too large",
-                    "code": "PAYLOAD_TOO_LARGE",
-                    "details": {
-                        "limit_bytes": err.get("limit_bytes"),
-                        "size_bytes": err.get("size_bytes"),
-                    },
-                },
-                status=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
-            )
-    return None
+    return Response(envelope, status=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE)
 
 
 class ContractCRUDMixin:
@@ -124,16 +109,13 @@ class ContractCRUDMixin:
         }
         """
         self.check_auditor_permissions(request, "create")
+        # Phase 227 Wave 1 (227.L8.1) — 413 fires BEFORE the serializer
+        # is constructed. Cheap rejection + deterministic envelope.
+        too_large = _check_payload_too_large(request)
+        if too_large is not None:
+            return too_large
         serializer = ContractCreateSerializer(data=request.data)
-        if not serializer.is_valid():
-            # Phase 227 Wave 1 (227.L8.1) — surface PAYLOAD_TOO_LARGE
-            # as HTTP 413 (DRF's default would 400 the structured
-            # detail). Other validation errors raise normally.
-            too_large = _payload_too_large_response(serializer)
-            if too_large is not None:
-                return too_large
-            from rest_framework.exceptions import ValidationError as DRFValidationError
-            raise DRFValidationError(serializer.errors)
+        serializer.is_valid(raise_exception=True)
 
         original_raw = serializer.validated_data["original_raw"]
         original_format = serializer.validated_data["original_format"]
@@ -279,14 +261,13 @@ class ContractCRUDMixin:
                 response["ETag"] = current_etag
                 return response
 
+        # Phase 227 Wave 1 (227.L8.1) — 413 fires BEFORE the serializer
+        # is constructed (same pattern as create).
+        too_large = _check_payload_too_large(request)
+        if too_large is not None:
+            return too_large
         serializer = ContractUpdateSerializer(data=request.data, partial=True)
-        if not serializer.is_valid():
-            # Phase 227 Wave 1 (227.L8.1) — same 413 routing as create.
-            too_large = _payload_too_large_response(serializer)
-            if too_large is not None:
-                return too_large
-            from rest_framework.exceptions import ValidationError as DRFValidationError
-            raise DRFValidationError(serializer.errors)
+        serializer.is_valid(raise_exception=True)
 
         # Get tenant from user
         tenant = (
