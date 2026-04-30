@@ -444,6 +444,20 @@ class ContractService(BaseService, ContractEventPublisher, ODPSEventPublisher):
             # cases; anything that reaches here failed for a different
             # reason and is reported as generic VALIDATION_ERROR.
             if norm_status == NormalizationStatus.NORMALIZATION_FAILED and norm_errors:
+                # Phase 227 L10 audit-3 — surface the catalog-promised
+                # ``INVALID_YAML`` wire code when the underlying failure
+                # was a YAML parse error rather than a structural one.
+                from hub.apps.contracts.normalization_engine import (
+                    INVALID_YAML_ERROR_PREFIX,
+                )
+                if any(
+                    isinstance(err, str) and err.startswith(INVALID_YAML_ERROR_PREFIX)
+                    for err in norm_errors
+                ):
+                    raise ValidationError(
+                        message="Contract YAML failed to parse",
+                        details={"code": "INVALID_YAML", "errors": norm_errors},
+                    )
                 raise ValidationError(
                     message="Contract normalization failed",
                     details={"code": "NORMALIZATION_FAILED", "errors": norm_errors},

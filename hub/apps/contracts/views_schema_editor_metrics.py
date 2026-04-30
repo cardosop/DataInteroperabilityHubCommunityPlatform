@@ -198,10 +198,18 @@ def _record_editor_opened_audit(
     in the audit table so the adoption-gate report can query it.
 
     Action name ``SCHEMA_EDITOR_OPENED`` is the canonical join key.
-    Resource ID is the offending tenant id (the same row the report
-    aggregates by). ``actor_user`` is the calling user — useful for
-    drill-downs but NOT used by the adoption gate (which measures
-    tenant-level adoption, not per-user).
+    The audit row's ``resource_type`` is ``TENANT`` (not ``CONTRACT``)
+    because the metric event payload does not carry a contract id —
+    the frontend reports "user opened the Schema editor in this
+    tenant", not "user opened it for contract X". Coupling the
+    resource_id to the tenant keeps the resource_type / resource_id
+    pair semantically consistent for any operator running an
+    audit-trail query (a CONTRACT-typed row whose id is actually a
+    tenant id is silently misleading).
+
+    ``actor_user`` is the calling user — useful for drill-downs but
+    NOT used by the adoption gate (which measures tenant-level
+    adoption, not per-user — see :func:`compute_adoption_report`).
     """
     if not tenant_id:
         # No tenant context — skip; the report would group it under
@@ -218,7 +226,7 @@ def _record_editor_opened_audit(
     if user is not None and not getattr(user, "is_authenticated", False):
         user = None
     create_audit_event(
-        resource_type="CONTRACT",
+        resource_type="TENANT",
         action="SCHEMA_EDITOR_OPENED",
         actor_user=user,
         tenant=tenant,

@@ -34,6 +34,28 @@ from .validation import (
 from .versioning import ensure_version, get_default_version
 
 
+# Phase 227 L10 audit-3 — surface YAML parse errors with the documented
+# ``INVALID_YAML`` wire code instead of bucketing them under
+# ``NORMALIZATION_FAILED``. The error catalog and OpenAPI snapshot
+# (``views.py:create``/``update``) both promise ``INVALID_YAML`` is a
+# real wire code; pre-L10 the runtime never emitted it. Service-layer
+# emitters detect the prefix below to raise the typed ValidationError.
+INVALID_YAML_ERROR_PREFIX = "INVALID_YAML:"
+
+
+class InvalidYAMLError(ValueError):
+    """Raised when contract YAML cannot be parsed.
+
+    Phase 227 L10 audit-3 — distinct from generic
+    :class:`yaml.YAMLError` so callers up the stack (engine + services)
+    can branch and emit the catalog-promised ``INVALID_YAML`` wire code.
+    """
+
+    def __init__(self, original: Exception):
+        self.original = original
+        super().__init__(str(original))
+
+
 @dataclass
 class NormalizationResult:
     """Normalized HubContract output."""
@@ -1135,7 +1157,13 @@ def parse_contract(raw_contract: str, format: str) -> Dict[str, Any]:
                             dedented_lines.append("")
                     cleaned_contract = "\n".join(dedented_lines)
 
-        return yaml.safe_load(cleaned_contract)
+        try:
+            return yaml.safe_load(cleaned_contract)
+        except yaml.YAMLError as e:
+            # Phase 227 L10 audit-3 — typed wrapper preserves the
+            # underlying yaml.YAMLError as ``.original`` so callers
+            # can introspect line/column without re-parsing.
+            raise InvalidYAMLError(e) from e
     else:
         raise ValueError(f"Unsupported format: {format}")
 
@@ -1387,6 +1415,20 @@ def normalize_contract(
 
         return hub_contract, spec_type, spec_version, status, errors, warnings
 
+    except InvalidYAMLError as e:
+        # Phase 227 L10 audit-3 — surface the catalog-promised
+        # ``INVALID_YAML`` wire code via a discriminator prefix the
+        # service layer recognises. The tuple shape is fixed for
+        # backward compatibility with every existing caller.
+        errors = [f"{INVALID_YAML_ERROR_PREFIX} {e.original}"]
+        return (
+            None,
+            OriginalSpecType.ODCS,
+            "3.0.2",
+            NormalizationStatus.NORMALIZATION_FAILED,
+            errors,
+            [],
+        )
     except Exception as e:
         errors = [f"Failed to normalize contract: {str(e)}"]
         # Return ODCS as default spec type

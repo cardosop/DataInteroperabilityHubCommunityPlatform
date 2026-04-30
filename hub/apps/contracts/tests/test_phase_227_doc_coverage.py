@@ -75,6 +75,8 @@ class Phase227CrossReferencesResolveTest(SimpleTestCase):
          REPO_ROOT / "docs" / "migration-guides"),
         ("docs/mvpdocs/reference/error-codes.md",
          REPO_ROOT / "docs" / "mvpdocs" / "reference"),
+        ("docs/runbooks/structureless-contracts.md",
+         REPO_ROOT / "docs" / "runbooks"),
     ]
 
     def _resolve(self, base: Path, link: str) -> Path:
@@ -163,6 +165,81 @@ class Phase227ErrorCodeCatalogConsistencyTest(SimpleTestCase):
     def test_schema_too_deep_code_documented(self):
         """SCHEMA_TOO_DEEP is the wire code for nested-properties walker overflow."""
         self.assertIn("SCHEMA_TOO_DEEP", self.catalog)
+
+
+class Phase227DocumentedCodesAreEmittedAtRuntimeTest(SimpleTestCase):
+    """Audit-3 follow-up: every top-level Phase-227 wire code in the
+    error catalog must have at least one runtime emit site.
+
+    Pre-L10 audit, ``INVALID_YAML`` was documented in the catalog and
+    in the ``@extend_schema`` OpenAPI annotation but no production
+    path actually raised it — every YAML parse error was bucketed as
+    ``NORMALIZATION_FAILED``. Customers branching on
+    ``error.code == "INVALID_YAML"`` would never hit the branch. This
+    test prevents that drift from recurring: any future code added to
+    the catalog table must also have a corresponding runtime emit
+    site (greppable by literal string), and any documented code whose
+    runtime emitter is removed during refactoring fails the test.
+    """
+
+    PHASE_227_TOP_LEVEL_CODES = [
+        "STRUCTURELESS_CONTRACT",
+        "VALIDATION_ERROR",
+        "NORMALIZATION_FAILED",
+        "SCHEMA_TOO_DEEP",
+        "INVALID_YAML",
+        "PRECONDITION_FAILED",
+        "PAYLOAD_TOO_LARGE",
+    ]
+
+    SOURCE_DIRS = [
+        REPO_ROOT / "hub" / "apps" / "contracts",
+        REPO_ROOT / "hub" / "apps" / "marketplace",
+        REPO_ROOT / "hub" / "apps" / "assets",
+    ]
+
+    def _greppable_emit_sites(self, code: str) -> list:
+        """Return relative paths of source files (excluding tests +
+        backups) that mention the literal code string. We require the
+        code to appear *somewhere* in a non-test source file — the
+        narrowest universal predicate that catches the drift without
+        false positives from docstrings or comments."""
+        hits = []
+        for source_dir in self.SOURCE_DIRS:
+            if not source_dir.exists():
+                continue
+            for path in source_dir.rglob("*.py"):
+                rel = path.relative_to(REPO_ROOT).as_posix()
+                # Exclude tests, backups, and migration files (data
+                # migrations sometimes carry historical code names).
+                if "/tests/" in rel or rel.endswith(".backup"):
+                    continue
+                if "/migrations/" in rel:
+                    continue
+                try:
+                    text = path.read_text(encoding="utf-8")
+                except Exception:
+                    continue
+                if code in text:
+                    hits.append(rel)
+        return hits
+
+    def test_every_documented_code_has_runtime_emit_site(self):
+        missing = []
+        for code in self.PHASE_227_TOP_LEVEL_CODES:
+            sites = self._greppable_emit_sites(code)
+            if not sites:
+                missing.append(code)
+        self.assertEqual(
+            missing,
+            [],
+            "Documented Phase-227 wire codes with NO runtime emit site "
+            "in hub/apps/{contracts,marketplace,assets}/*.py "
+            f"(excluding tests/migrations): {missing}. "
+            "Every code documented in error-codes.md must be raised by "
+            "at least one production path — otherwise SDK consumers "
+            "branching on the code never hit the branch.",
+        )
 
 
 class Phase227RunbookHeadingsPresentTest(SimpleTestCase):

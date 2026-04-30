@@ -735,6 +735,92 @@ class TestSchemaEditorMetricsEndpoint(TestCase):
         assert response.status_code == 204
         assert mock_save.labels.call_args.kwargs["outcome"] == "error"
 
+    # ----------------------------------------------------------------
+    # Phase 227 Wave 2 (227.W2.4) — audit-event persistence
+    # ----------------------------------------------------------------
+
+    def test_opened_event_persists_audit_row_for_adoption_gate(self):
+        """The W2.4 adoption-gate report joins the structureless-tenant
+        population against ``AuditEvent.action='SCHEMA_EDITOR_OPENED'``.
+        Pin that the metric endpoint actually writes that row — the
+        OTel counter alone is queryable from Prometheus only and cannot
+        feed the gate."""
+        from hub.apps.audit.models import AuditEvent
+
+        client, tenant = self._client()
+        before = AuditEvent.objects.filter(
+            action="SCHEMA_EDITOR_OPENED", tenant=tenant,
+        ).count()
+
+        response = client.post(
+            "/api/v1/contracts/schema-editor/metrics",
+            data={"event": "opened", "spec_type": "odcs"},
+            format="json",
+        )
+
+        assert response.status_code == 204
+        rows = AuditEvent.objects.filter(
+            action="SCHEMA_EDITOR_OPENED", tenant=tenant,
+        )
+        assert rows.count() == before + 1
+        row = rows.order_by("-timestamp").first()
+        # W2.4-AUDIT-2 fix — resource_type must reflect the row's actual
+        # subject (the tenant), not "CONTRACT" (no contract id is in
+        # the metric payload).
+        assert row.resource_type == "TENANT"
+        assert str(row.resource_id) == str(tenant.id)
+        # spec_type lower-cased on the wire is upper-cased server-side
+        # for label-cardinality consistency with the OTel counter.
+        assert row.details_json.get("spec_type") == "ODCS"
+
+    def test_save_event_does_not_persist_audit_row(self):
+        """The adoption gate counts opens, not saves — confirm save
+        events do NOT add ``SCHEMA_EDITOR_OPENED`` rows that would
+        double-count adoption."""
+        from hub.apps.audit.models import AuditEvent
+
+        client, tenant = self._client()
+        before = AuditEvent.objects.filter(
+            action="SCHEMA_EDITOR_OPENED", tenant=tenant,
+        ).count()
+
+        response = client.post(
+            "/api/v1/contracts/schema-editor/metrics",
+            data={
+                "event": "save",
+                "spec_type": "ODCS",
+                "outcome": "success",
+                "time_to_first_save_seconds": 12.0,
+            },
+            format="json",
+        )
+
+        assert response.status_code == 204
+        after = AuditEvent.objects.filter(
+            action="SCHEMA_EDITOR_OPENED", tenant=tenant,
+        ).count()
+        assert after == before
+
+    def test_audit_persist_failure_does_not_break_metric_ingest(self):
+        """The audit-row write is best-effort: if the audit subsystem
+        fails (e.g. transient DB hiccup) the metric endpoint MUST
+        still 204 so the OTel counter increment lands. Pin that the
+        endpoint stays available even when ``create_audit_event``
+        raises."""
+        client, _tenant = self._client()
+        with patch(
+            "hub.apps.contracts.views_schema_editor_metrics."
+            "_record_editor_opened_audit",
+            side_effect=RuntimeError("simulated audit-store outage"),
+        ):
+            response = client.post(
+                "/api/v1/contracts/schema-editor/metrics",
+                data={"event": "opened", "spec_type": "ODCS"},
+                format="json",
+            )
+
+        assert response.status_code == 204
+
 
 # ---------------------------------------------------------------------------
 # L7.5 — Grafana dashboard JSON validity

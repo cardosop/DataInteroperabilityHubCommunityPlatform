@@ -112,6 +112,56 @@ class SchemaEditorAvailableNotifyTests(TestCase):
                 r["email_type"], EmailType.SCHEMA_EDITOR_AVAILABLE.value,
             )
 
+    def test_per_recipient_failure_does_not_block_remaining_admins(self):
+        """W2.3-AUDIT-3 regression guard: a single failing email
+        address must not stop the rest of the batch.
+
+        Exercises the helper's documented fail-soft contract by patching
+        ``send_email_async`` to raise on the first call and succeed on
+        the second. Both attempts must appear in the result list (one
+        marked failed, one marked success) — the historical regression
+        was a try/except wrapping the *whole* loop, which silently
+        dropped every admin after the first failure.
+        """
+        from unittest.mock import patch
+        from hub.apps.contracts.notifications import (
+            schema_editor_available as mod,
+        )
+
+        tenant = _create_tenant("FailSoft Co")
+        bad = _create_user("bad@example.com", tenant)
+        good = _create_user("good@example.com", tenant)
+        _grant_tenant_admin_role(bad, tenant)
+        _grant_tenant_admin_role(good, tenant)
+
+        call_log: list[str] = []
+
+        def _fake_send(**kwargs):
+            recipient = kwargs["to_email"]
+            call_log.append(recipient)
+            if recipient == "bad@example.com":
+                raise RuntimeError("simulated SES outage for this recipient")
+            return {"success": True, "delivery_id": "fake"}
+
+        with patch.object(mod, "send_email_async", side_effect=_fake_send):
+            results = mod.send_schema_editor_available_notification(
+                tenant=tenant,
+            )
+
+        # Both admins must have been *attempted* — the failure on `bad`
+        # MUST NOT stop the batch from reaching `good`.
+        self.assertEqual(sorted(call_log), ["bad@example.com", "good@example.com"])
+        # And both attempts must surface in the return list with the
+        # right success / error annotations.
+        self.assertEqual(len(results), 2)
+        by_email = {r["to_email"]: r for r in results}
+        self.assertFalse(by_email["bad@example.com"]["success"])
+        self.assertIn(
+            "RuntimeError", by_email["bad@example.com"]["error"],
+        )
+        self.assertTrue(by_email["good@example.com"]["success"])
+        self.assertIsNone(by_email["good@example.com"]["error"])
+
 
 # ---------------------------------------------------------------------------
 # Template rendering

@@ -61,16 +61,28 @@ def _create_contract(tenant, *, hub_contract_json):
 
 
 def _record_editor_opened(tenant, *, when=None):
+    """Create a SCHEMA_EDITOR_OPENED audit row, optionally backdated.
+
+    ``AuditEvent.timestamp`` is declared ``auto_now_add=True`` so
+    Django **ignores** any value passed to ``objects.create()``. To
+    simulate a row outside the watch window we have to update the
+    timestamp via a queryset UPDATE, which bypasses ``Model.save()``
+    (the model's append-only invariant blocks ``save()`` for
+    existing rows but ``QuerySet.update()`` is fixture-friendly).
+    """
     from hub.apps.audit.models import AuditEvent
-    return AuditEvent.objects.create(
+    event = AuditEvent.objects.create(
         tenant=tenant,
         action="SCHEMA_EDITOR_OPENED",
-        resource_type="CONTRACT",
+        resource_type="TENANT",
         resource_id=tenant.id,
         result="SUCCESS",
-        timestamp=when or timezone.now(),
         details_json={},
     )
+    if when is not None:
+        AuditEvent.all_objects.filter(pk=event.pk).update(timestamp=when)
+        event.refresh_from_db()
+    return event
 
 
 _HC_OK = {

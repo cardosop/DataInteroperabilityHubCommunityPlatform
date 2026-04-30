@@ -214,6 +214,22 @@ class NormalizationService(BaseService, NormalizationEventPublisher):
                             message="Failed to publish normalization.failed event (non-critical)"
                         )
 
+                # Phase 227 L10 audit-3 — distinguish YAML parse errors
+                # from generic normalization failures so the catalog-
+                # promised ``INVALID_YAML`` wire code reaches the API
+                # consumer. The discriminator prefix is set by
+                # ``parse_contract``'s ``InvalidYAMLError`` branch.
+                from hub.apps.contracts.normalization_engine import (
+                    INVALID_YAML_ERROR_PREFIX,
+                )
+                if any(
+                    isinstance(err, str) and err.startswith(INVALID_YAML_ERROR_PREFIX)
+                    for err in norm_errors
+                ):
+                    raise ValidationError(
+                        message='Contract YAML failed to parse',
+                        details={'code': 'INVALID_YAML', 'errors': norm_errors},
+                    )
                 raise ValidationError(
                     message='Contract normalization failed',
                     details={'code': 'NORMALIZATION_FAILED', 'errors': norm_errors}
