@@ -55,6 +55,13 @@ class EmailType(models.TextChoices):
         "ASSET_CONTRACT_STRUCTURELESS_PENDING",
         "Asset Contract Structureless — Pending Remediation",
     )
+    # Phase 227 Wave 2 (227.W2.3) — T-0 announcement: the Schema editor
+    # is now available for every tenant; admins should triage their
+    # structureless contracts via the new Contract Health page.
+    SCHEMA_EDITOR_AVAILABLE = (
+        "SCHEMA_EDITOR_AVAILABLE",
+        "Schema editor now available — triage your contracts",
+    )
 
 
 class EmailDelivery(models.Model):

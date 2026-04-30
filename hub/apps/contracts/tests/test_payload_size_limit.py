@@ -54,17 +54,26 @@ def _build_padded_odcs(target_size_bytes: int) -> str:
 
 _KIB = 1024
 _MIB = 1024 * 1024
+# Phase 227 L8.3 fix: the production cap ``PAYLOAD_LIMIT_BYTES``
+# uses **decimal megabytes** (2,000,000 bytes), not binary mebibytes
+# (2,097,152 bytes). The original boundary tests multiplied by
+# ``_MIB`` which produced 1.99 × 1,048,576 ≈ 2,086,666 bytes — that
+# exceeds the 2,000,000-byte cap and the "just under" test fired
+# the 413 path (false negative). Use a separate decimal constant
+# for cap-boundary tests.
+_MB = 1_000_000  # decimal megabyte — matches PAYLOAD_LIMIT_BYTES
 
 
 class PayloadSizeLimitCreateTest(ContractsAPITransactionTestBase):
-    """``POST /api/v1/contracts/`` enforces the 2 MB cap."""
+    """``POST /api/v1/contracts/`` enforces the 2 MB cap (decimal —
+    2,000,000 bytes)."""
 
     def test_just_under_2mb_is_accepted(self):
-        # 1.99 MB — should pass the serializer cap and (with a clean
-        # contract body) reach normalisation successfully.
-        raw = _build_padded_odcs(int(1.99 * _MIB))
+        # 1.99 MB (decimal — 1,990,000 bytes) — under the cap, must
+        # pass the serializer guard.
+        raw = _build_padded_odcs(int(1.99 * _MB))
         # Sanity — the JSON itself is under the cap.
-        assert len(raw) < 2 * _MIB, len(raw)
+        assert len(raw) < 2 * _MB, len(raw)
         response = self.client.post(
             "/api/v1/contracts/",
             data={
@@ -85,8 +94,8 @@ class PayloadSizeLimitCreateTest(ContractsAPITransactionTestBase):
         )
 
     def test_just_over_2mb_returns_413_with_structured_error(self):
-        raw = _build_padded_odcs(int(2.01 * _MIB))
-        assert len(raw) > 2 * _MIB, len(raw)
+        raw = _build_padded_odcs(int(2.01 * _MB))
+        assert len(raw) > 2 * _MB, len(raw)
         response = self.client.post(
             "/api/v1/contracts/",
             data={
@@ -120,7 +129,7 @@ class PayloadSizeLimitAlternateWritePathsTest(ContractsAPITransactionTestBase):
     """
 
     def test_validate_draft_rejects_oversize(self):
-        raw = _build_padded_odcs(int(2.01 * _MIB))
+        raw = _build_padded_odcs(int(2.01 * _MB))
         response = self.client.post(
             "/api/v1/contracts/validate-draft/",
             data={"original_raw": raw, "original_format": "JSON"},
@@ -133,7 +142,7 @@ class PayloadSizeLimitAlternateWritePathsTest(ContractsAPITransactionTestBase):
         self.assertEqual(response.data.get("code"), "PAYLOAD_TOO_LARGE")
 
     def test_products_endpoint_rejects_oversize(self):
-        raw = _build_padded_odcs(int(2.01 * _MIB))
+        raw = _build_padded_odcs(int(2.01 * _MB))
         response = self.client.post(
             "/api/v1/contracts/products/",
             data={"original_raw": raw, "original_format": "JSON"},
@@ -171,7 +180,7 @@ class PayloadSizeLimitUpdateTest(ContractsAPITransactionTestBase):
 
     def test_update_just_over_2mb_returns_413(self):
         contract = self._create_ok_contract()
-        raw = _build_padded_odcs(int(2.01 * _MIB))
+        raw = _build_padded_odcs(int(2.01 * _MB))
         response = self.client.patch(
             f"/api/v1/contracts/{contract.id}/",
             data={

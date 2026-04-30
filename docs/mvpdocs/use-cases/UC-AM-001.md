@@ -20,6 +20,24 @@ platform quickly, with metadata and contracts refined afterward.
 - At least one supported file format is available for upload (CSV,
   Parquet, or JSON).
 
+## Structural floor invariant (Phase 227 Wave 1)
+
+To activate the asset (`status = ACTIVE`) and to publish it via the
+marketplace, the **currently-active backing contract** MUST carry
+resolvable structure: at least one `models[*].fields[*]` entry OR a
+top-level `schema.fields[*]` entry. Activation and publish gates raise
+HTTP 400/422 with `error.code = "STRUCTURELESS_CONTRACT"` when this
+invariant is violated. The error payload's `error.details.subcode`
+distinguishes the cause (`STRUCTURELESS_ODPS_NO_PORTS`,
+`STRUCTURELESS_ODCS_NO_SCHEMA`, `STRUCTURELESS_GENERIC`,
+`STRUCTURELESS_CYCLIC_PORTS`) and `error.details.remediation_url`
+deep-links to the Schema editor for the offending contract.
+
+See [`docs/CONTRACTS.md`](../../CONTRACTS.md#structural-floor-invariant)
+for the canonical shapes and remediation steps. The
+[ops runbook](../../runbooks/structureless-contracts.md) covers
+tenant-rejection triage.
+
 ## Steps
 
 1. DPO navigates to "Assets > Create New" or calls
@@ -58,9 +76,11 @@ platform quickly, with metadata and contracts refined afterward.
 | Condition | Expected Response |
 |-----------|-------------------|
 | Unsupported file format | `415 Unsupported Media Type` |
-| File exceeds size limit | `413 Payload Too Large` |
+| File exceeds size limit | `413 Payload Too Large` (`PAYLOAD_TOO_LARGE`, 2 MB cap) |
 | Schema inference fails | Job status `FAILED` with diagnostic message |
 | Storage quota exceeded | `507 Insufficient Storage` |
+| Activation with structureless contract | `400 Bad Request` (`STRUCTURELESS_CONTRACT`) — see [error catalog](../reference/error-codes.md#structureless-contract-codes-phase-227) |
+| Publish with structureless contract | `422 Unprocessable Entity` (`STRUCTURELESS_CONTRACT`) — same blocker shape |
 
 ## Related
 

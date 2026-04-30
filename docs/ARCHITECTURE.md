@@ -343,6 +343,87 @@ User → API Service → Contract Service
               Notifications
 ```
 
+### Structural Floor Invariant (Phase 227 Wave 1)
+
+Every contract that lands in the database carries **resolvable
+structure**: at least one `models[*].fields[*]` entry OR a top-level
+`schema.fields[*]` entry. This invariant — the *structural floor* —
+is enforced at five layers, intentionally redundant so a single
+bypass cannot land a structureless row:
+
+```
+┌────────────────────────────────────────────────────────────┐
+│ 1. ContractService.create_contract / update_contract       │
+│    └─ enforce_structural_floor() → ValidationError 400     │
+│       (code = STRUCTURELESS_CONTRACT)                      │
+├────────────────────────────────────────────────────────────┤
+│ 2. NormalizationService.normalize_contract                 │
+│    └─ Same floor check, defensive double-gate              │
+├────────────────────────────────────────────────────────────┤
+│ 3. ODPSService.create_odps / link_odps_to_odcs /           │
+│    normalize_odps                                          │
+│    └─ Floor check after ODPSNormalizer.normalize()         │
+│       (audit-discovered alternate write paths)             │
+├────────────────────────────────────────────────────────────┤
+│ 4. Asset.can_activate / Asset.clean                        │
+│    └─ Floor check on currently-active contract;            │
+│       activation rejected with subcode'd blocker           │
+├────────────────────────────────────────────────────────────┤
+│ 5. MarketplaceService._enforce_publish_structural_floor    │
+│    └─ Both publish_listing AND update_listing(PUBLISHED)   │
+│       paths route through the shared helper (HTTP 422)     │
+└────────────────────────────────────────────────────────────┘
+```
+
+**Subcode taxonomy** (carried in `error.details.subcode`):
+
+- `STRUCTURELESS_ODPS_NO_PORTS` — ODPS contract has no resolvable
+  `outputPorts[*]` schemas.
+- `STRUCTURELESS_ODCS_NO_SCHEMA` — ODCS contract has no
+  `schema.fields[]` and no `models[*].fields[]`.
+- `STRUCTURELESS_CYCLIC_PORTS` — ODPS port resolution short-circuited
+  on a cycle (A → B → A).
+- `STRUCTURELESS_GENERIC` — non-ODPS/ODCS spec_type or unrecognised
+  shape; ops investigation needed.
+
+Each error payload includes `models_count`, `schema_fields_count`,
+`spec_type`, `spec_version`, a per-cause `hint`, and a
+`remediation_url` deep-linking to the Schema editor for the offending
+contract. The frontend toast switches on `code` programmatically
+rather than parsing `message` strings.
+
+**Always-on**: per the 2026-04-30 ungate directive, the floor has no
+feature-flag gate, no per-tenant override, and no deprecation period.
+Customers who upload structureless contracts must use the Schema
+editor to add fields before retrying. See
+[`docs/CONTRACTS.md`](CONTRACTS.md) for the canonical shapes per
+spec version and the
+[ops runbook](runbooks/structureless-contracts.md) for tenant
+rejection triage.
+
+### ODCS Recursive Nested-Properties Walker (Phase 227 L2)
+
+The ODCS normalizer recursively descends into `properties[]` (or
+`fields[]` keyword for ≤ v3.0.x) of object-typed fields and `items`
+of array-typed fields, producing a tree of `HubContractField` entries
+up to `CONTRACTS_MAX_NESTING_DEPTH` levels (default 20). The bound is
+enforced **before** Python's recursion limit is reached. Beyond the
+bound, normalization fails with
+`ValidationError(code="SCHEMA_TOO_DEEP")`. The walker is shared
+across every ODCS version normalizer (v2.2.2, v3.0.0,
+v3.0.0-preview, v3.0.1, v3.0.2, v3.1.0).
+
+### ETag / If-Match Optimistic Concurrency (Phase 227 L4.3)
+
+`PATCH /api/v1/contracts/{id}/` supports RFC 7232 weak ETag
+validators. GET responses include an `ETag` header derived from
+`Contract.updated_at + version + id`; PATCH validates `If-Match` and
+returns HTTP 412 `PRECONDITION_FAILED` on mismatch. The 412 response
+body and `ETag` header carry the server's current value so clients
+can reconcile in one round-trip. The Schema editor surfaces a
+conflict dialog ("Refresh", "Discard my changes", "Open in new tab")
+on 412 — no silent overwrites.
+
 ### ODPS Creation Flow (Product-First)
 
 ```

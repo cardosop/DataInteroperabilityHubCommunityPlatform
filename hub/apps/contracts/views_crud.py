@@ -11,7 +11,7 @@ from typing import Optional
 
 from django.core.exceptions import FieldError
 from django.db import transaction
-from drf_spectacular.utils import extend_schema, extend_schema_view
+from drf_spectacular.utils import OpenApiResponse, extend_schema, extend_schema_view
 from rest_framework import status
 from rest_framework.decorators import action
 from rest_framework.exceptions import PermissionDenied
@@ -483,18 +483,55 @@ class ContractCRUDMixin:
             # Optimize queryset for pagination
             queryset = self.filter_queryset(self.get_queryset())
 
-            # Phase 227 Wave 1 (227.L5.8) — ``?filter=structureless`` support.
-            # The TENANT_ADMIN ``ContractHealthPage`` calls this endpoint
-            # with ``filter=structureless`` to triage contracts whose
-            # normalised payload carries no resolvable models or schema
-            # fields. Same coarse + Python-refined approach the Wave 0
-            # diagnosis command uses (`structureless_filter_q` is a
-            # cheap Q expression for the bulk of cases; `is_structureless`
-            # then refines per-row to catch the
-            # ``models=[{"fields":[]}]`` corner-case that the ORM cannot
-            # express directly).
+            # Phase 227 Wave 1 (227.L5.8 + 227.L9.3) —
+            # ``?filter=structureless`` support, gated to TENANT_ADMIN.
+            # The frontend ``ContractHealthPage`` (admin triage view)
+            # calls this endpoint with ``filter=structureless`` to list
+            # contracts whose normalised payload carries no resolvable
+            # models or schema fields. Spec language (227.L9.3): "GET
+            # /api/v1/contracts/?filter=structureless (TENANT_ADMIN-only)".
+            #
+            # Permission rationale: structureless contracts are an
+            # operational/compliance concern (Wave 0 audit cohort).
+            # Exposing the list to non-admins would leak information
+            # about other users' incomplete contracts and clutter the
+            # ``DATA_VIEWER`` role's normal browse view. Platform
+            # admins bypass the gate via the standard ``is_platform_admin``
+            # short-circuit baked into ``user.has_role``.
+            #
+            # Same coarse + Python-refined approach the Wave 0
+            # diagnosis command uses — ``is_structureless`` refines
+            # per-row to catch the ``models=[{"fields":[]}]`` corner-
+            # case that the ORM cannot express directly.
             filter_kind = (request.query_params.get("filter") or "").strip().lower()
             if filter_kind == "structureless":
+                user = getattr(request, "user", None)
+                if user is None or not getattr(user, "is_authenticated", False):
+                    return Response(
+                        {
+                            "error": (
+                                "Authentication required to access "
+                                "?filter=structureless"
+                            ),
+                            "code": "AUTHENTICATION_REQUIRED",
+                        },
+                        status=status.HTTP_401_UNAUTHORIZED,
+                    )
+                if not user.has_role("TENANT_ADMIN"):
+                    return Response(
+                        {
+                            "error": (
+                                "?filter=structureless requires "
+                                "TENANT_ADMIN role"
+                            ),
+                            "code": "PERMISSION_DENIED",
+                            "details": {
+                                "required_roles": ["TENANT_ADMIN"],
+                            },
+                        },
+                        status=status.HTTP_403_FORBIDDEN,
+                    )
+
                 from hub.apps.contracts.structureless import (
                     is_structureless,
                 )
@@ -680,6 +717,61 @@ class ContractCRUDMixin:
         methods=["get"],
         url_path="schema/json-schema",
         url_name="schema-json-schema",
+        # Phase 227 Wave 1 (227.L9.2) — IANA-registered media type for
+        # JSON Schema documents. Setting this on the action's
+        # ``renderer_classes`` is the canonical DRF pattern; setting
+        # ``response["Content-Type"]`` directly is overwritten when
+        # ``Response.render()`` finalises the response from
+        # ``self.accepted_renderer.media_type``. See:
+        # https://www.django-rest-framework.org/api-guide/renderers/#custom-renderers
+        renderer_classes=[
+            __import__(
+                "hub.apps.contracts.renderers_schema_json",
+                fromlist=["JSONSchemaRenderer"],
+            ).JSONSchemaRenderer,
+        ],
+        # Phase 227 Wave 1 (227.L9.2 audit follow-up) — RFC 6839
+        # +json suffix-aware negotiation so clients sending
+        # ``Accept: application/json`` (the most common default for
+        # JS fetch / curl) match ``application/schema+json`` instead
+        # of getting HTTP 406 Not Acceptable. The server upgrades
+        # the response type per RFC 7231 §3.1.1.5; the
+        # ``Content-Type`` header still carries the IANA-typed
+        # ``application/schema+json`` for clients that branch on it.
+        content_negotiation_class=__import__(
+            "hub.apps.contracts.renderers_schema_json",
+            fromlist=["StructuredSuffixContentNegotiation"],
+        ).StructuredSuffixContentNegotiation,
+    )
+    @extend_schema(
+        # Phase 227 Wave 1 (227.L9.4 audit follow-up) — drf-spectacular
+        # does NOT auto-discover error codes from runtime
+        # ``ValidationError`` raises. Annotate explicitly so the
+        # OpenAPI snapshot carries the contract a typed client
+        # (frontend, ajv, ops scripts) needs.
+        tags=["Contracts"],
+        summary="Get HubContract JSON Schema",
+        description=(
+            "Returns the canonical JSON Schema describing a valid "
+            "HubContract payload. The frontend Schema editor "
+            "(227.L5.5) fetches this at load to drive client-side "
+            "validation. Response media type: "
+            "``application/schema+json`` (IANA-registered)."
+        ),
+        responses={
+            200: OpenApiResponse(
+                description=(
+                    "JSON Schema document with ``{spec, schema}`` "
+                    "wrapper. Content-Type: application/schema+json."
+                ),
+            ),
+            400: OpenApiResponse(
+                description=(
+                    "Invalid ``spec`` query parameter. ``code`` will "
+                    "be ``INVALID_SPEC``."
+                ),
+            ),
+        },
     )
     def schema_json_schema(self, request):
         """Return the JSON Schema describing valid HubContract payloads.
@@ -735,4 +827,10 @@ class ContractCRUDMixin:
                 },
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
+        # Phase 227 Wave 1 (227.L9.2) — content-type is
+        # ``application/schema+json`` per IANA, set via the
+        # ``JSONSchemaRenderer`` configured in ``renderer_classes`` on
+        # the @action decorator above. The body shape stays
+        # ``{spec, schema}`` so the existing 227.L5.5 frontend reader
+        # doesn't change.
         return Response({"spec": spec, "schema": json_schema})

@@ -236,11 +236,36 @@ from .views_validation import ContractValidationMixin
 
         If `original_spec_type` is not provided, it will be auto-detected.
         Supported spec types: ODCS (Open Data Contract Standard) and ODPS (Open Data Product Standard).
+
+        **Phase 227 Wave 1 (227.L9.4) — Documented error codes:**
+
+        - `STRUCTURELESS_CONTRACT` (400) — payload has no resolvable
+          ``models[*].fields[]`` AND no ``schema.fields[]``. The
+          ``error.details.subcode`` carries one of:
+          `STRUCTURELESS_ODPS_NO_PORTS`,
+          `STRUCTURELESS_ODCS_NO_SCHEMA`,
+          `STRUCTURELESS_GENERIC`,
+          `STRUCTURELESS_CYCLIC_PORTS`.
+        - `VALIDATION_ERROR` (400) — Pydantic validation failure
+          (missing `info.name`, malformed JSON, etc.).
+        - `NORMALIZATION_FAILED` (400) — engine could not normalise
+          the document.
+        - `SCHEMA_TOO_DEEP` (400) — nested-properties walker hit the
+          configured `CONTRACTS_MAX_NESTING_DEPTH` (default 20).
+        - `INVALID_YAML` (400) — YAML deserialisation rejected an
+          unsafe construct (e.g., `!!python/object/apply:os.system`).
         """,
         request=ContractCreateSerializer,
         responses={
             201: ContractSerializer,
-            400: OpenApiResponse(description="Validation error or normalization failed"),
+            400: OpenApiResponse(
+                description=(
+                    "Validation error. ``code`` is one of: "
+                    "``STRUCTURELESS_CONTRACT``, ``VALIDATION_ERROR``, "
+                    "``NORMALIZATION_FAILED``, ``SCHEMA_TOO_DEEP``, "
+                    "``INVALID_YAML``."
+                )
+            ),
         },
         tags=["Contracts"],
     ),
@@ -251,11 +276,32 @@ from .views_validation import ContractValidationMixin
 
         If `original_raw` is updated, the contract will be re-normalized.
         All sections will be re-extracted and stored in `hub_contract_json`.
+
+        **Phase 227 Wave 1 (227.L9.4) — Documented error codes:**
+
+        - `STRUCTURELESS_CONTRACT` (400) — re-normalisation produced a
+          structureless payload; same subcode taxonomy as `create`.
+        - `VALIDATION_ERROR` (400) — Pydantic validation failure.
+        - `PRECONDITION_FAILED` (412) — `If-Match` header carries a
+          stale ETag; the response body and `ETag` header carry the
+          server's current value so the client can reconcile.
         """,
         request=ContractUpdateSerializer,
         responses={
             200: ContractSerializer,
-            400: OpenApiResponse(description="Validation error"),
+            400: OpenApiResponse(
+                description=(
+                    "Validation error. ``code`` is one of: "
+                    "``STRUCTURELESS_CONTRACT``, ``VALIDATION_ERROR``."
+                )
+            ),
+            412: OpenApiResponse(
+                description=(
+                    "Precondition failed: ``If-Match`` ETag mismatch. "
+                    "``code`` is ``PRECONDITION_FAILED``; the response "
+                    "carries the server's current ETag for reconciliation."
+                )
+            ),
         },
         tags=["Contracts"],
     ),

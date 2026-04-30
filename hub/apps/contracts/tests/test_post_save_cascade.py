@@ -126,7 +126,7 @@ class PostSaveCascadeTest(TestCase):
         """
         from hub.apps.contracts.cache_invalidation import run_post_save_cascade
         from hub.apps.contracts.caching import (
-            cache_lineage_result,
+            cache_lineage,
             get_cached_lineage,
         )
 
@@ -138,7 +138,10 @@ class PostSaveCascadeTest(TestCase):
         # invalidation. The actual traverser may or may not return B
         # as a dependent (depends on hub_contract_json contents); the
         # invariant we pin is "if it does, the cache is flushed".
-        cache_lineage_result(str(contract_b.id), {"sentinel": "before-cascade"})
+        # NOTE: the helper is ``cache_lineage(contract_id, data, ...)``
+        # — the previous import ``cache_lineage_result`` was a typo
+        # that's never existed in ``hub.apps.contracts.caching``.
+        cache_lineage(str(contract_b.id), {"sentinel": "before-cascade"})
         before = get_cached_lineage(str(contract_b.id))
         assert before is not None
 

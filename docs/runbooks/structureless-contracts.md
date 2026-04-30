@@ -246,6 +246,123 @@ Reminders use the same template; bump the `deadline` parameter to the tenant's a
 
 ---
 
+## Wave 3 — Self-heal pass (post 227.L6 ship)
+
+Once Phase 227.L1 (ODPS outputPorts walker) and L2 (ODCS recursive walker) ship, the `pure_odps_with_outputports` cohort can be self-healed in bulk via the extended `renormalize_contracts --apply` command.
+
+### Resumable, checkpointed self-heal
+
+```bash
+python /app/hub/manage.py renormalize_contracts \
+    --spec-version=3.1.0 \
+    --filter=structureless \
+    --apply \
+    --tenant-id=<TENANT_UUID> \
+    --checkpoint-table=wave3-self-heal-${TENANT_UUID}-$(date +%F) \
+    --silent-events \
+    --output=json \
+    | tee /tmp/self-heal-${TENANT_UUID}-$(date +%F).jsonl
+```
+
+| Flag | Purpose |
+| ---- | ------- |
+| `--apply` | Switches from diagnosis to action — feeds each candidate back through `NormalizationService.normalize_contract`. |
+| `--checkpoint-table=<name>` | Per-contract progress in `MigrationCheckpoint` rows partitioned by name. Re-runs with the same name skip already-done contracts (resume after a kill). |
+| `--silent-events` | Suppresses per-contract webhook events; emits a single `CONTRACT_BATCH_RENORMALIZED` audit event with summary counts at the end. Use for runs touching >100 contracts. |
+| `--output=json` | One JSONL row per processed contract on stdout: `{contract_id, result: healed/residual/failed, asset_id, run_id}`. |
+| `--apply-asset-revert` | **Wave 5 only** — see §"Wave 5 — Asset auto-revert" below. |
+
+The summary line at the end of stdout:
+
+```text
+# {"run_id": "renorm-...", "total_candidates": N, "processed": N,
+#   "healed": <count>, "residual": <still_structureless>,
+#   "failed": <raised>, "reverted_asset_ids": [...]}
+```
+
+**Resume after kill** — re-running with the same `--checkpoint-table` name skips contracts already marked `done` or `failed`. To force a retry of a `failed` row, delete the checkpoint:
+
+```python
+from hub.apps.contracts.models import MigrationCheckpoint
+MigrationCheckpoint.objects.filter(
+    migration_name="wave3-self-heal-...",
+    contract_id="<UUID>",
+).delete()
+```
+
+### Concurrent runners
+
+The command uses `Contract.objects.select_for_update(skip_locked=True)` per batch — concurrent runners (e.g., parallel RQ workers with the same checkpoint name) silently skip locked rows and pick the next batch. Safe to run multiple workers simultaneously.
+
+### Daily backlog gauge
+
+```bash
+python /app/hub/manage.py renormalize_contracts \
+    --spec-version=3.1.0 \
+    --filter=structureless \
+    --dry-run \
+    --output=count \
+    --tenant-id=<TENANT_UUID>
+```
+
+Emits a single integer to stdout (the count of structureless contracts) — pipe to a Prometheus pushgateway script that updates the `contract_structureless_backlog{tenant_id}` gauge. The gauge drives the Grafana dashboard's backlog stat panel.
+
+---
+
+## Wave 5 — Asset auto-revert
+
+For tenants who fail to remediate by T+44, demote ACTIVE assets backed by still-structureless contracts to DRAFT. Each demotion emits `ASSET_AUTO_REVERTED_STRUCTURELESS` audit events recording the prior status.
+
+```bash
+python /app/hub/manage.py renormalize_contracts \
+    --spec-version=3.1.0 \
+    --filter=structureless \
+    --apply --apply-asset-revert \
+    --tenant-id=<TENANT_UUID> \
+    --checkpoint-table=wave5-auto-revert-${TENANT_UUID}-$(date +%F) \
+    --silent-events \
+    --output=json
+```
+
+`--apply-asset-revert` implies `--apply`. Only assets whose currently-active contract REMAINS structureless after re-normalisation are demoted; self-heal successes pass through untouched.
+
+### Rollback (if Wave 5 was applied prematurely)
+
+The L6.4 reverse migration restores assets from the audit-event log:
+
+```bash
+python /app/hub/manage.py migrate \
+    contracts 0024_unrevert_structureless_assets
+```
+
+This reads each `ASSET_AUTO_REVERTED_STRUCTURELESS` event and restores `asset.status = previous_status`. Idempotent — re-running on already-restored assets is a no-op. Emits a paired `ASSET_RESTORED_STRUCTURELESS` event for traceability.
+
+To re-apply the demotion (forward migration → reverse → forward identity round-trip):
+
+```bash
+python /app/hub/manage.py migrate contracts 0023_migration_checkpoint
+python /app/hub/manage.py migrate contracts 0024_unrevert_structureless_assets
+```
+
+---
+
+## Telemetry (Phase 227 L7)
+
+| Signal | Source | What it tells you |
+| ------ | ------ | ----------------- |
+| `contract_validation_failed_total{code,subcode,spec_type}` | Prometheus | Live rejection rate at the API edge. Spike = customer learned about the gate the hard way; engage support. |
+| `contract_structureless_total{spec_type,source}` | Prometheus | Where rejections originate: `creation` (POST), `update` (PATCH), `migration` (`--apply` pass). |
+| `contract_structureless_backlog{tenant_id}` | Prometheus (daily cron) | Per-tenant outstanding count. Should drain to 0 by T+30. |
+| `contract_normalization_models_count{spec_type}` | Prometheus | Histogram of `len(models)` per successful normalisation — distribution analysis. |
+| `contracts_renormalize_batch_duration_seconds{spec_type,outcome}` | Prometheus | `--apply` batch durations + outcome (`healed/residual/mixed/failed`). |
+| `audit_events_total{action="ASSET_AUTO_REVERTED_STRUCTURELESS"}` | Prometheus | Wave 5 demotion rate. Should be 0 in steady state. |
+| `CONTRACT_STRUCTURELESS_REJECTED` audit events | `audit_events` table | Per-rejection record with subcode + spec_type. Use for compliance reporting. |
+| `structural_floor_violation` structlog event | Loki/stdout | WARN-level structured log on every rejection. Carries `contract_id`, `spec_type`, `tenant_id`, `subcode` per spec. |
+
+The **Phase 227 — Structureless Contract Rollout** Grafana dashboard ([`monitoring/grafana/dashboards/structureless-contract-rollout.json`](../../monitoring/grafana/dashboards/structureless-contract-rollout.json)) surfaces all of the above with `tenant_id` and `spec_type` template filters.
+
+---
+
 ## Wave-by-wave timeline (Phase 227 doctrine)
 
 | Wave | Action | Timing |
