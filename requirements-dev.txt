@@ -32,6 +32,14 @@ factory-boy>=3.3.0
 # nested-properties walker (test_odcs_nested_properties.py). The test
 # uses pytest.importorskip so missing dep skips gracefully.
 hypothesis>=6.100.0
+
+# Phase 227 Wave 1 (227.L8.6 + 227.L8.7) — performance benchmark for
+# the contract normalisation hot path. Pinned SLOs (p99):
+#   * 1000-field ODCS: < 500 ms
+#   * 100-port ODPS (10 fields/port): < 1 s
+#   * 50000-field analytics contract: < 5 s, < 500 MB resident
+# CI wiring fails on >20% regression vs. saved baseline.
+pytest-benchmark>=4.0.0
 pytest-timeout>=2.2.0
 faker>=20.0.0
 freezegun>=1.4.0

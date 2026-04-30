@@ -68,6 +68,80 @@ class ContractService(BaseService, ContractEventPublisher, ODPSEventPublisher):
         ContractEventPublisher.__init__(self)
         ODPSEventPublisher.__init__(self)
 
+    def _emit_validation_failed_observability(
+        self,
+        *,
+        validation_errors: list,
+        spec_type: Optional[str],
+        spec_version: Optional[str],
+        contract_id: Optional[str],
+        tenant_id: Optional[str],
+        source: str,
+    ) -> None:
+        """Phase 227 Wave 1 (227.L7.1, L7.3, L7.4) — emit metric + log
+        + audit event for a CONTRACT_VALIDATION_FAILED Layer-3 raise.
+
+        Distinct from the structural-floor path
+        (``_emit_floor_violation_observability`` in ``structural_floor.py``)
+        because this fires for non-structural validation failures
+        (missing ``info.name``, malformed JSON, etc.) — those have
+        ``code="VALIDATION_ERROR"`` rather than
+        ``code="STRUCTURELESS_CONTRACT"``. Both contribute to the
+        ``contract_validation_failed_total`` counter so the dashboard
+        shows the union.
+        """
+        # L7.1 — metric.
+        try:
+            from hub.apps.contracts.normalization_metrics import (
+                record_validation_failed,
+            )
+            record_validation_failed(
+                code="VALIDATION_ERROR",
+                subcode=None,
+                spec_type=spec_type,
+            )
+        except Exception:
+            pass
+        # L7.4 — structured log.
+        try:
+            logger.warning(
+                "contract_validation_failed",
+                contract_id=str(contract_id) if contract_id else None,
+                spec_type=spec_type,
+                spec_version=spec_version,
+                tenant_id=str(tenant_id) if tenant_id else None,
+                error_count=len(validation_errors or []),
+                source=source,
+            )
+        except Exception:
+            pass
+        # L7.3 — audit event.
+        try:
+            from hub.apps.audit.utils import create_audit_event
+            from hub.apps.tenants.models import Tenant
+
+            tenant_obj = None
+            if tenant_id:
+                tenant_obj = Tenant.objects.filter(id=tenant_id).first()
+            create_audit_event(
+                resource_type="CONTRACT",
+                action="CONTRACT_VALIDATION_FAILED",
+                actor_user=None,
+                tenant=tenant_obj,
+                resource_id=str(contract_id) if contract_id else None,
+                result="FAILURE",
+                details={
+                    "code": "VALIDATION_ERROR",
+                    "spec_type": spec_type,
+                    "spec_version": spec_version,
+                    "error_count": len(validation_errors or []),
+                    "errors_truncated": (validation_errors or [])[:10],
+                    "source": source,
+                },
+            )
+        except Exception:
+            pass
+
     def get_contract(self, contract_id: str, tenant_id: Optional[str] = None) -> Contract:
         """
         Get contract by ID.
@@ -360,6 +434,8 @@ class ContractService(BaseService, ContractEventPublisher, ODPSEventPublisher):
                 spec_version=detected_spec_version,
                 warnings=norm_warnings,
                 contract_id=None,  # Not yet persisted on create.
+                tenant_id=effective_tenant_id,
+                source="creation",
             )
 
             # Check for non-structural normalization failures (missing
@@ -383,6 +459,14 @@ class ContractService(BaseService, ContractEventPublisher, ODPSEventPublisher):
             if hub_contract:
                 is_valid, validation_errors = validate_hubcontract_schema(hub_contract)
                 if not is_valid:
+                    self._emit_validation_failed_observability(
+                        validation_errors=validation_errors,
+                        spec_type=detected_spec_type or effective_spec_type,
+                        spec_version=detected_spec_version,
+                        contract_id=None,
+                        tenant_id=effective_tenant_id,
+                        source="creation",
+                    )
                     raise ValidationError(
                         message="Contract validation failed",
                         code="VALIDATION_ERROR",
@@ -667,6 +751,8 @@ class ContractService(BaseService, ContractEventPublisher, ODPSEventPublisher):
                     or contract.original_spec_version,
                     warnings=norm_warnings,
                     contract_id=str(contract.id),
+                    tenant_id=effective_tenant_id,
+                    source="update",
                 )
 
                 # Non-structural validation failures (missing required
@@ -674,6 +760,14 @@ class ContractService(BaseService, ContractEventPublisher, ODPSEventPublisher):
                 if hub_contract:
                     is_valid, validation_errors = validate_hubcontract_schema(hub_contract)
                     if not is_valid:
+                        self._emit_validation_failed_observability(
+                            validation_errors=validation_errors,
+                            spec_type=detected_spec_type or contract.original_spec_type,
+                            spec_version=detected_spec_version,
+                            contract_id=str(contract.id),
+                            tenant_id=effective_tenant_id,
+                            source="update",
+                        )
                         raise ValidationError(
                             message="Contract validation failed",
                             code="VALIDATION_ERROR",
@@ -745,6 +839,22 @@ class ContractService(BaseService, ContractEventPublisher, ODPSEventPublisher):
                 contract.status = status
 
             contract.save()
+
+            # Phase 227 Wave 1 (227.L8.5) — post-save cache-invalidation
+            # cascade. Order: save (above) → contract cache → lineage
+            # cache (this contract) → dependents' lineage caches →
+            # search re-index → semantic/AI re-ingest (gated) →
+            # rate-limited contract.normalized event. Failures are
+            # logged but never raised — the user's PATCH already
+            # succeeded; we shouldn't 500 them on cache-flush hiccups.
+            from hub.apps.contracts.cache_invalidation import run_post_save_cascade
+            run_side_effect(
+                lambda: run_post_save_cascade(
+                    contract,
+                    tenant_id=effective_tenant_id,
+                    user_id=user_id,
+                )
+            )
 
             # Log audit event for contract update
             from hub.apps.audit.utils import create_audit_event

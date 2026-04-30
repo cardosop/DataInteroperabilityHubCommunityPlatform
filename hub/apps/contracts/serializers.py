@@ -789,10 +789,63 @@ class ContractSerializer(serializers.ModelSerializer):
         return models if isinstance(models, list) else []
 
 
+# Phase 227 Wave 1 (227.L8.1) — payload-size cap.
+#
+# The serializer caps ``original_raw`` at 2 MB. Anything over that is
+# rejected with HTTP 413 ``PAYLOAD_TOO_LARGE`` carrying ``limit_bytes``
+# + ``size_bytes`` in ``details`` so frontends can render an actionable
+# "your payload is N KB; the limit is M KB" hint.
+#
+# **Aligned with Helm ingress** ``nginx.ingress.kubernetes.io/proxy-body-size``
+# (see helm/values.yaml: 100m). The serializer cap fires first and emits
+# the structured error; the nginx ceiling is the defence-in-depth layer
+# that prevents the gunicorn worker from buffering pathological multi-MB
+# bodies into memory before the serializer sees them.
+#
+# 2 MB chosen as a comfortable headroom over the largest realistic
+# contract observed in the wild (~1.2 MB ODCS with 5000 fields). Raise
+# this only after re-running the L8.6 perf benchmark — the upper bound
+# for "p99 < 5 s, < 500 MB resident" is currently 50 000 fields.
+PAYLOAD_LIMIT_BYTES = 2_000_000
+
+
+class _RawCharField(serializers.CharField):
+    """``CharField`` whose ``max_length`` violation surfaces a typed
+    ``PAYLOAD_TOO_LARGE`` error with structured details, instead of
+    DRF's default ``"Ensure this field has no more than N characters."``
+    free-text message. The view layer routes this to HTTP 413.
+    """
+
+    def run_validation(self, data: Any = serializers.empty) -> Any:  # type: ignore[override]
+        # Compute byte length (UTF-8) BEFORE invoking the parent so we
+        # can surface the actual size in the error envelope.
+        if isinstance(data, str):
+            size_bytes = len(data.encode("utf-8"))
+            if size_bytes > PAYLOAD_LIMIT_BYTES:
+                raise serializers.ValidationError(
+                    detail={
+                        "code": "PAYLOAD_TOO_LARGE",
+                        "message": (
+                            f"Contract content exceeds {PAYLOAD_LIMIT_BYTES} "
+                            f"bytes ({size_bytes} bytes)."
+                        ),
+                        "limit_bytes": PAYLOAD_LIMIT_BYTES,
+                        "size_bytes": size_bytes,
+                    },
+                )
+        # ``run_validation`` accepts the ``empty`` sentinel as default
+        # but DRF stubs don't model that as ``Any``; tell pyright we
+        # know what we're doing.
+        return super().run_validation(data)  # type: ignore[arg-type]
+
+
 class ContractCreateSerializer(serializers.Serializer):
     """Serializer for contract creation"""
     asset_id = serializers.UUIDField(required=False, allow_null=True)
-    original_raw = serializers.CharField(help_text="Original contract content (JSON or YAML)")
+    original_raw = _RawCharField(
+        max_length=PAYLOAD_LIMIT_BYTES,
+        help_text="Original contract content (JSON or YAML). Max 2 MB.",
+    )
     original_format = serializers.ChoiceField(choices=OriginalFormat.choices)
     original_spec_type = serializers.ChoiceField(
         choices=OriginalSpecType.choices,
@@ -841,7 +894,12 @@ class ContractValidateDraftResponseSerializer(serializers.Serializer):
 
 class ContractUpdateSerializer(serializers.Serializer):
     """Serializer for contract update"""
-    original_raw = serializers.CharField(required=False)
+    # Phase 227 Wave 1 (227.L8.1) — same 2 MB cap as create.
+    original_raw = _RawCharField(
+        required=False,
+        max_length=PAYLOAD_LIMIT_BYTES,
+        help_text="Updated contract content (JSON or YAML). Max 2 MB.",
+    )
     original_format = serializers.ChoiceField(choices=OriginalFormat.choices, required=False)
     original_spec_type = serializers.ChoiceField(
         choices=OriginalSpecType.choices,
