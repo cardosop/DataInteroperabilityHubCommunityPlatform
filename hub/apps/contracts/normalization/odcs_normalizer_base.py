@@ -516,11 +516,23 @@ class ODCSNormalizerBase(ABC):
             return hub_contract, status, errors, warnings
 
         except Exception as e:
-            errors.append(f"Normalization failed: {str(e)}")
+            # Phase 227 Wave 1 (227.L2.1) — preserve typed-error CODE so
+            # downstream API consumers can detect SCHEMA_TOO_DEEP and
+            # similar typed failures programmatically. Django's
+            # ``ValidationError`` carries ``code`` on each message; we
+            # surface it as ``[CODE] message`` in the errors list. For
+            # plain exceptions the prefix is omitted (no code available).
+            error_code = getattr(e, "code", None)
+            error_message = str(e)
+            if error_code:
+                errors.append(f"[{error_code}] Normalization failed: {error_message}")
+            else:
+                errors.append(f"Normalization failed: {error_message}")
             logger.error(
                 "odcs_normalization_error",
-                error=str(e),
+                error=error_message,
                 error_type=type(e).__name__,
+                error_code=error_code,
                 message="Error during ODCS normalization"
             )
             return None, NormalizationStatus.NORMALIZATION_FAILED, errors, warnings

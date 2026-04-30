@@ -168,6 +168,85 @@ class TestThreeLevelNestedObject:
         # Walk the chain: customer → address → street.
         assert _walk_first_chain(fields) == ["customer", "address", "street"]
 
+    def test_nested_field_metadata_preserved(self):
+        """Phase 227 L2 — every level of nesting must preserve the field's
+        own metadata (description, format, pattern, semantic_type, enum,
+        min_length, max_length). Pre-Wave-1 these were lost because the
+        walker didn't recurse at all; this test pins that the recursive
+        walker copies metadata at EACH depth, not only the root.
+        """
+        schema = {
+            "fields": [
+                {
+                    "name": "customer",
+                    "type": "object",
+                    "description": "Customer profile",
+                    "semanticType": "USER",
+                    "properties": {
+                        "address": {
+                            "type": "object",
+                            "description": "Mailing address",
+                            "properties": {
+                                "street": {
+                                    "type": "string",
+                                    "format": "address-line",
+                                    "description": "Street + house number",
+                                    "pattern": r"^[A-Za-z0-9 ]+$",
+                                    "minLength": 5,
+                                    "maxLength": 120,
+                                    "enum": None,
+                                },
+                            },
+                        },
+                    },
+                }
+            ]
+        }
+        fields = self._normalize(schema)
+        customer = fields[0]
+        assert customer["description"] == "Customer profile"
+        # ``semanticType`` aliases to ``semantic_type``.
+        assert customer["semantic_type"] == "USER"
+        address = customer["fields"][0]
+        assert address["description"] == "Mailing address"
+        street = address["fields"][0]
+        assert street["description"] == "Street + house number"
+        assert street["format"] == "address-line"
+        assert street["pattern"] == r"^[A-Za-z0-9 ]+$"
+        # ``minLength``/``maxLength`` aliases to ``min_length``/``max_length``.
+        assert street["min_length"] == 5
+        assert street["max_length"] == 120
+
+    def test_both_properties_and_fields_present_properties_wins(self):
+        """When a field declares BOTH ``properties`` (post-v3.0.x dict)
+        and ``fields`` (≤v3.0.x list), the post-v3.0.x form wins.
+
+        This test pins the precedence rule documented in
+        ``_extract_nested_object_children`` so customers who upgrade
+        their generators (and accidentally leave the legacy ``fields``
+        in place) get the new shape, not a confusing merge.
+        """
+        schema = {
+            "fields": [
+                {
+                    "name": "addr",
+                    "type": "object",
+                    "properties": {
+                        "from_properties": {"type": "string"},
+                    },
+                    "fields": [
+                        {"name": "from_fields", "type": "string"},
+                    ],
+                }
+            ]
+        }
+        fields = self._normalize(schema)
+        addr = fields[0]
+        sub_names = sorted(f["name"] for f in addr.get("fields", []))
+        assert sub_names == ["from_properties"], (
+            f"`properties` must win when both keywords present; got {sub_names!r}"
+        )
+
 
 class TestArrayOfObjects:
     """``orders[].items[].sku`` survives normalisation via ``items``."""
@@ -211,6 +290,38 @@ class TestArrayOfObjects:
         assert sku_holder["data_type"] == "object"
         sku = next(f for f in sku_holder["fields"] if f["name"] == "sku")
         assert sku["data_type"] == "string"
+
+    def test_deep_array_of_array_of_array_of_strings(self):
+        """Pure array-of-arrays nesting (no objects in between).
+
+        The walker must descend through every ``items`` level even when
+        no ``properties``/``fields`` is involved — confirms the array
+        recursion path is independent of the object recursion path.
+        """
+        schema = {
+            "fields": [
+                {
+                    "name": "matrix",
+                    "type": "array",
+                    "items": {
+                        "type": "array",
+                        "items": {
+                            "type": "array",
+                            "items": {"type": "string"},
+                        },
+                    },
+                }
+            ]
+        }
+        fields = self._normalize(schema)
+        matrix = fields[0]
+        l1 = matrix["items"]
+        l2 = l1["items"]
+        l3 = l2["items"]
+        assert matrix["data_type"] == "array"
+        assert l1["data_type"] == "array"
+        assert l2["data_type"] == "array"
+        assert l3["data_type"] == "string"
 
 
 # ---------------------------------------------------------------------------
@@ -276,6 +387,102 @@ class TestDepthBoundary:
         schema = _build_chain_via_properties(depth=200)
         with pytest.raises(ValidationError):
             self._normalize(schema)
+
+
+# ---------------------------------------------------------------------------
+# Settings override (Phase 227 L2.3)
+# ---------------------------------------------------------------------------
+
+
+class TestMaxNestingDepthSettingOverride:
+    """``CONTRACTS_MAX_NESTING_DEPTH`` must actually drive the walker.
+
+    A static depth bound that ignores the setting would be a silent bug:
+    ops would think they could lift the limit per-tenant, but the walker
+    would keep enforcing 20. These tests pin the dynamic read.
+    """
+
+    def test_lower_setting_rejects_normally_acceptable_schema(self):
+        """A depth-3 schema is fine at default 20 but must be rejected
+        when MAX_NESTING_DEPTH is overridden to 2.
+        """
+        from django.core.exceptions import ValidationError
+        from django.test import override_settings
+
+        from hub.apps.contracts.normalization_engine import _map_fields
+
+        schema = _build_chain_via_properties(depth=3)
+        with override_settings(CONTRACTS_MAX_NESTING_DEPTH=2):
+            with pytest.raises(ValidationError) as exc:
+                _map_fields(schema, [], [], [])
+        assert exc.value.code == "SCHEMA_TOO_DEEP"
+        assert "limit 2" in str(exc.value), (
+            f"Override-bound message should reference the new limit; "
+            f"got {str(exc.value)!r}"
+        )
+
+    def test_higher_setting_accepts_schema_above_default(self):
+        """A depth-25 schema is rejected at default 20 but must be
+        accepted when MAX_NESTING_DEPTH is overridden to 50.
+        """
+        from django.test import override_settings
+
+        from hub.apps.contracts.normalization_engine import _map_fields
+
+        schema = _build_chain_via_properties(depth=25)
+        with override_settings(CONTRACTS_MAX_NESTING_DEPTH=50):
+            out = _map_fields(schema, [], [], [])
+        # 25 wrappers + 1 leaf = chain of 26 names.
+        assert len(_walk_first_chain(out)) == 26
+
+
+# ---------------------------------------------------------------------------
+# Engine error-code surfacing (Phase 227 L2.1 + audit)
+# ---------------------------------------------------------------------------
+
+
+class TestEngineSurfacesSchemaTooDeepCode:
+    """The full ``normalize()`` pipeline catches exceptions and converts
+    them into the ``errors`` list. The walker raises a typed
+    ``ValidationError(code="SCHEMA_TOO_DEEP")``, so the API consumer
+    must receive the code in a parseable form (not just a free-form
+    message). Otherwise programmatic detection of "too deep" failures
+    is impossible — ops would have to substring-match an error string,
+    which is fragile.
+
+    This test pins the engine's preservation of ``[CODE]`` prefix in
+    the error list when a typed Django ValidationError propagates.
+    """
+
+    def test_normalize_surfaces_schema_too_deep_code_in_errors(self):
+        from hub.apps.contracts.normalization.odcs_normalizer_v3_1_0 import (
+            ODCSNormalizerV3_1_0,
+        )
+
+        # Build an over-deep nested object schema wrapped in a real
+        # ODCS contract envelope so the version normaliser actually
+        # processes it.
+        nested = _build_chain_via_properties(depth=30)
+        contract_data = {
+            "kind": "DataContract",
+            "apiVersion": "v3.1.0",
+            "id": "deep",
+            "name": "deep test",
+            "version": "1.0.0",
+            "status": "active",
+            "schema": [{"name": "deepies", "fields": nested["fields"]}],
+        }
+        result = ODCSNormalizerV3_1_0().normalize(
+            contract_data, spec_version="3.1.0"
+        )
+        assert result.hub_contract is None, (
+            "Over-deep schema should fail normalisation; got hub_contract"
+        )
+        assert any(
+            "SCHEMA_TOO_DEEP" in err for err in result.errors
+        ), (
+            f"Errors must surface SCHEMA_TOO_DEEP code; got {result.errors!r}"
+        )
 
 
 # ---------------------------------------------------------------------------
