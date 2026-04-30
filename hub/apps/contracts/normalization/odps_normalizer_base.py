@@ -1178,26 +1178,21 @@ class ODPSNormalizerBase(ODPSNormalizer, ABC):
                     if isinstance(contract_schema, dict):
                         fields = contract_schema.get("fields")
                         if isinstance(fields, list) and fields:
-                            # Convert ODCS field format (type) to HubContract format (data_type)
-                            # This is a minimal conversion - full normalization happens in _extract_contract
-                            converted_fields = []
-                            for field in fields:
-                                if isinstance(field, dict):
-                                    hub_field = {
-                                        "name": field.get("name", ""),
-                                        "data_type": field.get("type", "string"),
-                                        "nullable": field.get("nullable", True),
-                                    }
-                                    # Copy other properties if present
-                                    for prop in ["description", "format", "pattern", "enum", "default"]:
-                                        if prop in field:
-                                            hub_field[prop] = field[prop]
-                                    # Handle minLength/maxLength -> min_length/max_length
-                                    if "minLength" in field:
-                                        hub_field["min_length"] = field["minLength"]
-                                    if "maxLength" in field:
-                                        hub_field["max_length"] = field["maxLength"]
-                                    converted_fields.append(hub_field)
+                            # Phase 227 Wave 1 (227.L2.4) — delegate to the
+                            # recursive ODCS walker so embedded ODCS schemas
+                            # under ODPS ``product.contract.spec.schema``
+                            # get the same nested object/array handling
+                            # as standalone ODCS contracts. The previous
+                            # one-level conversion dropped any nested
+                            # ``properties`` / ``items`` and produced
+                            # objects with no ``fields[]`` — exactly the
+                            # structural-floor violation Wave 1 enforces.
+                            from hub.apps.contracts.normalization_engine import (
+                                _map_fields,
+                            )
+                            converted_fields = _map_fields(
+                                contract_schema, [], [], [],
+                            )
                             if converted_fields:
                                 hub_contract["schema"]["fields"] = converted_fields
                                 return  # Found fields, done

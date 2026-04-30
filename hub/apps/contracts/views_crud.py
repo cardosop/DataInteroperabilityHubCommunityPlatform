@@ -14,6 +14,21 @@ from rest_framework import status
 from rest_framework.exceptions import PermissionDenied
 from rest_framework.response import Response
 
+
+# Phase 227 Wave 1 (227.L4.3) — ETag / If-Match optimistic concurrency.
+#
+# Delegates to the shared ``CacheHeadersMiddleware`` helper
+# ``generate_etag_from_model`` so the validator emitted by the middleware
+# on GET responses is byte-identical to the one we check against on PATCH.
+# Pre-fix, this view used a different SHA-256-based ETag, but the
+# middleware overwrote it on the way out — clients received an MD5 ETag
+# from the middleware and our PATCH validator computed a different
+# SHA-256 ETag, producing spurious 412s.
+def _contract_etag(contract) -> str:
+    """Return the weak ETag for a Contract row, matching the middleware."""
+    from hub.apps.api.middleware.cache_headers import generate_etag_from_model
+    return generate_etag_from_model(contract)
+
 from hub.apps.audit.utils import create_audit_event
 from hub.apps.core.services.base import (
     NotFoundError,
@@ -189,6 +204,37 @@ class ContractCRUDMixin:
         """
         self.check_auditor_permissions(request, "update")
         contract = self.get_object()
+
+        # Phase 227 Wave 1 (227.L4.3) — ETag / If-Match optimistic
+        # concurrency. When the client supplies an ``If-Match`` header,
+        # we compare against the contract's current weak ETag and return
+        # HTTP 412 on mismatch. Clients that omit the header keep
+        # last-write-wins semantics for backward compatibility.
+        if_match = request.headers.get("If-Match") or request.META.get("HTTP_IF_MATCH")
+        if if_match:
+            current_etag = _contract_etag(contract)
+            # Tolerate the optional weak-prefix difference (`W/"x"` vs `"x"`).
+            client_tags = {t.strip() for t in if_match.split(",")}
+            if current_etag not in client_tags and current_etag.lstrip("W/") not in client_tags:
+                response = Response(
+                    {
+                        "error": "Contract has been modified since you read it",
+                        "code": "PRECONDITION_FAILED",
+                        "details": {
+                            "current_etag": current_etag,
+                            "client_etag": if_match,
+                            "hint": (
+                                "Re-fetch the contract to obtain the "
+                                "current ETag, merge your changes, and "
+                                "retry the PATCH with the fresh value."
+                            ),
+                        },
+                    },
+                    status=status.HTTP_412_PRECONDITION_FAILED,
+                )
+                response["ETag"] = current_etag
+                return response
+
         serializer = ContractUpdateSerializer(data=request.data, partial=True)
         serializer.is_valid(raise_exception=True)
 
@@ -231,7 +277,11 @@ class ContractCRUDMixin:
                 remove_external_refs=remove_external_refs,
             )
 
-            return Response(ContractSerializer(contract).data, status=status.HTTP_200_OK)
+            response = Response(ContractSerializer(contract).data, status=status.HTTP_200_OK)
+            # Phase 227 Wave 1 (227.L4.3) — emit fresh ETag so the
+            # client can chain subsequent PATCHes without a re-read.
+            response["ETag"] = _contract_etag(contract)
+            return response
 
         except ValidationError as e:
             return Response(
@@ -459,9 +509,24 @@ class ContractCRUDMixin:
 
         Applies ON_READ migration (lazy migration) if needed.
         Supports both v1 and v2 contracts (backward compatible).
+
+        Phase 227 Wave 1 (227.L4.3) — emits an ``ETag`` header derived
+        from ``Contract.updated_at`` so clients can use ``If-Match`` on
+        subsequent PATCHes for optimistic concurrency.
         """
         contract = self.get_object()
         contract_id = str(contract.id)
+        # Phase 227 L4.3 — pin the resource instance on the request so
+        # ``CacheHeadersMiddleware`` uses ``generate_etag_from_model``
+        # (id + updated_at) instead of falling back to the response-body
+        # hash. This keeps the GET ETag byte-identical to the PATCH
+        # ``If-Match`` validator we compute below in ``update()``.
+        # DRF wraps the WSGI request — set both so the middleware
+        # (which sees the underlying ``HttpRequest``) reads it too.
+        request._resource_instance = contract
+        if hasattr(request, "_request"):
+            request._request._resource_instance = contract
+        etag = _contract_etag(contract)
 
         # Check cache first
         cached_data = get_cached_contract(contract_id)
@@ -473,7 +538,9 @@ class ContractCRUDMixin:
                 "hub_contract_json", contract.hub_contract_json
             )
             response_data["_cached"] = True
-            return Response(response_data)
+            response = Response(response_data)
+            response["ETag"] = etag
+            return response
 
         # Apply ON_READ migration (lazy, in-memory) for backward compatibility
         if contract.hub_contract_json and contract.hub_contract_version:
@@ -502,7 +569,9 @@ class ContractCRUDMixin:
                     },
                 )
 
-                return Response(response_data)
+                response = Response(response_data)
+                response["ETag"] = etag
+                return response
 
         # Cache the contract for future requests
         if contract.hub_contract_json:
@@ -529,4 +598,15 @@ class ContractCRUDMixin:
 
         # Support both v1 and v2 contracts
         # API handles both versions transparently
-        return super().retrieve(request, *args, **kwargs)
+        response = super().retrieve(request, *args, **kwargs)
+        # Phase 227 Wave 1 (227.L4.3) — attach the ETag last so the
+        # super() default response carries the optimistic-concurrency
+        # validator regardless of which branch produced it.
+        try:
+            response["ETag"] = etag
+        except Exception:
+            # Defensive: if super() returned something unexpected
+            # (StreamingHttpResponse subclass, etc.), don't break the
+            # endpoint — just skip the header.
+            pass
+        return response

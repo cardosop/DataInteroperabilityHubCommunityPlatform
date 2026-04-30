@@ -127,7 +127,54 @@ class NormalizationService(BaseService, NormalizationEventPublisher):
                 spec_type=spec_type
             )
 
-            # Check for normalization failures
+            # Phase 227 Wave 1 (227.L3.2) — structural-floor check FIRST.
+            # Many "normalization failed" errors are actually structureless
+            # inputs in disguise. Surfacing the typed STRUCTURELESS_CONTRACT
+            # code here gives the API consumer a parseable code + a
+            # remediation_url instead of a generic NORMALIZATION_FAILED.
+            # ALWAYS-ON per the 2026-04-30 ungate directive.
+            from hub.apps.contracts.structural_floor import (
+                enforce_structural_floor,
+            )
+            try:
+                enforce_structural_floor(
+                    hub_contract,
+                    spec_type=detected_spec_type or spec_type,
+                    spec_version=detected_spec_version,
+                    warnings=norm_warnings,
+                    contract_id=contract_id,
+                )
+            except ValidationError:
+                # Structural floor violation — emit the failed event for
+                # observability, then re-raise the typed STRUCTURELESS_CONTRACT.
+                if contract_id:
+                    try:
+                        self.publish_normalization_failed(
+                            contract_id=contract_id,
+                            error_message="Contract failed structural-floor invariant",
+                            error_details={
+                                "code": "STRUCTURELESS_CONTRACT",
+                                "errors": norm_errors,
+                            },
+                            normalization_errors=norm_errors,
+                            spec_version=detected_spec_version,
+                            tenant_id=tenant_id,
+                            user_id=user_id,
+                        )
+                    except Exception as exc:
+                        import structlog
+                        logger = structlog.get_logger(__name__)
+                        logger.warning(
+                            "normalization_event_publish_failed",
+                            event_type="normalization.failed",
+                            contract_id=contract_id,
+                            error=str(exc),
+                            message="Failed to publish event (non-critical)",
+                        )
+                raise
+
+            # Check for non-structural normalization failures (missing
+            # required `info.name`, malformed JSON, etc.).
             if norm_status == NormalizationStatus.NORMALIZATION_FAILED and norm_errors:
                 # Publish normalization.failed event if contract_id is provided
                 if contract_id:
@@ -157,36 +204,47 @@ class NormalizationService(BaseService, NormalizationEventPublisher):
                     details={'code': 'NORMALIZATION_FAILED', 'errors': norm_errors}
                 )
 
-            # Validate HubContract schema if normalization succeeded
+            # Validate HubContract schema if normalization succeeded.
+            # Phase 227 L3.1 — explicit raise on validation failure
+            # (no more silent-nullify). The pre-raise event publish
+            # gives ops the same observability the old block produced.
             if hub_contract:
                 is_valid, validation_errors = validate_hubcontract_schema(hub_contract)
                 if not is_valid:
-                    norm_status = NormalizationStatus.NORMALIZATION_FAILED
-                    norm_errors.extend(validation_errors)
-                    hub_contract = None
-
-                    # Publish normalization.failed event for schema validation failure
                     if contract_id:
                         try:
                             self.publish_normalization_failed(
                                 contract_id=contract_id,
                                 error_message="HubContract schema validation failed",
-                                error_details={"code": "SCHEMA_VALIDATION_FAILED", "errors": validation_errors},
-                                normalization_errors=norm_errors,
+                                error_details={
+                                    "code": "SCHEMA_VALIDATION_FAILED",
+                                    "errors": validation_errors,
+                                },
+                                normalization_errors=norm_errors + validation_errors,
                                 spec_version=detected_spec_version,
                                 tenant_id=tenant_id,
-                                user_id=user_id
+                                user_id=user_id,
                             )
-                        except Exception as e:
+                        except Exception as exc:
                             import structlog
                             logger = structlog.get_logger(__name__)
                             logger.warning(
                                 "normalization_event_publish_failed",
                                 event_type="normalization.failed",
                                 contract_id=contract_id,
-                                error=str(e),
-                                message="Failed to publish normalization.failed event (non-critical)"
+                                error=str(exc),
+                                message="Failed to publish normalization.failed event (non-critical)",
                             )
+                    raise ValidationError(
+                        message="Contract validation failed",
+                        code="VALIDATION_ERROR",
+                        details={
+                            "errors": validation_errors,
+                            "spec_type": detected_spec_type or spec_type,
+                            "spec_version": detected_spec_version,
+                        },
+                        http_status=400,
+                    )
 
             # Record normalization metrics
             duration_ms = (time.time() - start_time) * 1000

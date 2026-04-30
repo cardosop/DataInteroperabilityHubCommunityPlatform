@@ -24,6 +24,7 @@ from hub.apps.contracts.models import (
     ValidationStatus,
 )
 from hub.apps.contracts.normalization import normalize_contract, validate_hubcontract_schema
+from hub.apps.contracts.structural_floor import enforce_structural_floor
 from hub.apps.contracts.normalization_service import NormalizationService
 from hub.apps.contracts.odps_parser import ODPSParser
 from hub.apps.contracts.ref_resolver import resolve_odps_refs
@@ -346,20 +347,52 @@ class ContractService(BaseService, ContractEventPublisher, ODPSEventPublisher):
                 # contract_id not available yet - events will be published after contract creation if needed
             )
 
-            # Check for normalization failures
+            # Phase 227 Wave 1 (227.L3.2) — enforce the structural floor
+            # FIRST. Many normalization failures upstream are themselves
+            # caused by a structureless input (no schema/models/fields).
+            # Surfacing the typed ``STRUCTURELESS_CONTRACT`` code here —
+            # before the generic ``NORMALIZATION_FAILED`` short-circuit —
+            # gives API consumers a parseable code and a remediation_url.
+            # ALWAYS-ON per the 2026-04-30 ungate directive.
+            enforce_structural_floor(
+                hub_contract,
+                spec_type=detected_spec_type or effective_spec_type,
+                spec_version=detected_spec_version,
+                warnings=norm_warnings,
+                contract_id=None,  # Not yet persisted on create.
+            )
+
+            # Check for non-structural normalization failures (missing
+            # required `info.name`, malformed JSON, etc.). The structural
+            # floor above has already filtered out the structureless
+            # cases; anything that reaches here failed for a different
+            # reason and is reported as generic VALIDATION_ERROR.
             if norm_status == NormalizationStatus.NORMALIZATION_FAILED and norm_errors:
                 raise ValidationError(
                     message="Contract normalization failed",
                     details={"code": "NORMALIZATION_FAILED", "errors": norm_errors},
                 )
 
-            # Validate HubContract schema if normalization succeeded
+            # Phase 227 Wave 1 (227.L3.1) — explicit ValidationError on
+            # validation failure, never silent-nullify. Pre-Wave-1 we used
+            # to set ``hub_contract = None`` here, persist a row with
+            # ``hub_contract_json=NULL``, and let the caller wonder why
+            # downstream lineage/search were broken. The new contract
+            # surfaces the exact validation failures and refuses to
+            # persist a structureless or invalid row.
             if hub_contract:
                 is_valid, validation_errors = validate_hubcontract_schema(hub_contract)
                 if not is_valid:
-                    norm_status = NormalizationStatus.NORMALIZATION_FAILED
-                    norm_errors.extend(validation_errors)
-                    hub_contract = None
+                    raise ValidationError(
+                        message="Contract validation failed",
+                        code="VALIDATION_ERROR",
+                        details={
+                            "errors": validation_errors,
+                            "spec_type": detected_spec_type or effective_spec_type,
+                            "spec_version": detected_spec_version,
+                        },
+                        http_status=400,
+                    )
 
             # Get user if user_id provided
             user = None
@@ -620,15 +653,37 @@ class ContractService(BaseService, ContractEventPublisher, ODPSEventPublisher):
                     contract_id=str(contract.id),  # Contract exists, so events will be published
                 )
 
-                # On normalization failure: persist the update and set normalization state
-                # (do not raise so clients can save raw content and fix later)
-                # Validate HubContract schema if normalization succeeded
+                # Phase 227 Wave 1 (227.L3.4) — mirror the create-path
+                # invariant: structural-floor check FIRST, then explicit
+                # ``ValidationError`` on validation failure. The pre-Wave-1
+                # behaviour ("save raw content and fix later" by setting
+                # ``hub_contract=None``) silently dropped the parsed
+                # structure and left a NULL ``hub_contract_json`` —
+                # exactly the structureless population Wave 0 catalogued.
+                enforce_structural_floor(
+                    hub_contract,
+                    spec_type=detected_spec_type or contract.original_spec_type,
+                    spec_version=detected_spec_version
+                    or contract.original_spec_version,
+                    warnings=norm_warnings,
+                    contract_id=str(contract.id),
+                )
+
+                # Non-structural validation failures (missing required
+                # `info.name`, malformed JSON, etc.) — generic 400.
                 if hub_contract:
                     is_valid, validation_errors = validate_hubcontract_schema(hub_contract)
                     if not is_valid:
-                        norm_status = NormalizationStatus.NORMALIZATION_FAILED
-                        norm_errors.extend(validation_errors)
-                        hub_contract = None
+                        raise ValidationError(
+                            message="Contract validation failed",
+                            code="VALIDATION_ERROR",
+                            details={
+                                "errors": validation_errors,
+                                "spec_type": detected_spec_type or contract.original_spec_type,
+                                "spec_version": detected_spec_version,
+                            },
+                            http_status=400,
+                        )
 
                 # Preserve existing extensions (especially x_odps links) when normalizing
                 # This ensures ODPS/ODCS bidirectional linking is maintained during normalization
@@ -1622,6 +1677,24 @@ class ContractService(BaseService, ContractEventPublisher, ODPSEventPublisher):
                 normalizer = ODPSNormalizer()
                 normalization_result = normalizer.normalize(odps_doc, spec_version=odps_version)
                 hub_contract_from_odps = normalization_result.hub_contract
+
+                # Phase 227 Wave 1 (227.L3.2 / L3.4 parity) — enforce the
+                # structural floor before persisting the linked ODPS row.
+                # ``link_odps_to_odcs`` is a public service entry-point
+                # (REST: ``views_odps.py:101``, GraphQL: ``schema.py:1568``)
+                # that bypasses ``ContractService.create_contract``; without
+                # this guard a structureless ODPS doc could land linked.
+                # ALWAYS-ON per the 2026-04-30 ungate directive.
+                from hub.apps.contracts.structural_floor import (
+                    enforce_structural_floor as _enforce_floor,
+                )
+                _enforce_floor(
+                    hub_contract_from_odps,
+                    spec_type=OriginalSpecType.ODPS,
+                    spec_version=odps_version,
+                    warnings=normalization_result.warnings or [],
+                    contract_id=None,  # ODPS row not persisted yet.
+                )
 
                 # Find next available version for this asset to avoid unique constraint violation
                 # The constraint unique_contract_version_per_asset requires unique (tenant, asset, version)
@@ -2670,27 +2743,60 @@ class ODPSService(BaseService, ODPSEventPublisher):
                     # If resolution fails, odps_raw_resolved remains None, we'll use original odps_raw
                     odps_raw_resolved = None
 
-            # Normalize ODPS to HubContract
+            # Normalize ODPS to HubContract.
+            #
+            # Phase 227 Wave 1 (227.L3.1) — eliminate the silent-nullify
+            # path. The legacy behaviour caught ``ODPSNormalizationError``,
+            # set ``hub_contract = None``, and persisted a row with
+            # ``hub_contract_json=NULL`` and ``normalization_status=
+            # NORMALIZATION_FAILED``. That is *exactly* the structureless
+            # population Wave 0 catalogued. ``ContractService.create_contract``
+            # was hardened in L3.1; this alternate ODPS-create entry-point
+            # MUST mirror the invariant or callers can sidestep the floor by
+            # routing through ``create_odps`` (reachable from the GraphQL
+            # mutation, ``coordinate_odcs_odps_operations``, and the
+            # ``views_odps`` REST surface).
             normalizer = ODPSNormalizer()
             try:
                 normalization_result = normalizer.normalize(odps_doc, spec_version=odps_version)
-                hub_contract = normalization_result.hub_contract
-                normalization_status = normalization_result.status
-                normalization_errors = normalization_result.errors or []
-                normalization_warnings = normalization_result.warnings or []
             except ODPSNormalizationError as e:
-                # Mark contract as failed on normalization failure
-                # Normalization failed but we still create the contract with failed status
-                hub_contract = None
-                normalization_status = NormalizationStatus.NORMALIZATION_FAILED
-                normalization_errors = [str(e)]
-                normalization_warnings = []
                 logger.warning(
                     "odps_normalization_failed",
                     error=str(e),
                     error_code=getattr(e, "error_code", "NORMALIZATION_FAILED"),
-                    message="ODPS normalization failed, creating contract with failed status",
+                    message="ODPS normalization failed — refusing to persist structureless row",
                 )
+                raise ValidationError(
+                    message=f"ODPS normalization failed: {str(e)}",
+                    code=getattr(e, "error_code", "NORMALIZATION_FAILED"),
+                    details={
+                        "errors": [str(e)],
+                        "field_path": getattr(e, "field_path", None),
+                        "context": getattr(e, "context", {}),
+                        "spec_type": OriginalSpecType.ODPS,
+                        "spec_version": odps_version,
+                    },
+                    http_status=400,
+                ) from e
+
+            hub_contract = normalization_result.hub_contract
+            normalization_status = normalization_result.status
+            normalization_errors = normalization_result.errors or []
+            normalization_warnings = normalization_result.warnings or []
+
+            # Phase 227 Wave 1 (227.L3.2 / L3.4 parity) — enforce the
+            # structural floor on this alternate write path too. Without
+            # this guard a successful-but-structureless normalization
+            # (e.g. ODPS doc with empty ``outputPorts[]``) would land in
+            # the DB. ALWAYS-ON per the 2026-04-30 ungate directive.
+            from hub.apps.contracts.structural_floor import enforce_structural_floor as _enforce_floor
+            _enforce_floor(
+                hub_contract,
+                spec_type=OriginalSpecType.ODPS,
+                spec_version=odps_version,
+                warnings=normalization_warnings,
+                contract_id=None,  # Not persisted yet.
+            )
 
             # Calculate version
             version = 1
@@ -3046,6 +3152,25 @@ class ODPSService(BaseService, ODPSEventPublisher):
                             "warnings": normalization_result.warnings or [],
                         },
                     )
+
+                # Phase 227 Wave 1 (227.L3.2 / L3.4 parity) — enforce the
+                # structural floor on this preview/normalize path. Even
+                # though ``normalize_odps`` does not itself persist, its
+                # output is consumed by ``coordinate_odcs_odps_operations``
+                # (services.py:2420) and the ``views_odps`` REST surface;
+                # surfacing ``STRUCTURELESS_CONTRACT`` here gives the
+                # caller a typed code to act on instead of returning a
+                # silently-empty hub_contract dict.
+                from hub.apps.contracts.structural_floor import (
+                    enforce_structural_floor as _enforce_floor,
+                )
+                _enforce_floor(
+                    hub_contract,
+                    spec_type=OriginalSpecType.ODPS,
+                    spec_version=detected_version,
+                    warnings=normalization_result.warnings or [],
+                    contract_id=None,
+                )
 
                 # Create audit log for successful normalization
                 try:

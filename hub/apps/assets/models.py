@@ -258,6 +258,40 @@ class Asset(models.Model):
                     f"Required: NORMALIZED_OK or NORMALIZED_WITH_WARNINGS"
                 )
 
+            # Phase 227 Wave 1 (227.L4.1) — structural-floor check at the
+            # ORM level. ALWAYS-ON per the 2026-04-30 ungate directive.
+            # Only the currently-active contract drives the gate;
+            # historic contract versions of the same asset are NOT
+            # retroactively validated. ``Asset.clean()`` is invoked on
+            # ``full_clean()`` (e.g. admin PATCH), making this the
+            # last-line defense for direct ORM saves bypassing the
+            # service layer.
+            from hub.apps.contracts.structural_floor import (
+                enforce_structural_floor,
+            )
+            from hub.apps.core.services.base import (
+                ValidationError as _ServiceValidationError,
+            )
+            try:
+                enforce_structural_floor(
+                    active_contract.hub_contract_json,
+                    spec_type=active_contract.original_spec_type,
+                    spec_version=active_contract.original_spec_version,
+                    contract_id=str(active_contract.id),
+                )
+            except _ServiceValidationError as exc:
+                # Translate the typed ValidationError into Django's so
+                # the standard form-validation pipeline carries the
+                # message; preserve the subcode in the message body so
+                # ops can grep audit logs.
+                subcode = (exc.details or {}).get("subcode", "STRUCTURELESS")
+                raise ValidationError(
+                    f"Asset cannot be ACTIVE: contract has no resolvable "
+                    f"models or schema fields ({subcode}). "
+                    f"Open the Schema editor to add structure before "
+                    f"activating."
+                )
+
             # Check dataset requirements (if dataset exists)
             dataset = self.datasets.first()
             if dataset:
@@ -302,6 +336,30 @@ class Asset(models.Model):
                 blockers.append(
                     f"Contract normalization_status must be NORMALIZED_OK or NORMALIZED_WITH_WARNINGS "
                     f"(current: {active_contract.normalization_status})"
+                )
+
+            # Phase 227 Wave 1 (227.L4.1) — structural-floor check.
+            # ALWAYS-ON per the 2026-04-30 ungate directive. Multi-version
+            # semantics: only the currently-active contract is checked
+            # (we already filtered on ``status="ACTIVE"`` above); historic
+            # contract versions of the same asset SHALL NOT be
+            # retroactively validated.
+            from hub.apps.contracts.structural_floor import (
+                collect_structural_floor_errors,
+            )
+            floor_errors = collect_structural_floor_errors(
+                active_contract.hub_contract_json,
+                spec_type=active_contract.original_spec_type,
+                spec_version=active_contract.original_spec_version,
+                contract_id=str(active_contract.id),
+            )
+            for err in floor_errors:
+                subcode = err.get("subcode", "STRUCTURELESS")
+                hint = err.get("hint", "")
+                remediation = err.get("remediation_url", "")
+                blockers.append(
+                    f"Contract has no resolvable models or schema fields "
+                    f"({subcode}). {hint} See: {remediation}"
                 )
 
         # Check dataset requirements (if dataset exists)

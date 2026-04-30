@@ -41,7 +41,7 @@ from __future__ import annotations
 
 import re
 from enum import Enum
-from typing import Any, Protocol
+from typing import Any, Dict, Optional, Protocol
 
 from django.db.models import Q
 
@@ -83,22 +83,27 @@ class StructurelessClassification(str, Enum):
     """Anything else — needs operator investigation. Logged for triage."""
 
 
-def is_structureless(contract: _ContractLike) -> bool:
-    """Return True iff the contract carries no structural payload.
+def is_payload_structureless(
+    payload: Optional[Dict[str, Any]],
+) -> bool:
+    """Phase 227 L3 — payload-level structureless predicate.
 
-    The predicate handles:
+    Operates directly on a HubContract dict (the payload normally stored
+    in ``Contract.hub_contract_json``) rather than a model instance.
+    The two-arg surface lets the validation pipeline (services.py) check
+    a freshly-normalized hub_contract without first persisting it as a
+    Contract row.
 
-    * ``hub_contract_json`` is None (normalization never ran or was wiped).
-    * ``hub_contract_json`` is a non-dict (malformed payload).
-    * ``models`` missing OR empty list OR list-of-models-with-empty-fields.
+    Same rules as :func:`is_structureless`:
+
+    * ``payload`` is ``None`` (normalization never ran or wiped it).
+    * ``payload`` is a non-dict (malformed shape).
+    * ``models`` missing OR empty OR every model has empty ``fields[]``.
     * ``schema.fields`` missing OR empty OR null.
     """
-    payload = getattr(contract, "hub_contract_json", None)
-
     if payload is None:
         return True
     if not isinstance(payload, dict):
-        # Defensive: any non-dict shape means no usable structure.
         return True
 
     # Models contribute structure only if at least one model has a
@@ -115,9 +120,22 @@ def is_structureless(contract: _ContractLike) -> bool:
         schema_block = {}
     schema_fields = schema_block.get("fields") or []
 
-    has_schema_fields = bool(schema_fields)
+    return not (has_model_fields or bool(schema_fields))
 
-    return not (has_model_fields or has_schema_fields)
+
+def is_structureless(contract: _ContractLike) -> bool:
+    """Return True iff the contract carries no structural payload.
+
+    The predicate handles:
+
+    * ``hub_contract_json`` is None (normalization never ran or was wiped).
+    * ``hub_contract_json`` is a non-dict (malformed payload).
+    * ``models`` missing OR empty list OR list-of-models-with-empty-fields.
+    * ``schema.fields`` missing OR empty OR null.
+    """
+    return is_payload_structureless(
+        getattr(contract, "hub_contract_json", None)
+    )
 
 
 def structureless_filter_q() -> Q:
