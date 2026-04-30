@@ -485,6 +485,18 @@ def download_contract_custom(request, id=None, *args, **kwargs):
 
 
 urlpatterns = [
+    # Phase 227 Wave 1 (227.L7.2) — Schema-editor metrics receiver.
+    # Lives BEFORE the router URLs so the static path "schema-editor/metrics"
+    # is not eaten by the router's UUID lookup. The view increments OTel
+    # counters server-side from frontend telemetry POSTs.
+    path(
+        "schema-editor/metrics",
+        __import__(
+            "hub.apps.contracts.views_schema_editor_metrics",
+            fromlist=["SchemaEditorMetricsView"],
+        ).SchemaEditorMetricsView.as_view(),
+        name="contract-schema-editor-metrics",
+    ),
     # Custom visualization endpoint without format suffix patterns
     # This must come BEFORE the router URLs to take precedence
     # ROOT CAUSE FIX: Pattern does NOT include 'contracts/' prefix because parent URL

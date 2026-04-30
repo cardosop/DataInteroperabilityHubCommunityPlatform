@@ -566,6 +566,125 @@ contract_broken_lineage_links_total = _CounterWrapper(
     expected_labels=("link_type", "tenant_id"),
 )
 
+# Phase 227 Wave 1 (227.L7.1) — structureless / floor-violation metrics.
+#
+# Emitted from ``hub.apps.contracts.structural_floor.enforce_structural_floor``
+# on every Layer-3 raise so the Grafana dashboard can break down rejection
+# rate by code, subcode, and spec_type — the three dimensions ops care
+# about during the Wave 3 → Wave 5 rollout.
+contract_validation_failed_total = _CounterWrapper(
+    "contract_validation_failed_total",
+    "Total Layer-3 validation failures (Phase 227 structural floor + "
+    "schema validators). Labels: error code, per-cause subcode, "
+    "originating spec_type.",
+    unit="1",
+    expected_labels=("code", "subcode", "spec_type"),
+)
+
+contract_structureless_total = _CounterWrapper(
+    "contract_structureless_total",
+    "Total contracts whose normalised payload is structureless. "
+    "``source`` distinguishes WHERE the structureless payload was "
+    "observed: ``creation`` (POST), ``update`` (PATCH), ``migration`` "
+    "(--apply self-heal pass), ``deprecation_warning`` (legacy / "
+    "pre-Wave-1 grace path — kept for backward-compat label space "
+    "even though the directive ungated the floor).",
+    unit="1",
+    expected_labels=("spec_type", "source"),
+)
+
+contract_normalization_models_count = _HistogramWrapper(
+    "contract_normalization_models_count",
+    "Number of ``models[]`` entries produced by a successful "
+    "normalisation. Used to track the post-fix model-population "
+    "distribution per spec_type.",
+    unit="1",
+    buckets=(0, 1, 2, 5, 10, 25, 50, 100, 250, 500, 1000),
+    expected_labels=("spec_type",),
+)
+
+contract_normalization_fields_total_count = _HistogramWrapper(
+    "contract_normalization_fields_total_count",
+    "Total field count summed across all ``models[*].fields[]`` and "
+    "``schema.fields[]`` produced by a successful normalisation.",
+    unit="1",
+    buckets=(0, 1, 5, 10, 50, 100, 500, 1000, 5000, 10000, 50000),
+    expected_labels=("spec_type",),
+)
+
+contracts_renormalize_batch_duration_seconds = _HistogramWrapper(
+    "contracts_renormalize_batch_duration_seconds",
+    "Wall-clock duration of one ``renormalize_contracts --apply`` "
+    "batch. ``outcome`` ∈ {``healed``, ``residual``, ``mixed``, "
+    "``failed``} per batch-level summary.",
+    unit="s",
+    buckets=(0.05, 0.1, 0.25, 0.5, 1.0, 2.5, 5.0, 10.0, 30.0, 60.0, 300.0),
+    expected_labels=("spec_type", "outcome"),
+)
+
+contract_structureless_backlog = _UpDownCounterWrapper(
+    "contract_structureless_backlog",
+    "Current count of structureless contracts (set by the daily cron "
+    "via the ``--output=count`` mode of the renormalize command). "
+    "Drains to 0 once Wave 3 / Wave 5 finish.",
+    unit="1",
+    expected_labels=("tenant_id",),
+)
+
+# Phase 227 Wave 1 (227.L7.2) — Schema-editor adoption metrics.
+#
+# Emitted from the frontend ``ModelsEditor.tsx`` via a thin POST to
+# ``/api/v1/contracts/schema-editor/metrics`` that increments these
+# OTel counters server-side. Letting the backend own the emission
+# (rather than embedding an OTLP exporter in the browser bundle)
+# keeps the metric inventory consistent with the rest of the codebase
+# and avoids a 200KB+ SDK in the SPA.
+schema_editor_opened_total = _CounterWrapper(
+    "schema_editor_opened_total",
+    "Total number of times the Schema editor tab was opened. Drives "
+    "the funnel-top of the Schema-editor adoption dashboard panel.",
+    unit="1",
+    expected_labels=("tenant_id", "spec_type"),
+)
+
+schema_editor_save_total = _CounterWrapper(
+    "schema_editor_save_total",
+    "Total number of Schema-editor save attempts. ``outcome`` ∈ "
+    "{``success``, ``conflict``, ``validation_error``, ``error``}.",
+    unit="1",
+    expected_labels=("tenant_id", "spec_type", "outcome"),
+)
+
+schema_editor_time_to_first_save_seconds = _HistogramWrapper(
+    "schema_editor_time_to_first_save_seconds",
+    "Wall-clock seconds between Schema-editor open and FIRST "
+    "successful save in the same session. Buckets target the "
+    "expected user-task scale (a few seconds to ~10 minutes).",
+    unit="s",
+    buckets=(1.0, 2.5, 5.0, 10.0, 30.0, 60.0, 120.0, 300.0, 600.0, 1800.0),
+    expected_labels=("tenant_id", "spec_type"),
+)
+
+# Phase 227 Wave 1 (227.L7 audit follow-up) — generic audit-event counter.
+#
+# Emitted from ``hub.apps.audit.utils.create_audit_event`` on every
+# successful audit-row INSERT. Drives the "Asset Auto-Reverts (Wave 5)"
+# dashboard panel via ``increase(audit_events_total{action=...}[24h])``,
+# and is generally useful for any downstream that wants to count audit
+# events without scraping the audit_events table.
+#
+# Cardinality is bounded by the small set of action names + result
+# values the audit module emits — no user-supplied data in the labels.
+audit_events_total = _CounterWrapper(
+    "audit_events_total",
+    "Total audit events created. Labels: action (e.g., "
+    "CONTRACT_STRUCTURELESS_REJECTED, ASSET_AUTO_REVERTED_STRUCTURELESS), "
+    "resource_type (CONTRACT, ASSET, ...), result (SUCCESS, FAILURE, "
+    "WARNING).",
+    unit="1",
+    expected_labels=("action", "resource_type", "result"),
+)
+
 # ODPS Metrics (Task 6.2.1)
 odps_ingestion_total = _CounterWrapper(
     "odps_ingestion_total",

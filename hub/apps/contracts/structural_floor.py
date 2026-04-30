@@ -185,6 +185,8 @@ def enforce_structural_floor(
     spec_version: Optional[str],
     warnings: Optional[Iterable[str]] = None,
     contract_id: Optional[str] = None,
+    tenant_id: Optional[str] = None,
+    source: Optional[str] = None,
 ) -> None:
     """Raise ``ValidationError(code="STRUCTURELESS_CONTRACT")`` if the
     payload violates the structural floor; otherwise return ``None``.
@@ -203,6 +205,16 @@ def enforce_structural_floor(
     contract_id
         Optional UUID for the offending contract — used to build the
         Schema-editor deep link. Omit on create where no UUID exists yet.
+    tenant_id
+        Optional tenant UUID. Forwarded to the audit-event helper
+        (Phase 227 L7.3). Omit when no tenant context is available
+        (e.g., management-command runs).
+    source
+        Optional label classifying WHERE the floor violation was
+        observed: ``creation``, ``update``, ``migration``, etc.
+        Forwarded to the ``contract_structureless_total`` metric
+        (Phase 227 L7.1) and the audit-event details (Phase 227 L7.3).
+        Defaults to ``unknown`` when omitted.
 
     Raises
     ------
@@ -211,6 +223,21 @@ def enforce_structural_floor(
         and ``details`` carrying ``subcode``, ``models_count``,
         ``schema_fields_count``, ``spec_type``, ``spec_version``,
         ``hint``, ``remediation_url``.
+
+    Side effects (Phase 227 L7)
+    ---------------------------
+    On every raise, this function:
+
+    * Increments ``contract_validation_failed_total{code, subcode,
+      spec_type}`` and ``contract_structureless_total{spec_type,
+      source}`` (L7.1).
+    * Emits a structured WARN log via ``structlog`` carrying
+      ``contract_id``, ``spec_type``, ``tenant_id``, ``subcode``
+      (L7.4).
+    * Emits a ``CONTRACT_STRUCTURELESS_REJECTED`` audit event via
+      ``create_audit_event`` (L7.3). Failure to emit the audit event
+      is logged but never blocks the raise — the raise is the
+      load-bearing operation.
     """
     # ``is_payload_structureless`` handles None / non-dict / empty cases
     # uniformly; we treat all of those as floor violations.
@@ -236,6 +263,23 @@ def enforce_structural_floor(
         "remediation_url": remediation_url,
     }
 
+    # ------------------------------------------------------------------
+    # Phase 227 Wave 1 (227.L7.1, L7.3, L7.4) — observability emission.
+    # All side-effects are wrapped in their own try/except so a metric
+    # backend / audit DB outage CAN'T block the floor enforcement —
+    # the raise is the load-bearing operation.
+    # ------------------------------------------------------------------
+    _emit_floor_violation_observability(
+        code=ERROR_CODE,
+        subcode=subcode,
+        spec_type=spec_type,
+        spec_version=spec_version,
+        contract_id=contract_id,
+        tenant_id=tenant_id,
+        source=source or "unknown",
+        details=details,
+    )
+
     raise ValidationError(
         message=(
             "Contract failed the structural-floor invariant: it has no "
@@ -246,6 +290,97 @@ def enforce_structural_floor(
         details=details,
         http_status=400,
     )
+
+
+def _emit_floor_violation_observability(
+    *,
+    code: str,
+    subcode: str,
+    spec_type: Optional[str],
+    spec_version: Optional[str],
+    contract_id: Optional[str],
+    tenant_id: Optional[str],
+    source: str,
+    details: Dict[str, Any],
+) -> None:
+    """Phase 227 Wave 1 (227.L7.1, L7.3, L7.4) — emit metrics + log +
+    audit event for a Layer-3 floor violation.
+
+    Each side-effect is wrapped in its own try/except so a partial
+    backend outage doesn't cascade. The caller raises the
+    ``ValidationError`` after this function returns.
+    """
+    # L7.1 — metrics. Both counters are incremented so the dashboard
+    # can correlate "Layer-3 failures" with "structureless source".
+    try:
+        from hub.apps.contracts.normalization_metrics import (
+            record_validation_failed,
+            record_structureless,
+        )
+        record_validation_failed(
+            code=code, subcode=subcode, spec_type=spec_type
+        )
+        record_structureless(spec_type=spec_type, source=source)
+    except Exception:
+        # Metrics outage MUST NOT block the raise.
+        pass
+
+    # L7.4 — structured WARN log. Carries the four required fields:
+    # contract_id, spec_type, tenant_id, subcode.
+    try:
+        import structlog
+        log = structlog.get_logger(__name__)
+        log.warning(
+            "structural_floor_violation",
+            contract_id=str(contract_id) if contract_id else None,
+            spec_type=spec_type,
+            spec_version=spec_version,
+            tenant_id=str(tenant_id) if tenant_id else None,
+            subcode=subcode,
+            source=source,
+            models_count=details.get("models_count"),
+            schema_fields_count=details.get("schema_fields_count"),
+        )
+    except Exception:
+        # structlog import / emit failure MUST NOT block the raise.
+        pass
+
+    # L7.3 — audit event. We use the unredacted details + label
+    # values; ``create_audit_event`` runs ``redact_pii`` internally
+    # so PII can't leak even if a future caller passes sensitive
+    # context.
+    try:
+        from hub.apps.audit.utils import create_audit_event
+        from hub.apps.tenants.models import Tenant
+
+        tenant_obj = None
+        if tenant_id:
+            try:
+                tenant_obj = Tenant.objects.filter(id=tenant_id).first()
+            except Exception:
+                tenant_obj = None
+
+        create_audit_event(
+            resource_type="CONTRACT",
+            action="CONTRACT_STRUCTURELESS_REJECTED",
+            actor_user=None,
+            tenant=tenant_obj,
+            resource_id=str(contract_id) if contract_id else None,
+            result="FAILURE",
+            details={
+                "code": code,
+                "subcode": subcode,
+                "spec_type": spec_type,
+                "spec_version": spec_version,
+                "models_count": details.get("models_count"),
+                "schema_fields_count": details.get("schema_fields_count"),
+                "source": source,
+            },
+        )
+    except Exception:
+        # Audit-event failure MUST NOT block the raise. The L7.4 log
+        # already carries the same information for ops.
+        pass
 
 
 def collect_structural_floor_errors(

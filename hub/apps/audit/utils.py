@@ -246,6 +246,25 @@ def create_audit_event(
         details_json=redacted_details,
     )
 
+    # Phase 227 Wave 1 (227.L7 audit follow-up) — emit the
+    # ``audit_events_total{action,resource_type,result}`` counter so
+    # downstream Grafana panels (e.g. the asset-auto-revert tile on
+    # the structureless-rollout dashboard) can count audit events
+    # without scraping the audit_events table. Wrapped in a
+    # try/except so a metric-backend outage CAN'T block the audit
+    # row creation — the audit row is the load-bearing artefact;
+    # the metric is the ops-visibility nice-to-have.
+    try:
+        from hub.apps.observability.otel_metrics import audit_events_total
+
+        audit_events_total.labels(
+            action=action or "UNKNOWN",
+            resource_type=resource_type or "UNKNOWN",
+            result=result or "SUCCESS",
+        ).inc()
+    except Exception:
+        pass
+
     return audit_event
 
 

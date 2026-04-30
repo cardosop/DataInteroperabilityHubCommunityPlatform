@@ -308,6 +308,110 @@ class Contract(models.Model):
         return True, ""
 
 
+class MigrationCheckpoint(models.Model):
+    """
+    Phase 227 Wave 1 (227.L6.2) — checkpoint persistence for resumable
+    bulk operations.
+
+    Records `(migration_name, contract_id, status, error, completed_at)`
+    so a long-running data migration can be killed mid-batch and resumed
+    without double-processing already-completed contracts. The unique
+    constraint on `(migration_name, contract_id)` enforces idempotence:
+    a re-run hits the unique-violation path on rows that succeeded
+    previously and skips them via `exclude(id__in=...)`.
+
+    Status taxonomy
+    ---------------
+    * ``done`` — contract was successfully processed by the migration.
+    * ``failed`` — contract raised during processing; ``error`` carries
+      the truncated exception message for ops triage.
+    * ``in_progress`` — reserved for future use (currently we write
+      ``done``/``failed`` directly because each batch is wrapped in
+      ``transaction.atomic`` and only commits on success).
+
+    Why a dedicated model rather than a Django migration entry
+    -----------------------------------------------------------
+    Django's ``django_migrations`` table tracks migrations as a whole;
+    this model tracks per-contract progress *within* a single migration.
+    A bulk re-normalization affects 50,000 rows — the unit of resumption
+    must be the row, not the migration.
+    """
+
+    STATUS_DONE = "done"
+    STATUS_FAILED = "failed"
+    STATUS_IN_PROGRESS = "in_progress"
+    STATUS_CHOICES = [
+        (STATUS_DONE, "Done"),
+        (STATUS_FAILED, "Failed"),
+        (STATUS_IN_PROGRESS, "In Progress"),
+    ]
+
+    id = models.UUIDField(
+        primary_key=True, default=uuid.uuid4, editable=False
+    )
+    migration_name = models.CharField(
+        max_length=255,
+        db_index=True,
+        help_text=(
+            "Logical migration name (operator-supplied via the "
+            "``--checkpoint-table`` flag). Becomes the partition key "
+            "for resumability — different migrations with the same "
+            "contract_id do not collide."
+        ),
+    )
+    contract = models.ForeignKey(
+        "contracts.Contract",
+        on_delete=models.CASCADE,
+        related_name="migration_checkpoints",
+        help_text="Contract being processed",
+    )
+    status = models.CharField(
+        max_length=16,
+        choices=STATUS_CHOICES,
+        default=STATUS_DONE,
+        db_index=True,
+        help_text=(
+            "Per-contract outcome. ``done`` = success (skip on resume); "
+            "``failed`` = error captured (skip on resume; ops can rerun "
+            "by deleting the row); ``in_progress`` = reserved."
+        ),
+    )
+    error = models.TextField(
+        null=True,
+        blank=True,
+        help_text=(
+            "Truncated exception message when ``status='failed'``. "
+            "``None`` for ``done`` rows."
+        ),
+    )
+    completed_at = models.DateTimeField(
+        auto_now_add=True,
+        db_index=True,
+        help_text="When this row was inserted (UTC).",
+    )
+
+    class Meta:
+        db_table = "migration_checkpoints"
+        ordering = ["-completed_at"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["migration_name", "contract"],
+                name="unique_checkpoint_per_migration_per_contract",
+            )
+        ]
+        indexes = [
+            models.Index(
+                fields=["migration_name", "status"],
+                name="checkpoint_mig_status_idx",
+            ),
+        ]
+
+    def __str__(self) -> str:
+        return (
+            f"{self.migration_name}/{self.contract_id} → {self.status}"
+        )
+
+
 class SecurityAuditLog(models.Model):
     """
     Security audit log for ODPS $ref resolution security events.

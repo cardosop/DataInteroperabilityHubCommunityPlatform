@@ -40,6 +40,10 @@ import { FIELD_DATA_TYPES } from '../../../shared/types/contracts';
 import { getErrorRemediation } from '../../../shared/utils/errorUtils';
 import { compileToSource, makeUiKey } from '../lib/contractsCompiler';
 import { useContractJsonSchema } from '../hooks/useContracts';
+import {
+  recordSchemaEditorOpened,
+  recordSchemaEditorSave,
+} from '../lib/schemaEditorMetrics';
 
 /* -------------------------------------------------------------------------
  * State + reducer
@@ -333,6 +337,24 @@ export function ModelsEditor(props: ModelsEditorProps) {
     dispatch({ type: 'SET_STATE', payload: initialState });
   }, [initialState]);
 
+  // Phase 227 Wave 1 (227.L7.2) — emit ``schema_editor_opened_total``
+  // once on mount. Empty deps array intentional: we want exactly one
+  // emission per editor open, NOT one per re-render. Tracking per
+  // render would inflate the counter and break the funnel-top reading
+  // on the Grafana adoption panel.
+  useEffect(() => {
+    recordSchemaEditorOpened(initialState.specType);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Capture the wall-clock open timestamp so the first successful
+  // save can observe ``schema_editor_time_to_first_save_seconds``.
+  // ``useState(() => ...)`` initialiser fires once per component
+  // instance, matching the L7.2 spec: "between Schema-editor open
+  // and FIRST successful save in the same session".
+  const [openedAtMs] = useState(() => Date.now());
+  const [hasReportedFirstSave, setHasReportedFirstSave] = useState(false);
+
   useEffect(() => {
     onStateChange?.(state);
   }, [state, onStateChange]);
@@ -362,6 +384,21 @@ export function ModelsEditor(props: ModelsEditorProps) {
       if (result.etag !== undefined) {
         dispatch({ type: 'SET_ETAG', etag: result.etag ?? null });
       }
+      // Phase 227 Wave 1 (227.L7.2) — success path. The
+      // ``time_to_first_save_seconds`` histogram is only observed on
+      // the FIRST successful save of the session per the spec.
+      const ttfs =
+        !hasReportedFirstSave
+          ? Math.max(0, (Date.now() - openedAtMs) / 1000)
+          : undefined;
+      recordSchemaEditorSave({
+        specType: state.specType,
+        outcome: 'success',
+        timeToFirstSaveSeconds: ttfs,
+      });
+      if (!hasReportedFirstSave) {
+        setHasReportedFirstSave(true);
+      }
     } catch (rawErr) {
       const err = rawErr as
         | {
@@ -387,10 +424,23 @@ export function ModelsEditor(props: ModelsEditorProps) {
         message: String(wrapped.message ?? 'Save failed'),
         details,
       });
+      // Phase 227 Wave 1 (227.L7.2) — failure path. Bucket the
+      // outcome label so the dashboard can break down conflict
+      // (412) vs. validation rejection vs. generic error.
+      const outcome =
+        code === 'PRECONDITION_FAILED'
+          ? 'conflict'
+          : code === 'STRUCTURELESS_CONTRACT' || code === 'VALIDATION_ERROR'
+          ? 'validation_error'
+          : 'error';
+      recordSchemaEditorSave({
+        specType: state.specType,
+        outcome,
+      });
     } finally {
       setSaving(false);
     }
-  }, [state, onSave]);
+  }, [state, onSave, openedAtMs, hasReportedFirstSave]);
 
   const conflictRemediation = useMemo(() => {
     return saveError ? getErrorRemediation(saveError.code, saveError.subcode, saveError.details as { remediation_url?: string | null } | null) : null;

@@ -44,7 +44,8 @@ class NormalizationService(BaseService, NormalizationEventPublisher):
         spec_type: Optional[str] = None,
         tenant_id: Optional[str] = None,
         contract_id: Optional[str] = None,
-        user_id: Optional[str] = None
+        user_id: Optional[str] = None,
+        source: Optional[str] = None,
     ) -> Tuple[Optional[Dict[str, Any]], str, str, NormalizationStatus, List[str], List[str]]:
         """
         Normalize a contract from ODCS to HubContract format.
@@ -56,6 +57,11 @@ class NormalizationService(BaseService, NormalizationEventPublisher):
             tenant_id: Optional tenant ID for metrics and events
             contract_id: Optional contract ID for event publishing (required for events)
             user_id: Optional user ID for event context
+            source: Phase 227 L7.1 — origin label forwarded to the
+                ``contract_structureless_total{source}`` metric and the
+                ``CONTRACT_STRUCTURELESS_REJECTED`` audit event. One of
+                ``creation``, ``update``, ``migration``. Defaults to a
+                ``contract_id``-derived inference when omitted.
 
         Returns:
             Tuple of (hub_contract, detected_spec_type, detected_spec_version,
@@ -73,7 +79,8 @@ class NormalizationService(BaseService, NormalizationEventPublisher):
                 spec_type=spec_type,
                 tenant_id=effective_tenant_id,
                 contract_id=contract_id,
-                user_id=effective_user_id
+                user_id=effective_user_id,
+                source=source,
             ),
             tenant_id=effective_tenant_id
         )
@@ -85,7 +92,8 @@ class NormalizationService(BaseService, NormalizationEventPublisher):
         spec_type: Optional[str] = None,
         tenant_id: Optional[str] = None,
         contract_id: Optional[str] = None,
-        user_id: Optional[str] = None
+        user_id: Optional[str] = None,
+        source: Optional[str] = None,
     ) -> Tuple[Optional[Dict[str, Any]], str, str, NormalizationStatus, List[str], List[str]]:
         """Internal implementation of contract normalization."""
         import time
@@ -143,6 +151,13 @@ class NormalizationService(BaseService, NormalizationEventPublisher):
                     spec_version=detected_spec_version,
                     warnings=norm_warnings,
                     contract_id=contract_id,
+                    tenant_id=tenant_id,
+                    # Phase 227 Wave 1 (227.L7.1) source label.
+                    # Caller-supplied ``source`` wins (e.g. the
+                    # migration command passes ``source="migration"``);
+                    # otherwise infer from ``contract_id`` — present
+                    # = update of an existing row, absent = creation.
+                    source=source or ("update" if contract_id else "creation"),
                 )
             except ValidationError:
                 # Structural floor violation — emit the failed event for
@@ -252,7 +267,13 @@ class NormalizationService(BaseService, NormalizationEventPublisher):
                 record_all_normalization_metrics(
                     hub_contract=hub_contract,
                     broken_links=None,
-                    tenant_id=tenant_id
+                    tenant_id=tenant_id,
+                    # Phase 227 L7.1 — drive the
+                    # contract_normalization_models_count + fields_total
+                    # histograms with the detected (post-normalisation)
+                    # spec_type so the per-spec dashboard panel works
+                    # without server-side joining.
+                    spec_type=detected_spec_type or spec_type,
                 )
 
             # Publish normalization.completed event if contract_id is provided
