@@ -217,6 +217,10 @@ def test_template_renders_with_required_substrings():
     operator-required substrings (deadline, contract list header,
     schema-editor link) appear so future copy edits don't silently drop
     critical instruction.
+
+    The Schema-editor URL is now pre-rendered per-contract (see
+    `_summarise_contract`) instead of substituted in the template,
+    because Django has no built-in string-substitution filter.
     """
     from datetime import datetime, timezone as tz
 
@@ -228,13 +232,24 @@ def test_template_renders_with_required_substrings():
         {
             "tenant_name": "Wave 0 Co",
             "contracts": [
-                {"id": "c-1", "name": "orders", "spec_type": "ODCS"},
-                {"id": "c-2", "name": "users", "spec_type": "ODPS"},
+                {
+                    "id": "c-1",
+                    "name": "orders",
+                    "spec_type": "ODCS",
+                    "schema_editor_url": (
+                        "https://stagingmeshant-internal.example.com/contracts/c-1/edit?tab=schema"
+                    ),
+                },
+                {
+                    "id": "c-2",
+                    "name": "users",
+                    "spec_type": "ODPS",
+                    "schema_editor_url": (
+                        "https://stagingmeshant-internal.example.com/contracts/c-2/edit?tab=schema"
+                    ),
+                },
             ],
             "deadline_iso": deadline.strftime("%Y-%m-%d"),
-            "schema_editor_url_template": (
-                "https://stagingmeshant-internal.example.com/contracts/{contract_id}/edit?tab=schema"
-            ),
         },
     )
 
@@ -245,3 +260,87 @@ def test_template_renders_with_required_substrings():
     assert "2026-05-14" in html, "deadline must appear in human-readable form"
     # Anchor instruction must reference the schema editor explicitly.
     assert "schema" in html.lower()
+
+
+def test_template_renders_per_contract_schema_editor_url_correctly():
+    """Regression — the prior implementation used a Django template
+    `cut|add` filter chain that produced malformed URLs (contract id
+    appended at the END of the URL instead of substituted in place).
+
+    This test ensures every contract's `schema_editor_url` appears
+    intact in the rendered HTML, with the contract ID in the correct
+    URL path position.
+    """
+    from datetime import datetime, timezone as tz
+
+    from hub.apps.notifications.templates import render_email_template
+
+    rendered = render_email_template(
+        "notifications/emails/asset_contract_structureless_pending.html",
+        {
+            "tenant_name": "Acme",
+            "contracts": [
+                {
+                    "id": "11111111-1111-1111-1111-111111111111",
+                    "name": "orders",
+                    "spec_type": "ODCS",
+                    "schema_editor_url": (
+                        "https://stagingmeshant-internal.example.com/contracts/"
+                        "11111111-1111-1111-1111-111111111111/edit?tab=schema"
+                    ),
+                },
+                {
+                    "id": "22222222-2222-2222-2222-222222222222",
+                    "name": "users",
+                    "spec_type": "ODPS",
+                    "schema_editor_url": (
+                        "https://stagingmeshant-internal.example.com/contracts/"
+                        "22222222-2222-2222-2222-222222222222/edit?tab=schema"
+                    ),
+                },
+            ],
+            "deadline_iso": "2026-05-14",
+        },
+    )
+    html = rendered["html"]
+
+    # Each contract's URL appears verbatim — UUID in path, NOT appended
+    # at the end of "{contract_id}" placeholder.
+    assert (
+        "https://stagingmeshant-internal.example.com/contracts/"
+        "11111111-1111-1111-1111-111111111111/edit?tab=schema"
+    ) in html
+    assert (
+        "https://stagingmeshant-internal.example.com/contracts/"
+        "22222222-2222-2222-2222-222222222222/edit?tab=schema"
+    ) in html
+    # Hard regression: the literal placeholder must NOT appear.
+    assert "{contract_id}" not in html
+
+
+def test_dispatcher_pre_renders_schema_editor_url_per_contract():
+    """End-to-end check that `_summarise_contract` (called by the
+    dispatcher) substitutes `{contract_id}` correctly, not via filter chain.
+    """
+    from hub.apps.contracts.notifications.structureless import (
+        _summarise_contract,
+    )
+
+    class _FakeContract:
+        def __init__(self, cid, raw):
+            self.id = cid
+            self.original_spec_type = "ODCS"
+            self.hub_contract_json = raw
+
+    summary = _summarise_contract(
+        _FakeContract("abc-123", {"info": {"name": "orders"}}),
+        schema_editor_url_template=(
+            "https://example.com/contracts/{contract_id}/edit?tab=schema"
+        ),
+    )
+    assert summary["id"] == "abc-123"
+    assert summary["schema_editor_url"] == (
+        "https://example.com/contracts/abc-123/edit?tab=schema"
+    )
+    # Hard regression: placeholder must be substituted, not appended.
+    assert "{contract_id}" not in summary["schema_editor_url"]

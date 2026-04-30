@@ -41,8 +41,8 @@
       </td>
       <td style="border-bottom: 1px solid #eee; padding: 6px;">{{ contract.spec_type }}</td>
       <td style="border-bottom: 1px solid #eee; padding: 6px;">
-        {% if schema_editor_url_template %}
-        <a href="{{ schema_editor_url_template|cut:'{contract_id}'|add:contract.id }}" class="button">
+        {% if contract.schema_editor_url %}
+        <a href="{{ contract.schema_editor_url }}" class="button">
           Open Schema editor
         </a>
         {% else %}

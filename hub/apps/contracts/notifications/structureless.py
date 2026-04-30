@@ -33,9 +33,21 @@ Design notes
 from __future__ import annotations
 
 import datetime as _dt
+import logging
 from typing import Any, Iterable, Sequence
 
 from django.conf import settings
+
+# Module-level imports (NOT lazy) so external callers / tests can patch
+# `send_email_async` and `get_tenant_admin_users` at the dispatcher's
+# module path — which is the canonical mock-target convention. Lazy
+# in-function imports defeat that pattern (the attribute doesn't exist
+# on the module dict).
+from hub.apps.notifications.models import EmailType
+from hub.apps.notifications.tasks import send_email_async
+from hub.apps.users.services import get_tenant_admin_users
+
+logger = logging.getLogger(__name__)
 
 
 class NoTenantAdminsError(RuntimeError):
@@ -64,19 +76,31 @@ def _format_deadline(deadline: _dt.datetime | _dt.date) -> str:
     )
 
 
-def _summarise_contract(contract: Any) -> dict[str, str]:
+def _summarise_contract(
+    contract: Any,
+    *,
+    schema_editor_url_template: str,
+) -> dict[str, str]:
     """Build the per-contract row used in the email template context.
 
     The summary intentionally avoids exposing customer-data values
-    (only contract identity + spec metadata).
+    (only contract identity + spec metadata). The Schema-editor URL
+    is **pre-rendered here** rather than substituted in the Django
+    template — Django has no built-in string-substitution filter, and
+    the prior `cut|add` chain produced a malformed URL with the
+    contract ID at the wrong position.
     """
     payload = getattr(contract, "hub_contract_json", None) or {}
     info = payload.get("info") if isinstance(payload, dict) else None
     name = (info.get("name") if isinstance(info, dict) else None) or ""
+    contract_id = str(contract.id)
     return {
-        "id": str(contract.id),
+        "id": contract_id,
         "name": str(name),
         "spec_type": str(getattr(contract, "original_spec_type", "")),
+        "schema_editor_url": schema_editor_url_template.replace(
+            "{contract_id}", contract_id
+        ),
     }
 
 
@@ -98,17 +122,16 @@ def send_structureless_contract_pending_notification(
             cutover). Rendered as ``YYYY-MM-DD`` in the body.
 
     Returns:
-        List of dicts, one per dispatched email, each containing
-        ``to_email`` and ``email_type``. Useful for tests, audit logs,
-        and the runbook's "I sent N notifications" verification step.
+        List of dicts, one per **attempted** dispatch. Each dict contains
+        ``to_email`` (recipient address), ``email_type`` (canonical type
+        constant), ``success`` (bool), and ``error`` (str or None when
+        success). Recording attempts (not just successes) is important
+        for the audit trail: ops needs to see "we tried, it failed
+        because X" not silent dropping.
 
     Raises:
         NoTenantAdminsError: when the tenant has no TENANT_ADMIN users.
     """
-    from hub.apps.notifications.models import EmailType
-    from hub.apps.notifications.tasks import send_email_async
-    from hub.apps.users.services import get_tenant_admin_users
-
     admins: Iterable[Any] = list(get_tenant_admin_users(tenant))
     if not admins:
         raise NoTenantAdminsError(
@@ -119,14 +142,17 @@ def send_structureless_contract_pending_notification(
         )
 
     deadline_iso = _format_deadline(deadline)
-    contract_summaries = [
-        _summarise_contract(c) for c in structureless_contracts
-    ]
     schema_editor_url_template = getattr(
         settings,
         "STRUCTURELESS_CONTRACT_SCHEMA_EDITOR_URL_TEMPLATE",
         _DEFAULT_SCHEMA_EDITOR_URL,
     )
+    contract_summaries = [
+        _summarise_contract(
+            c, schema_editor_url_template=schema_editor_url_template
+        )
+        for c in structureless_contracts
+    ]
 
     subject = (
         f"Action required: data contract structure missing in "
@@ -141,7 +167,7 @@ def send_structureless_contract_pending_notification(
     tenant_id = str(getattr(tenant, "id", "")) or None
     tenant_name = str(getattr(tenant, "name", "")) or "your tenant"
 
-    dispatched: list[dict[str, str]] = []
+    dispatched: list[dict[str, Any]] = []
     for admin in admins:
         admin_email = getattr(admin, "email", None)
         if not admin_email:
@@ -154,7 +180,13 @@ def send_structureless_contract_pending_notification(
             "tenant_name": tenant_name,
             "contracts": contract_summaries,
             "deadline_iso": deadline_iso,
-            "schema_editor_url_template": schema_editor_url_template,
+        }
+
+        attempt: dict[str, Any] = {
+            "to_email": admin_email,
+            "email_type": email_type_value,
+            "success": False,
+            "error": None,
         }
 
         try:
@@ -167,15 +199,23 @@ def send_structureless_contract_pending_notification(
                 tenant_id=tenant_id,
                 user_id=str(getattr(admin, "id", "")) or None,
             )
-        except Exception:
+            attempt["success"] = True
+        except Exception as exc:
             # Fail-soft per recipient: a single misconfigured email
             # address must not stop the others from being notified.
-            # The underlying pipeline already logs the failure; the
-            # runbook covers the audit-trail review.
-            continue
+            # The underlying pipeline already logs the failure; we
+            # additionally record the error in the audit trail so ops
+            # can see "we tried, it failed" rather than silent drops.
+            attempt["error"] = f"{type(exc).__name__}: {exc}"
+            logger.warning(
+                "structureless_contract_notification_send_failed",
+                extra={
+                    "tenant_id": tenant_id,
+                    "to_email": admin_email,
+                    "error": attempt["error"],
+                },
+            )
 
-        dispatched.append(
-            {"to_email": admin_email, "email_type": email_type_value}
-        )
+        dispatched.append(attempt)
 
     return dispatched

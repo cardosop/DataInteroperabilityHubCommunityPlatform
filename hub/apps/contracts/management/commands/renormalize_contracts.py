@@ -200,10 +200,18 @@ class Command(BaseCommand):
         from hub.apps.contracts.structureless import (
             classify_structureless_contract,
             is_structureless,
-            structureless_filter_q,
         )
 
-        qs = Contract.objects.filter(structureless_filter_q()).order_by("id")
+        # Iterate ALL contracts (optionally tenant-scoped) and apply the
+        # canonical Python predicate per row. We deliberately do NOT
+        # apply the coarse `structureless_filter_q()` here — its narrow
+        # ORM expression (`hub_contract_json IS NULL OR models = []`)
+        # would exclude payloads like `models=[{"fields": []}]` from
+        # ever reaching the predicate, producing false-clean results.
+        # Postgres JSONField lookups can't easily express the full
+        # predicate; iterating the corpus is the correct trade-off at
+        # Wave 0 scale (hundreds of contracts per tenant).
+        qs = Contract.objects.all().order_by("id")
         if tenant_id:
             qs = qs.filter(tenant_id=tenant_id)
 
