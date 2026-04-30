@@ -90,15 +90,33 @@ class Command(BaseCommand):
                 "future-deadline / already-escalated)."
             ),
         )
+        # Phase 227 W4 audit (W4.2/W4.3-AUDIT-1) — match the W4.2
+        # reminder + W4.4 smoke-gate scope so a tenant whose only
+        # residue is a DRAFT contract isn't escalated for a workflow
+        # that isn't broken.
+        parser.add_argument(
+            "--include-active-only",
+            action="store_true",
+            default=False,
+            help=(
+                "Only count ACTIVE structureless contracts as residue "
+                "during the run-time re-check.  Mirrors the W4.4 smoke-"
+                "gate scope; without this flag DRAFT residue (data-"
+                "engineer edit buffer) keeps a tenant in the escalation "
+                "cohort.  Pair with the same flag on the W4.2 driver "
+                "for end-to-end consistency."
+            ),
+        )
 
     # ------------------------------------------------------------------
 
     def handle(self, *_args, **options):
         dry_run: bool = options["dry_run"]
         audit_output = options.get("audit_output")
+        active_only = bool(options.get("include_active_only"))
         records: List[Dict[str, Any]] = []
 
-        decisions = list(self._iter_decisions())
+        decisions = list(self._iter_decisions(active_only=active_only))
 
         escalated = 0
         remediated = 0
@@ -178,7 +196,9 @@ class Command(BaseCommand):
 
     # ------------------------------------------------------------------
 
-    def _iter_decisions(self) -> Iterable[Dict[str, Any]]:
+    def _iter_decisions(
+        self, *, active_only: bool = False,
+    ) -> Iterable[Dict[str, Any]]:
         """Walk the most-recent ``SCHEMA_EDITOR_RESIDUE_REMINDED``
         audit row per tenant and decide the verdict.
 
@@ -188,7 +208,7 @@ class Command(BaseCommand):
         load-bearing for escalation.
         """
         from hub.apps.audit.models import AuditEvent
-        from hub.apps.contracts.models import Contract
+        from hub.apps.contracts.models import Contract, ContractStatus
         from hub.apps.contracts.structureless import is_structureless
 
         # Fetch all reminder rows ordered newest-first; keep only the
@@ -274,13 +294,23 @@ class Command(BaseCommand):
 
             # Re-check residue at run time — a tenant who fixed their
             # contracts the day before the deadline must not be
-            # escalated.
-            still_residue = 0
-            for contract in (
+            # escalated.  Single-pass scan that yields both the
+            # boolean ("any residue?") AND the count for the
+            # escalation audit row's ``residue_count`` field.
+            #
+            # W4.2/W4.3-AUDIT-1 fix: respect active_only so a DRAFT
+            # residue contract doesn't keep the tenant in the
+            # escalation cohort under the strict scope.
+            qs_recheck = (
                 Contract.objects.filter(tenant=tenant)
-                .only("id", "tenant_id", "hub_contract_json")
-                .iterator(chunk_size=200)
-            ):
+                .only("id", "tenant_id", "hub_contract_json", "status")
+            )
+            if active_only:
+                qs_recheck = qs_recheck.filter(
+                    status=ContractStatus.ACTIVE,
+                )
+            still_residue = 0
+            for contract in qs_recheck.iterator(chunk_size=200):
                 if is_structureless(contract):
                     still_residue += 1
 

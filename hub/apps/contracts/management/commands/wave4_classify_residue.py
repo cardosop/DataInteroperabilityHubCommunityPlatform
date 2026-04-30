@@ -90,6 +90,15 @@ def classify_tenants_by_residue(
         tid = getattr(contract, "tenant_id", None)
         if tid is None:
             continue
+        # Phase 227 W4 audit (W4.1-AUDIT-1): under ``active_only=True``
+        # a tenant with ONLY DRAFT/RETIRED contracts has no
+        # customer-facing residue and no rollout work to do — they
+        # must be excluded from the cohort, not surfaced as "clean".
+        # Skipping the per-row work BEFORE the slot is created
+        # guarantees a tenant only enters the dict if it owns at
+        # least one row in the active-only scope.
+        if active_only and contract.status != ContractStatus.ACTIVE:
+            continue
         tid_str = str(tid)
         slot = by_tenant.setdefault(
             tid_str,
@@ -101,11 +110,6 @@ def classify_tenants_by_residue(
                 "residue_contract_ids": [],
             },
         )
-        # The active-only knob skips DRAFT/RETIRED rows entirely so
-        # they neither bump the residue counter nor count toward the
-        # tenant's cohort.
-        if active_only and contract.status != ContractStatus.ACTIVE:
-            continue
         if is_structureless(contract):
             slot["residue_count"] += 1
             slot["residue_contract_ids"].append(str(contract.id))

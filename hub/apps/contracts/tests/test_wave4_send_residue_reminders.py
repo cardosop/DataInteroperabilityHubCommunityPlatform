@@ -158,6 +158,96 @@ class ArgumentValidationTests(TestCase):
 
 
 @pytest.mark.django_db(transaction=True)
+class Wave4ReminderActiveOnlyScopeTests(TestCase):
+    """W4.2/W4.3-AUDIT-1 regression — ``--include-active-only`` on
+    the W4.2 driver matches the W4.4 smoke-gate's scope so a tenant
+    whose only structureless contract is a DRAFT (data-engineer's
+    edit buffer) doesn't get reminded for a workflow that isn't
+    broken."""
+
+    def test_active_only_skips_tenant_with_only_draft_residue(self):
+        from hub.apps.contracts.notifications import (
+            schema_editor_residue_reminder as helper_mod,
+        )
+        from hub.apps.contracts.models import ContractStatus
+
+        tenant = _create_tenant("draft-only-r")
+        _create_contract(
+            tenant, hub_contract_json=_HC_STRUCTURELESS,
+        )
+        # The default factory creates DRAFT contracts; that's exactly
+        # what we want here.  Verify the assumption.
+        from hub.apps.contracts.models import Contract
+        first = Contract.objects.filter(tenant=tenant).first()
+        assert first is not None, "fixture must have created a contract"
+        self.assertEqual(first.status, ContractStatus.DRAFT)
+        _grant_tenant_admin(_create_admin("draft@example.com", tenant), tenant)
+
+        sent: list[str] = []
+
+        def _capture(**kwargs):
+            sent.append(kwargs["to_email"])
+            return {"success": True, "delivery_id": "x"}
+
+        with patch.object(helper_mod, "send_email_async", side_effect=_capture):
+            call_command(
+                "wave4_send_residue_reminders",
+                f"--deadline={_future_deadline()}",
+                "--include-active-only",
+                stdout=io.StringIO(),
+            )
+        self.assertEqual(
+            sent, [],
+            "Under --include-active-only, a tenant whose only residue "
+            "is a DRAFT contract must not be emailed.",
+        )
+
+    def test_active_only_still_emails_tenant_with_active_residue(self):
+        from hub.apps.contracts.notifications import (
+            schema_editor_residue_reminder as helper_mod,
+        )
+        from hub.apps.contracts.models import (
+            Contract,
+            ContractStatus,
+            OriginalFormat,
+            OriginalSpecType,
+        )
+
+        tenant = _create_tenant("active-residue")
+        # Build the contract explicitly with status=ACTIVE.
+        Contract.objects.create(
+            tenant=tenant,
+            version=1,
+            original_spec_type=OriginalSpecType.ODCS,
+            original_spec_version="3.1.0",
+            original_format=OriginalFormat.JSON,
+            original_raw="{}",
+            hub_contract_json=_HC_STRUCTURELESS,
+            normalization_status="NORMALIZED_OK",
+            validation_status="VALID",
+            status=ContractStatus.ACTIVE,
+        )
+        _grant_tenant_admin(
+            _create_admin("active@example.com", tenant), tenant,
+        )
+
+        sent: list[str] = []
+
+        def _capture(**kwargs):
+            sent.append(kwargs["to_email"])
+            return {"success": True, "delivery_id": "x"}
+
+        with patch.object(helper_mod, "send_email_async", side_effect=_capture):
+            call_command(
+                "wave4_send_residue_reminders",
+                f"--deadline={_future_deadline()}",
+                "--include-active-only",
+                stdout=io.StringIO(),
+            )
+        self.assertEqual(sent, ["active@example.com"])
+
+
+@pytest.mark.django_db(transaction=True)
 class Wave4ReminderScopeTests(TestCase):
 
     def test_default_scope_only_emails_residue_tenants(self):
@@ -373,9 +463,21 @@ class Wave4ReminderSafetyTests(TestCase):
 
     def test_drift_guard_excludes_remediated_contracts_from_email_body(self):
         """A contract remediated between classification and dispatch
-        must not appear in the reminder body.  We can't easily inspect
-        the rendered HTML in this test (the helper is mocked), but
-        we can pin the kwargs the helper is called with."""
+        must not appear in the reminder body.
+
+        W4.2-AUDIT-1 fix — the previous version of this test mutated
+        the contract BEFORE calling the driver, which meant the
+        classifier itself excluded the row and the drift-guard code
+        path never fired.  This version patches
+        ``classify_tenants_by_residue`` at its source module so the
+        driver receives a residue list containing a contract that has
+        been remediated since "classification".  The drift guard
+        inside ``_load_residue_cohort`` then has to filter it out —
+        which is what we actually want to pin.
+        """
+        from hub.apps.contracts.management.commands import (
+            wave4_classify_residue,
+        )
         from hub.apps.contracts.notifications import (
             schema_editor_residue_reminder as helper_mod,
         )
@@ -386,11 +488,25 @@ class Wave4ReminderSafetyTests(TestCase):
         c_was_residue = _create_contract(tenant, hub_contract_json=_HC_STRUCTURELESS)
         _grant_tenant_admin(_create_admin("drift@example.com", tenant), tenant)
 
-        # Simulate remediation of c_was_residue between classification
-        # and dispatch by mutating its hub_contract_json post-classification.
-        # We monkey-patch classify_tenants_by_residue to return BOTH
-        # contract ids, then mutate the row, and let the driver's drift
-        # guard detect that one of them is no longer structureless.
+        # Simulate the gap: classifier saw both contracts as residue
+        # at scan time; one was remediated before the driver got
+        # around to dispatching.
+        def _patched_classify(*, tenant_id=None, active_only=False):
+            return [
+                {
+                    "tenant_id": str(tenant.id),
+                    "tenant_name": tenant.name,
+                    "cohort": "residue",
+                    "residue_count": 2,
+                    "residue_contract_ids": [
+                        str(c_still.id), str(c_was_residue.id),
+                    ],
+                }
+            ]
+
+        # Mutate the contract AFTER patch is in place so the bulk
+        # reload inside `_load_residue_cohort` sees the post-
+        # classification state.
         Contract.objects.filter(pk=c_was_residue.pk).update(
             hub_contract_json=_HC_OK,
         )
@@ -401,7 +517,13 @@ class Wave4ReminderSafetyTests(TestCase):
             captured.append(kwargs)
             return {"success": True, "delivery_id": "x"}
 
-        with patch.object(helper_mod, "send_email_async", side_effect=_capture):
+        with patch.object(
+            wave4_classify_residue,
+            "classify_tenants_by_residue",
+            side_effect=_patched_classify,
+        ), patch.object(
+            helper_mod, "send_email_async", side_effect=_capture,
+        ):
             call_command(
                 "wave4_send_residue_reminders",
                 f"--deadline={_future_deadline()}",
@@ -409,14 +531,28 @@ class Wave4ReminderSafetyTests(TestCase):
             )
 
         self.assertEqual(len(captured), 1)
-        # The email body's contract list should contain ONLY c_still.
+        # The email body's contract list should contain ONLY c_still
+        # — c_was_residue was filtered by the drift guard.
         contracts = captured[0]["context"]["contracts"]
         contract_ids = [c["id"] for c in contracts]
         self.assertEqual(contract_ids, [str(c_still.id)])
 
     def test_tenant_with_only_remediated_residue_is_skipped(self):
         """If the entire residue was remediated between classification
-        and dispatch, the driver must NOT send an empty reminder."""
+        and dispatch, the driver must NOT send an empty reminder.
+
+        W4.2-AUDIT-2 fix — same as AUDIT-1: the previous version of
+        the test mutated the row before calling the driver, which
+        meant the classifier excluded the tenant and the for-loop's
+        ``[drift-clean]`` branch never ran.  This version patches
+        the classifier so the tenant IS in the residue cohort, then
+        mutates the only residue contract — the driver enters the
+        for-loop, the drift guard empties ``still_residue_contracts``,
+        and the ``[drift-clean]`` log fires.
+        """
+        from hub.apps.contracts.management.commands import (
+            wave4_classify_residue,
+        )
         from hub.apps.contracts.notifications import (
             schema_editor_residue_reminder as helper_mod,
         )
@@ -426,7 +562,17 @@ class Wave4ReminderSafetyTests(TestCase):
         c1 = _create_contract(tenant, hub_contract_json=_HC_STRUCTURELESS)
         _grant_tenant_admin(_create_admin("af@example.com", tenant), tenant)
 
-        # Remediate after the classifier records the residue.
+        def _patched_classify(*, tenant_id=None, active_only=False):
+            return [
+                {
+                    "tenant_id": str(tenant.id),
+                    "tenant_name": tenant.name,
+                    "cohort": "residue",
+                    "residue_count": 1,
+                    "residue_contract_ids": [str(c1.id)],
+                }
+            ]
+
         Contract.objects.filter(pk=c1.pk).update(
             hub_contract_json=_HC_OK,
         )
@@ -438,7 +584,13 @@ class Wave4ReminderSafetyTests(TestCase):
             return {"success": True, "delivery_id": "x"}
 
         out = io.StringIO()
-        with patch.object(helper_mod, "send_email_async", side_effect=_capture):
+        with patch.object(
+            wave4_classify_residue,
+            "classify_tenants_by_residue",
+            side_effect=_patched_classify,
+        ), patch.object(
+            helper_mod, "send_email_async", side_effect=_capture,
+        ):
             call_command(
                 "wave4_send_residue_reminders",
                 f"--deadline={_future_deadline()}",

@@ -196,3 +196,72 @@ class IncludeActiveOnlyFilterTests(TestCase):
         )
         # Only the ACTIVE row on tenant `a` is counted.
         self.assertEqual(_last_count_line(out), 1)
+
+
+@pytest.mark.django_db(transaction=True)
+class IncludeActiveOnlyGaugeIsolationTests(TestCase):
+    """W4.4-AUDIT-1 regression — ``--include-active-only`` MUST NOT
+    write to the global ``contract_structureless_backlog`` Prometheus
+    gauge.
+
+    The gauge's canonical semantic (set by the daily backlog cron
+    that omits ``--include-active-only``) is "all structureless
+    contracts".  The W4.4 smoke gate runs every staging deploy with
+    ``--include-active-only`` — writing the active-only count to the
+    same gauge would persistently corrupt it.
+    """
+
+    def test_include_active_only_does_not_call_set_structureless_backlog(self):
+        from unittest.mock import patch
+
+        from hub.apps.contracts.models import ContractStatus
+
+        tenant = _create_tenant("gauge-active")
+        _create_contract(
+            tenant,
+            status=ContractStatus.ACTIVE,
+            hub_contract_json=_HC_STRUCTURELESS,
+        )
+
+        with patch(
+            "hub.apps.contracts.normalization_metrics.set_structureless_backlog"
+        ) as mock_set:
+            call_command(
+                "renormalize_contracts",
+                "--spec-version=3.1.0",
+                "--filter=structureless",
+                "--include-active-only",
+                "--dry-run",
+                "--output=count",
+                stdout=StringIO(),
+            )
+        mock_set.assert_not_called()
+
+    def test_omitting_active_only_still_calls_set_structureless_backlog(self):
+        """Backwards-compat regression: the daily backlog cron's
+        invocation (no ``--include-active-only``) MUST keep updating
+        the gauge — otherwise the L7.6 backlog dashboard goes dark."""
+        from unittest.mock import patch
+
+        from hub.apps.contracts.models import ContractStatus
+
+        tenant = _create_tenant("gauge-all")
+        _create_contract(
+            tenant,
+            status=ContractStatus.ACTIVE,
+            hub_contract_json=_HC_STRUCTURELESS,
+        )
+
+        with patch(
+            "hub.apps.contracts.normalization_metrics.set_structureless_backlog"
+        ) as mock_set:
+            call_command(
+                "renormalize_contracts",
+                "--spec-version=3.1.0",
+                "--filter=structureless",
+                "--dry-run",
+                "--output=count",
+                stdout=StringIO(),
+            )
+        # The daily-cron path must still hit the gauge.
+        mock_set.assert_called_once()

@@ -1,0 +1,87 @@
+{% extends "notifications/emails/base.html" %}
+
+{% block title %}Asset auto-reverted to DRAFT — action required{% endblock %}
+
+{% block content %}
+<h2>Asset "{{ asset_name }}" was auto-reverted to DRAFT</h2>
+
+<p>Hello{% if admin_first_name %} {{ admin_first_name }}{% endif %},</p>
+
+<p>
+  As part of the {{ app_name|default:"Meshant" }} <strong>structureless-contract
+  remediation programme</strong> (Phase 227 Wave 5), the asset
+  <strong>{{ asset_name }}</strong> in <strong>{{ tenant_name }}</strong>
+  has been demoted from <code>{{ previous_status }}</code> to
+  <code>DRAFT</code>. The asset's currently-active data contract is
+  <em>structureless</em> (no resolvable models or schema fields), so
+  consumers can no longer rely on it for schema discovery, lineage,
+  or marketplace publication.
+</p>
+
+<h3>What was auto-reverted</h3>
+
+<table style="width: 100%; border-collapse: collapse; margin: 16px 0;">
+  <tr>
+    <td style="padding: 6px; border-bottom: 1px solid #eee;"><strong>Asset</strong></td>
+    <td style="padding: 6px; border-bottom: 1px solid #eee;">
+      {{ asset_name }}{% if asset_key %} (<code>{{ asset_key }}</code>){% endif %}
+    </td>
+  </tr>
+  <tr>
+    <td style="padding: 6px; border-bottom: 1px solid #eee;"><strong>Previous status</strong></td>
+    <td style="padding: 6px; border-bottom: 1px solid #eee;"><code>{{ previous_status }}</code></td>
+  </tr>
+  <tr>
+    <td style="padding: 6px; border-bottom: 1px solid #eee;"><strong>New status</strong></td>
+    <td style="padding: 6px; border-bottom: 1px solid #eee;"><code>DRAFT</code></td>
+  </tr>
+  <tr>
+    <td style="padding: 6px; border-bottom: 1px solid #eee;"><strong>Active contract</strong></td>
+    <td style="padding: 6px; border-bottom: 1px solid #eee;">
+      <code>{{ contract_id }}</code>{% if spec_type %} ({{ spec_type }}){% endif %}
+    </td>
+  </tr>
+  <tr>
+    <td style="padding: 6px; border-bottom: 1px solid #eee;"><strong>Migration run</strong></td>
+    <td style="padding: 6px; border-bottom: 1px solid #eee;"><code>{{ run_id }}</code></td>
+  </tr>
+</table>
+
+<h3>How to restore the asset</h3>
+
+<ol>
+  <li>Open the contract in the {{ app_name|default:"Meshant" }} Schema editor.</li>
+  <li>Add models, fields, and types that match your data shape — or
+      attach an existing structurally-complete contract.</li>
+  <li>Save. Validation will confirm the contract is structurally sound.</li>
+  <li>Re-activate the asset (set its status back to
+      <code>{{ previous_status }}</code>) via the Asset detail page.</li>
+</ol>
+
+<p>
+  <a href="{{ schema_editor_url }}" class="button">
+    Open Schema editor
+  </a>
+  &nbsp;
+  <a href="{{ asset_url }}" class="button" style="background-color: #6b7280;">
+    Open Asset detail
+  </a>
+</p>
+
+<h3>Need help?</h3>
+
+<p>
+  If the auto-revert was unexpected — for example, you believe the
+  contract is structurally complete but the system flagged it
+  otherwise — reply to this email or check the
+  <a href="https://docs.{{ app_name|default:"meshant"|lower }}.com/runbooks/structureless-contracts">
+    operator runbook
+  </a> for the audit-event-driven restore procedure (the L6.4
+  reverse migration is idempotent and reversible).
+</p>
+
+<p>
+  Thank you,<br>
+  The {{ app_name|default:"Meshant" }} Data Governance Team
+</p>
+{% endblock %}

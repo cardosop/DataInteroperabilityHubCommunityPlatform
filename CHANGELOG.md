@@ -84,6 +84,41 @@ editor.
   models-per-contract distribution, batch duration, schema-editor
   adoption funnel, time-to-first-save, asset auto-reverts
 
+**New email types** (Phase 227 Wave 5):
+
+- `ASSET_AUTO_REVERT_WARNING` — T+30 final-warning email sent to
+  every TENANT_ADMIN of every tenant whose currently-active
+  contracts remain structureless 14 days before the W5 cutover.
+  Drives the new `wave5_send_final_warning_notifications`
+  management command (W5.1).
+- `ASSET_AUTO_REVERTED_NOTIFICATION` — per-asset notification
+  emitted by the apply-asset-revert path right after an asset is
+  demoted to DRAFT. Each TENANT_ADMIN of the affected tenant gets
+  one email + one in-app `UserNotification` (governance category)
+  carrying the asset name, the structureless contract id, the
+  previous status, and the Schema-editor + Asset-detail
+  deep-links. Wired into `_maybe_revert_asset`; best-effort —
+  notification dispatch failures DO NOT roll back the demotion
+  (which is the load-bearing operation).
+
+**New management commands** (Phase 227 Wave 5):
+
+- `wave5_send_final_warning_notifications --deadline=YYYY-MM-DD`
+  — broadcasts the T+30 final warning to every tenant with at
+  least one structureless ACTIVE contract. Mirrors the W4 driver
+  conventions: idempotency-via-audit-row (`ASSET_AUTO_REVERT_WARNING_NOTIFIED`),
+  per-recipient fail-soft, all-failed-batch-leaves-no-audit-row
+  (so retries can self-heal), `--dry-run`, `--audit-output`,
+  `--force`, `--tenant-id`, `--all-tenants`. Default scope guard
+  excludes already-clean tenants so the warning doesn't reach
+  customers who have already remediated.
+
+**New audit actions** (Phase 227 Wave 5):
+
+- `ASSET_AUTO_REVERT_WARNING_NOTIFIED` — written by the W5.1
+  driver after a successful per-tenant dispatch. Powers the
+  driver's idempotency check.
+
 **New webhook event types** (Phase 227 W3.4):
 
 - `contract.batch_renormalized` — emitted once per `renormalize_contracts

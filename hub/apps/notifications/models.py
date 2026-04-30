@@ -70,6 +70,23 @@ class EmailType(models.TextChoices):
         "SCHEMA_EDITOR_RESIDUE_REMINDER",
         "Schema editor — residue reminder + 30-day deadline",
     )
+    # Phase 227 Wave 5 (227.W5.1) — T+30 final-warning email sent to
+    # every TENANT_ADMIN of every tenant whose currently-active
+    # contracts are still structureless 14 days before W5 cutover.
+    # Last customer-action window before the auto-revert sweep.
+    ASSET_AUTO_REVERT_WARNING = (
+        "ASSET_AUTO_REVERT_WARNING",
+        "Final warning — assets will be auto-reverted to DRAFT",
+    )
+    # Phase 227 Wave 5 (227.W5.3) — per-asset notification emitted by
+    # the apply-asset-revert path right after an asset is demoted to
+    # DRAFT. Carries the asset name, the structureless contract id,
+    # the previous status (for restoration), and the deep-link to the
+    # Schema editor where the customer can fix the contract.
+    ASSET_AUTO_REVERTED_NOTIFICATION = (
+        "ASSET_AUTO_REVERTED_NOTIFICATION",
+        "Asset auto-reverted to DRAFT (Phase 227 Wave 5)",
+    )
 
 
 class EmailDelivery(models.Model):

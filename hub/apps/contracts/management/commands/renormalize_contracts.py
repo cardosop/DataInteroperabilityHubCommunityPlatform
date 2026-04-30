@@ -444,16 +444,26 @@ class Command(BaseCommand):
             # Also update the OTel UpDownCounter directly so processes
             # with the OTel SDK loaded see the gauge advance immediately
             # (the pushgateway path is the prom-only fallback).
-            try:
-                from hub.apps.contracts.normalization_metrics import (
-                    set_structureless_backlog,
-                )
-                set_structureless_backlog(
-                    count=emitted,
-                    tenant_id=tenant_id,
-                )
-            except Exception:
-                pass
+            #
+            # Phase 227 W4 audit (W4.4-AUDIT-1): the gauge's canonical
+            # semantic is "all structureless contracts" (set by the
+            # daily backlog cron, which omits ``--include-active-only``).
+            # The W4.4 smoke gate runs every staging deploy with
+            # ``--include-active-only`` — writing the active-only
+            # count to the same gauge would persistently corrupt it.
+            # Skip the gauge update when scoping to ACTIVE-only so the
+            # daily cron's value is the load-bearing one.
+            if not include_active_only:
+                try:
+                    from hub.apps.contracts.normalization_metrics import (
+                        set_structureless_backlog,
+                    )
+                    set_structureless_backlog(
+                        count=emitted,
+                        tenant_id=tenant_id,
+                    )
+                except Exception:
+                    pass
         else:
             self.stdout.write(
                 self.style.SUCCESS(
@@ -1140,4 +1150,51 @@ class Command(BaseCommand):
             # Audit event failure must NOT roll back the demotion —
             # the asset state change is the load-bearing operation.
             pass
+
+        # Phase 227 W5.3 — notify every TENANT_ADMIN that the asset
+        # has been auto-reverted. Best-effort: this dispatch happens
+        # AFTER the demotion has already committed, and a notification
+        # failure (SES outage, missing admin row, broken email) MUST
+        # NOT roll back the demotion. The audit event above is the
+        # load-bearing record; the notification is the customer-facing
+        # signal that they need to remediate.
+        try:
+            from hub.apps.contracts.notifications.asset_auto_reverted import (
+                NoTenantAdminsError,
+                send_asset_auto_reverted_notification,
+            )
+
+            send_asset_auto_reverted_notification(
+                asset=asset,
+                contract=contract,
+                previous_status=str(previous_status),
+                run_id=run_id,
+            )
+        except NoTenantAdminsError as exc:
+            try:
+                import structlog
+                _logger = structlog.get_logger(__name__)
+            except ImportError:
+                import logging
+                _logger = logging.getLogger(__name__)
+            _logger.warning(
+                "asset_auto_reverted_no_tenant_admins",
+                asset_id=str(asset.id),
+                tenant_id=str(getattr(asset, "tenant_id", "")),
+                reason=str(exc),
+            )
+        except Exception as exc:  # noqa: BLE001 — best-effort dispatch
+            try:
+                import structlog
+                _logger = structlog.get_logger(__name__)
+            except ImportError:
+                import logging
+                _logger = logging.getLogger(__name__)
+            _logger.warning(
+                "asset_auto_reverted_notification_dispatch_failed",
+                asset_id=str(asset.id),
+                run_id=run_id,
+                error=str(exc),
+            )
+
         return True

@@ -129,6 +129,21 @@ class Command(BaseCommand):
                 "Useful for cross-checking against EmailDelivery rows."
             ),
         )
+        # Phase 227 W4 audit (W4.2/W4.3-AUDIT-1) — match the W4.4
+        # smoke gate's scope so a tenant whose only structureless
+        # contract is a DRAFT (data-engineer's edit buffer) doesn't
+        # get reminded + escalated for a workflow that isn't broken.
+        parser.add_argument(
+            "--include-active-only",
+            action="store_true",
+            default=False,
+            help=(
+                "Only count ACTIVE structureless contracts as residue. "
+                "Mirrors the W4.4 smoke-gate scope; without this flag "
+                "DRAFT residue (data-engineer edit buffer) and RETIRED "
+                "residue (tombstones) trigger reminders too."
+            ),
+        )
 
     # ------------------------------------------------------------------
 
@@ -143,10 +158,12 @@ class Command(BaseCommand):
         force: bool = options["force"]
         idempotency_days = max(0, int(options["idempotency_days"]))
         audit_output = options.get("audit_output")
+        active_only = bool(options.get("include_active_only"))
         audit_records: list[dict[str, Any]] = []
 
         residue_rows = self._load_residue_cohort(
             tenant_id=options.get("tenant_id"),
+            active_only=active_only,
         )
         if not residue_rows:
             self.stdout.write(self.style.WARNING(
@@ -280,7 +297,7 @@ class Command(BaseCommand):
         return d
 
     def _load_residue_cohort(
-        self, *, tenant_id: str | None,
+        self, *, tenant_id: str | None, active_only: bool = False,
     ) -> list[dict[str, Any]]:
         """Build the (tenant, residue contracts) tuples to dispatch.
 
@@ -292,11 +309,13 @@ class Command(BaseCommand):
         from hub.apps.contracts.management.commands.wave4_classify_residue import (
             classify_tenants_by_residue,
         )
-        from hub.apps.contracts.models import Contract
+        from hub.apps.contracts.models import Contract, ContractStatus
         from hub.apps.contracts.structureless import is_structureless
         from hub.apps.tenants.models import Tenant
 
-        cohort = classify_tenants_by_residue(tenant_id=tenant_id)
+        cohort = classify_tenants_by_residue(
+            tenant_id=tenant_id, active_only=active_only,
+        )
         residue_rows = [r for r in cohort if r["cohort"] == "residue"]
         if not residue_rows:
             return []
@@ -325,8 +344,20 @@ class Command(BaseCommand):
                 contract = contracts_by_id.get(cid)
                 if contract is None:
                     continue
-                if is_structureless(contract):
-                    still_residue.append(contract)
+                # Drift-guard: a contract remediated between classify
+                # and dispatch must not appear in the email body.
+                if not is_structureless(contract):
+                    continue
+                # Active-only enforcement at dispatch time too: a
+                # contract demoted from ACTIVE to DRAFT between
+                # classify and dispatch shouldn't drag the tenant
+                # into the reminder under active_only mode.
+                if (
+                    active_only
+                    and getattr(contract, "status", None) != ContractStatus.ACTIVE
+                ):
+                    continue
+                still_residue.append(contract)
             result.append({"tenant": tenant, "contracts": still_residue})
         return result
 

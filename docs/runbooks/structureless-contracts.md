@@ -345,6 +345,38 @@ Emits a single integer to stdout (the count of structureless contracts) — pipe
 
 For tenants who fail to remediate by T+44, demote ACTIVE assets backed by still-structureless contracts to DRAFT. Each demotion emits `ASSET_AUTO_REVERTED_STRUCTURELESS` audit events recording the prior status.
 
+### W5.1 — T+30 final-warning broadcast (14 days before cutover)
+
+The driver targets every tenant with at least one structureless ACTIVE contract and sends one final-warning email per TENANT_ADMIN. Idempotent — a tenant with a recent `ASSET_AUTO_REVERT_WARNING_NOTIFIED` audit row is skipped (default 14-day window). Mirrors the W4 driver conventions (per-recipient fail-soft, all-failed-batch-no-audit-row, dry-run, audit-output).
+
+```bash
+# Plan only — recommended first run.
+python /app/hub/manage.py wave5_send_final_warning_notifications \
+    --deadline=$(date -d '+14 days' +%F) --dry-run
+
+# Fire the warning.
+python /app/hub/manage.py wave5_send_final_warning_notifications \
+    --deadline=$(date -d '+14 days' +%F) \
+    --audit-output=/tmp/w51-final-warning-$(date +%F).jsonl
+
+# Single-tenant escalation re-send (audit row written either way).
+python /app/hub/manage.py wave5_send_final_warning_notifications \
+    --deadline=$(date -d '+14 days' +%F) \
+    --tenant-id=<TENANT_UUID> --force
+```
+
+| Flag | Purpose |
+| ---- | ------- |
+| `--deadline=YYYY-MM-DD` | Customer-facing W5 cutover date. Must be a future ISO date; rejected with `CommandError` otherwise. |
+| `--tenant-id=<uuid>` | Single-tenant scope (regardless of residue state). |
+| `--all-tenants` | Bypass the default scope guard and broadcast to every tenant in the system. Use only for explicit broadcast operations. |
+| `--dry-run` | Plan + count; no emails, no audit rows. |
+| `--force` | Bypass the idempotency window; re-send + write a fresh audit row capturing intent. |
+| `--idempotency-days=N` | Default 14. `0` disables the idempotency check. |
+| `--audit-output=<path>` | Write a per-dispatch JSONL trail for cross-checking against `EmailDelivery` rows. |
+
+### W5.2 — Auto-revert sweep (cutover day)
+
 ```bash
 python /app/hub/manage.py renormalize_contracts \
     --spec-version=3.1.0 \
@@ -357,6 +389,25 @@ python /app/hub/manage.py renormalize_contracts \
 ```
 
 `--apply-asset-revert` implies `--apply`. Only assets whose currently-active contract REMAINS structureless after re-normalisation are demoted; self-heal successes pass through untouched.
+
+### W5.3 — Per-asset post-revert notification (automatic)
+
+Every demotion fires both:
+
+1. An `ASSET_AUTO_REVERTED_STRUCTURELESS` audit event recording the prior status (used by the L6.4 reverse migration to restore).
+2. A per-asset notification dispatched to every TENANT_ADMIN of the affected tenant — one email (`ASSET_AUTO_REVERTED_NOTIFICATION`) **and** one in-app `UserNotification` (governance category, WARNING type) carrying the asset name, the contract id, the previous status, and deep-links to both the Schema editor (to fix the contract) and the Asset detail page (to re-activate).
+
+The notification dispatch is **best-effort and out-of-band** with respect to the demotion: a notification failure (SES outage, missing admin, broken email) MUST NOT roll back the demotion, which is the load-bearing operation. Failures surface in the structured logs (`asset_auto_reverted_notification_dispatch_failed`) but the audit row above is the canonical record either way.
+
+To verify per-tenant notification fanout for a Wave 5 run:
+
+```sql
+SELECT to_email, status, error_message, created_at
+FROM email_deliveries
+WHERE email_type = 'ASSET_AUTO_REVERTED_NOTIFICATION'
+  AND tenant_id = '<TENANT_UUID>'
+ORDER BY created_at DESC;
+```
 
 ### Rollback (if Wave 5 was applied prematurely)
 

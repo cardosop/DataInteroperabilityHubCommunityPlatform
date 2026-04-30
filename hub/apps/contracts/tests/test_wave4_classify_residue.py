@@ -153,6 +153,59 @@ class ClassifyResidueFunctionTests(TestCase):
         self.assertEqual(len(rows), 1)
         self.assertEqual(rows[0]["cohort"], "clean")
 
+    def test_active_only_excludes_tenant_with_zero_active_contracts(self):
+        """W4.1-AUDIT-1 regression — under ``active_only=True`` a tenant
+        whose only contracts are DRAFT/RETIRED has no rollout work to
+        do.  Surfacing them as ``cohort=clean`` would inflate the W4
+        rollout-tracker dashboard's numerator (clean-tenants count) and
+        misrepresent the population.
+
+        The pre-fix loop created the slot via ``setdefault`` BEFORE
+        the active-only filter check, so a DRAFT-only tenant ended up
+        in ``by_tenant`` as ``cohort=clean`` regardless.  The fix
+        moves the filter ahead of the slot creation so a tenant only
+        enters the dict if it owns at least one row in scope.
+        """
+        from hub.apps.contracts.management.commands.wave4_classify_residue import (
+            classify_tenants_by_residue,
+        )
+        from hub.apps.contracts.models import ContractStatus
+
+        tenant = _create_tenant("draft-only")
+        _create_contract(
+            tenant,
+            hub_contract_json=_HC_STRUCTURELESS,
+            status=ContractStatus.DRAFT,
+        )
+
+        result = classify_tenants_by_residue(active_only=True)
+        ids = {row["tenant_id"] for row in result}
+        self.assertNotIn(
+            str(tenant.id), ids,
+            "Tenants with zero ACTIVE contracts must be excluded under "
+            "active_only=True — they have no rollout work, so surfacing "
+            "them as 'clean' inflates the W4 dashboard population.",
+        )
+
+    def test_active_only_excludes_tenant_with_only_retired(self):
+        """Companion to the previous test: RETIRED-only tenants follow
+        the same exclusion rule under active_only."""
+        from hub.apps.contracts.management.commands.wave4_classify_residue import (
+            classify_tenants_by_residue,
+        )
+        from hub.apps.contracts.models import ContractStatus
+
+        tenant = _create_tenant("retired-only")
+        _create_contract(
+            tenant,
+            hub_contract_json=_HC_OK,  # status, not structureless, is the test
+            status=ContractStatus.RETIRED,
+        )
+
+        result = classify_tenants_by_residue(active_only=True)
+        ids = {row["tenant_id"] for row in result}
+        self.assertNotIn(str(tenant.id), ids)
+
 
 # ---------------------------------------------------------------------------
 # Management-command CLI

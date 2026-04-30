@@ -225,6 +225,103 @@ class EscalationIdempotencyTests(TestCase):
 
 
 @pytest.mark.django_db(transaction=True)
+class EscalationActiveOnlyScopeTests(TestCase):
+    """W4.2/W4.3-AUDIT-1 regression — ``--include-active-only`` on the
+    cron matches the W4.2 reminder + W4.4 smoke-gate scope so a tenant
+    whose only residue is DRAFT (data-engineer's edit buffer) doesn't
+    get the ``STRUCTURELESS_RESIDUE_DEADLINE_PASSED`` audit row."""
+
+    def test_active_only_treats_draft_residue_as_remediated(self):
+        from hub.apps.audit.models import AuditEvent
+        from hub.apps.contracts.models import (
+            Contract,
+            ContractStatus,
+            OriginalFormat,
+            OriginalSpecType,
+        )
+
+        tenant = _create_tenant("draft-only-esc")
+        Contract.objects.create(
+            tenant=tenant,
+            version=1,
+            original_spec_type=OriginalSpecType.ODCS,
+            original_spec_version="3.1.0",
+            original_format=OriginalFormat.JSON,
+            original_raw="{}",
+            hub_contract_json=_HC_STRUCTURELESS,
+            normalization_status="NORMALIZED_OK",
+            validation_status="VALID",
+            status=ContractStatus.DRAFT,
+        )
+        _record_reminded(
+            tenant,
+            deadline=_dt.date.today() - timedelta(days=1),
+            when=timezone.now() - timedelta(days=31),
+        )
+
+        out = io.StringIO()
+        call_command(
+            "wave4_escalate_residue",
+            "--include-active-only",
+            stdout=out,
+        )
+
+        # Under --include-active-only the DRAFT residue contract
+        # doesn't keep the tenant in the escalation cohort: the cron
+        # records this as ``remediated``, NOT ``escalate``.
+        self.assertEqual(
+            AuditEvent.objects.filter(
+                tenant=tenant,
+                action="STRUCTURELESS_RESIDUE_DEADLINE_PASSED",
+            ).count(),
+            0,
+        )
+        self.assertIn("[remediated]", out.getvalue())
+
+    def test_active_only_still_escalates_active_residue(self):
+        from hub.apps.audit.models import AuditEvent
+        from hub.apps.contracts.models import (
+            Contract,
+            ContractStatus,
+            OriginalFormat,
+            OriginalSpecType,
+        )
+
+        tenant = _create_tenant("active-residue-esc")
+        Contract.objects.create(
+            tenant=tenant,
+            version=1,
+            original_spec_type=OriginalSpecType.ODCS,
+            original_spec_version="3.1.0",
+            original_format=OriginalFormat.JSON,
+            original_raw="{}",
+            hub_contract_json=_HC_STRUCTURELESS,
+            normalization_status="NORMALIZED_OK",
+            validation_status="VALID",
+            status=ContractStatus.ACTIVE,
+        )
+        _record_reminded(
+            tenant,
+            deadline=_dt.date.today() - timedelta(days=1),
+            when=timezone.now() - timedelta(days=31),
+        )
+
+        call_command(
+            "wave4_escalate_residue",
+            "--include-active-only",
+            stdout=io.StringIO(),
+        )
+
+        self.assertEqual(
+            AuditEvent.objects.filter(
+                tenant=tenant,
+                action="STRUCTURELESS_RESIDUE_DEADLINE_PASSED",
+            ).count(),
+            1,
+        )
+
+
+@pytest.mark.django_db(transaction=True)
 class EscalationOutputTests(TestCase):
 
     def test_dry_run_writes_no_audit_rows(self):
