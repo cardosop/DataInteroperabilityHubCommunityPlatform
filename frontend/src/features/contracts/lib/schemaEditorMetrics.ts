@@ -53,7 +53,7 @@ type Event = OpenedEvent | SaveEvent;
 
 async function emit(event: Event): Promise<void> {
   try {
-    await apiClient.post(ENDPOINT, event);
+    await apiClient.getClient().post(ENDPOINT, event);
   } catch (err) {
     if (import.meta.env?.DEV) {
       // eslint-disable-next-line no-console
