@@ -105,3 +105,9 @@ aws/
 # Phase 216 — performance test results (CI uploads to S3)
 .perf-results/
 node_modules
+
+# Phase 227 Wave 0 — operator-generated diagnosis artefacts.
+# Contains tenant + contract IDs from staging-clone or production runs.
+# Keep README.md tracked (instructions); ignore everything else.
+audit-reports/*
+!audit-reports/README.md

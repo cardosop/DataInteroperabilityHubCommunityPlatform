@@ -1,0 +1,89 @@
+{% extends "notifications/emails/base.html" %}
+
+{% block title %}Action required: data contract structure missing{% endblock %}
+
+{% block content %}
+<h2>Action required: contracts in {{ tenant_name }} are missing structure</h2>
+
+<p>Hello,</p>
+
+<p>
+  As part of the {{ app_name }} <strong>structureless-contract remediation programme</strong> (Phase 227),
+  we have identified data contracts in your tenant whose normalized payload contains no
+  models or schema fields. These contracts will be unable to back active assets or
+  marketplace listings once the structural-floor validation gate is enabled.
+</p>
+
+<p>
+  <strong>Deadline for remediation:</strong> <code>{{ deadline_iso }}</code><br>
+  After this date, contracts that remain structureless will be flagged and the assets
+  they back will be auto-reverted to <code>DRAFT</code>.
+</p>
+
+<h3>Affected contracts</h3>
+
+{% if contracts %}
+<table style="width: 100%; border-collapse: collapse; margin: 16px 0;">
+  <thead>
+    <tr>
+      <th style="text-align: left; border-bottom: 1px solid #ccc; padding: 6px;">Contract</th>
+      <th style="text-align: left; border-bottom: 1px solid #ccc; padding: 6px;">Spec</th>
+      <th style="text-align: left; border-bottom: 1px solid #ccc; padding: 6px;">Action</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for contract in contracts %}
+    <tr>
+      <td style="border-bottom: 1px solid #eee; padding: 6px;">
+        <strong>{{ contract.name|default:contract.id }}</strong>
+        <br>
+        <small style="color: #666;">{{ contract.id }}</small>
+      </td>
+      <td style="border-bottom: 1px solid #eee; padding: 6px;">{{ contract.spec_type }}</td>
+      <td style="border-bottom: 1px solid #eee; padding: 6px;">
+        {% if schema_editor_url_template %}
+        <a href="{{ schema_editor_url_template|cut:'{contract_id}'|add:contract.id }}" class="button">
+          Open Schema editor
+        </a>
+        {% else %}
+        Use the Schema editor in {{ app_name }} to add models and fields.
+        {% endif %}
+      </td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% else %}
+<p><em>No specific contracts attached to this notification.</em></p>
+{% endif %}
+
+<h3>What you need to do</h3>
+
+<ol>
+  <li>Open each contract in the {{ app_name }} <strong>Schema editor</strong> tab.</li>
+  <li>Add models, fields, and types that match your data shape — or attach an existing,
+      structurally complete contract.</li>
+  <li>Save. Validation will confirm the contract is structurally sound.</li>
+  <li>Repeat for every contract listed above before <code>{{ deadline_iso }}</code>.</li>
+</ol>
+
+<h3>Why we're contacting you</h3>
+
+<p>
+  As a <code>TENANT_ADMIN</code>, you are the designated contact for governance changes
+  affecting your tenant. This notification is part of a 14-day heads-up window so your
+  team has time to remediate before the validation gate is enabled.
+</p>
+
+<p>
+  If you have questions, reply directly to this email or check the
+  <a href="https://docs.{{ app_name|lower }}.com/runbooks/structureless-contracts">
+    operator runbook
+  </a> for triage details.
+</p>
+
+<p>
+  Thank you,<br>
+  The {{ app_name }} Data Governance Team
+</p>
+{% endblock %}

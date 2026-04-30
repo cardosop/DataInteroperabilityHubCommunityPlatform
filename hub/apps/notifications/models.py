@@ -49,6 +49,13 @@ class EmailType(models.TextChoices):
     TRANSFORMATION_COMPLETION = "TRANSFORMATION_COMPLETION", "Transformation Completion"
     TRANSFORMATION_FAILURE = "TRANSFORMATION_FAILURE", "Transformation Failure"
 
+    # Phase 227 Wave 0 — T-14 heads-up to TENANT_ADMINs whose contracts
+    # are structureless and pending Wave-5 deadline.
+    ASSET_CONTRACT_STRUCTURELESS_PENDING = (
+        "ASSET_CONTRACT_STRUCTURELESS_PENDING",
+        "Asset Contract Structureless — Pending Remediation",
+    )
+
 
 class EmailDelivery(models.Model):
     """

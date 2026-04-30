@@ -472,3 +472,40 @@ class UserTenantMembershipService:
         return UserTenantMembership.objects.filter(
             user=user, tenant_id=tenant_id
         ).exists()
+
+
+# ---------------------------------------------------------------------------
+# Phase 227 Wave 0 — tenant-admin lookup
+# ---------------------------------------------------------------------------
+
+def get_tenant_admin_users(tenant) -> "Any":
+    """Return the active TENANT_ADMIN users for a tenant.
+
+    Returns a queryset of `User` rows that hold the `TENANT_ADMIN` role
+    in the given tenant. Results are de-duplicated (a user with multiple
+    overlapping role rows appears once). Returns an empty queryset if no
+    TENANT_ADMIN role exists for the tenant.
+
+    Used by the structureless-contract notification path
+    (Phase 227.0.3) and by any future code that needs to broadcast a
+    governance-tier message to tenant admins.
+
+    Args:
+        tenant: ``Tenant`` instance.
+
+    Returns:
+        QuerySet[User] — distinct active TENANT_ADMIN users for the
+        tenant. Always usable as an iterable; never raises on empty.
+    """
+    from hub.apps.users.models import Role, UserRole
+
+    role = Role.objects.filter(tenant=tenant, name="TENANT_ADMIN").first()
+    if role is None:
+        return User.objects.none()
+
+    user_ids = (
+        UserRole.objects.filter(role=role, tenant=tenant)
+        .values_list("user_id", flat=True)
+        .distinct()
+    )
+    return User.objects.filter(id__in=user_ids).distinct()
