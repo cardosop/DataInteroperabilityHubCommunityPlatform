@@ -135,7 +135,50 @@ class NormalizationService(BaseService, NormalizationEventPublisher):
                 spec_type=spec_type
             )
 
-            # Phase 227 Wave 1 (227.L3.2) — structural-floor check FIRST.
+            # Phase 227 L10 audit-3 / W6 follow-up — surface the
+            # catalog-promised ``INVALID_YAML`` wire code BEFORE the
+            # structural-floor check.  A YAML parse failure produces
+            # an empty ``hub_contract``; running the floor first would
+            # misclassify the parse error as "structureless" and mask
+            # the real cause.  Discriminator prefix is set by
+            # ``parse_contract`` and propagated by ``normalize_contract``
+            # via the ``norm_errors`` tuple slot.
+            from hub.apps.contracts.normalization_engine import (
+                INVALID_YAML_ERROR_PREFIX,
+            )
+            if any(
+                isinstance(err, str) and err.startswith(INVALID_YAML_ERROR_PREFIX)
+                for err in (norm_errors or [])
+            ):
+                if contract_id:
+                    try:
+                        self.publish_normalization_failed(
+                            contract_id=contract_id,
+                            error_message="Contract YAML failed to parse",
+                            error_details={
+                                "code": "INVALID_YAML",
+                                "errors": norm_errors,
+                            },
+                            normalization_errors=norm_errors,
+                            spec_version=detected_spec_version,
+                            tenant_id=tenant_id,
+                            user_id=user_id,
+                        )
+                    except Exception as exc:
+                        import structlog
+                        structlog.get_logger(__name__).warning(
+                            "normalization_event_publish_failed",
+                            event_type="normalization.failed",
+                            contract_id=contract_id,
+                            error=str(exc),
+                            message="Failed to publish event (non-critical)",
+                        )
+                raise ValidationError(
+                    message="Contract YAML failed to parse",
+                    details={"code": "INVALID_YAML", "errors": norm_errors},
+                )
+
+            # Phase 227 Wave 1 (227.L3.2) — structural-floor check.
             # Many "normalization failed" errors are actually structureless
             # inputs in disguise. Surfacing the typed STRUCTURELESS_CONTRACT
             # code here gives the API consumer a parseable code + a
@@ -214,22 +257,10 @@ class NormalizationService(BaseService, NormalizationEventPublisher):
                             message="Failed to publish normalization.failed event (non-critical)"
                         )
 
-                # Phase 227 L10 audit-3 — distinguish YAML parse errors
-                # from generic normalization failures so the catalog-
-                # promised ``INVALID_YAML`` wire code reaches the API
-                # consumer. The discriminator prefix is set by
-                # ``parse_contract``'s ``InvalidYAMLError`` branch.
-                from hub.apps.contracts.normalization_engine import (
-                    INVALID_YAML_ERROR_PREFIX,
-                )
-                if any(
-                    isinstance(err, str) and err.startswith(INVALID_YAML_ERROR_PREFIX)
-                    for err in norm_errors
-                ):
-                    raise ValidationError(
-                        message='Contract YAML failed to parse',
-                        details={'code': 'INVALID_YAML', 'errors': norm_errors},
-                    )
+                # INVALID_YAML was already surfaced ahead of the
+                # structural-floor check above (pre-floor branch);
+                # anything that reaches here failed for a non-parse,
+                # non-structureless reason and is the generic case.
                 raise ValidationError(
                     message='Contract normalization failed',
                     details={'code': 'NORMALIZATION_FAILED', 'errors': norm_errors}

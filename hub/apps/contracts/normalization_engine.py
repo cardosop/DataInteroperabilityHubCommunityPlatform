@@ -1116,46 +1116,27 @@ def parse_contract(raw_contract: str, format: str) -> Dict[str, Any]:
             raise ValueError(
                 "PyYAML is required for YAML parsing. Install with: pip install pyyaml"
             )
-        # Strip leading/trailing whitespace
-        cleaned_contract = raw_contract.strip()
 
-        # Handle YAML strings with leading indentation from multi-line strings
-        # Find the minimum indentation across all non-empty lines
-        lines = cleaned_contract.split("\n")
-        if lines:
-            # Calculate indentation for each non-empty line
-            non_empty_lines = [line for line in lines if line.strip()]
-            if non_empty_lines:
-                indent_lengths = [len(line) - len(line.lstrip()) for line in non_empty_lines]
-                min_indent = min(indent_lengths) if indent_lengths else 0
-
-                # Special case: if first line has no indentation (min_indent = 0) but other lines do,
-                # find the minimum indentation of the other lines and remove that
-                if min_indent == 0 and len(non_empty_lines) > 1:
-                    # Check if any line (other than first) has indentation
-                    other_lines = non_empty_lines[1:]
-                    other_indent_lengths = [len(line) - len(line.lstrip()) for line in other_lines]
-                    if other_indent_lengths and min(other_indent_lengths) > 0:
-                        # Use the minimum indent from other lines
-                        min_indent = min(other_indent_lengths)
-
-                # If there's common indentation, remove it while preserving relative indentation
-                if min_indent > 0:
-                    dedented_lines = []
-                    for line in lines:
-                        if line.strip():  # Non-empty line
-                            # Only remove min_indent if the line actually has that much indentation
-                            line_indent = len(line) - len(line.lstrip())
-                            if line_indent >= min_indent:
-                                # Remove min_indent spaces, preserving relative indentation
-                                dedented_lines.append(line[min_indent:])
-                            else:
-                                # Line has less indentation than min_indent, keep it as-is (or strip if needed)
-                                # This handles cases where first line has no indentation
-                                dedented_lines.append(line.lstrip() if line_indent == 0 else line)
-                        else:  # Empty line
-                            dedented_lines.append("")
-                    cleaned_contract = "\n".join(dedented_lines)
+        # Phase 227 W6 follow-up — replaced the previous hand-rolled
+        # dedent loop (which ``.strip()``-ed first, then tried to
+        # recover the heredoc shape via a "first-line at indent 0"
+        # heuristic).  That heuristic destroyed legitimate parent /
+        # child nesting whenever the *intended* top-level key was
+        # at column 0 and its children were indented (e.g.
+        # ``"product:\n  details:\n    en:\n      name: x"`` parsed
+        # to two siblings — ``product=None`` + ``details=...`` —
+        # instead of the intended nested mapping).
+        #
+        # ``textwrap.dedent`` is the idiomatic fix: it computes the
+        # longest common leading whitespace ACROSS NON-BLANK LINES
+        # and strips that prefix.  For Python heredoc-style YAML
+        # (every content line shares an 8-space indent, leading
+        # blank line excluded) it strips the 8 spaces correctly.
+        # For an intentional nesting where the first line is at
+        # column 0, the common prefix is empty and dedent is a no-op
+        # — preserving the structure.
+        import textwrap
+        cleaned_contract = textwrap.dedent(raw_contract).strip()
 
         try:
             return yaml.safe_load(cleaned_contract)

@@ -421,9 +421,35 @@ class ContractService(BaseService, ContractEventPublisher, ODPSEventPublisher):
                 # contract_id not available yet - events will be published after contract creation if needed
             )
 
-            # Phase 227 Wave 1 (227.L3.2) — enforce the structural floor
-            # FIRST. Many normalization failures upstream are themselves
-            # caused by a structureless input (no schema/models/fields).
+            # Phase 227 L10 audit-3 / W6 follow-up — surface the
+            # catalog-promised ``INVALID_YAML`` wire code BEFORE any
+            # structural-floor / generic-failure short-circuit.
+            #
+            # Why first: a YAML parse failure produces an empty
+            # ``hub_contract``; if we ran ``enforce_structural_floor``
+            # before this check, it would fire ``STRUCTURELESS_CONTRACT``
+            # on the empty payload and the customer would see "your
+            # contract is structureless" when the actual failure was
+            # "your YAML is malformed".  The discriminator prefix is
+            # set by ``parse_contract``'s ``InvalidYAMLError`` branch
+            # in [normalization_engine.py](hub/apps/contracts/normalization_engine.py)
+            # and propagated through the engine's 6-tuple via
+            # ``norm_errors``.
+            from hub.apps.contracts.normalization_engine import (
+                INVALID_YAML_ERROR_PREFIX,
+            )
+            if any(
+                isinstance(err, str) and err.startswith(INVALID_YAML_ERROR_PREFIX)
+                for err in (norm_errors or [])
+            ):
+                raise ValidationError(
+                    message="Contract YAML failed to parse",
+                    details={"code": "INVALID_YAML", "errors": norm_errors},
+                )
+
+            # Phase 227 Wave 1 (227.L3.2) — enforce the structural floor.
+            # Many normalization failures upstream are themselves caused
+            # by a structureless input (no schema/models/fields).
             # Surfacing the typed ``STRUCTURELESS_CONTRACT`` code here —
             # before the generic ``NORMALIZATION_FAILED`` short-circuit —
             # gives API consumers a parseable code and a remediation_url.
@@ -439,25 +465,11 @@ class ContractService(BaseService, ContractEventPublisher, ODPSEventPublisher):
             )
 
             # Check for non-structural normalization failures (missing
-            # required `info.name`, malformed JSON, etc.). The structural
-            # floor above has already filtered out the structureless
-            # cases; anything that reaches here failed for a different
-            # reason and is reported as generic VALIDATION_ERROR.
+            # required `info.name`, malformed JSON, etc.). INVALID_YAML
+            # was already surfaced above; structural-floor above has
+            # already filtered out the structureless cases; anything
+            # that reaches here failed for a different reason.
             if norm_status == NormalizationStatus.NORMALIZATION_FAILED and norm_errors:
-                # Phase 227 L10 audit-3 — surface the catalog-promised
-                # ``INVALID_YAML`` wire code when the underlying failure
-                # was a YAML parse error rather than a structural one.
-                from hub.apps.contracts.normalization_engine import (
-                    INVALID_YAML_ERROR_PREFIX,
-                )
-                if any(
-                    isinstance(err, str) and err.startswith(INVALID_YAML_ERROR_PREFIX)
-                    for err in norm_errors
-                ):
-                    raise ValidationError(
-                        message="Contract YAML failed to parse",
-                        details={"code": "INVALID_YAML", "errors": norm_errors},
-                    )
                 raise ValidationError(
                     message="Contract normalization failed",
                     details={"code": "NORMALIZATION_FAILED", "errors": norm_errors},

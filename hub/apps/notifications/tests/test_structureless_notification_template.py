@@ -141,6 +141,10 @@ class StructurelessPendingTemplateRenderTest(TestCase):
         result = render_email_template(TEMPLATE_NAME, CANONICAL_CONTEXT)
         # html2text (or fallback) should produce plain text with no <table> tags.
         self.assertNotIn("<table", result["text"])
-        # Key copy still appears in plain text.
+        # Key copy still appears in plain text.  Use whitespace-tolerant
+        # matching: html2text wraps long paragraphs at ~80 columns, so
+        # "Phase 227" can land split across a newline as "Phase\n227".
+        # A regex with ``\s+`` between the words tolerates the line-wrap
+        # while still asserting the text mentions the phase by name.
         self.assertIn("Acme Data Co", result["text"])
-        self.assertIn("Phase 227", result["text"])
+        self.assertRegex(result["text"], r"Phase\s+227")
