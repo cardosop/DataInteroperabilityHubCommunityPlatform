@@ -101,6 +101,74 @@ URL = "/api/v1/lineage/subscriptions/"
 
 
 # ---------------------------------------------------------------------------
+# DB-level constraint enforcement (REQ-LIN-F3-002 spec scenario
+# "Constraint enforced": "the database raises an integrity error")
+# ---------------------------------------------------------------------------
+
+
+class LineageSubscriptionDBConstraintTests(TestCase):
+    """REQ-LIN-F3-002 spec scenario "Constraint enforced".
+
+    The spec mandates the DATABASE raises an integrity error when both
+    ``source_contract`` and ``source_asset`` are set — not just the
+    API layer.  This test bypasses the serializer and writes directly
+    via ``LineageSubscription.objects.create`` so the DB CHECK is
+    exercised in isolation; the API-layer 400 is covered separately
+    by ``test_xor_invariant_violation_returns_400``.
+
+    The two-layer defence (API 400 + DB CHECK) catches:
+      * client bugs that bypass the serializer (e.g. raw bulk_create);
+      * future schema changes that drop the API validator;
+      * cross-app code paths (mgmt commands, fixtures) that write
+        subscriptions without going through the viewset.
+
+    Phase 228.F3.DoD.1-A audit fix.
+    """
+
+    def test_db_check_constraint_rejects_both_sources_set(self):
+        from django.db import IntegrityError, transaction
+        from hub.apps.contracts.models import LineageSubscription
+
+        tenant = _make_tenant("dbck")
+        user = _make_user(tenant)
+        c = _make_contract(tenant, name="dbck-c")
+        a = Asset.objects.create(
+            tenant=tenant,
+            key=f"asset-{uuid.uuid4().hex[:6]}",
+            name="dbck-a",
+            status=AssetStatus.DRAFT,
+        )
+        # Both FKs set — must raise IntegrityError on .save() per the
+        # CheckConstraint(name="lineage_sub_xor_source").
+        with self.assertRaises(IntegrityError):
+            with transaction.atomic():
+                LineageSubscription.objects.create(
+                    user=user,
+                    source_contract=c,
+                    source_asset=a,
+                    severity_threshold="HIGH",
+                )
+
+    def test_db_check_constraint_rejects_neither_source_set(self):
+        """The XOR constraint also rejects the both-NULL case so the
+        dispatcher's 'subscription keyed on (contract OR asset)' walk
+        has no ambiguous rows."""
+        from django.db import IntegrityError, transaction
+        from hub.apps.contracts.models import LineageSubscription
+
+        tenant = _make_tenant("dbck-empty")
+        user = _make_user(tenant)
+        with self.assertRaises(IntegrityError):
+            with transaction.atomic():
+                LineageSubscription.objects.create(
+                    user=user,
+                    source_contract=None,
+                    source_asset=None,
+                    severity_threshold="HIGH",
+                )
+
+
+# ---------------------------------------------------------------------------
 # Create
 # ---------------------------------------------------------------------------
 

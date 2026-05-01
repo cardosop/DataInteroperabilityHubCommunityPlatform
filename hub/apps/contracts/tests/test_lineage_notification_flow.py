@@ -401,3 +401,135 @@ class LineageDispatcherIdempotencyTests(TransactionTestCase):
             user=user, category="LINEAGE_IMPACT",
         ).count()
         self.assertEqual(delivered, 1)
+
+
+# ---------------------------------------------------------------------------
+# REQ-LIN-F3-001 — Contract Update Event Publication
+#
+# Phase 228.F3.DoD.1-E audit fix.  The integration test above
+# exercises the signal indirectly; these tests pin the SIGNAL-LEVEL
+# semantics — fires-iff-lineage-changes — so a regression in
+# ``signals.publish_contract_updated_for_lineage`` (e.g. always-fire,
+# never-fire, or wrong-hash-comparison) is caught immediately.
+# ---------------------------------------------------------------------------
+
+
+class ContractUpdatedSignalTests(TransactionTestCase):
+    """REQ-LIN-F3-001 spec scenarios:
+
+    * ``Event fires on lineage change`` — saving with a modified
+      lineage subtree fires the dispatcher exactly once.
+    * ``Event suppressed on no-op`` — saving with an unchanged
+      lineage subtree (or non-lineage field churn) does NOT fire.
+    """
+
+    def setUp(self):
+        # Replace the dispatcher with a recorder so we can count
+        # invocations without mocking — the recorder is a small
+        # closure that captures (contract_id, old_hash, new_hash)
+        # tuples for assertion.  Reverted in tearDown.
+        from hub.apps.contracts import signals as signals_mod
+
+        self._calls = []
+
+        def _recorder(*, contract_id, tenant_id, old_lineage_hash,
+                      new_lineage_hash, version=None, actor_user_id=""):
+            self._calls.append({
+                "contract_id": contract_id,
+                "old": old_lineage_hash,
+                "new": new_lineage_hash,
+            })
+
+        # We patch via the lazy-import path the signal uses.  The
+        # signal reads `from hub.apps.contracts.lineage_impact_dispatcher
+        # import handle_contract_updated` at call-time, so we patch
+        # the module attribute the signal will resolve.
+        from hub.apps.contracts import lineage_impact_dispatcher as disp
+        self._orig_handler = disp.handle_contract_updated
+        disp.handle_contract_updated = _recorder
+        self._signals_mod = signals_mod
+        self._disp_mod = disp
+
+    def tearDown(self):
+        self._disp_mod.handle_contract_updated = self._orig_handler
+
+    def _make_tenant(self):
+        suffix = uuid.uuid4().hex[:8]
+        tenant = Tenant.objects.create(
+            name=f"sig-{suffix}", slug=f"sig-{suffix}",
+            status="ACTIVE", kyc_status=KYCStatus.VERIFIED,
+        )
+        ensure_tenant_has_active_subscription(tenant)
+        return tenant
+
+    def _make_contract(self, tenant, *, lineage=None, name="c"):
+        from hub.apps.contracts.models import (
+            Contract,
+            ContractStatus,
+            OriginalFormat,
+            OriginalSpecType,
+        )
+        asset = Asset.objects.create(
+            tenant=tenant, key=f"asset-{uuid.uuid4().hex[:6]}",
+            name=name, status=AssetStatus.DRAFT,
+        )
+        body = {"info": {"name": name}, "models": []}
+        if lineage is not None:
+            body["lineage"] = lineage
+        return Contract.objects.create(
+            tenant=tenant, asset=asset, version=1,
+            original_spec_type=OriginalSpecType.ODCS,
+            original_spec_version="3.1.0",
+            original_format=OriginalFormat.JSON, original_raw="{}",
+            hub_contract_json=body,
+            normalization_status="NORMALIZED_OK",
+            validation_status="VALID",
+            status=ContractStatus.ACTIVE,
+        )
+
+    def test_event_fires_on_lineage_change(self):
+        tenant = self._make_tenant()
+        contract = self._make_contract(tenant, lineage={"version": 1})
+        self._calls.clear()
+
+        # Mutate the lineage subtree and save.  The signal must fire
+        # exactly once with old_hash != new_hash.
+        contract.hub_contract_json = {
+            **contract.hub_contract_json,
+            "lineage": {"version": 2, "edges": [{"placeholder": True}]},
+        }
+        contract.save()
+
+        self.assertEqual(len(self._calls), 1)
+        call = self._calls[0]
+        self.assertEqual(call["contract_id"], str(contract.id))
+        self.assertNotEqual(call["old"], call["new"])
+
+    def test_event_suppressed_on_lineage_unchanged(self):
+        """Saving with the SAME lineage subtree must NOT fire the
+        dispatcher — REQ-LIN-F3-001 'Event suppressed on no-op'."""
+        tenant = self._make_tenant()
+        contract = self._make_contract(
+            tenant, lineage={"version": 1, "edges": []},
+        )
+        self._calls.clear()
+
+        # Re-save without touching hub_contract_json.lineage.
+        contract.save()
+        self.assertEqual(len(self._calls), 0)
+
+    def test_event_suppressed_on_non_lineage_field_change(self):
+        """Saving with a status flip but no lineage change must NOT
+        fire — non-lineage churn is REQ-LIN-F3-001 explicit no-op."""
+        from hub.apps.contracts.models import ContractStatus
+
+        tenant = self._make_tenant()
+        contract = self._make_contract(
+            tenant, lineage={"version": 1, "edges": []},
+        )
+        self._calls.clear()
+
+        # Flip status without touching the lineage subtree.
+        contract.status = ContractStatus.RETIRED
+        contract.save()
+        self.assertEqual(len(self._calls), 0)

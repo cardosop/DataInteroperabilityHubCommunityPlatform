@@ -136,4 +136,48 @@ describe('NotificationDropdown', () => {
     expect(screen.getByText('Access request approved')).toBeInTheDocument();
     expect(screen.getByText('Order rejected')).toBeInTheDocument();
   });
+
+  // Phase 228.F3.DoD.1-B (REQ-LIN-F3-006 spec scenario "Category renders")
+  // — pin the LINEAGE_IMPACT row's category-specific icon + the
+  // "what changed" summary that the dispatcher writes into the body.
+  it('renders LINEAGE_IMPACT category with its specific icon + summary', async () => {
+    vi.mocked(apiClient.getClient().get).mockResolvedValue({
+      data: {
+        count: 1,
+        page: 1,
+        page_size: 10,
+        total_pages: 1,
+        next: null,
+        previous: null,
+        results: [
+          {
+            id: 'n-li-1',
+            tenant: 't1',
+            user: 'u1',
+            title: "Lineage updated: orders",
+            message:
+              "Lineage for 'orders' has changed. Severity: HIGH. "
+              + '2 edges added.  Open the contract\'s lineage view to see what changed.',
+            notification_type: 'WARNING',
+            category: 'LINEAGE_IMPACT',
+            resource_type: 'contract',
+            resource_id: 'c-42',
+            read: false,
+            read_at: null,
+            created_at: new Date().toISOString(),
+          },
+        ],
+      },
+    } as never);
+
+    render(<NotificationDropdown onClose={() => {}} />, { wrapper: wrap(queryClient) });
+
+    const row = await screen.findByTestId('notification-row-n-li-1');
+    expect(row).toBeInTheDocument();
+    // The lightning-style icon ↯ is the LINEAGE_IMPACT marker.
+    const icon = row.querySelector('[data-testid="notification-category-icon"]');
+    expect(icon?.textContent).toContain('↯');
+    // The dispatcher-supplied "what changed" summary is rendered.
+    expect(row.textContent).toContain('2 edges added');
+  });
 });
