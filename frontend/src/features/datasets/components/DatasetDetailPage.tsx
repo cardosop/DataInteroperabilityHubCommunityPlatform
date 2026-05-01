@@ -9,6 +9,7 @@ import { ConfirmDialog } from '../../../shared/components/ConfirmDialog';
 import { ErrorDisplay } from '../../../shared/components/ErrorDisplay';
 import { DetailPageSkeleton } from '../../../shared/components/skeletons/DetailPageSkeleton';
 import { UuidWithCopy } from '../../../shared/components/UuidWithCopy';
+import { CanonicalIriCard } from '../../semantic/components/CanonicalIriCard';
 import { Breadcrumbs } from '../../../shared/components/Breadcrumbs';
 import { useToast } from '../../../shared/components/Toast';
 import { normalizeError } from '../../../shared/utils/errorUtils';
@@ -145,6 +146,14 @@ export function DatasetDetailPage() {
               </div>
             )}
             {dataset.description && <p className="dataset-description">{dataset.description}</p>}
+            {/* Phase 230.1.5 — surfaced canonical IRI per REQ-SEM-DISCO-001. */}
+            {id && (
+              <CanonicalIriCard
+                iri={dataset.canonical_iri}
+                resourceType="dataset"
+                resourceId={id}
+              />
+            )}
             {(dataset.asset_id || dataset.asset) && (
               <p className="dataset-linked-asset" data-testid="dataset-linked-asset">
                 Linked asset:{' '}

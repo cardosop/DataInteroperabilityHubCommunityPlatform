@@ -281,6 +281,54 @@ describe('DatasetDetailPage', () => {
     });
   });
 
+  it('renders CanonicalIriCard when canonical_iri is present (Phase 230.1.6)', async () => {
+    vi.mocked(mockClient.get).mockResolvedValue({
+      data: {
+        id: 'ds-1',
+        name: 'Test Dataset',
+        format: DatasetFormat.CSV,
+        size_bytes: 1024,
+        version: '1',
+        created_at: '2024-01-01T00:00:00Z',
+        updated_at: '2024-01-01T00:00:00Z',
+        tenant_id: 't1',
+        canonical_iri: 'https://meshant-internal.example.com/id/dataset/ds-1',
+      },
+    } as never);
+
+    render(<DatasetDetailPage />, { wrapper });
+
+    await waitFor(() => {
+      expect(screen.getByTestId('canonical-iri-card')).toBeInTheDocument();
+    });
+    expect(screen.getByTestId('canonical-iri-value')).toHaveTextContent(
+      'https://meshant-internal.example.com/id/dataset/ds-1',
+    );
+  });
+
+  it('does NOT render CanonicalIriCard when canonical_iri is absent', async () => {
+    vi.mocked(mockClient.get).mockResolvedValue({
+      data: {
+        id: 'ds-1',
+        name: 'Test Dataset',
+        format: DatasetFormat.CSV,
+        size_bytes: 1024,
+        version: '1',
+        created_at: '2024-01-01T00:00:00Z',
+        updated_at: '2024-01-01T00:00:00Z',
+        tenant_id: 't1',
+        // canonical_iri intentionally omitted.
+      },
+    } as never);
+
+    render(<DatasetDetailPage />, { wrapper });
+
+    await waitFor(() => {
+      expect(screen.getByRole('heading', { name: 'Test Dataset' })).toBeInTheDocument();
+    });
+    expect(screen.queryByTestId('canonical-iri-card')).not.toBeInTheDocument();
+  });
+
   it('should show asset_name when API returns it', async () => {
     vi.mocked(mockClient.get).mockResolvedValue({
       data: {

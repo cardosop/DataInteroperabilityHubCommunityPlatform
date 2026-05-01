@@ -38,6 +38,7 @@ import { AssetSocialSection } from '../../social/components/AssetSocialSection';
 import { ActivityTimeline } from '../../../shared/components/ActivityTimeline';
 import { LineageSubscriptionPanel } from '../../contracts/components/LineageSubscriptionPanel';
 import { OnboardingChecklist } from './OnboardingChecklist';
+import { CanonicalIriCard } from '../../semantic/components/CanonicalIriCard';
 import { ActivationBlockerDialog, extractBlockersFromError } from './ActivationBlockerDialog';
 import './AssetDetailPage.css';
 import { Button } from '../../../shared/components/Button';
@@ -342,6 +343,15 @@ export function AssetDetailPage() {
             </div>
           )}
           {asset.description && <p className="asset-description">{asset.description}</p>}
+
+          {/* Phase 230.1.5 — surfaced canonical IRI per REQ-SEM-DISCO-001. */}
+          {id && (
+            <CanonicalIriCard
+              iri={asset.canonical_iri}
+              resourceType="asset"
+              resourceId={id}
+            />
+          )}
 
           <div className="asset-detail-metadata">
             <div className="metadata-item">
