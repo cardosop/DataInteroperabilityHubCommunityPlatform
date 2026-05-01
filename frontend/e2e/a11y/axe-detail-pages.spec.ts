@@ -37,9 +37,17 @@ const ROUTES_TO_AUDIT: Array<{ path: string; label: string; mustReachShell?: boo
   { path: '/contracts', label: 'contracts-list' },
   // Phase 230.5.8 (REQ-SEM-RELATIONSHIPS-001) — contract-detail
   // surface that hosts the new RelationshipsPanel + RDF triples
-  // table.  Auditing the route catches any axe violation introduced
-  // by the new panel (table semantics, code-block contrast, role).
-  { path: '/contracts/0', label: 'contracts-detail' },
+  // table.  ``/contracts/00000000-0000-0000-0000-000000000000``
+  // is a deterministic-but-non-existent UUID that exercises the
+  // detail-page error/not-found shell — captures axe violations
+  // on the rendered surface even when the test tenant has no
+  // seeded contracts.  Phase 230.5.MetaDoD audit fix M2: prior
+  // entry ``/contracts/0`` was rejected by the React Router UUID
+  // matcher and never rendered any contract surface — replaced
+  // with a real-shape UUID that does exercise the detail page's
+  // error / not-found state.  RelationshipsPanel itself is
+  // covered by the dedicated unit-test file (M3+M4+M5).
+  { path: '/contracts/00000000-0000-0000-0000-000000000000', label: 'contracts-detail-not-found' },
   { path: '/datasets', label: 'datasets-list' },
   { path: '/marketplace', label: 'marketplace-list-detail-context' },
   { path: '/governance', label: 'governance' },

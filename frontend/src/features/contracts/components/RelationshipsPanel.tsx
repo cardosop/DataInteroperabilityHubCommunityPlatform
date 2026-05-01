@@ -108,7 +108,13 @@ export function RelationshipsPanel({
   const totalRels = grouped.reduce((n, g) => n + g.rels.length, 0);
 
   // Empty state
-  if (totalRels === 0) {
+  // Phase 230.5.MetaDoD audit fix — when ``contractId`` is supplied,
+  // the RDF section may have triples even when structural
+  // relationships are empty (e.g. a legacy ODCS contract whose
+  // semantic mappings were authored after the fact).  In that
+  // case we render the main panel + the RDF section instead of
+  // the structural-only empty branch.
+  if (totalRels === 0 && !contractId) {
     const isOldVersion =
       specVersion &&
       !specVersion.startsWith('3.1') &&
