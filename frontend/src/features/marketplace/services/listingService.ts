@@ -6,6 +6,10 @@
 import { apiClient } from '../../../shared/api/client';
 import type { PaginatedResponse } from '../../../shared/types/api';
 import type {
+  ListingLineageGraph,
+  ListingLineageParams,
+} from '../../../shared/types/lineage';
+import type {
   Listing,
   ListingCreateRequest,
   ListingUpdateRequest,
@@ -100,12 +104,45 @@ export const listingService = {
    * Preview listing contract/document
    */
   async preview(id: string, format?: string): Promise<Blob> {
-    const url = format 
+    const url = format
       ? `${LISTINGS_BASE_PATH}/${id}/preview.${format}/`
       : `${LISTINGS_BASE_PATH}/${id}/preview/`;
     const response = await apiClient.getClient().get<Blob>(url, {
       responseType: 'blob',
     });
+    return response.data;
+  },
+
+  /**
+   * Phase 228.F1.12 — Cross-tenant marketplace lineage.
+   *
+   * Fetches the lineage graph for a listing's backing asset.  The
+   * `detail` parameter selects the response tier:
+   *
+   * - `summary` (default): pre-purchase view with transformation IP
+   *   stripped on the server side (no `transformation_ref` /
+   *   `job_ref` / etc.).
+   * - `full`: post-purchase view; requires the consumer tenant to
+   *   hold an ACTIVE Entitlement for the asset (server-enforced).
+   *   A 403 with `code: ENTITLEMENT_REQUIRED` is returned otherwise.
+   *
+   * Returns 404 when the `lineage.cross_tenant_marketplace`
+   * capability flag is OFF (intentional information-leak hardening).
+   */
+  async getLineage(
+    id: string,
+    params: ListingLineageParams = {},
+  ): Promise<ListingLineageGraph> {
+    const search = new URLSearchParams();
+    if (params.detail) search.append('detail', params.detail);
+    if (params.max_depth !== undefined) {
+      search.append('max_depth', String(params.max_depth));
+    }
+    const qs = search.toString();
+    const url = qs
+      ? `${LISTINGS_BASE_PATH}/${id}/lineage/?${qs}`
+      : `${LISTINGS_BASE_PATH}/${id}/lineage/`;
+    const response = await apiClient.getClient().get<ListingLineageGraph>(url);
     return response.data;
   },
 };

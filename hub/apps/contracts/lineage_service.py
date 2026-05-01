@@ -5,6 +5,7 @@ Service layer for lineage operations.
 Extracts lineage logic from views and lineage.py module.
 """
 
+from datetime import datetime
 from typing import Any, Dict, List, Optional
 import structlog
 
@@ -25,6 +26,7 @@ from hub.apps.contracts.lineage import (
 from hub.apps.contracts.models import Contract
 from hub.apps.core.services.base import BaseService, NotFoundError
 from hub.apps.core.events.service_publishers import LineageEventPublisher
+from hub.apps.observability.metrics import trace as _lineage_trace
 
 logger = structlog.get_logger(__name__)
 
@@ -58,8 +60,99 @@ class LineageService(BaseService, LineageEventPublisher):
         # super().__init__(), so the mixin __init__ must be invoked explicitly).
         LineageEventPublisher.__init__(self)
 
+    # ------------------------------------------------------------------
+    # Phase 228 (REQ-LIN-004, 228.0.13) — time-travel read path
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def _record_query_metric(
+        *, detail: str, cross_tenant: bool, as_of_set: bool,
+    ) -> None:
+        """Phase 228 (REQ-LIN-007 / 228.0.19) — emit
+        ``lineage_query_total{detail,cross_tenant,as_of}`` per read.
+
+        Best-effort: a metric backend outage MUST NOT break a read.
+        Wired into every read-side method so the dashboard's per-detail
+        rate panel populates regardless of which method the request hit."""
+        try:
+            from hub.apps.observability.metrics import lineage_query_total
+
+            lineage_query_total.labels(
+                detail=detail,
+                cross_tenant="true" if cross_tenant else "false",
+                as_of="true" if as_of_set else "false",
+            ).inc()
+        except Exception:  # noqa: BLE001 — observability never breaks the read.
+            return
+
+    @staticmethod
+    def _edges_at(
+        contract_id: str,
+        *,
+        as_of: Optional[datetime] = None,
+        direction: str = "incoming",
+    ) -> List[Dict[str, Any]]:
+        """Read ``LineageEdge`` rows that satisfy the SCD Type 2
+        validity predicate at ``as_of``.
+
+        ``direction='incoming'`` returns edges where ``target_contract``
+        is the supplied contract (this contract's upstream lineage).
+        ``direction='outgoing'`` returns edges where ``source_contract``
+        is the supplied contract (this contract's downstream consumers).
+
+        When ``as_of`` is ``None``, returns the current state
+        (``valid_to IS NULL``). When supplied, applies:
+
+        .. code-block:: sql
+
+            WHERE valid_from <= :as_of
+              AND (valid_to IS NULL OR valid_to > :as_of)
+
+        Returns a list of plain dicts (NOT model instances) so the
+        caller can serialize directly.
+        """
+        from django.db.models import Q
+
+        from hub.apps.contracts.models import LineageEdge
+
+        qs = LineageEdge.objects.all()
+        if direction == "incoming":
+            qs = qs.filter(target_contract_id=contract_id)
+        else:
+            qs = qs.filter(source_contract_id=contract_id)
+
+        if as_of is None:
+            qs = qs.filter(valid_to__isnull=True)
+        else:
+            qs = qs.filter(valid_from__lte=as_of).filter(
+                Q(valid_to__isnull=True) | Q(valid_to__gt=as_of)
+            )
+
+        return [
+            {
+                "id": str(row.id),
+                "source_contract": str(row.source_contract_id) if row.source_contract_id else None,
+                "target_contract": str(row.target_contract_id) if row.target_contract_id else None,
+                "source_model": row.source_model,
+                "source_field": row.source_field,
+                "target_model": row.target_model,
+                "target_field": row.target_field,
+                "edge_type": row.edge_type,
+                "transformation_ref": row.transformation_ref,
+                "job_ref": row.job_ref,
+                "valid_from": row.valid_from.isoformat() if row.valid_from else None,
+                "valid_to": row.valid_to.isoformat() if row.valid_to else None,
+            }
+            for row in qs
+        ]
+
+    @_lineage_trace("LineageService.get_contract_lineage")
     def get_contract_lineage(
-        self, contract_id: str, tenant_id: Optional[str] = None, use_cache: bool = True
+        self,
+        contract_id: str,
+        tenant_id: Optional[str] = None,
+        use_cache: bool = True,
+        as_of: Optional[datetime] = None,
     ) -> Dict[str, Any]:
         """
         Get contract-level lineage.
@@ -68,6 +161,13 @@ class LineageService(BaseService, LineageEventPublisher):
             contract_id: Contract ID
             tenant_id: Optional tenant ID for filtering
             use_cache: Whether to use cache (default: True)
+            as_of: Phase 228 (REQ-LIN-004) — when supplied, returns the
+                historical state from the relational ``LineageEdge``
+                index using the SCD Type 2 predicate. When ``None``
+                (default) the legacy JSON-parsing read path is used.
+                The legacy path is retained for one deploy cycle and
+                removed in a follow-up PR after the relational path is
+                proven on staging.
 
         Returns:
             Lineage dictionary with contracts and entries
@@ -75,6 +175,33 @@ class LineageService(BaseService, LineageEventPublisher):
         Raises:
             NotFoundError: If contract not found
         """
+        # Phase 228 (REQ-LIN-007) — emit the read counter regardless of
+        # which read path serves the request. The ``cross_tenant`` label
+        # is hard-coded ``False`` here because contract-scoped reads do
+        # not cross tenants by definition; the cross-tenant view lives
+        # in a Phase 228 F1 method.
+        self._record_query_metric(
+            detail="contract", cross_tenant=False, as_of_set=as_of is not None,
+        )
+
+        # Phase 228 — when ``as_of`` is set, route through the
+        # relational LineageEdge index regardless of the cache.
+        if as_of is not None:
+            edges = self._edges_at(contract_id, as_of=as_of, direction="incoming")
+            return {
+                "contracts": [
+                    {
+                        "source_contract": e["source_contract"],
+                        "target_contract": e["target_contract"],
+                        "edge_type": e["edge_type"],
+                        "valid_from": e["valid_from"],
+                        "valid_to": e["valid_to"],
+                    }
+                    for e in edges
+                ],
+                "entries": [],
+                "as_of": as_of.isoformat() if as_of else None,
+            }
         contract = self.get_resource_or_raise(
             Contract, contract_id, tenant_id=tenant_id or self.tenant_id
         )
@@ -119,12 +246,14 @@ class LineageService(BaseService, LineageEventPublisher):
 
         return result
 
+    @_lineage_trace("LineageService.get_model_lineage")
     def get_model_lineage(
         self,
         contract_id: str,
         model_name: str,
         tenant_id: Optional[str] = None,
         use_cache: bool = True,
+        as_of: Optional[datetime] = None,
     ) -> Dict[str, Any]:
         """
         Get model-level lineage.
@@ -134,6 +263,8 @@ class LineageService(BaseService, LineageEventPublisher):
             model_name: Model name
             tenant_id: Optional tenant ID for filtering
             use_cache: Whether to use cache (default: True)
+            as_of: Phase 228 (REQ-LIN-004) — historical-state cutoff;
+                see :meth:`get_contract_lineage` for the contract.
 
         Returns:
             Model lineage dictionary
@@ -141,6 +272,25 @@ class LineageService(BaseService, LineageEventPublisher):
         Raises:
             NotFoundError: If contract or model not found
         """
+        self._record_query_metric(
+            detail="model", cross_tenant=False, as_of_set=as_of is not None,
+        )
+        if as_of is not None:
+            # Historical model-level lineage: filter the SCD Type 2 edges
+            # by ``target_model == model_name``. Returns the canonical
+            # edge-list shape that matches ``get_contract_lineage(as_of=...)``
+            # so callers branching on read-path internals are consistent.
+            edges = [
+                e for e in self._edges_at(
+                    contract_id, as_of=as_of, direction="incoming",
+                )
+                if (e.get("target_model") or "") == model_name
+            ]
+            return {
+                "model": model_name,
+                "edges": edges,
+                "as_of": as_of.isoformat(),
+            }
         contract = self.get_resource_or_raise(
             Contract, contract_id, tenant_id=tenant_id or self.tenant_id
         )
@@ -202,6 +352,7 @@ class LineageService(BaseService, LineageEventPublisher):
 
         return result
 
+    @_lineage_trace("LineageService.get_field_lineage")
     def get_field_lineage(
         self,
         contract_id: str,
@@ -209,6 +360,7 @@ class LineageService(BaseService, LineageEventPublisher):
         model_name: Optional[str] = None,
         tenant_id: Optional[str] = None,
         use_cache: bool = True,
+        as_of: Optional[datetime] = None,
     ) -> Dict[str, Any]:
         """
         Get field-level lineage.
@@ -226,6 +378,23 @@ class LineageService(BaseService, LineageEventPublisher):
         Raises:
             NotFoundError: If contract or field not found
         """
+        self._record_query_metric(
+            detail="field", cross_tenant=False, as_of_set=as_of is not None,
+        )
+        if as_of is not None:
+            edges = [
+                e for e in self._edges_at(
+                    contract_id, as_of=as_of, direction="incoming",
+                )
+                if (e.get("target_field") or "") == field_name
+                and (model_name is None or (e.get("target_model") or "") == model_name)
+            ]
+            return {
+                "field": field_name,
+                "model": model_name,
+                "edges": edges,
+                "as_of": as_of.isoformat(),
+            }
         contract = self.get_resource_or_raise(
             Contract, contract_id, tenant_id=tenant_id or self.tenant_id
         )
@@ -304,6 +473,7 @@ class LineageService(BaseService, LineageEventPublisher):
 
         return result
 
+    @_lineage_trace("LineageService.get_full_lineage")
     def get_full_lineage(
         self,
         contract_id: str,
@@ -312,6 +482,7 @@ class LineageService(BaseService, LineageEventPublisher):
         max_model_depth: int = 10,
         max_field_depth: int = 10,
         use_cache: bool = True,
+        as_of: Optional[datetime] = None,
     ) -> Dict[str, Any]:
         """
         Get full hierarchical lineage (contract, model, and field levels).
@@ -330,6 +501,20 @@ class LineageService(BaseService, LineageEventPublisher):
         Raises:
             NotFoundError: If contract not found
         """
+        self._record_query_metric(
+            detail="full", cross_tenant=False, as_of_set=as_of is not None,
+        )
+        if as_of is not None:
+            return {
+                "contract_id": contract_id,
+                "upstream": self._edges_at(
+                    contract_id, as_of=as_of, direction="incoming",
+                ),
+                "downstream": self._edges_at(
+                    contract_id, as_of=as_of, direction="outgoing",
+                ),
+                "as_of": as_of.isoformat(),
+            }
         contract = self.get_resource_or_raise(
             Contract, contract_id, tenant_id=tenant_id or self.tenant_id
         )
@@ -406,12 +591,14 @@ class LineageService(BaseService, LineageEventPublisher):
 
         return result
 
+    @_lineage_trace("LineageService.get_lineage_visualization")
     def get_lineage_visualization(
         self,
         contract_id: str,
         format: str = "json",
         tenant_id: Optional[str] = None,
         max_depth: int = 10,
+        as_of: Optional[datetime] = None,
     ) -> Dict[str, Any]:
         """
         Get lineage visualization in various formats.
@@ -428,6 +615,29 @@ class LineageService(BaseService, LineageEventPublisher):
         Raises:
             NotFoundError: If contract not found
         """
+        self._record_query_metric(
+            detail="visualization", cross_tenant=False, as_of_set=as_of is not None,
+        )
+        if as_of is not None:
+            # Visualization at ``as_of`` returns the historical edge set
+            # in the same nodes-and-edges shape consumers already render.
+            edges = self._edges_at(
+                contract_id, as_of=as_of, direction="incoming",
+            ) + self._edges_at(
+                contract_id, as_of=as_of, direction="outgoing",
+            )
+            nodes_set = set()
+            for e in edges:
+                if e.get("source_contract"):
+                    nodes_set.add(e["source_contract"])
+                if e.get("target_contract"):
+                    nodes_set.add(e["target_contract"])
+            return {
+                "format": format,
+                "nodes": [{"id": n} for n in sorted(nodes_set)],
+                "edges": edges,
+                "as_of": as_of.isoformat(),
+            }
         contract = self.get_resource_or_raise(
             Contract, contract_id, tenant_id=tenant_id or self.tenant_id
         )
@@ -556,3 +766,207 @@ class LineageService(BaseService, LineageEventPublisher):
 
         notifier = ImpactNotifier()
         notifier.notify_impact(contract, impact_analysis)
+
+    # ------------------------------------------------------------------
+    # Phase 228.F1 (REQ-LIN-F1-001) — cross-tenant marketplace lineage
+    # ------------------------------------------------------------------
+
+    # Per-query result-row caps (D2 mitigation in the F1 STRIDE threat
+    # model — caps a max_depth=15 request on a dense graph from
+    # exhausting the API).  When the BFS would exceed either cap the
+    # response carries ``truncated=true`` so the frontend can render a
+    # "lineage truncated" affordance and the operator can investigate.
+    F1_NODE_CAP = 500
+    F1_EDGE_CAP = 1000
+
+    def get_for_asset(
+        self,
+        asset_id: str,
+        *,
+        caller_tenant_id: str,
+        owner_tenant_id: str,
+        detail: str = "summary",
+        max_depth: int = 3,
+        as_of: Optional[datetime] = None,
+    ) -> Dict[str, Any]:
+        """Return the lineage graph rooted at ``asset_id``'s ACTIVE contract.
+
+        Phase 228.F1 (REQ-LIN-F1-001) — the read primitive behind the
+        ``GET /api/v1/listings/{listing_id}/lineage/`` endpoint.
+
+        Args
+        ----
+        asset_id
+            UUID of the asset whose ACTIVE contract is the root of the
+            graph.  Resolved against the ``contracts`` queryset filtered
+            by ``tenant=owner_tenant_id, status="ACTIVE"``.
+        caller_tenant_id
+            Tenant id of the requesting user — used by the audit row
+            and the cross-tenant flag in the per-query metric.
+        owner_tenant_id
+            Tenant id of the listing owner — the ``LineageEdge`` rows
+            we walk are scoped to this tenant.  Cross-tenant edges are
+            stored with ``source_contract=NULL`` or ``target_contract=NULL``
+            (per the model's docstring at [models.py:821](hub/apps/contracts/models.py)).
+        detail
+            ``"summary"`` (default — pre-purchase, IP-stripped) or
+            ``"full"`` (post-purchase, with transformation IP).  The
+            distinction is encoded in the **serializer choice** at the
+            view layer; this service emits the same payload shape and
+            the view picks the matching serializer.
+        max_depth
+            Clamped to 1..15 by the view layer; the service trusts
+            its caller for this bound.
+        as_of
+            Optional SCD Type 2 timestamp for time-travel reads.
+
+        Returns
+        -------
+        ``{"nodes": [...], "links": [...], "truncated": bool, "detail": str}``
+
+        Notes
+        -----
+        * **Read-replica routing** — uses ``LineageEdge.objects.using("replica")``
+          when a ``replica`` connection is configured (REQ-LIN-F1 / F1.8).
+          Falls back transparently to the primary when only one connection
+          exists, so the unit tests don't need a multi-DB setup.
+        * **Cross-tenant edges** — when the BFS encounters an edge whose
+          source/target contract belongs to a different tenant (e.g. the
+          marketplace consumer who later derives a downstream product),
+          the edge is included but the foreign endpoint is rendered as
+          a generic "external" node with no tenant_id leakage.
+        """
+        self._record_query_metric(
+            detail=detail,
+            cross_tenant=(caller_tenant_id != owner_tenant_id),
+            as_of_set=as_of is not None,
+        )
+
+        root_contract = (
+            Contract.objects.filter(
+                asset_id=asset_id,
+                tenant_id=owner_tenant_id,
+                status="ACTIVE",
+            )
+            .order_by("-version")
+            .first()
+        )
+        if root_contract is None:
+            raise NotFoundError(
+                f"No ACTIVE contract found for asset {asset_id} in "
+                f"tenant {owner_tenant_id}"
+            )
+
+        nodes_by_id: Dict[str, Dict[str, Any]] = {}
+        links: List[Dict[str, Any]] = []
+        truncated = False
+
+        # BFS — visit each contract once.  A node represents either a
+        # contract (in this tenant) or an external/cross-tenant
+        # endpoint.  Links carry the canonical edge metadata; the view's
+        # serializer choice determines which fields ship over the wire.
+        from collections import deque
+
+        visited: set[str] = set()
+        queue: deque[tuple[str, int]] = deque()
+        queue.append((str(root_contract.id), 0))
+
+        # Seed the root node.
+        nodes_by_id[str(root_contract.id)] = self._render_contract_node(
+            root_contract,
+        )
+
+        while queue:
+            contract_id, depth = queue.popleft()
+            if contract_id in visited:
+                continue
+            visited.add(contract_id)
+
+            if depth >= max_depth:
+                # Walk no deeper, but the existing node + already-emitted
+                # edges stay.  Truncation is not a flag at this level.
+                continue
+
+            for direction in ("incoming", "outgoing"):
+                edges = self._edges_at(
+                    contract_id, as_of=as_of, direction=direction,
+                )
+                for edge in edges:
+                    if len(links) >= self.F1_EDGE_CAP:
+                        truncated = True
+                        break
+
+                    src_id = edge["source_contract"]
+                    tgt_id = edge["target_contract"]
+                    other_id = tgt_id if direction == "incoming" else src_id
+
+                    # Materialise the foreign endpoint node.  Cross-tenant
+                    # / external endpoints carry no tenant_id and a
+                    # generic "external" label.
+                    if other_id and other_id not in nodes_by_id:
+                        if len(nodes_by_id) >= self.F1_NODE_CAP:
+                            truncated = True
+                            break
+                        other_contract = (
+                            Contract.objects
+                            .filter(id=other_id)
+                            .only(
+                                "id", "tenant_id", "status",
+                                "hub_contract_json",
+                            )
+                            .first()
+                        )
+                        if (
+                            other_contract is not None
+                            and str(other_contract.tenant_id) == owner_tenant_id
+                        ):
+                            nodes_by_id[other_id] = self._render_contract_node(
+                                other_contract,
+                            )
+                        else:
+                            # External / cross-tenant — anonymise.
+                            nodes_by_id[other_id] = {
+                                "id": other_id,
+                                "type": "external",
+                                "label": "External contract",
+                            }
+
+                    links.append(edge)
+
+                    if (
+                        other_id
+                        and other_id not in visited
+                        and len(visited) < self.F1_NODE_CAP
+                    ):
+                        queue.append((other_id, depth + 1))
+
+                if truncated:
+                    break
+            if truncated:
+                break
+
+        return {
+            "nodes": list(nodes_by_id.values()),
+            "links": links,
+            "truncated": truncated,
+            "detail": detail,
+        }
+
+    @staticmethod
+    def _render_contract_node(contract: "Contract") -> Dict[str, Any]:
+        """Build a graph node from a Contract instance.
+
+        The label is derived from ``hub_contract_json.info.name`` which
+        is the canonical user-facing contract name — never from
+        transformation_ref / job_ref.  This is the I4 mitigation in
+        the F1 STRIDE threat model: summary-tier node labels MUST NOT
+        carry transformation hints.
+        """
+        payload = getattr(contract, "hub_contract_json", None) or {}
+        info = payload.get("info") if isinstance(payload, dict) else None
+        name = (info.get("name") if isinstance(info, dict) else None) or ""
+        return {
+            "id": str(contract.id),
+            "type": "contract",
+            "label": str(name) or f"contract:{contract.id}",
+        }

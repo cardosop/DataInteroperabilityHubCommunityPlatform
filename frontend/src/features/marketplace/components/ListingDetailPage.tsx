@@ -12,8 +12,11 @@ import { ErrorDisplay } from '../../../shared/components/ErrorDisplay';
 import { PricingModel, ListingStatus } from '../../../shared/types/marketplace';
 import { UuidWithCopy } from '../../../shared/components/UuidWithCopy';
 import { Breadcrumbs } from '../../../shared/components/Breadcrumbs';
+import { ListingLineagePanel } from './ListingLineagePanel';
+import { t } from './listingLineageStrings';
 import { ListingOrdersCount } from './ListingOrdersCount';
 import { useAuthStore } from '../../auth/store/authStore';
+import { useCapabilities } from '../../../shared/hooks/useCapabilities';
 import './ListingDetailPage.css';
 import { Button } from '../../../shared/components/Button';
 
@@ -162,6 +165,14 @@ export function ListingDetailPage() {
               </Button>
             </div>
           )}
+
+          {/* Phase 228.F1.14 — Lineage tab (capability-flag gated). */}
+          {id && listing.asset && (
+            <ListingLineageSection
+              listingId={id}
+              assetId={String(listing.asset)}
+            />
+          )}
         </div>
 
         <div className="listing-detail-sidebar">
@@ -248,6 +259,32 @@ export function ListingDetailPage() {
           </div>
         </div>
       </div>
+    </div>
+  );
+}
+
+/**
+ * Phase 228.F1.14 — Capability-flag-gated wrapper for the lineage
+ * panel.  Renders nothing when `lineage.cross_tenant_marketplace`
+ * is OFF.  When the capability is loading we render nothing rather
+ * than a placeholder so the page doesn't flash a then-disappear
+ * Lineage section as the capability resolution arrives.
+ */
+function ListingLineageSection({
+  listingId,
+  assetId,
+}: {
+  listingId: string;
+  assetId: string;
+}) {
+  const { isCapabilityAvailable, isLoading } = useCapabilities();
+  if (isLoading) return null;
+  if (!isCapabilityAvailable('lineage.cross_tenant_marketplace')) {
+    return null;
+  }
+  return (
+    <div className="listing-section" data-testid="listing-lineage-tab">
+      <ListingLineagePanel listingId={listingId} assetId={assetId} />
     </div>
   );
 }

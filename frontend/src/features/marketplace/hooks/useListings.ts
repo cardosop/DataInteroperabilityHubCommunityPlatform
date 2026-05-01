@@ -6,6 +6,10 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useMutationWithNotification } from '../../../shared/hooks/useMutationWithNotification';
 import { listingService } from '../services/listingService';
 import type {
+  LineageDetailLevel,
+  ListingLineageGraph,
+} from '../../../shared/types/lineage';
+import type {
   ListingCreateRequest,
   ListingUpdateRequest,
   ListingListFilters,
@@ -100,5 +104,37 @@ export function usePreviewListing() {
     mutationFn: ({ id, format }: { id: string; format?: string }) => listingService.preview(id, format),
     successMessage: 'Listing preview loaded',
     errorMessage: 'Failed to preview listing',
+  });
+}
+
+/**
+ * Phase 228.F1.11 — useListingLineage hook.
+ *
+ * Fetches the cross-tenant lineage graph for a listing.  The
+ * `detail` argument selects the response tier — the caller decides
+ * which tier to request based on the user's entitlement state (the
+ * `ListingLineagePanel` component derives this from
+ * `useHasActiveEntitlement(asset_id)` upstream).
+ *
+ * The query key includes `detail` so the post-purchase `full`
+ * response doesn't share a cache slot with the pre-purchase `summary`
+ * — otherwise a buyer's CTA-confirmation purchase would still see
+ * the cached summary tier.
+ *
+ * 60s `staleTime` matches the server's `Cache-Control: private,
+ * max-age=60`; React Query's stale-while-revalidate plays well with
+ * the conditional-request ETag the backend ships.
+ */
+export function useListingLineage(
+  listingId: string | null,
+  detail: LineageDetailLevel = 'summary',
+  maxDepth: number = 3,
+) {
+  return useQuery<ListingLineageGraph>({
+    queryKey: ['marketplace', 'listings', 'lineage', listingId, detail, maxDepth],
+    queryFn: () =>
+      listingService.getLineage(listingId!, { detail, max_depth: maxDepth }),
+    enabled: !!listingId,
+    staleTime: 60 * 1000, // mirror server Cache-Control: max-age=60
   });
 }

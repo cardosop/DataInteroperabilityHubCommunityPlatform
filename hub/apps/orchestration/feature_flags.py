@@ -298,12 +298,12 @@ def is_business_rules_validation_enabled(
 ) -> bool:
     """
     Convenience function to check if business rules validation is enabled.
-    
+
     Args:
         workflow_name: Name of the workflow
         tenant_id: Optional tenant ID
         workflow_instance_id: Optional workflow instance ID
-        
+
     Returns:
         True if validation is enabled, False otherwise
     """
@@ -312,3 +312,33 @@ def is_business_rules_validation_enabled(
         tenant_id=tenant_id,
         workflow_instance_id=workflow_instance_id
     )
+
+
+# ---------------------------------------------------------------------------
+# Phase 228 — generic capability-flag helper
+# ---------------------------------------------------------------------------
+
+
+def is_capability_enabled(capability_key: str) -> bool:
+    """Return True if the named capability is enabled.
+
+    Capability keys are dotted (``"lineage.cross_tenant_marketplace"``).
+    The lookup translates the key to a Django settings name by
+    upper-casing + dot-to-underscore + ``_ENABLED`` suffix:
+
+    * ``"lineage.cross_tenant_marketplace"`` → ``LINEAGE_CROSS_TENANT_MARKETPLACE_ENABLED``
+
+    Default is **OFF** (False) when the setting is absent.  Phase 228.F1
+    rolls out the capability behind a feature flag that defaults OFF
+    until pen-test (F1.25) and PIA/DPO sign-off (F1.26) land — see
+    `docs/security/threat-models/lineage-cross-tenant.md` for the
+    rollout chain.
+
+    Why a generic helper not a per-capability function
+    --------------------------------------------------
+    The F1 endpoint, the F1 frontend tab, and any future F2/F3/F4/F5
+    feature use the same on/off semantics.  One helper, one settings
+    convention, no copy-paste of the lookup logic.
+    """
+    setting_name = capability_key.upper().replace(".", "_") + "_ENABLED"
+    return bool(getattr(settings, setting_name, False))
