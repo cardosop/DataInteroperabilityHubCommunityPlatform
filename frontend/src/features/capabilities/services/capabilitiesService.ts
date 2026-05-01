@@ -205,6 +205,22 @@ class CapabilitiesService {
       operationId: 'listing_lineage',
     };
 
+    // Phase 228.F2.32 — Field-level lineage editor.  Detected via the
+    // PATCH method on the per-contract lineage path; drf-spectacular
+    // emits the path with the lookup placeholder (`{id}`) and the
+    // operation key includes `patch` when the action is registered.
+    const lineageFieldEditorAvailable = Object.keys(paths).some((p) => {
+      if (!/\/contracts\/\{[^}]+\}\/lineage\/?$/.test(p)) return false;
+      const ops = paths[p];
+      return Boolean(ops && typeof ops === 'object' && 'patch' in (ops as object));
+    });
+    capabilities['contracts.lineage_field_editor'] = {
+      name: 'Field-Level Lineage Editor',
+      available: lineageFieldEditorAvailable,
+      endpoint: '/api/v1/contracts/{id}/lineage/',
+      operationId: 'contract_lineage_edit',
+    };
+
     // Social capabilities
     capabilities['social.ratings'] = {
       name: 'Social Ratings',

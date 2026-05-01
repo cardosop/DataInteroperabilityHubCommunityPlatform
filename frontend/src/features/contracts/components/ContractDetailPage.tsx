@@ -24,6 +24,7 @@ import { Breadcrumbs } from '../../../shared/components/Breadcrumbs';
 import { InfoHint } from '../../../shared/components/InfoHint';
 import './ContractDetailPage.css';
 import { Button } from '../../../shared/components/Button';
+import { useCapabilities } from '../../../shared/hooks/useCapabilities';
 
 type ContractDetailTab = 'details' | 'lineage' | 'activity';
 
@@ -189,7 +190,11 @@ export function ContractDetailPage() {
         />
         <div className="contract-detail-main">
           {activeTab === 'lineage' && id ? (
-            <ContractLineageVisualization contractId={id} maxDepth={10} />
+            <>
+              {/* Phase 228.F2.32 — Edit lineage button (capability-flag gated). */}
+              <LineageEditEntrypoint contractId={id} />
+              <ContractLineageVisualization contractId={id} maxDepth={10} />
+            </>
           ) : activeTab === 'activity' && id ? (
             <section data-testid="contract-activity">
               <h2>Activity</h2>
@@ -429,6 +434,32 @@ export function ContractDetailPage() {
           )}
         </div>
       </div>
+    </div>
+  );
+}
+
+/**
+ * Phase 228.F2.32 — Edit-lineage entry-point.  Capability-gated via
+ * `useCapabilities()`; renders nothing while the capability resolves
+ * (no flicker).  When the capability is not registered (the F2 build
+ * isn't compiled in), the button is hidden and the current
+ * read-only lineage tab is the only surface.
+ */
+function LineageEditEntrypoint({ contractId }: { contractId: string }) {
+  const { isCapabilityAvailable, isLoading } = useCapabilities();
+  const navigate = useNavigate();
+  if (isLoading) return null;
+  if (!isCapabilityAvailable('contracts.lineage_field_editor')) {
+    return null;
+  }
+  return (
+    <div className="lineage-edit-entrypoint" data-testid="lineage-edit-entrypoint">
+      <Button
+        variant="secondary"
+        onClick={() => navigate(`/contracts/${contractId}/lineage/edit`)}
+      >
+        Edit lineage
+      </Button>
     </div>
   );
 }

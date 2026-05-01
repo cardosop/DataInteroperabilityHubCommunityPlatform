@@ -21,6 +21,7 @@
 - [ ] No bare `test.skip()` without reason string
 - [ ] Security: no secrets in code, no new `innerHTML` without DOMPurify
 - [ ] Documentation updated if behaviour changed
+- [ ] **F2 scope guardrail (when touching the lineage editor):** PR does NOT re-introduce items from the v1 non-goals list at [docs/mvpdocs/concepts/lineage.md](docs/mvpdocs/concepts/lineage.md#field-level-lineage-editor--phase-228f2-v1-non-goals-req-lin-f2-006) without an explicit ADR + product sign-off. (Phase 228.F2.34)
 
 ## Related
 

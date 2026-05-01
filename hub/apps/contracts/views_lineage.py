@@ -327,6 +327,20 @@ class ContractLineageMixin:
         format_type = format_param if format_param in ["json", "dot", "mermaid"] else "json"
         max_depth = int(request.query_params.get("max_depth", 10))
 
+        # Phase 228.F2.3 (REQ-LIN-F2-001) — opt-in field-level
+        # expansion.  Default False keeps the existing visualization
+        # response shape identical (no surprise payload growth for
+        # callers who haven't asked for the F2 surface).  When True,
+        # the response carries the per-field nodes + links derived
+        # from ``LineageEdge.source_field`` / ``target_field`` so the
+        # F2 frontend editor can render them.
+        include_fields_raw = request.query_params.get(
+            "include_fields", "false"
+        )
+        include_fields = str(include_fields_raw).lower() in (
+            "true", "1", "yes",
+        )
+
         # Initialize LineageService with tenant_id and user_id
         tenant_id = _get_tenant_id_from_request(request)
         user_id = str(request.user.id) if request.user and request.user.is_authenticated else None
@@ -336,6 +350,66 @@ class ContractLineageMixin:
         result = lineage_service.get_lineage_visualization(
             contract_id=contract_id, format=format_type, max_depth=max_depth
         )
+
+        if include_fields and format_type == "json":
+            # Augment the JSON visualization with field-level nodes
+            # + links derived from current open LineageEdge rows.  We
+            # only do this for the JSON format — DOT and Mermaid are
+            # contract-level diagrams whose grammar doesn't carry
+            # field-level structure cleanly.
+            from hub.apps.contracts.models import LineageEdge
+
+            field_nodes: list = []
+            field_links: list = []
+            seen_field_ids: set = set()
+            for row in (
+                LineageEdge.objects
+                .filter(tenant_id=tenant_id, valid_to__isnull=True)
+                .filter(
+                    # Edges anchored to this contract on either side.
+                    __import__("django.db.models", fromlist=["Q"]).Q(
+                        source_contract_id=contract_id,
+                    )
+                    | __import__("django.db.models", fromlist=["Q"]).Q(
+                        target_contract_id=contract_id,
+                    )
+                )
+                .iterator(chunk_size=200)
+            ):
+                for side in ("source", "target"):
+                    cid = (
+                        row.source_contract_id if side == "source"
+                        else row.target_contract_id
+                    )
+                    model = row.source_model if side == "source" else row.target_model
+                    field = row.source_field if side == "source" else row.target_field
+                    if not (cid and field):
+                        continue
+                    fid = f"field:{cid}:{model}.{field}"
+                    if fid in seen_field_ids:
+                        continue
+                    seen_field_ids.add(fid)
+                    field_nodes.append({
+                        "id": fid,
+                        "type": "field",
+                        "label": f"{model}.{field}" if model else field,
+                        "contract_id": str(cid),
+                    })
+                if (row.source_contract_id and row.source_field
+                        and row.target_contract_id and row.target_field):
+                    field_links.append({
+                        "source": (
+                            f"field:{row.source_contract_id}:"
+                            f"{row.source_model}.{row.source_field}"
+                        ),
+                        "target": (
+                            f"field:{row.target_contract_id}:"
+                            f"{row.target_model}.{row.target_field}"
+                        ),
+                        "edge_type": row.edge_type,
+                    })
+            result.setdefault("field_nodes", []).extend(field_nodes)
+            result.setdefault("field_links", []).extend(field_links)
 
         if format_type == "dot":
             return Response(result.get("dot", ""), content_type="text/plain")

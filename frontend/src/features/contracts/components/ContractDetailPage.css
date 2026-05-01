@@ -226,3 +226,8 @@
   align-items: flex-start;
   gap: var(--spacing-sm, 0.5rem);
 }
+
+/* Phase 228.F2.32 — Edit-lineage entry-point spacing. */
+.lineage-edit-entrypoint {
+  margin-bottom: var(--spacing-sm, 0.75rem);
+}

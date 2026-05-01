@@ -834,3 +834,215 @@ class ContractCRUDMixin:
         # ``{spec, schema}`` so the existing 227.L5.5 frontend reader
         # doesn't change.
         return Response({"spec": spec, "schema": json_schema})
+
+    # ------------------------------------------------------------------
+    # Phase 228.F2 — Field-level lineage editor
+    # REQ-LIN-F2-001 / F2-002 — PATCH /api/v1/contracts/{id}/lineage/
+    # ------------------------------------------------------------------
+
+    @action(
+        detail=True,
+        methods=["patch"],
+        url_path="lineage",
+        url_name="contract-lineage-edit",
+    )
+    def lineage_edit(self, request, *args, **kwargs):
+        """``PATCH /api/v1/contracts/{id}/lineage/`` — full-state lineage edit.
+
+        Request body shape (validated by :class:`LineageEditPatchSerializer`)::
+
+            {
+              "edges": [
+                {
+                  "source_contract": "<uuid>",
+                  "source_model": "orders",
+                  "source_field": "customer_id",
+                  "target_contract": "<uuid>",
+                  "target_model": "customer_aggregates",
+                  "target_field": "customer_id",
+                  "edge_type": "transformation",
+                  "transformation_ref": "dbt_orders_v1",
+                  "job_ref": "airflow_run_42"
+                },
+                ...
+              ]
+            }
+
+        The full edge list is the desired post-patch state.  The view
+        diffs against the current open edges, closes removed ones,
+        opens new ones, and re-serialises ``hub_contract_json.lineage``.
+
+        Concurrency: ``If-Match`` (REQ-LIN-F2-002).  Idempotency:
+        ``Idempotency-Key`` cached 24h via the existing bug-prevention
+        idempotency layer.  Cap: 1000 edges per patch (413 over).
+
+        RBAC (F2.10): platform admin OR same-tenant tenant admin OR
+        same-tenant user with ``EDIT_LINEAGE`` permission OR contract
+        owner.  Returns 403 ``EDIT_LINEAGE_FORBIDDEN`` otherwise.
+        """
+        from hub.apps.contracts.lineage_edit_service import (
+            apply_lineage_patch,
+        )
+        from hub.apps.contracts.lineage_edit_serializers import (
+            LineageEditPatchSerializer,
+        )
+        from hub.apps.contracts.permissions_lineage import (
+            require_edit_lineage,
+        )
+
+        # Resolve contract + RBAC.
+        try:
+            contract = self.get_queryset().get(id=kwargs["id"])
+        except self.queryset.model.DoesNotExist:
+            return Response(
+                {"detail": "Not found."},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        try:
+            require_edit_lineage(request.user, contract)
+        except Exception as exc:
+            from rest_framework.exceptions import PermissionDenied
+            if isinstance(exc, PermissionDenied):
+                return Response(
+                    exc.detail
+                    if isinstance(exc.detail, dict)
+                    else {"error": str(exc.detail), "code": "EDIT_LINEAGE_FORBIDDEN"},
+                    status=status.HTTP_403_FORBIDDEN,
+                )
+            raise
+
+        # ETag concurrency check (F2.4 / REQ-LIN-F2-002).  We reuse
+        # the existing _contract_etag helper that's load-bearing for
+        # the Phase 227 L4.3 contract-update path.
+        if_match = request.headers.get("If-Match") or request.META.get(
+            "HTTP_IF_MATCH",
+        )
+        current_etag = _contract_etag(contract)
+        if if_match and if_match.strip() != current_etag:
+            return Response(
+                {
+                    "error": "Precondition failed: If-Match ETag mismatch",
+                    "code": "PRECONDITION_FAILED",
+                    "details": {
+                        "expected_etag": current_etag,
+                        "received_etag": if_match,
+                    },
+                },
+                status=status.HTTP_412_PRECONDITION_FAILED,
+                headers={"ETag": current_etag},
+            )
+
+        # Serializer (cap 1000 edges, structural validation).
+        serializer = LineageEditPatchSerializer(data=request.data)
+        if not serializer.is_valid():
+            errs = serializer.errors
+            # Surface the typed PAYLOAD_TOO_LARGE code as 413 instead
+            # of the default 400 — the REQ-LIN-F2-002 contract.
+            edges_err = errs.get("edges")
+            if (
+                isinstance(edges_err, list)
+                and edges_err
+                and isinstance(edges_err[0], dict)
+                and edges_err[0].get("code") == "PAYLOAD_TOO_LARGE"
+            ):
+                return Response(
+                    edges_err[0],
+                    status=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+                )
+            return Response(errs, status=status.HTTP_400_BAD_REQUEST)
+
+        # Idempotency-Key (24h cached response per the existing
+        # bug-prevention service, F2.4).  When the same
+        # (tenant, key, method, path) tuple replays we return the
+        # cached response without re-applying the patch.  Optional
+        # header — caller-driven.  Uses the existing
+        # ``IdempotencyService.check_idempotency`` /
+        # ``store_idempotency`` API from
+        # ``hub/apps/core/bug_prevention/services.py``.
+        idempotency_key = request.headers.get(
+            "Idempotency-Key"
+        ) or request.META.get("HTTP_IDEMPOTENCY_KEY")
+        cached_response = None
+        if idempotency_key:
+            try:
+                from hub.apps.core.bug_prevention.services import (
+                    IdempotencyService,
+                )
+                _, cached_response = IdempotencyService.check_idempotency(
+                    tenant_id=str(getattr(request.user, "tenant_id", "")),
+                    idempotency_key=idempotency_key,
+                    method="PATCH",
+                    path=request.path,
+                    body=request.data,
+                )
+            except Exception:  # pragma: no cover — best-effort
+                cached_response = None
+            if cached_response is not None:
+                return Response(
+                    cached_response.get("data") if isinstance(cached_response, dict) else cached_response,
+                    status=status.HTTP_200_OK,
+                    headers={"X-Idempotent-Replay": "true"},
+                )
+
+        # Apply the patch (single tx; SERIALIZABLE; audit per edge).
+        try:
+            result = apply_lineage_patch(
+                contract=contract,
+                desired_edges=serializer.validated_data["edges"],
+                user=request.user,
+            )
+        except Exception as exc:
+            from rest_framework.exceptions import ValidationError as _Validate
+            from hub.apps.core.services.base import (
+                ConflictError,
+                ValidationError as ServiceValidate,
+            )
+
+            if isinstance(exc, ConflictError):
+                return Response(
+                    {
+                        "error": str(exc),
+                        "code": getattr(exc, "code", "CONFLICT"),
+                        "details": getattr(exc, "details", {}),
+                    },
+                    status=status.HTTP_409_CONFLICT,
+                )
+            if isinstance(exc, (ServiceValidate, _Validate)):
+                # Validator findings (cycle, field-not-found, type-mismatch).
+                details = getattr(exc, "details", None) or getattr(
+                    exc, "detail", None
+                ) or {"error": str(exc)}
+                return Response(
+                    details,
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            raise
+
+        # Cache the response under the idempotency key.
+        if idempotency_key:
+            try:
+                from hub.apps.core.bug_prevention.services import (
+                    IdempotencyService,
+                )
+                IdempotencyService.store_idempotency(
+                    tenant_id=str(getattr(request.user, "tenant_id", "")),
+                    idempotency_key=idempotency_key,
+                    method="PATCH",
+                    path=request.path,
+                    body=request.data,
+                    response_status=200,
+                    response_body=result,
+                )
+            except Exception:  # pragma: no cover — best-effort
+                pass
+
+        # ETag of the post-patch contract — the client uses this on
+        # the next round-trip's If-Match.
+        contract.refresh_from_db()
+        new_etag = _contract_etag(contract)
+        return Response(
+            result,
+            status=status.HTTP_200_OK,
+            headers={"ETag": new_etag},
+        )

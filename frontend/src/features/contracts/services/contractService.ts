@@ -349,4 +349,39 @@ export const contractService = {
     const response = await apiClient.getClient().get<ContractLineageVisualization>(url);
     return response.data;
   },
+
+  /**
+   * Phase 228.F2.21 — update a contract's lineage.
+   *
+   * Sends a `PATCH /api/v1/contracts/{id}/lineage/` with the FULL
+   * desired post-patch edge list (the server diffs against current
+   * state).  Carries the optional `If-Match` header for ETag
+   * concurrency and an optional `Idempotency-Key` for 24h replay
+   * deduplication on the bug-prevention layer.
+   *
+   * Returns `{ contract_id, edges, added, removed, kept }`.
+   */
+  async updateLineage(
+    id: string,
+    payload: { edges: Array<Record<string, unknown>> },
+    options: { ifMatch?: string; idempotencyKey?: string } = {},
+  ): Promise<{
+    contract_id: string;
+    edges: Array<Record<string, unknown>>;
+    added: number;
+    removed: number;
+    kept: number;
+  }> {
+    const headers: Record<string, string> = {};
+    if (options.ifMatch) headers['If-Match'] = options.ifMatch;
+    if (options.idempotencyKey) {
+      headers['Idempotency-Key'] = options.idempotencyKey;
+    }
+    const response = await apiClient.getClient().patch(
+      `${CONTRACTS_BASE_PATH}/${id}/lineage/`,
+      payload,
+      { headers },
+    );
+    return response.data;
+  },
 };

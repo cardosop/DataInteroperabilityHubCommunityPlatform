@@ -136,6 +136,11 @@ const ContractDetailPage = lazy(() =>
     default: m.ContractDetailPage,
   }))
 );
+const LineageEditPage = lazy(() =>
+  import('../../features/contracts/components/LineageEditPage').then((m) => ({
+    default: m.LineageEditPage,
+  })),
+);
 const ContractEditorPage = lazy(() =>
   import('../../features/contracts/components/ContractEditorPage').then((m) => ({
     default: m.ContractEditorPage,
@@ -483,6 +488,23 @@ const AdminPage = lazy(() =>
     default: m.AdminPage,
   }))
 );
+
+// Phase 228 F4 (228.F4.19) — OpenLineage admin route.
+// Two side-by-side panels: ingest-key management + ops status.
+const OpenLineageAdminPage = lazy(async () => {
+  const [{ OpenLineageKeyManagement }, { OpenLineageStatusPanel }] = await Promise.all([
+    import('../../features/admin/components/openlineage/OpenLineageKeyManagement'),
+    import('../../features/admin/components/openlineage/OpenLineageStatusPanel'),
+  ]);
+  return {
+    default: () => (
+      <div className="openlineage-admin-page">
+        <OpenLineageKeyManagement />
+        <OpenLineageStatusPanel />
+      </div>
+    ),
+  };
+});
 const UserEditPage = lazy(() =>
   import('../../features/admin/components/UserEditPage').then((m) => ({
     default: m.UserEditPage,
@@ -705,6 +727,15 @@ export const appRoutes: Parameters<typeof createBrowserRouter>[0] = [
             element: (
               <EB fallbackMsg="Loading contract editor...">
                 <ContractEditorPage />
+              </EB>
+            ),
+          },
+          {
+            // Phase 228.F2.16 — field-level lineage editor.
+            path: ':id/lineage/edit',
+            element: (
+              <EB fallbackMsg="Loading lineage editor...">
+                <LineageEditPage />
               </EB>
             ),
           },
@@ -1384,6 +1415,21 @@ export const appRoutes: Parameters<typeof createBrowserRouter>[0] = [
           <ProtectedRoute requiredRole={['TENANT_ADMIN', 'PLATFORM_ADMIN']}>
             <EB fallbackMsg="Loading contract health...">
               <ContractHealthPage />
+            </EB>
+          </ProtectedRoute>
+        ),
+      },
+      {
+        // Phase 228 F4 (228.F4.19) — OpenLineage admin route.
+        // Hosts ``OpenLineageKeyManagement`` (key list / create /
+        // revoke) + ``OpenLineageStatusPanel`` (DLQ + delivery
+        // counts). Capability-flag gated server-side; the UI
+        // surfaces a 404 from the backend gracefully.
+        path: 'admin/integrations/openlineage',
+        element: (
+          <ProtectedRoute requiredRole={['TENANT_ADMIN', 'PLATFORM_ADMIN']}>
+            <EB fallbackMsg="Loading OpenLineage admin...">
+              <OpenLineageAdminPage />
             </EB>
           </ProtectedRoute>
         ),

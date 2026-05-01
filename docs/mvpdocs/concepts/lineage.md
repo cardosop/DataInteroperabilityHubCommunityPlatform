@@ -77,6 +77,18 @@ The graph response includes nodes (assets with summary metadata) and edges (with
 - Lineage graph versioning (point-in-time lineage snapshots).
 - Automated lineage verification against declared contract relationships.
 
+## Field-level lineage editor — Phase 228.F2 v1 non-goals (REQ-LIN-F2-006)
+
+The field-level lineage editor (Phase 228.F2) ships in v1 with a deliberately bounded scope. These are the v1 non-goals — items captured in the F2 design but explicitly deferred to a future release so v1 can ship within its 25 eng-day budget without scope creep:
+
+1. **Drag-and-drop visual mapping.** v1 ships a two-pane table-style editor (F2.17) — keyboard-only operable (F2.24). Drag-and-drop is a v2 deliverable; the F2.17 component shape anticipates it (the LineageGraph extraction from F1.13 is the foundation), but no DnD affordances are wired.
+2. **Cross-tenant lineage edits.** Editing the lineage of a contract you don't own is forbidden (F2.10 / `EDIT_LINEAGE_FORBIDDEN`). A consumer who purchased a marketplace listing can read the provider's lineage (F1) but cannot edit it.
+3. **Bulk edge import / CSV upload.** v1 caps the patch at 1000 edges (F2.4) and expects per-edge entry through the modal. CSV import is a v2 candidate.
+4. **Branching / merge workflows.** Edges land directly on the contract; there's no draft-branch concept. v1's concurrency model is `If-Match` ETag + `Idempotency-Key` (F2.4) — sufficient for the editing model, not a substitute for git-style branches.
+5. **Custom transformation languages.** The `transformation_ref` field is a free-text string in v1. A future v2 could parse it as DBT model id, SQL expression, or Spark job — out of scope for the v1 editor.
+
+The PR template (F2.34) references this section as the scope-creep guardrail for the F2 surface. Reviewers reject PRs that re-introduce items from this list without an explicit ADR + product sign-off.
+
 ## API Reference
 
 | Operation | API | CLI | SDK |
