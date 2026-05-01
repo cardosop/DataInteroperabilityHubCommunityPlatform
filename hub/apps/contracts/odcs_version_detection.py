@@ -90,6 +90,16 @@ def _extract_version_from_api_version(api_version: str) -> str:
         r'odcs/v([\d.]+(?:-[a-zA-Z0-9-]+)?)',
         # Generic /v{version} pattern as fallback (supports -preview suffix)
         r'/v([\d.]+(?:-[a-zA-Z0-9-]+)?)',
+        # Bare ``v{version}`` form — canonical per docs/CONTRACTS.md and
+        # the ODCS spec (e.g. ``apiVersion: v3.0.2``). Pre-fix the
+        # detector required a prefix (odcs.io/, odcs/, or /v) and bare
+        # ``v3.0.2`` fell through to the version-field fallback, which
+        # returned the contract's semver (e.g. ``1.0.0``) instead of
+        # the spec version. That routed the engine to the wrong
+        # normalizer and silently dropped the schema. Anchored on the
+        # whole string so the prefix patterns above still win when both
+        # forms could match (defensive against ambiguity).
+        r'^v([\d.]+(?:-[a-zA-Z0-9-]+)?)$',
     ]
 
     for pattern in patterns:
