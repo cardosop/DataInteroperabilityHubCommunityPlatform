@@ -147,13 +147,19 @@ def handle_contract_updated(
         labels={"severity": severity.value},
     )
 
-    # Step 3 — find downstream candidate contracts: walk LineageEdge
-    # rows where source_contract == this contract.  The full-graph
-    # transitive walk is intentionally bounded — F3 v1 routes
-    # notifications based on direct subscription matches; downstream
-    # transitive impact is a Phase 228.F5 concern.
-    candidate_subscriptions = LineageSubscription.objects.filter(
+    # Step 3 — REQ-LIN-F3-005: walk downstream LineageEdge rows from
+    # the changed contract to enumerate AFFECTED contracts, then
+    # collect subscriptions for the union {source} ∪ {downstream}.
+    # The walk is bounded (max depth + max nodes) to keep dispatcher
+    # cost predictable on dense lineage graphs.
+    affected_contract_ids = _walk_downstream_contracts(
         source_contract_id=contract_id,
+        tenant_id=tenant_id,
+    )
+    affected_contract_ids.add(str(contract_id))
+
+    candidate_subscriptions = LineageSubscription.objects.filter(
+        source_contract_id__in=affected_contract_ids,
     ).select_related("user", "source_contract")
     counts["candidates"] = candidate_subscriptions.count()
 
@@ -167,11 +173,85 @@ def handle_contract_updated(
             actor_user_id=actor_user_id,
             redis_client=redis_client,
             contract=contract,
+            diff=diff,
         )
         counts[outcome] = counts.get(outcome, 0) + 1
 
     result.update(counts)
     return result
+
+
+# Bounded BFS limits — keep dispatcher cost predictable on dense
+# lineage graphs.  ``F3_DOWNSTREAM_MAX_DEPTH`` is the BFS depth from
+# the changed contract; ``F3_DOWNSTREAM_MAX_NODES`` caps the visited
+# set so a runaway graph cannot starve the worker.
+F3_DOWNSTREAM_MAX_DEPTH = int(
+    os.environ.get("F3_DOWNSTREAM_MAX_DEPTH", "5"),
+)
+F3_DOWNSTREAM_MAX_NODES = int(
+    os.environ.get("F3_DOWNSTREAM_MAX_NODES", "1000"),
+)
+
+
+def _walk_downstream_contracts(
+    *, source_contract_id: str, tenant_id: str,
+) -> set:
+    """Bounded-BFS over the open ``LineageEdge`` rows starting from
+    ``source_contract_id``.
+
+    Returns the set of downstream contract IDs (as strings).  Does
+    NOT include the source itself — the caller adds it explicitly so
+    direct subscribers are notified even when no edge exists.
+
+    Bounds: ``F3_DOWNSTREAM_MAX_DEPTH`` (default 5 hops) and
+    ``F3_DOWNSTREAM_MAX_NODES`` (default 1000 nodes).  When a bound
+    is hit we stop expanding — the dispatcher still notifies the
+    nodes already reached; remaining downstream subscribers will get
+    notified on their own contract's next save (lineage propagation
+    re-saves them when their inputs change).
+    """
+    from hub.apps.contracts.models import LineageEdge
+
+    visited: set = set()
+    frontier = {str(source_contract_id)}
+    depth = 0
+    while frontier and depth < F3_DOWNSTREAM_MAX_DEPTH:
+        # Find direct downstream successors: edges where source is
+        # in the current frontier and target is a different contract.
+        next_frontier: set = set()
+        rows = (
+            LineageEdge.objects
+            .filter(
+                tenant_id=tenant_id,
+                source_contract_id__in=frontier,
+                valid_to__isnull=True,
+            )
+            .values_list("target_contract_id", flat=True)
+        )
+        for tgt in rows:
+            if tgt is None:
+                continue
+            tgt_str = str(tgt)
+            if tgt_str in visited or tgt_str in frontier:
+                continue
+            next_frontier.add(tgt_str)
+            if len(visited) + len(next_frontier) >= F3_DOWNSTREAM_MAX_NODES:
+                break
+        if not next_frontier:
+            break
+        visited.update(next_frontier)
+        frontier = next_frontier
+        depth += 1
+        if len(visited) >= F3_DOWNSTREAM_MAX_NODES:
+            logger.warning(
+                "lineage_impact_downstream_walk_capped "
+                "source=%s visited=%d depth=%d",
+                source_contract_id, len(visited), depth,
+            )
+            break
+    # Drop the source itself — caller adds it explicitly.
+    visited.discard(str(source_contract_id))
+    return visited
 
 
 # ---------------------------------------------------------------------------
@@ -187,6 +267,7 @@ def _process_subscription(
     actor_user_id: str,
     redis_client,
     contract,
+    diff: LineageDiff,
 ) -> str:
     """Process one subscription; return the outcome bucket name.
 
@@ -243,6 +324,7 @@ def _process_subscription(
         contract=contract,
         severity=severity,
         cross_tenant=is_cross_tenant,
+        diff=diff,
     )
 
     # Enqueue the in-app notification + (optional) email.
@@ -347,28 +429,61 @@ def _compute_diff(contract) -> tuple[LineageDiff, ContractDiff]:
 
 def _format_notification_body(
     *, contract, severity: Severity, cross_tenant: bool,
+    diff: LineageDiff,
 ) -> tuple[str, str]:
     """Return ``(title, message)`` for a lineage-impact notification.
 
-    Cross-tenant content is summary-only — no transformation_ref,
-    no field names — per REQ-LIN-F3-005 scenario.
+    REQ-LIN-F3-006 mandates a "what changed" summary (added / removed
+    edges).  We surface the COUNTS in both the in-tenant and cross-
+    tenant body — counts are not sensitive (no field names, no
+    transformation_ref) so the cross-tenant summary tier still
+    permits them.
+
+    Cross-tenant content remains summary-only — the contract name +
+    field names + transformation_ref are stripped; only the severity,
+    counts, and a generic "open the lineage view" CTA appear.
     """
     contract_name = getattr(contract, "name", None) or str(contract.id)
+    added = len(diff.added)
+    removed = len(diff.removed)
+    modified = len(diff.modified)
+    summary = _format_what_changed(added=added, removed=removed, modified=modified)
     if cross_tenant:
         title = f"Lineage updated: {severity.value}"
         message = (
             f"A contract you subscribe to has changed at "
-            f"{severity.value} severity.  Open the lineage view to see "
-            f"details (visibility limited to entitled subscribers)."
+            f"{severity.value} severity. {summary}  "
+            f"Open the lineage view to see details (visibility limited "
+            f"to entitled subscribers)."
         )
     else:
         title = f"Lineage updated: {contract_name}"
         message = (
-            f"Lineage for '{contract_name}' has changed.  "
-            f"Severity: {severity.value}.  "
+            f"Lineage for '{contract_name}' has changed. "
+            f"Severity: {severity.value}. {summary}  "
             f"Open the contract's lineage view to see what changed."
         )
     return title, message
+
+
+def _format_what_changed(*, added: int, removed: int, modified: int) -> str:
+    """Render the "What changed" summary clause (REQ-LIN-F3-006).
+
+    Examples:
+        added=2, removed=0, modified=0 → "2 edges added."
+        added=1, removed=3, modified=0 → "1 edge added, 3 edges removed."
+        added=0, removed=0, modified=0 → "" (no clause).
+    """
+    parts = []
+    if added:
+        parts.append(f"{added} edge{'s' if added != 1 else ''} added")
+    if removed:
+        parts.append(f"{removed} edge{'s' if removed != 1 else ''} removed")
+    if modified:
+        parts.append(f"{modified} edge{'s' if modified != 1 else ''} modified")
+    if not parts:
+        return ""
+    return ", ".join(parts).capitalize() + "."
 
 
 def _severity_to_notification_type(severity: Severity) -> str:

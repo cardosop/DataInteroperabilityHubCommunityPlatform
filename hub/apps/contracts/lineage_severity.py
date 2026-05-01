@@ -135,13 +135,24 @@ def classify(
     See module docstring for the mapping rules.  The function is
     pure — no I/O, no clock, no randomness — so callers can rely
     on memoised results across retries.
+
+    Phase 228.F3.MetaDoD audit (REQ-LIN-F3-004 spec scenario
+    "Removed derivation edge classified CRITICAL") — a removed
+    derivation edge IS a breaking change in itself: the downstream
+    contract was deriving values from this edge and now isn't, so
+    consumers see different data even if no field was removed.
+    Classified CRITICAL.  Added derivation edges remain HIGH (new
+    derivation is interesting but not breaking).
     """
-    # CRITICAL — breaking schema change downstream.
+    # CRITICAL — (a) removed field a downstream contract depends on,
+    # OR (b) removed derivation edge.
     if _is_breaking_field_removal(contract_diff, diff):
         return Severity.CRITICAL
+    if _has_derivation_edge_removed(diff):
+        return Severity.CRITICAL
 
-    # HIGH — transformation change OR derivation-edge churn.
-    if _has_transformation_change(diff) or _has_derivation_churn(diff):
+    # HIGH — transformation_ref change OR new derivation edge.
+    if _has_transformation_change(diff) or _has_derivation_edge_added(diff):
         return Severity.HIGH
 
     # MEDIUM — cosmetic field-level edge edit (job_ref etc).
@@ -175,17 +186,32 @@ def _has_transformation_change(diff: LineageDiff) -> bool:
     )
 
 
-def _has_derivation_churn(diff: LineageDiff) -> bool:
-    """True if any added/removed edge has ``edge_type='derivation'``
-    (or ``transformation``, treated as a synonym for the F3 v1 mapping)."""
-    derivation_types = {"derivation", "transformation"}
-    for edge in diff.added:
-        if edge.get("edge_type") in derivation_types:
-            return True
-    for edge in diff.removed:
-        if edge.get("edge_type") in derivation_types:
-            return True
-    return False
+_DERIVATION_TYPES = {"derivation", "transformation"}
+
+
+def _has_derivation_edge_added(diff: LineageDiff) -> bool:
+    """True if any newly-added edge has ``edge_type='derivation'``
+    (or ``transformation``, treated as a synonym for the F3 v1 mapping).
+
+    Added derivation is HIGH per the spec mapping — interesting but
+    not breaking.
+    """
+    return any(
+        edge.get("edge_type") in _DERIVATION_TYPES for edge in diff.added
+    )
+
+
+def _has_derivation_edge_removed(diff: LineageDiff) -> bool:
+    """True if any removed edge has ``edge_type='derivation'``.
+
+    Removed derivation is CRITICAL per REQ-LIN-F3-004 spec scenario
+    "Removed derivation edge classified CRITICAL" — the downstream
+    contract was deriving values from this edge and now isn't, so
+    consumers see different data even if no field was removed.
+    """
+    return any(
+        edge.get("edge_type") in _DERIVATION_TYPES for edge in diff.removed
+    )
 
 
 def _has_only_metadata_changes(diff: LineageDiff) -> bool:

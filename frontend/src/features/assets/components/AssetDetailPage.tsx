@@ -36,6 +36,7 @@ import { useToast } from '../../../shared/components/Toast';
 import { normalizeError } from '../../../shared/utils/errorUtils';
 import { AssetSocialSection } from '../../social/components/AssetSocialSection';
 import { ActivityTimeline } from '../../../shared/components/ActivityTimeline';
+import { LineageSubscriptionPanel } from '../../contracts/components/LineageSubscriptionPanel';
 import { OnboardingChecklist } from './OnboardingChecklist';
 import { ActivationBlockerDialog, extractBlockersFromError } from './ActivationBlockerDialog';
 import './AssetDetailPage.css';
@@ -318,6 +319,12 @@ export function AssetDetailPage() {
           <div className="asset-detail-main" data-testid="asset-activity">
             <ActivityTimeline resourceType="ASSET" resourceId={id} />
           </div>
+        )}
+
+        {/* Phase 228.F3.13 (REQ-LIN-F3-006) — Subscribe-to-lineage-changes
+            button on asset detail (capability-flag gated). */}
+        {activeTab === 'details' && id && (
+          <LineageSubscriptionPanel sourceAssetId={id} />
         )}
 
         <div

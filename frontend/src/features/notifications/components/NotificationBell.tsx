@@ -10,6 +10,7 @@ import { Bell } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import {
   useNotificationRealtimeSync,
+  useNotificationStream,
   useUnreadNotificationCount,
 } from '../hooks/useNotifications';
 import { NotificationDropdown } from './NotificationDropdown';
@@ -20,6 +21,11 @@ export function NotificationBell() {
   const wrapperRef = useRef<HTMLDivElement>(null);
   const { data: unreadCount = 0 } = useUnreadNotificationCount();
   useNotificationRealtimeSync();
+  // Phase 228.F3.16 (REQ-LIN-F3-006) — SSE stream + polling fallback.
+  // Mounts an EventSource against /api/v1/notifications/stream/; if SSE
+  // is unsupported or the stream errors, the existing 60s polling on
+  // useUnreadNotificationCount keeps the inbox fresh.
+  useNotificationStream();
 
   useEffect(() => {
     if (!open) return;

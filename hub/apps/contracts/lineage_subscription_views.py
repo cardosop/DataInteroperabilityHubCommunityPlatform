@@ -46,12 +46,46 @@ from hub.apps.contracts.models import Contract, LineageSubscription
 PER_USER_SUBSCRIPTION_CAP = 100
 
 
+class LineageSubscriptionPagination(StandardCursorPagination):
+    """REQ-LIN-F3-003 spec uses ``?limit=`` for the page-size query
+    param: ``GET /api/v1/lineage/subscriptions/?cursor=<>&limit=50``.
+
+    The shared ``StandardCursorPagination`` exposes ``page_size``;
+    this subclass widens the accepted name to BOTH ``limit`` and
+    ``page_size``.  ``limit`` wins when both are sent (spec is the
+    primary contract); ``page_size`` is preserved for the rest of
+    the codebase that uses it.
+    """
+
+    page_size_query_param = "limit"
+
+    def get_page_size(self, request):  # type: ignore[override]
+        # Accept either "limit" (spec) or "page_size" (project default).
+        # DRF's CursorPagination.get_page_size reads from
+        # ``self.page_size_query_param`` only; we add a fallback.
+        try:
+            from rest_framework.settings import api_settings
+            from rest_framework.pagination import _positive_int
+
+            for param in ("limit", "page_size"):
+                if param in request.query_params:
+                    raw = request.query_params[param]
+                    return _positive_int(
+                        raw,
+                        strict=True,
+                        cutoff=self.max_page_size,
+                    )
+        except (KeyError, ValueError):
+            pass
+        return self.page_size
+
+
 class LineageSubscriptionViewSet(viewsets.ModelViewSet):
     """REQ-LIN-F3-003 ViewSet."""
 
     serializer_class = LineageSubscriptionSerializer
     permission_classes = [permissions.IsAuthenticated]
-    pagination_class = StandardCursorPagination
+    pagination_class = LineageSubscriptionPagination
     lookup_field = "id"
     http_method_names = ["get", "post", "patch", "delete", "head", "options"]
 

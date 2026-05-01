@@ -247,6 +247,65 @@ class LineageSubscriptionListTests(TestCase):
         self.assertEqual(len(results), 1)
         self.assertEqual(results[0]["source_contract"], str(c1.id))
 
+    def test_pagination_accepts_limit_query_param(self):
+        """REQ-LIN-F3-003 spec uses ``?limit=N`` (not ``?page_size=N``).
+        Phase 228.F3.MetaDoD audit fix wires the alias."""
+        from hub.apps.contracts.models import LineageSubscription
+
+        tenant = _make_tenant("limit")
+        user = _make_user(tenant)
+        contracts = [
+            _make_contract(tenant, name=f"lim-{i}") for i in range(10)
+        ]
+        LineageSubscription.objects.bulk_create([
+            LineageSubscription(
+                user=user, source_contract=c, severity_threshold="HIGH",
+            )
+            for c in contracts
+        ])
+        response = _client(user).get(f"{URL}?limit=3")
+        self.assertEqual(response.status_code, 200, response.content)
+        body = response.json()
+        self.assertEqual(len(body["results"]), 3)
+        self.assertIsNotNone(body["next_cursor"])
+
+    def test_cursor_pagination_75_subscriptions(self):
+        """REQ-LIN-F3-003 spec scenario "Cursor pagination":
+            GIVEN 75 subscriptions
+            WHEN GET ?page_size=50
+            THEN 50 results + next_cursor
+            WHEN GET with next_cursor
+            THEN remaining 25 results
+        Phase 228.F3.MetaDoD audit fix.
+        """
+        from hub.apps.contracts.models import LineageSubscription
+
+        tenant = _make_tenant("pag")
+        user = _make_user(tenant)
+        # Create 75 contracts so we have 75 distinct sources.
+        contracts = [
+            _make_contract(tenant, name=f"pag-{i}") for i in range(75)
+        ]
+        LineageSubscription.objects.bulk_create([
+            LineageSubscription(
+                user=user, source_contract=c, severity_threshold="HIGH",
+            )
+            for c in contracts
+        ])
+
+        first = _client(user).get(f"{URL}?page_size=50")
+        self.assertEqual(first.status_code, 200, first.content)
+        first_body = first.json()
+        self.assertEqual(len(first_body["results"]), 50)
+        self.assertIsNotNone(first_body["next_cursor"])
+
+        # The next_cursor returned by StandardCursorPagination is a
+        # full URL — the test client accepts it via .get().
+        second = _client(user).get(first_body["next_cursor"])
+        self.assertEqual(second.status_code, 200, second.content)
+        second_body = second.json()
+        self.assertEqual(len(second_body["results"]), 25)
+
     def test_retrieve_other_users_subscription_404(self):
         from hub.apps.contracts.models import LineageSubscription
 

@@ -331,6 +331,141 @@ class DispatcherRateLimitTests(TestCase):
             0,
         )
 
+    def test_rate_limit_drop_emits_audit_row(self):
+        """REQ-LIN-F3-005 spec scenario "Per-tenant rate limit" —
+        dropped dispatches MUST be recorded in the audit log so
+        operators can investigate via the runbook (F3.22).
+        Phase 228.F3.MetaDoD audit fix."""
+        from hub.apps.audit.models import AuditEvent
+        from hub.apps.contracts.models import LineageSubscription
+
+        tenant = _make_tenant()
+        user = _make_user(tenant)
+        c_src = _make_contract(tenant, name="src")
+        c_tgt = _make_contract(tenant, name="tgt")
+        _seed_derivation_edge(tenant, c_src, c_tgt)
+        LineageSubscription.objects.create(
+            user=user, source_contract=c_src,
+            severity_threshold="HIGH",
+        )
+        fake = _patch_redis(self)
+        rate_key = f"lineage:rate:{tenant.id}"
+        fake._data[rate_key] = str(F3_PER_TENANT_RATE_LIMIT).encode()
+        fake._expires_at[rate_key] = time.time() + 3600
+
+        before_drops = AuditEvent.objects.filter(
+            action="DISPATCH_RATE_LIMITED",
+        ).count()
+        handle_contract_updated(
+            contract_id=str(c_src.id), tenant_id=str(tenant.id),
+            old_lineage_hash="a", new_lineage_hash="b",
+        )
+        after_drops = AuditEvent.objects.filter(
+            action="DISPATCH_RATE_LIMITED",
+        ).count()
+        # At least one new audit row recording the drop.
+        self.assertGreaterEqual(after_drops - before_drops, 1)
+
+
+# ---------------------------------------------------------------------------
+# Downstream walk (REQ-LIN-F3-005 step 3 — Phase 228.F3.MetaDoD audit fix)
+# ---------------------------------------------------------------------------
+
+
+class DispatcherDownstreamWalkTests(TestCase):
+    """Subscribers attached to contracts DOWNSTREAM of the changed
+    contract receive notifications too — the dispatcher walks the
+    LineageEdge graph BFS to enumerate affected contracts before
+    pulling their subscribers.
+    """
+
+    def test_subscriber_on_downstream_contract_is_notified(self):
+        from hub.apps.contracts.models import LineageEdge, LineageSubscription
+        from hub.apps.notifications.models import UserNotification
+
+        tenant = _make_tenant("ds")
+        user = _make_user(tenant)
+        # Graph: A → B → C (subscriber on C, change A).
+        c_a = _make_contract(tenant, name="a")
+        c_b = _make_contract(tenant, name="b")
+        c_c = _make_contract(tenant, name="c")
+        LineageEdge.objects.create(
+            tenant=tenant,
+            source_contract_id=c_a.id, target_contract_id=c_b.id,
+            source_model="default", source_field="x",
+            target_model="default", target_field="x",
+            edge_type="derivation",
+        )
+        LineageEdge.objects.create(
+            tenant=tenant,
+            source_contract_id=c_b.id, target_contract_id=c_c.id,
+            source_model="default", source_field="x",
+            target_model="default", target_field="x",
+            edge_type="derivation",
+        )
+        # Subscriber attached to C (downstream of A).
+        LineageSubscription.objects.create(
+            user=user, source_contract=c_c, severity_threshold="HIGH",
+        )
+        _patch_redis(self)
+
+        result = handle_contract_updated(
+            contract_id=str(c_a.id), tenant_id=str(tenant.id),
+            old_lineage_hash="a", new_lineage_hash="b",
+        )
+        # The subscriber on C must have been picked up.
+        self.assertEqual(result["dispatched"], 1)
+        self.assertEqual(
+            UserNotification.objects.filter(
+                user=user, category="LINEAGE_IMPACT",
+            ).count(),
+            1,
+        )
+
+
+# ---------------------------------------------------------------------------
+# What-changed summary in body (REQ-LIN-F3-006 — Phase 228.F3.MetaDoD audit)
+# ---------------------------------------------------------------------------
+
+
+class DispatcherBodySummaryTests(TestCase):
+    """The notification body MUST surface the added / removed edge
+    counts per REQ-LIN-F3-006 'What changed summary'."""
+
+    def test_body_contains_added_edge_count(self):
+        from hub.apps.contracts.models import LineageSubscription
+        from hub.apps.notifications.models import UserNotification
+
+        tenant = _make_tenant("ws")
+        user = _make_user(tenant)
+        c_src = _make_contract(tenant, name="src")
+        c_tgt = _make_contract(tenant, name="tgt")
+        # 2 derivation edges → diff.added has 2 entries.
+        _seed_derivation_edge(tenant, c_src, c_tgt)
+        from hub.apps.contracts.models import LineageEdge
+        c_tgt2 = _make_contract(tenant, name="tgt2")
+        LineageEdge.objects.create(
+            tenant=tenant,
+            source_contract_id=c_src.id, target_contract_id=c_tgt2.id,
+            source_model="default", source_field="x",
+            target_model="default", target_field="x",
+            edge_type="derivation",
+        )
+        LineageSubscription.objects.create(
+            user=user, source_contract=c_src, severity_threshold="HIGH",
+        )
+        _patch_redis(self)
+
+        handle_contract_updated(
+            contract_id=str(c_src.id), tenant_id=str(tenant.id),
+            old_lineage_hash="a", new_lineage_hash="b",
+        )
+        notif = UserNotification.objects.get(
+            user=user, category="LINEAGE_IMPACT",
+        )
+        # The summary clause is rendered in the message body.
+        self.assertIn("edges added", notif.message.lower() + " ")
+
 
 # ---------------------------------------------------------------------------
 # Cross-tenant detail-tier downgrade

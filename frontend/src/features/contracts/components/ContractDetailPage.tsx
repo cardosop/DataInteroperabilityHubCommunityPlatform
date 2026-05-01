@@ -9,6 +9,7 @@ import { useContract, useUpdateContract, useValidateContract, useLintContract, u
 import { AssetPicker } from '../../../shared/components/pickers';
 import { ContractLineageVisualization } from '../../lineage/components/ContractLineageVisualization';
 import { ActivityTimeline } from '../../../shared/components/ActivityTimeline';
+import { LineageSubscriptionPanel } from './LineageSubscriptionPanel';
 import { ContractUsedByAssets } from './ContractUsedByAssets';
 import { DetailPageSkeleton } from '../../../shared/components/skeletons/DetailPageSkeleton';
 import { ErrorDisplay } from '../../../shared/components/ErrorDisplay';
@@ -193,6 +194,9 @@ export function ContractDetailPage() {
             <>
               {/* Phase 228.F2.32 — Edit lineage button (capability-flag gated). */}
               <LineageEditEntrypoint contractId={id} />
+              {/* Phase 228.F3.13 (REQ-LIN-F3-006) — Subscribe-to-lineage-changes
+                  button (capability-flag gated by lineage.change_notifications). */}
+              <LineageSubscriptionPanel sourceContractId={id} />
               <ContractLineageVisualization contractId={id} maxDepth={10} />
             </>
           ) : activeTab === 'activity' && id ? (

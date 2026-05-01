@@ -80,7 +80,7 @@ class TestCritical:
 
     def test_field_removed_without_dependents_is_not_critical(self):
         # The field was removed but no downstream contract references
-        # it.  This is HIGH (still a structural change), not CRITICAL.
+        # it.  Adding a derivation edge keeps it HIGH (not CRITICAL).
         contract_diff = ContractDiff(
             removed_fields=[("orders", "internal_only")],
             added_fields=[],
@@ -93,8 +93,23 @@ class TestCritical:
             downstream_field_dependencies={},
         )
         result = classify(diff, contract_diff)
-        # Must NOT be CRITICAL since no downstream depends on it.
+        # Must NOT be CRITICAL since no downstream depends on the
+        # removed field AND no derivation was REMOVED (only added).
         assert result != Severity.CRITICAL
+
+    # REQ-LIN-F3-004 spec scenario "Removed derivation edge classified
+    # CRITICAL" — pinned exactly per spec.
+    def test_removed_derivation_edge_classified_critical(self):
+        diff = LineageDiff(
+            added=[],
+            removed=[_edge(edge_type="derivation")],
+            modified=[],
+            downstream_field_dependencies={},
+        )
+        contract_diff = ContractDiff(
+            removed_fields=[], added_fields=[], modified_fields=[],
+        )
+        assert classify(diff, contract_diff) == Severity.CRITICAL
 
 
 # ---------------------------------------------------------------------------
@@ -139,17 +154,8 @@ class TestHigh:
         )
         assert classify(diff, contract_diff) == Severity.HIGH
 
-    def test_derivation_edge_removed_is_high(self):
-        diff = LineageDiff(
-            added=[],
-            removed=[_edge(edge_type="derivation")],
-            modified=[],
-            downstream_field_dependencies={},
-        )
-        contract_diff = ContractDiff(
-            removed_fields=[], added_fields=[], modified_fields=[],
-        )
-        assert classify(diff, contract_diff) == Severity.HIGH
+    # NOTE: removed-derivation is CRITICAL per spec scenario; covered
+    # by ``TestCritical.test_removed_derivation_edge_classified_critical``.
 
 
 # ---------------------------------------------------------------------------
