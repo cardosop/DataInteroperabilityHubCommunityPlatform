@@ -1,19 +1,34 @@
 # Structureless Contracts — Phase 227 Runbook
 
 > **Audience**: Platform operators, data-governance engineers, customer-success leads.
-> **Phase**: 227 (Wave 0 → Wave 6).
+> **Phase**: 227 (Waves 0 → 6 — completed 2026-04-30).
 > **Last updated**: 2026-04-30.
 > **Owners**: Data Platform Eng + Customer Success.
 
-This runbook covers the diagnosis, customer-coordination, and migration playbook for **structureless data contracts** — contracts whose normalized HubContract carries no models or schema fields. It backs Phase 227 in `openspec/changes/preprod01/`.
+This runbook covers the diagnosis, customer-coordination, and migration playbook for **structureless data contracts** — contracts whose normalized HubContract carries no models or schema fields. It originated as the operational doctrine for Phase 227 in `openspec/changes/preprod01/`; **post-cutover** it is retained as the steady-state operator reference for support escalations and ad-hoc diagnosis.
+
+---
+
+## Post-rollout steady state (read this first)
+
+Phase 227 completed on **2026-04-30**. The structural floor enforces unconditionally on every contract write surface (`POST /contracts/`, `PATCH /contracts/<id>/`, `POST /contracts/<id>/validate-draft/`, the marketplace product-create path, and the ODPS-link path). There is **no opt-in / opt-out flag**; new structureless writes are rejected at the API edge with `HTTP 400 + error.code="STRUCTURELESS_CONTRACT"`.
+
+What this means for operators:
+
+* **You are not in a rollout.** The Wave 0–5 ceremonies described below ran once; their commands remain in the codebase as **support tooling** (a tenant might restore a backup containing legacy structureless rows; a regression in a new normaliser path might re-introduce them; a scheduled audit might spot-check). They are no longer scheduled work.
+* **The smoke gate is the canary.** `deploy.yml` runs `renormalize_contracts --filter=structureless --include-active-only --dry-run --output=count` on every staging deploy and **hard-fails** if any ACTIVE residue is detected. If you see the gate fail, a regression has slipped through; treat as a P0.
+* **The L7 telemetry stays live.** `contract_normalize_total{result="structureless_rejected"}` should be the only meaningful counter post-cutover; spikes in `audit_events_total{action="ASSET_AUTO_REVERTED_STRUCTURELESS"}` past the cutover-day baseline indicate either a regression or a customer restore from backup — investigate, don't reset.
+* **The reverse migration stays standby.** [migrations/0024_unrevert_structureless_assets.py](../../hub/apps/contracts/migrations/0024_unrevert_structureless_assets.py) remains shipped but **DO NOT RUN** unless explicitly triggered by an emergency rollback request.
+
+Wave-specific sections below are preserved for **historical reference** and as the canonical procedure if the cleanup ever needs to happen again (e.g. for a new normaliser path).
 
 ---
 
 ## TL;DR
 
-A contract is **structureless** when its `hub_contract_json.models[*].fields[]` AND its `hub_contract_json.schema.fields[]` are both empty or missing. Two normalizer bugs (ODPS `outputPorts[]` walker missing, ODCS `properties[]` recursion missing) produced these on staging.
+A contract is **structureless** when its `hub_contract_json.models[*].fields[]` AND its `hub_contract_json.schema.fields[]` are both empty or missing. Two normalizer bugs (ODPS `outputPorts[]` walker missing, ODCS `properties[]` recursion missing) produced the original Phase 227 population on staging — both bugs are fixed in production.
 
-The fix ships in six waves. **You are in Wave 0** unless told otherwise — your job is diagnose, classify, notify.
+The Wave 0–5 procedure below is the **canonical historical doctrine** if the cleanup ever needs to repeat. For the steady-state operator path see the section above.
 
 ```bash
 # Three-step turn-key Wave 0 (preferred):

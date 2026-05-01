@@ -2,14 +2,22 @@
 
 This document is the canonical reference for **data contract shapes**
 accepted by the Meshant API. It enumerates the minimum-viable ODCS
-and ODPS payloads per supported spec version, the post-Phase-227
-**structural floor invariant** every contract must satisfy, and curl
-examples for the create / update / introspect endpoints.
+and ODPS payloads per supported spec version, the **structural floor
+invariant** every contract must satisfy, and curl examples for the
+create / update / introspect endpoints.
 
 For the persona-flavoured walk-through (CLI + SDK), see
 [JOURNEY-DE-001](mvpdocs/journeys/JOURNEY-DE-001.md). For the
 architectural rationale and the five-layer enforcement model, see
 [ARCHITECTURE.md](ARCHITECTURE.md#structural-floor-invariant-phase-227-wave-1).
+
+> **Steady state (post Phase 227 W6 cutover, 2026-04-30):** the
+> structural floor enforces unconditionally on every write surface;
+> there is no opt-in / opt-out flag; every API write that violates
+> the floor returns HTTP 400 with `error.code = "STRUCTURELESS_CONTRACT"`.
+> The "Migration / Self-heal" section below describes the **operator
+> tooling that remains available** for support escalations and
+> ad-hoc diagnosis — it is no longer rollout-specific guidance.
 
 ## Structural Floor Invariant
 
@@ -224,14 +232,17 @@ client-side validation.
 ### Structureless triage — `GET /api/v1/contracts/?filter=structureless`
 
 TENANT_ADMIN-only. Lists contracts in the calling user's tenant whose
-normalised payload violates the floor. Used by the
-`/admin/contract-health` triage page and the Wave-3 self-heal
-runbook.
+normalised payload violates the floor. Drives the
+`/admin/contract-health` triage page; remains available post-rollout
+for support escalations and ad-hoc diagnosis.
 
-## Migration / Self-heal
+## Migration / Self-heal (operator tooling)
 
-Operators with bulk structureless contracts use the management
-command:
+The Phase 227 rollout is complete. The following commands remain
+available for **support escalations** (e.g. a tenant restored a
+backup containing legacy structureless rows) and **ad-hoc diagnosis**
+(e.g. a regression in a new normaliser path). They are no longer
+part of a scheduled rollout.
 
 ```bash
 # Diagnosis (read-only, JSONL output for grep/jq):

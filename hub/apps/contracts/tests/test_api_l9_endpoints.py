@@ -12,13 +12,14 @@ Covers:
   unauthenticated) get HTTP 403 / 401 respectively. The filter
   itself was shipped in 227.L5.8; this test pins the gate from L9.3.
 
-L9.1 is intentionally NOT covered here — both flags
-(``contracts.schema_editor.enabled`` and
-``contracts.structural_floor.enabled``) were ungated per the
-2026-04-30 directive that retired L3/L4/L5 flag-gating across the
-board. Registering dead flags would create lint noise and a flaky
-"the flag does nothing" expectation. See `tasks.md` 227.L9.1
-closeout for the rationale.
+L9.1 is intentionally NOT covered here — both flags (the structural-
+floor enable flag and the schema-editor enable flag) were ungated
+per the 2026-04-30 directive that retired L3/L4/L5 flag-gating
+across the board. Registering dead flags would create lint noise
+and a flaky "the flag does nothing" expectation. See `tasks.md`
+227.L9.1 closeout for the rationale and 227.W6 cleanup for the
+regression guard that pins the absence of the retired flag
+identifiers.
 
 L9.4 is an integration concern handled by the OpenAPI-drift
 playwright spec — covered separately at PR-merge time, not in
