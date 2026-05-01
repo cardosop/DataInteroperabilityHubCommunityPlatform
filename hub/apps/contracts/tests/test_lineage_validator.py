@@ -241,64 +241,98 @@ class TestValidateTypeCompatibility:
 
 # ---------------------------------------------------------------------------
 # Property-based tests (F2.12)
+#
+# Phase 228.F3.test-execution audit fix — ``pytest.importorskip`` at
+# module scope was skipping the ENTIRE test file (including the 16
+# unit tests above) when hypothesis wasn't installed.  Switched to
+# try/except so a missing hypothesis only skips the property-based
+# test, not the deterministic unit tests.
 # ---------------------------------------------------------------------------
 
-
-hypothesis = pytest.importorskip("hypothesis")
-from hypothesis import given, strategies as st  # noqa: E402
-
-
-@st.composite
-def _random_dag_edges(draw):
-    """Generate a random DAG over up to 8 nodes (no duplicate edges).
-
-    By construction the edges are sorted (u < v) so the resulting
-    graph is acyclic — a property tests can rely on for the
-    'cycle exists ↔ reverse path exists' assertion.
-    """
-    n = draw(st.integers(min_value=2, max_value=8))
-    nodes = [chr(ord("A") + i) for i in range(n)]
-    edges = []
-    for i in range(n):
-        for j in range(i + 1, n):
-            if draw(st.booleans()):
-                edges.append(_edge(nodes[i], nodes[j]))
-    return nodes, edges
+try:  # noqa: SIM105 — explicit ImportError handling intentional
+    from hypothesis import given, strategies as st
+    _HYPOTHESIS_AVAILABLE = True
+except ImportError:  # pragma: no cover — hypothesis is a CI extra
+    _HYPOTHESIS_AVAILABLE = False
+    given = None  # type: ignore[assignment]
+    st = None  # type: ignore[assignment]
 
 
-@given(graph=_random_dag_edges(), pair=st.tuples(st.sampled_from("ABCDEFGH"), st.sampled_from("ABCDEFGH")))
-def test_cycle_detection_iff_reverse_path_exists(graph, pair):
-    """Property: ``detect_cycle(existing, u→v)`` is True iff the
-    existing graph has a path v→u.
+# Define ``_random_dag_edges`` and the property test only when
+# hypothesis is importable.  When it isn't, a tiny stub test is
+# emitted so the file still records a "skip" with a clear reason.
+if _HYPOTHESIS_AVAILABLE:
 
-    The "iff" holds because the new edge u→v closes a cycle
-    precisely when v can already reach u.  We compute reachability
-    independently in the test (Floyd-Warshall-style transitive
-    closure) and compare against ``detect_cycle``."""
-    nodes, edges = graph
-    u, v = pair
-    if u not in nodes or v not in nodes:
-        return  # sampled_from outside graph; skip
+    @st.composite
+    def _random_dag_edges(draw):
+        """Generate a random DAG over up to 8 nodes (no duplicate edges).
 
-    # Transitive closure.
-    adj = {n: set() for n in nodes}
-    for e in edges:
-        adj[e["source_contract"]].add(e["target_contract"])
-    # Floyd-Warshall.
-    closure = {n: set(adj[n]) for n in nodes}
-    for k in nodes:
-        for i in nodes:
-            for j in nodes:
-                if k in closure[i] and j in closure[k]:
-                    closure[i].add(j)
+        By construction the edges are sorted (u < v) so the resulting
+        graph is acyclic — a property tests can rely on for the
+        'cycle exists ↔ reverse path exists' assertion.
+        """
+        n = draw(st.integers(min_value=2, max_value=8))
+        nodes = [chr(ord("A") + i) for i in range(n)]
+        edges = []
+        for i in range(n):
+            for j in range(i + 1, n):
+                if draw(st.booleans()):
+                    edges.append(_edge(nodes[i], nodes[j]))
+        return nodes, edges
 
-    expected_cycle = (u in closure[v]) or (u == v)
+    @given(
+        graph=_random_dag_edges(),
+        pair=st.tuples(
+            st.sampled_from("ABCDEFGH"),
+            st.sampled_from("ABCDEFGH"),
+        ),
+    )
+    def test_cycle_detection_iff_reverse_path_exists(graph, pair):
+        """Property: ``detect_cycle(existing, u→v)`` is True iff the
+        existing graph has a path v→u.
 
-    candidate = _edge(u, v)
-    actual = detect_cycle(edges, candidate)
-    if expected_cycle:
-        # The path is non-None and forms a closed loop (first == last).
-        assert actual is not None
-        assert actual[0] == actual[-1]
-    else:
-        assert actual is None
+        The "iff" holds because the new edge u→v closes a cycle
+        precisely when v can already reach u.  We compute reachability
+        independently in the test (Floyd-Warshall-style transitive
+        closure) and compare against ``detect_cycle``.
+        """
+        nodes, edges = graph
+        u, v = pair
+        if u not in nodes or v not in nodes:
+            return  # sampled_from outside graph; skip
+
+        # Transitive closure.
+        adj = {n: set() for n in nodes}
+        for e in edges:
+            adj[e["source_contract"]].add(e["target_contract"])
+        # Floyd-Warshall.
+        closure = {n: set(adj[n]) for n in nodes}
+        for k in nodes:
+            for i in nodes:
+                for j in nodes:
+                    if k in closure[i] and j in closure[k]:
+                        closure[i].add(j)
+
+        expected_cycle = (u in closure[v]) or (u == v)
+
+        candidate = _edge(u, v)
+        actual = detect_cycle(edges, candidate)
+        if expected_cycle:
+            # The path is non-None and forms a closed loop.
+            assert actual is not None
+            assert actual[0] == actual[-1]
+        else:
+            assert actual is None
+
+else:
+
+    def test_cycle_detection_iff_reverse_path_exists():
+        """Property test stub when ``hypothesis`` is not installed.
+
+        The Hypothesis library is a CI-only extra (Phase 228.F2.MetaDoD
+        — pinned in requirements once F2.DoD.2 verifies the property
+        suite runs).  When the import fails, emit an explicit skip so
+        the file's deterministic unit tests still run.
+        """
+        import pytest as _pytest
+        _pytest.skip("hypothesis not installed; property test skipped")

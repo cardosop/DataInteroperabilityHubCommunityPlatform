@@ -118,3 +118,34 @@ reportlab>=4.4.0,<5.0
 
 # Performance Testing
 psutil==7.1.3
+
+# Phase 228 F2 (228.F2.12 / REQ-LIN-F2-004) — Property-based tests
+# for the lineage validator (cycle detection over random DAGs).
+# Without this pin, ``test_lineage_validator.py`` skips the property
+# test silently — caught when the F2.DoD.2 closeout was test-executed
+# for the first time on 2026-05-01.
+hypothesis>=6.100,<7.0
+
+# Phase 228 F4 (228.F4.2) — OpenLineage standard integration. The
+# ``openlineage-python`` SDK provides the canonical RunEvent / Job /
+# Run / Dataset facets we translate into. Pinned to the 1.x major
+# (the F4 spec calls out ``^1.20``); 2.x will require an upgrade
+# audit per the Marquez quarterly upgrade runbook
+# (docs/runbooks/marquez-upgrade.md).
+openlineage-python>=1.20,<2.0
+# bcrypt: ingest-API-key password-equivalent hashing (228.F4.6.1).
+# Cost-factor 12 chosen per the security/encryption.py convention so
+# verify-time matches the existing password hash on the production
+# instance class (~50 ms / verify).
+bcrypt>=4.1,<5.0
+
+# Phase 228 X (228.X.9 / REQ-LIN-X-009) — zero-downtime migration
+# linter. The spec text references "django-strong-migrations" (the
+# Ruby/Rails package name); the canonical Python equivalent is
+# ``django-migration-linter`` (3YOURMIND), which catches the same
+# forbidden operations: DROP COLUMN, ALTER COLUMN TYPE, NOT NULL on
+# existing column without default, non-concurrent CREATE INDEX. Wired
+# into INSTALLED_APPS via settings.py + the strong-migrations CI job
+# in .github/workflows/lineage-x-ci-gates.yml runs
+# ``manage.py lintmigrations``.
+django-migration-linter>=5.1,<6.0
