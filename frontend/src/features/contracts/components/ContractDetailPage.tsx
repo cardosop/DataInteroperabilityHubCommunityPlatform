@@ -455,7 +455,7 @@ export function ContractDetailPage() {
             <RelationshipsPanel
               models={(contract as { hub_contract_json?: { models?: ContractSchemaObject[] } }).hub_contract_json?.models}
               schemaRelationships={(contract as { hub_contract_json?: { schema?: { relationships?: ContractRelationship[] } } }).hub_contract_json?.schema?.relationships}
-              specVersion={contract.original_spec_version}
+              specVersion={(contract as { original_spec_version?: string }).original_spec_version}
               contractId={id}
             />
           )}
