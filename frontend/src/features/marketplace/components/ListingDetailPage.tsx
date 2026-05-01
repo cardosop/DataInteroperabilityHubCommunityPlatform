@@ -13,7 +13,6 @@ import { PricingModel, ListingStatus } from '../../../shared/types/marketplace';
 import { UuidWithCopy } from '../../../shared/components/UuidWithCopy';
 import { Breadcrumbs } from '../../../shared/components/Breadcrumbs';
 import { ListingLineagePanel } from './ListingLineagePanel';
-import { t } from './listingLineageStrings';
 import { ListingOrdersCount } from './ListingOrdersCount';
 import { useAuthStore } from '../../auth/store/authStore';
 import { useCapabilities } from '../../../shared/hooks/useCapabilities';

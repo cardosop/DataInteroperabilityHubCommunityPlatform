@@ -377,7 +377,13 @@ export const contractService = {
     if (options.idempotencyKey) {
       headers['Idempotency-Key'] = options.idempotencyKey;
     }
-    const response = await apiClient.getClient().patch(
+    const response = await apiClient.getClient().patch<{
+      contract_id: string;
+      edges: Array<Record<string, unknown>>;
+      added: number;
+      removed: number;
+      kept: number;
+    }>(
       `${CONTRACTS_BASE_PATH}/${id}/lineage/`,
       payload,
       { headers },

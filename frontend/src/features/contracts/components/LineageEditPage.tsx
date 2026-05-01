@@ -50,7 +50,7 @@ export function LineageEditPage() {
     data: lineage,
     isLoading: isLineageLoading,
   } = useContractLineageVisualization(contractId, {
-    format: 'json', max_depth: 5, include_fields: true,
+    format: 'json', max_depth: 5,
   });
 
   // Local edge state — the editor's source-of-truth for the
@@ -63,7 +63,7 @@ export function LineageEditPage() {
 
   // Seed the local edges from the server payload (one-shot).
   if (edges === null && lineage) {
-    const seed: EdgeDraft[] = ((lineage as Record<string, unknown>)['field_links'] as unknown[] || [])
+    const seed: EdgeDraft[] = ((lineage as unknown as Record<string, unknown>)['field_links'] as unknown[] || [])
       .map((l) => l as Record<string, unknown>)
       .map((link) => ({
         source_contract: contractId,
