@@ -17,6 +17,8 @@ import { fileURLToPath } from 'url';
 import { expect, test, type Page } from '@playwright/test';
 import { getTestUser, loginUser } from '../fixtures/auth';
 import { assertListPageLoads, loginAndNavigateToRoute } from '../fixtures/helpers';
+// Phase 228 (REQ-LIN-005, 228.0.16) — DAG seeding helper.
+import { seedLineageDag } from '../fixtures/lineage-fixtures';
 
 const __currentFile = fileURLToPath(import.meta.url);
 const __currentDir = path.dirname(__currentFile);
@@ -157,7 +159,20 @@ test.describe('Feature: Lineage', () => {
       // Pass `page` (not a separately-issued API token) so the request shares
       // the browser's existing session — see ensureContractViaApi for the
       // staging-specific token-rotation rationale.
-      const contractId = await ensureContractViaApi(page);
+      // Phase 228 (REQ-LIN-005, 228.0.15-16): seed a 3-contract linear DAG
+      // (root → mid → leaf) so the lineage graph has known cardinality.
+      // The leaf contract's lineage tab shows the full upstream chain
+      // — 3 nodes (root + mid + leaf) and 2 edges. Pre-Phase-228 the
+      // test created a single contract and asserted ``graph || empty``,
+      // which silently passed on a backend regression that returned
+      // empty lineage; the strict-content assertion below now catches
+      // such regressions deterministically.
+      const accessToken = await page.evaluate(() => localStorage.getItem('access_token'));
+      if (!accessToken) {
+        throw new Error('Lineage setup: no access_token in localStorage after loginUser.');
+      }
+      const dag = await seedLineageDag(page, 3, { accessToken });
+      const contractId = dag.leafId;
 
       // Navigate directly to the seeded contract's detail page using
       // `loginAndNavigateToRoute` — NOT a bare `page.goto`.
@@ -235,28 +250,34 @@ test.describe('Feature: Lineage', () => {
       await lineageTab.waitFor({ state: 'visible', timeout: 10000 });
       await lineageTab.click();
 
-      // Wait for either React Flow graph or empty/loading/error state
-      // intentional: probes optional UI presence via a multi-line locator chain — the branch logic below handles both rendered and missing cases deterministically; absence is a legitimate tenant/role state.
+      // Phase 228 (REQ-LIN-005, 228.0.15) — strict content assertion.
+      // Pre-Phase-228 the assertion was ``hasReactFlow || hasEmptyOrError``
+      // which silently passed on a backend regression that returned
+      // empty lineage. The fail-soft branch is preserved as a SEPARATE
+      // spec at ``frontend/e2e/features/lineage-empty-state.spec.ts``
+      // (REQ-LIN-005's "empty state retained" scenario); this spec
+      // asserts EXACT node + edge counts against a known seeded DAG.
       await page
-        .locator('.react-flow__renderer, .react-flow, .empty-state, [data-testid="empty-state"], .error-display, [data-testid="error-display"], .loading-spinner')
+        .locator('.react-flow__renderer, .react-flow')
         .first()
-        .waitFor({ state: 'visible', timeout: 30000 })
-        .catch(() => null);
+        .waitFor({ state: 'visible', timeout: 30000 });
 
-      // Assert: either graph rendered or acceptable empty/error state
-      const hasReactFlow =
-        (await page.locator('.react-flow__renderer, .react-flow').count()) > 0;
-      const hasEmptyOrError =
-        (await page.locator('.empty-state, [data-testid="empty-state"], .error-display, [data-testid="error-display"]').count()) > 0;
+      // Phase 228: REQ-LIN-005 strict-content assertion — exactly 3
+      // nodes (root + mid + leaf seeded by ``seedLineageDag(page, 3)``)
+      // and exactly 2 edges (linear DAG). React Flow's ``.react-flow__node``
+      // selector counts the rendered graph nodes one-to-one; ``.react-flow__edge``
+      // counts edges. The seeded DAG has known cardinality so any
+      // deviation indicates a regression in the lineage read-path or
+      // the visualization renderer.
+      const nodeCount = await page.locator('.react-flow__node').count();
+      const edgeCount = await page.locator('.react-flow__edge').count();
+      expect(nodeCount).toBe(3);
+      expect(edgeCount).toBe(2);
 
-      expect(hasReactFlow || hasEmptyOrError).toBe(true);
-
-      // If graph rendered, verify controls exist
-      if (hasReactFlow) {
-        const hasControls =
-          (await page.locator('.react-flow__controls').count()) > 0;
-        expect(hasControls).toBe(true);
-      }
+      // Controls panel sanity-check — pre-existing invariant.
+      const hasControls =
+        (await page.locator('.react-flow__controls').count()) > 0;
+      expect(hasControls).toBe(true);
     });
   });
 
