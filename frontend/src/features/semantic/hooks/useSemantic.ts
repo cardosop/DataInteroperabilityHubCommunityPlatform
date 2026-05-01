@@ -50,6 +50,22 @@ export function useJSONLDContext() {
   });
 }
 
+/**
+ * Phase 230.5.5 (REQ-SEM-RELATIONSHIPS-001) — fetch RDF
+ * relationships for a contract via the Django route.
+ *
+ * The Django route is tenant-scoped; cross-tenant contract ids
+ * surface as 404 from the underlying ``apiClient``.
+ */
+export function useContractRelationships(contractId: string | null) {
+  return useQuery({
+    queryKey: ['semantic', 'contract-relationships', contractId],
+    queryFn: () => semanticService.getContractRelationships(contractId!),
+    enabled: !!contractId,
+    staleTime: 60_000, // Mirror the server's 60s Redis cache.
+  });
+}
+
 export function useSemanticResources(filters: SemanticResourceListFilters = {}) {
   return useQuery({
     queryKey: ['semantic', 'resources', 'list', filters],

@@ -85,6 +85,58 @@ export const semanticService = {
   },
 
   /**
+   * Phase 230.2.9 (REQ-SEM-EXPORT-001) — bulk RDF export.
+   *
+   * POST /api/v1/semantic/export — returns the tenant's full graph
+   * in the requested serialization. Body is the binary RDF (a Blob);
+   * caller is responsible for triggering the browser download
+   * (typically `URL.createObjectURL(blob)` + `<a download>` click).
+   *
+   * The 4 supported formats map to MIME types:
+   *   - n-triples → application/n-triples
+   *   - turtle    → text/turtle
+   *   - rdf-xml   → application/rdf+xml
+   *   - ld+json   → application/ld+json
+   *
+   * Server-side throttle: 5 requests / 5 minutes / user.
+   * Server-side cap: 100M triples → HTTP 413 (caller surfaces a
+   * "use SPARQL pagination" hint in the UI).
+   */
+  async exportRdf(
+    format: 'n-triples' | 'turtle' | 'rdf-xml' | 'ld+json' = 'n-triples',
+  ): Promise<Blob> {
+    const response = await apiClient
+      .getClient()
+      .post(`${SEMANTIC_BASE_PATH}/export`, { format }, {
+        responseType: 'blob',
+      });
+    return response.data as Blob;
+  },
+
+  /**
+   * Phase 230.5.5 (REQ-SEM-RELATIONSHIPS-001) — fetch RDF
+   * relationships for a contract.
+   *
+   * GET /api/v1/semantic/relationships/{contract_id}
+   *
+   * Returns ``{triples, status}`` where ``triples`` is the
+   * N-Triples text and ``status`` is ``OK`` or ``DEGRADED``.
+   * The Django route is tenant-scoped — a cross-tenant contract
+   * id returns 404, so the caller can rely on the response either
+   * being for a contract the user can see, or a 404.
+   */
+  async getContractRelationships(
+    contractId: string,
+  ): Promise<{ triples: string; status: 'OK' | 'DEGRADED' }> {
+    const response = await apiClient
+      .getClient()
+      .get<{ triples: string; status: 'OK' | 'DEGRADED' }>(
+        `${SEMANTIC_BASE_PATH}/relationships/${contractId}`,
+      );
+    return response.data;
+  },
+
+  /**
    * List semantic resources (tenant-scoped)
    */
   async listResources(

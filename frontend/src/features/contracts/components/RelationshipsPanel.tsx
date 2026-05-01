@@ -8,6 +8,7 @@
 
 import { Link } from 'react-router-dom';
 import type { ContractRelationship, ContractSchemaObject } from '../../../shared/types/contracts';
+import { useContractRelationships } from '../../semantic/hooks/useSemantic';
 import './RelationshipsPanel.css';
 
 interface RelationshipsPanelProps {
@@ -17,6 +18,14 @@ interface RelationshipsPanelProps {
   schemaRelationships?: ContractRelationship[];
   /** original_spec_version for empty-state messaging */
   specVersion?: string;
+  /**
+   * Phase 230.5.6 — when supplied, the panel additionally fetches
+   * RDF relationship triples from
+   * ``GET /api/v1/semantic/relationships/{contractId}`` and renders
+   * them below the structural relationships table.  When omitted,
+   * the panel only shows the structural data (legacy behaviour).
+   */
+  contractId?: string;
 }
 
 /** Badge colour by relationship type */
@@ -71,7 +80,15 @@ export function RelationshipsPanel({
   models,
   schemaRelationships,
   specVersion,
+  contractId,
 }: RelationshipsPanelProps) {
+  // Phase 230.5.6 — RDF triples fetched only when contractId is set
+  // so legacy callers (asset detail, dataset detail, etc.) that pass
+  // structural data only continue to work without hitting the new
+  // endpoint.  ``enabled: !!contractId`` keeps React Query idle
+  // when the prop is absent.
+  const { data: rdfData, isLoading: rdfLoading, error: rdfError } =
+    useContractRelationships(contractId ?? null);
 
   // Collect relationships: model-level + schema-level
   const grouped: Array<{ modelName: string; rels: ContractRelationship[] }> = [];
@@ -114,7 +131,7 @@ export function RelationshipsPanel({
   }
 
   return (
-    <div className="relationships-panel">
+    <div className="relationships-panel" data-testid="relationships-panel">
       <h2>Relationships ({totalRels})</h2>
 
       {grouped.map(({ modelName, rels }) => (
@@ -140,6 +157,124 @@ export function RelationshipsPanel({
           </div>
         </div>
       ))}
+
+      {/* Phase 230.5.6 — RDF triples surface (only when the panel
+          is mounted with ``contractId``).  When the semantic-service
+          is degraded the React Query error path catches it; when
+          there are no triples we just hide the section. */}
+      {contractId && (
+        <RdfTriplesSection
+          isLoading={rdfLoading}
+          error={rdfError as Error | null}
+          triples={rdfData?.triples ?? ''}
+          status={rdfData?.status}
+        />
+      )}
+    </div>
+  );
+}
+
+
+function RdfTriplesSection({
+  isLoading,
+  error,
+  triples,
+  status,
+}: {
+  isLoading: boolean;
+  error: Error | null;
+  triples: string;
+  status?: 'OK' | 'DEGRADED';
+}) {
+  if (isLoading) {
+    return (
+      <div
+        className="rel-rdf-section"
+        aria-busy="true"
+        data-testid="relationships-rdf-loading"
+      >
+        <h3 className="rel-group-title">Semantic relationships</h3>
+        <p>Loading semantic triples…</p>
+      </div>
+    );
+  }
+  if (error) {
+    return (
+      <div
+        className="rel-rdf-section"
+        role="alert"
+        data-testid="relationships-rdf-error"
+      >
+        <h3 className="rel-group-title">Semantic relationships</h3>
+        <p>Could not load semantic triples right now.</p>
+      </div>
+    );
+  }
+  // Empty triples → hide the whole section (the spec calls this
+  // out: "render as tabular list (or graph viz)" — empty data is
+  // structurally valid; just don't show an empty graph).
+  const trimmed = triples.trim();
+  if (!trimmed) return null;
+
+  // Tabular rendering: split each line into (subject, predicate,
+  // object) tokens.  This is best-effort N-Triples parsing — full
+  // N-Triples grammar handling would require a real parser.  For
+  // typical relationships the simple split is sufficient.
+  const rows = trimmed
+    .split('\n')
+    .filter((line) => line.trim() && !line.startsWith('#'))
+    .map((line, idx) => {
+      const tokens = line.replace(/\s*\.\s*$/, '').split(/\s+/);
+      return {
+        idx,
+        subject: tokens[0] ?? '',
+        predicate: tokens[1] ?? '',
+        object: tokens.slice(2).join(' '),
+      };
+    });
+
+  return (
+    <div
+      className="rel-rdf-section"
+      data-testid="relationships-rdf-section"
+    >
+      <h3 className="rel-group-title">
+        Semantic relationships ({rows.length})
+        {status === 'DEGRADED' && (
+          <span
+            className="rel-degraded-badge"
+            title="Semantic service is degraded; data may be stale."
+          >
+            (degraded)
+          </span>
+        )}
+      </h3>
+      <div className="table-scroll">
+        <table className="rel-table" data-testid="relationships-rdf-table">
+          <thead>
+            <tr>
+              <th>Subject</th>
+              <th>Predicate</th>
+              <th>Object</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((row) => (
+              <tr key={row.idx} className="rel-row">
+                <td className="rel-cell">
+                  <code>{row.subject}</code>
+                </td>
+                <td className="rel-cell">
+                  <code>{row.predicate}</code>
+                </td>
+                <td className="rel-cell">
+                  <code>{row.object}</code>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
     </div>
   );
 }

@@ -153,6 +153,33 @@ test.describe('Feature: Contracts', () => {
     });
   });
 
+  // Phase 230.5.7 (REQ-SEM-RELATIONSHIPS-001) — RelationshipsPanel
+  // visibility on the contract detail page.  Pinned here so any
+  // future regression in the panel mount or the semantic-service
+  // fetch is caught at the E2E layer.
+  test.describe('Relationships', () => {
+    test('contract detail page renders the RelationshipsPanel', async ({ page }) => {
+      const testUser = await getTestUser();
+      await loginUser(page, testUser);
+      // Navigate to the contracts list first so we can find a real
+      // contract id without depending on a fixture.
+      await page.goto('/contracts');
+      // The list either has rows (we click into one) or is empty
+      // (we skip — the panel can't render without a contract).
+      const firstRow = page.locator(
+        '[data-testid="contract-list-row"], .contract-list-row',
+      ).first();
+      const hasContracts = await firstRow.isVisible({ timeout: 30000 }).catch(() => false);
+      if (!hasContracts) {
+        test.skip(true, 'No contracts in this test tenant — RelationshipsPanel requires a contract id');
+      }
+      await firstRow.click();
+      // The panel mounts inside the Details tab (default).
+      const panel = page.locator('[data-testid="relationships-panel"]');
+      await expect(panel).toBeVisible({ timeout: 30000 });
+    });
+  });
+
   test.describe('Edge', () => {
     test('contract link-odps with non-existent id shows error', async ({ page }) => {
       const testUser = await getTestUser();

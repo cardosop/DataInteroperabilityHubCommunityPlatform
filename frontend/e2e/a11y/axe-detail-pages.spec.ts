@@ -35,6 +35,11 @@ async function audit(page: import('@playwright/test').Page, label: string) {
 
 const ROUTES_TO_AUDIT: Array<{ path: string; label: string; mustReachShell?: boolean }> = [
   { path: '/contracts', label: 'contracts-list' },
+  // Phase 230.5.8 (REQ-SEM-RELATIONSHIPS-001) — contract-detail
+  // surface that hosts the new RelationshipsPanel + RDF triples
+  // table.  Auditing the route catches any axe violation introduced
+  // by the new panel (table semantics, code-block contrast, role).
+  { path: '/contracts/0', label: 'contracts-detail' },
   { path: '/datasets', label: 'datasets-list' },
   { path: '/marketplace', label: 'marketplace-list-detail-context' },
   { path: '/governance', label: 'governance' },

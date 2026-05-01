@@ -10,7 +10,13 @@ import { AssetPicker } from '../../../shared/components/pickers';
 import { ContractLineageVisualization } from '../../lineage/components/ContractLineageVisualization';
 import { ActivityTimeline } from '../../../shared/components/ActivityTimeline';
 import { LineageSubscriptionPanel } from './LineageSubscriptionPanel';
+import { RelationshipsPanel } from './RelationshipsPanel';
+import type {
+  ContractRelationship,
+  ContractSchemaObject,
+} from '../../../shared/types/contracts';
 import { ContractUsedByAssets } from './ContractUsedByAssets';
+import { CanonicalIriCard } from '../../semantic/components/CanonicalIriCard';
 import { DetailPageSkeleton } from '../../../shared/components/skeletons/DetailPageSkeleton';
 import { ErrorDisplay } from '../../../shared/components/ErrorDisplay';
 import {
@@ -213,6 +219,15 @@ export function ContractDetailPage() {
             </div>
           )}
           {contract.description && <p className="contract-description">{contract.description}</p>}
+
+          {/* Phase 230.1.5 — surfaced canonical IRI per REQ-SEM-DISCO-001. */}
+          {id && (
+            <CanonicalIriCard
+              iri={contract.canonical_iri}
+              resourceType="contract"
+              resourceId={id}
+            />
+          )}
 
           <div className="contract-detail-metadata">
             {contract.original_spec_type && (
@@ -428,6 +443,21 @@ export function ContractDetailPage() {
                 </div>
               )}
             </div>
+          )}
+
+          {/* Phase 230.5.6 (REQ-SEM-RELATIONSHIPS-001) — surface
+              both structural relationships (from hub_contract_json)
+              and the RDF triples returned by the semantic-service
+              relationships endpoint.  ``contractId`` enables the
+              second fetch; without it the panel only shows
+              structural data. */}
+          {id && (
+            <RelationshipsPanel
+              models={(contract as { hub_contract_json?: { models?: ContractSchemaObject[] } }).hub_contract_json?.models}
+              schemaRelationships={(contract as { hub_contract_json?: { schema?: { relationships?: ContractRelationship[] } } }).hub_contract_json?.schema?.relationships}
+              specVersion={contract.original_spec_version}
+              contractId={id}
+            />
           )}
 
           <div className="contract-raw">
