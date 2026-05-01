@@ -45,6 +45,19 @@ class SemanticAPI:
     async def get_ontology(self) -> Dict[str, Any]:
         return await self.client.get("semantic/ontology/")
 
+    async def get_jsonld_context(self) -> Dict[str, Any]:
+        """Return the JSON-LD ``@context`` document.
+
+        Phase 230.6 (REQ-SEM-CONTEXT-ALIAS-001) — calls the
+        extension-less alias ``GET /api/v1/semantic/context`` so the
+        SDK's URL matches the public docs at
+        ``docs/mvpdocs/concepts/semantic-resources.md`` line 118.
+        Both alias and canonical (``context.jsonld``) routes return
+        byte-identical bodies, so the choice is documentation
+        consistency, not capability.
+        """
+        return await self.client.get("semantic/context")
+
     async def get_void(self) -> Dict[str, Any]:
         return await self.client.get("semantic/void/")
 

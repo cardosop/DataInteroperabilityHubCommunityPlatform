@@ -120,6 +120,75 @@ def service_description():
         )
 
 
+# ── Bulk RDF export (Phase 230.2.12 / REQ-SEM-EXPORT-001) ────
+
+
+@semantic.command("export")
+@click.option(
+    "--format", "fmt",
+    type=click.Choice(["n-triples", "turtle", "rdf-xml", "ld+json"]),
+    default="n-triples",
+    show_default=True,
+    help="RDF serialization format.",
+)
+@click.option(
+    "--output", "-o", "output_path",
+    type=click.Path(dir_okay=False, writable=True),
+    help="Write the body to this file (default: stdout).",
+)
+def export_rdf(fmt: str, output_path: Optional[str]):
+    """Bulk-export the tenant's full semantic graph.
+
+    Calls ``POST /api/v1/semantic/export`` on the configured Hub
+    instance and writes the body to a file (``--output``) or
+    stdout. The Hub throttles to 5 requests / 5 minutes / user; on
+    HTTP 429 the Retry-After header is surfaced in the error.
+    """
+    try:
+        # Use the streaming request path so very large bodies don't
+        # buffer in memory before reaching the file handle.
+        response = api_client.request(
+            "POST", "semantic/export", json_data={"format": fmt},
+        )
+        if response.status_code == 200:
+            body = response.content
+            if output_path:
+                with open(output_path, "wb") as fh:
+                    fh.write(body)
+                click.echo(
+                    f"Wrote {len(body)} bytes to {output_path} ({fmt})",
+                    err=True,
+                )
+            else:
+                # stdout — write bytes directly so binary formats
+                # (xml) round-trip cleanly.
+                import sys
+                sys.stdout.buffer.write(body)
+        elif response.status_code == 413:
+            try:
+                detail = response.json()
+            except Exception:
+                detail = {"raw": response.text[:500]}
+            raise click.ClickException(
+                f"Export exceeds the 100M-triple cap; use SPARQL "
+                f"pagination instead. Server response: {detail}"
+            )
+        elif response.status_code == 429:
+            retry_after = response.headers.get("Retry-After", "")
+            raise click.ClickException(
+                f"Throttled (5 req / 5 min / user). Retry after: {retry_after}"
+            )
+        else:
+            raise click.ClickException(
+                f"Export failed: HTTP {response.status_code} "
+                f"{response.text[:500]}"
+            )
+    except click.ClickException:
+        raise
+    except Exception as e:
+        raise click.ClickException(f"Failed to export RDF: {e}")
+
+
 # ── Ontology / VoID / SHACL ─────────────────────────────
 
 
@@ -134,6 +203,35 @@ def ontology():
     except Exception as e:
         raise click.ClickException(
             f"Failed to get ontology: {e}"
+        )
+
+
+# ── JSON-LD context (Phase 230.6 / REQ-SEM-CONTEXT-ALIAS-001) ────
+
+
+@semantic.command("context")
+def context():
+    """Get the JSON-LD context document.
+
+    Calls ``GET /api/v1/semantic/context`` (the Phase 230.6 alias for
+    ``context.jsonld``). The response body is the JSON-LD ``@context``
+    object that maps Meshant fields to standard vocabularies (DCAT,
+    PROV, SKOS, etc.) and is what ``meshant.com/ontology/`` resolves
+    to for content negotiation.
+
+    Closes the doc-vs-reality drift in
+    ``docs/mvpdocs/concepts/semantic-resources.md`` line 118 — that
+    table has long advertised this command, but no implementation
+    existed prior to Phase 230.6 self-audit.
+    """
+    try:
+        data = api_client.get("semantic/context")
+        click.echo(json.dumps(data, indent=2))
+    except click.ClickException:
+        raise
+    except Exception as e:
+        raise click.ClickException(
+            f"Failed to get JSON-LD context: {e}"
         )
 
 

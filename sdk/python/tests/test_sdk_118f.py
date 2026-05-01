@@ -28,6 +28,10 @@ class TestNewModulesImportable:
         assert hasattr(SemanticAPI, "sparql_query")
         assert hasattr(SemanticAPI, "shacl_validate")
         assert hasattr(SemanticAPI, "get_ontology")
+        # Phase 230.6 self-audit GAP-2 — public docs advertise
+        # ``client.semantic.get_jsonld_context()`` (semantic-resources.md
+        # line 118), so the SDK MUST expose it.
+        assert hasattr(SemanticAPI, "get_jsonld_context")
 
     def test_datasets_api(self):
         from datahub_interoperability.datasets import DatasetsAPI

@@ -134,6 +134,16 @@ class TestSemantic:
         )
         assert r.exit_code == 0
 
+    def test_context_help(self, runner):
+        # Phase 230.6 self-audit GAP-1 — public docs advertise
+        # ``meshant semantic context`` (semantic-resources.md line 118),
+        # so the CLI MUST expose it.
+        r = runner.invoke(
+            semantic, ["context", "--help"],
+        )
+        assert r.exit_code == 0
+        assert "JSON-LD" in r.output or "context" in r.output
+
     def test_void_help(self, runner):
         r = runner.invoke(
             semantic, ["void", "--help"],
