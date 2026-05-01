@@ -40,17 +40,32 @@ REPO_ROOT = Path(__file__).resolve().parents[4]
 
 
 def _scan_paths():
-    """Walk hub/apps + frontend/src for source files (skip migrations,
-    tests for the cleanup itself, generated assets, vendored code)."""
+    """Walk every surface a retired identifier could plausibly hide in.
+
+    Coverage tiers (W6 audit):
+
+    * ``hub/apps`` + ``frontend/src`` — production source.
+    * ``helm/`` — chart values + templates (env-var injection happens
+      here for Vite-baked frontend flags).
+    * ``.github/workflows/`` — CI workflows that set bundle-time env
+      vars on the deploy job.
+    * ``frontend/.env.example`` + ``frontend/vite.config.*`` —
+      per-developer env-var bootstrap.
+
+    Skip migrations (historical state), node_modules (vendored), build
+    output, and the test file itself (its docstring would otherwise
+    grep-match against its own assertions).
+    """
     targets: list[Path] = []
-    for relative in ("hub/apps", "frontend/src"):
+
+    # Source trees — recurse.
+    for relative in ("hub/apps", "frontend/src", "helm", ".github/workflows"):
         base = REPO_ROOT / relative
         if not base.exists():
             continue
         for p in base.rglob("*"):
             if not p.is_file():
                 continue
-            # Skip auto-generated / vendored / cache / test-of-cleanup files.
             parts = set(p.parts)
             if any(s in parts for s in {
                 "__pycache__", "node_modules", "migrations",
@@ -61,9 +76,20 @@ def _scan_paths():
                 continue
             if p.suffix in {
                 ".py", ".ts", ".tsx", ".js", ".jsx", ".yaml", ".yml",
-                ".json", ".html",
+                ".json", ".html", ".toml", ".sh",
             }:
                 targets.append(p)
+
+    # Specific files — env bootstrap + Vite config.
+    for relative in (
+        "frontend/.env.example",
+        "frontend/vite.config.ts",
+        "frontend/vite.config.js",
+    ):
+        p = REPO_ROOT / relative
+        if p.is_file():
+            targets.append(p)
+
     return targets
 
 
@@ -138,15 +164,38 @@ def test_phase_227_sunset_header_emission_is_gone():
     a ``Sunset:`` HTTP header during the deprecation window.  Under
     the ungate directive that window collapsed to zero days — no
     Sunset / Deprecation headers were ever shipped.  Pin that the
-    contract response path stays clean of them."""
-    # Pattern matches HTTP-header emission idioms only — NOT the
-    # word "Sunset" appearing in a Markdown changelog or comment.
-    # We look for ``response["Sunset"]``, ``response.headers["Sunset"]``,
-    # ``add_header("Sunset"`` and the equivalent for ``Deprecation``.
+    contract response path stays clean of them.
+
+    W6-AUDIT-2 (post-W6 audit): the original regex only matched
+    double-quoted header names.  Django (and most Python web
+    frameworks) treat single and double quotes interchangeably, so
+    ``response['Sunset'] = X`` and ``response.headers['Deprecation']``
+    were silently slipping through the guard.  The pattern below
+    matches **any** header-emission idiom — bracket-subscript
+    (``[]``), attribute access (``.``), or call expression (``(``)
+    — followed by either quote style around ``Sunset`` or
+    ``Deprecation``.  This catches:
+
+    * ``response["Sunset"] = ...``        (double-quote subscript)
+    * ``response['Sunset'] = ...``        (single-quote subscript)
+    * ``response.headers["Sunset"] = ...``
+    * ``response.headers['Sunset'] = ...``
+    * ``response.headers.add("Sunset", v)`` (call form, used by some libs)
+    * ``response.setdefault('Deprecation', v)``
+
+    And does NOT match:
+
+    * ``# the Sunset header would have ...``  (free-text mention)
+    * ``## Sunset``                            (markdown heading)
+    * ``"Sunset is documented elsewhere."``   (quoted prose without
+      a preceding ``[``, ``.``, or ``(``)
+    """
+    # The leading anchor `[\.\(]` requires the quoted name to be
+    # preceded immediately by one of `[`, `.`, or `(` (with optional
+    # whitespace) — i.e. an indexing / attribute / call operator.
+    # That's what distinguishes header emission from prose.
     rx = re.compile(
-        r'(?:response(?:\.headers)?|self|res|resp|request)'
-        r'(?:\["(?:Sunset|Deprecation)"\]|\.headers\["(?:Sunset|Deprecation)"\])'
-        r'\s*='
+        r"""[\[.\(]\s*['"](?:Sunset|Deprecation)['"]"""
     )
     hits = []
     for path in _scan_paths():
@@ -199,6 +248,81 @@ def test_phase_227_w6_archive_manifest_exists():
     )
 
 
+def test_phase_227_w6_archive_manifest_hashes_match_local_files():
+    """W6-AUDIT-3 (post-W6 audit) — the manifest's hash baselines
+    must actually match the artefacts they describe.
+
+    The original test only checked the SHA-256 SHAPE (any 64-hex
+    string), not that the hash was correct.  A copy-paste error or
+    typo in the manifest would slip through, then surface years
+    later when an auditor's S3 hash-check fails against a wrong
+    baseline.  Engineering-grade fix: re-compute the hash at test
+    time and compare.
+
+    The audit-reports/ directory is gitignored, so CI (which clones
+    fresh) won't have the local files.  Skip the assertion in that
+    case — the test still provides value when ops runs it locally
+    before the artefact moves to S3, and the in-shape check above
+    keeps the pattern guard in place for CI.
+    """
+    import hashlib
+
+    manifest = REPO_ROOT / "archive" / "phase-227-rollout" / "MANIFEST.md"
+    text = manifest.read_text(encoding="utf-8")
+
+    # Parse the manifest's table rows: each row carries an artefact
+    # path in backticks and a SHA-256 in backticks.  We extract them
+    # by walking the lines and pairing path/hash within each row.
+    table_rx = re.compile(
+        r"`(audit-reports/[^`]+)`.*?`([0-9a-f]{64})`",
+    )
+    pairs = table_rx.findall(text)
+    assert pairs, (
+        "Manifest must declare at least one (artefact-path, SHA-256) "
+        "pair in its artefact table.  Without a parseable table the "
+        "hash-verification path can't run and this regression guard "
+        "becomes a no-op."
+    )
+
+    skipped: list[str] = []
+    verified: list[str] = []
+    mismatches: list[str] = []
+    for relpath, declared_hash in pairs:
+        artefact = REPO_ROOT / relpath
+        if not artefact.is_file():
+            skipped.append(relpath)
+            continue
+        actual_hash = hashlib.sha256(artefact.read_bytes()).hexdigest()
+        if actual_hash != declared_hash:
+            mismatches.append(
+                f"  {relpath}: declared={declared_hash}, actual={actual_hash}"
+            )
+        else:
+            verified.append(relpath)
+
+    # Hard-fail on any mismatch.  A skipped (gitignored / not in
+    # working tree) artefact is acceptable in CI; a wrong hash is
+    # never acceptable anywhere.
+    assert not mismatches, (
+        "Phase 227 W6.4 manifest hash mismatch — the SHA-256 "
+        "declared in the manifest does NOT match the actual file "
+        "content.  Either the manifest was edited without "
+        "re-hashing, or the artefact mutated post-archival.  "
+        "A future S3 retrieval that compares against this baseline "
+        "would falsely flag tamper-evidence.\n" + "\n".join(mismatches)
+    )
+    # If all listed artefacts were skipped, surface that as a soft
+    # warning via pytest.skip — the test ran but couldn't verify
+    # anything.  When ops runs locally with the audit-reports files
+    # present, this skip becomes a real verification.
+    if not verified:
+        pytest.skip(
+            "All declared artefacts are absent from the working tree "
+            "(gitignored or already moved to S3).  Hash-shape check "
+            f"in the prior test still applies.  Skipped: {skipped}"
+        )
+
+
 def test_phase_227_steady_state_notice_in_contracts_doc():
     """W6.5 — the `Steady state` blockquote near the top of
     CONTRACTS.md is the customer-facing signal that the rollout is
@@ -232,6 +356,51 @@ def test_phase_227_steady_state_notice_in_runbook():
         "Runbook must keep the standby warning on the reverse "
         "migration so an over-eager operator doesn't trigger an "
         "emergency rollback by accident."
+    )
+
+
+def test_phase_227_w6_scanner_covers_infra_and_build_configs():
+    """W6-AUDIT-1 (post-W6 audit) — pin the scanner's coverage scope.
+
+    A future refactor that quietly drops ``helm/``, ``.github/workflows/``,
+    or ``frontend/.env.example`` from ``_scan_paths`` would re-open the
+    door to a flag identifier sneaking back in via a Helm values file
+    or a CI bundle-time env var without CI catching it.  This test
+    asserts each tier is represented in the scan output.
+
+    Each assertion is conservative: we don't require N specific files,
+    just that **at least one** file exists from each tier.  That's
+    enough to detect a wholesale scope shrinkage without breaking on
+    repo-layout changes that move a single file.
+    """
+    paths = _scan_paths()
+
+    helm_files = [p for p in paths if "helm" in p.parts]
+    assert helm_files, (
+        "Scanner must cover helm/ — Vite-baked frontend env vars get "
+        "injected here at chart-render time; a re-introduction of "
+        "VITE_FEATURE_SCHEMA_EDITOR_ENABLED in chart values would "
+        "slip through the W6.1 guard otherwise."
+    )
+
+    workflow_files = [
+        p for p in paths
+        if ".github" in p.parts and "workflows" in p.parts
+    ]
+    assert workflow_files, (
+        "Scanner must cover .github/workflows/ — deploy.yml sets "
+        "bundle-time env vars on the deploy job; a re-introduction "
+        "there would slip through the W6.1 guard otherwise."
+    )
+
+    env_example = [
+        p for p in paths if p.name == ".env.example" and "frontend" in p.parts
+    ]
+    assert env_example, (
+        "Scanner must cover frontend/.env.example — it's the per-"
+        "developer env-var bootstrap, and a copy-pasted example "
+        "of VITE_FEATURE_SCHEMA_EDITOR_ENABLED here would propagate "
+        "to every developer's local build."
     )
 
 
