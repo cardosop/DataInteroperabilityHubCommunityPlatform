@@ -288,6 +288,46 @@ class APIInfoSerializer(serializers.Serializer):
     endpoints = serializers.DictField()
 
 
+# Phase 228 (REQ-LIN-006, 228.0.18) — capability discovery endpoint.
+
+@extend_schema(
+    responses={
+        200: inline_serializer(
+            name="CapabilitiesResponse",
+            fields={
+                "capabilities": serializers.DictField(
+                    child=serializers.BooleanField(),
+                    help_text=(
+                        "Flat map of capability flag name → enabled. "
+                        "Phase 228 ships five lineage flags; future "
+                        "phases extend this map."
+                    ),
+                ),
+            },
+        ),
+    },
+    tags=["API"],
+    description=(
+        "Backend-driven feature-discovery surface. Frontends call this "
+        "to branch UI on what the deployed backend supports. The flat "
+        "shape lets the frontend's ``useCapability('lineage.<flag>')`` "
+        "hook read by name without traversing nested objects."
+    ),
+)
+@api_view(["GET"])
+@permission_classes([AllowAny])
+def capabilities_view(request):
+    """``GET /api/v1/capabilities/`` — return the capability flag map.
+
+    REQ-LIN-006: registered + queryable. Default policy:
+    production/staging → all flags ``False``;
+    test → all flags ``True``;
+    Django settings ``CAPABILITY_FLAGS`` map overrides per flag."""
+    from hub.apps.api.capabilities import get_capabilities
+
+    return Response({"capabilities": get_capabilities()})
+
+
 @extend_schema(responses={200: APIInfoSerializer}, tags=["API"])
 @api_view(["GET"])
 @permission_classes([AllowAny])

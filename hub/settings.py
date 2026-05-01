@@ -100,6 +100,13 @@ INSTALLED_APPS = [
     # graphene_django is optional - only add if available
     # "graphene_django",  # Made optional to prevent startup failures if not installed
     "django_structlog",
+    # Phase 228 X (228.X.9 / REQ-LIN-X-009) — wires the
+    # ``manage.py lintmigrations`` command + the ``makemigrations``
+    # post-hook lint check. Forbidden ops (DROP COLUMN, ALTER COLUMN
+    # TYPE, non-concurrent CREATE INDEX, NOT NULL on existing column
+    # without default) fail CI before they land in prod. Optional —
+    # gated by the import guard below so a dev environment without
+    # the package installed still boots.
     # django-prometheus removed: Not compatible with Django 6.0
     # Migrated to OpenTelemetry metrics with Prometheus exporter
     # Local apps
@@ -149,6 +156,34 @@ INSTALLED_APPS = [
     "hub.apps.versioning",  # Versioning API (list/get/compare versions for contracts and datasets)
     "hub.apps.security",   # CSP violation reporting + security metrics
 ]
+
+# Phase 228 X (228.X.9 / REQ-LIN-X-009) — django-migration-linter
+# integration. The package adds the ``manage.py lintmigrations``
+# command + a ``makemigrations`` post-hook check. Forbidden
+# operations (DROP COLUMN, ALTER COLUMN TYPE, non-concurrent CREATE
+# INDEX, NOT NULL on existing column without default) raise during
+# the lint pass; CI runs ``manage.py lintmigrations --quiet`` and
+# fails on any error. Optional — guarded so a dev box without the
+# package installed still boots.
+try:
+    import django_migration_linter  # noqa: F401
+    if "django_migration_linter" not in INSTALLED_APPS:
+        INSTALLED_APPS.append("django_migration_linter")
+    # The library reads MIGRATION_LINTER_OPTIONS for behavior
+    # tuning. We exclude data migrations + already-shipped
+    # additive-only migrations (the spec invariant is that every
+    # NEW migration is additive-only; legacy ones are exempt).
+    MIGRATION_LINTER_OPTIONS = {
+        "ignore_name_contains": "_data_",
+        # Forbidden categories — the library calls these "DATA_LOSS"
+        # + "BACKWARD_INCOMPATIBLE_OR_ERRORS" + "RUNTIME_HAZARDS".
+        "exclude_apps": [],
+        "include_apps": [
+            "contracts", "tenants", "audit", "integrations",
+        ],
+    }
+except ImportError:
+    pass
 
 # Conditionally add graphene_django and graphql_graphene app if available
 # This prevents startup failures if graphene-django is not installed
@@ -1473,6 +1508,14 @@ REST_FRAMEWORK = {
     ],
     "EXCEPTION_HANDLER": "hub.apps.api.exceptions.custom_exception_handler",
     "DEFAULT_SCHEMA_CLASS": "drf_spectacular.openapi.AutoSchema",
+    # Phase 230.2 (REQ-SEM-EXPORT-001) — semantic_export throttle
+    # rate. UserRateThrottle reads `DEFAULT_THROTTLE_RATES[scope]`
+    # at request time; without this entry the throttle's
+    # `get_rate()` returns None and the gate errors. The 5/5min
+    # cap is the spec-mandated value.
+    "DEFAULT_THROTTLE_RATES": {
+        "semantic_export": "5/5min",
+    },
 }
 
 # OpenAPI/Spectacular Configuration
@@ -1889,6 +1932,30 @@ if (
 # Inference triples are materialised at query time; expect 2-5x latency.
 SEMANTIC_INFERENCE_ENABLED = env.bool(
     "SEMANTIC_INFERENCE_ENABLED", default=False
+)
+
+# Phase 230.4 (REQ-SEM-MEMENTO-001) — Memento (RFC 7089) versioned-
+# retrieval feature flag.  Gated AND with ``Tenant.semantic_memento_enabled``
+# at the resource level (so global=True turns the feature ON for all
+# tenants whose per-tenant flag is also True; global=False short-
+# circuits the feature for the entire deployment regardless of
+# per-tenant settings).
+SEMANTIC_MEMENTO_ENABLED = env.bool(
+    "SEMANTIC_MEMENTO_ENABLED", default=False
+)
+# Per-tenant cap on ``SemanticResourceVersion`` rows.  Above this an
+# alert fires + new snapshot creates are refused.  Override per
+# environment if a customer needs a higher ceiling (rare).
+SEMANTIC_MEMENTO_MAX_PER_RESOURCE = env.int(
+    "SEMANTIC_MEMENTO_MAX_PER_RESOURCE", default=100,
+)
+SEMANTIC_MEMENTO_MAX_PER_TENANT = env.int(
+    "SEMANTIC_MEMENTO_MAX_PER_TENANT", default=1_000_000,
+)
+# Debounce window — Redis SETNX TTL.  Two updates inside the same
+# 60s window collapse into a single snapshot.
+SEMANTIC_MEMENTO_DEBOUNCE_SECONDS = env.int(
+    "SEMANTIC_MEMENTO_DEBOUNCE_SECONDS", default=60,
 )
 
 # Internal API key shared between hub (Django) and FastAPI microservices.

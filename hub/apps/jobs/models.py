@@ -29,6 +29,19 @@ class JobType(models.TextChoices):
     ML_TRAINING = "ML_TRAINING", "ML Training"
     ML_INFERENCE = "ML_INFERENCE", "ML Inference"
     TRANSFORMATION = "TRANSFORMATION", "Transformation Pipeline"
+    # Phase 230.2.4 — exports >100 MB are queued asynchronously
+    # to avoid holding a request thread for tens of minutes; the
+    # Job row carries the result S3 URI + an emailed download link
+    # when it completes. Inline streaming is the synchronous path
+    # (rdf_export view at hub/apps/semantic/views.py).
+    SEMANTIC_EXPORT_LARGE = "SEMANTIC_EXPORT_LARGE", "Semantic Export (large)"
+    # Phase 230.4 (REQ-SEM-MEMENTO-001) — async snapshot job. Triggered
+    # by the debounced post-save signal on Asset / Contract / Dataset;
+    # fetches the resource's RDF + computes a SHA-256 over a canonical
+    # serialisation; persists into ``SemanticResourceVersion`` if the
+    # hash differs from the latest row (the UniqueConstraint on
+    # (resource, content_hash) gives us the dedupe primitive).
+    SEMANTIC_SNAPSHOT = "SEMANTIC_SNAPSHOT", "Semantic Snapshot"
 
 
 class JobStatus(models.TextChoices):

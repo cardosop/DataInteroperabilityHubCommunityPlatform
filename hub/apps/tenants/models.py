@@ -253,6 +253,70 @@ class Tenant(models.Model):
     region = models.CharField(
         max_length=100, null=True, blank=True, help_text="Cloud region (e.g., us-east-1, eu-west-1)"
     )
+    # Phase 228 X (REQ-LIN-X-004 / 228.X.4.1) — data residency.
+    # When set, lineage cross-region access for THIS tenant is gated
+    # by an explicit consent flag on the inbound request; missing
+    # consent + cross-region request → HTTP 403 with code
+    # ``DATA_RESIDENCY_BLOCK``. NULL = "no residency rule" (legacy).
+    data_residency_region = models.CharField(
+        max_length=100,
+        null=True,
+        blank=True,
+        db_index=True,
+        help_text=(
+            "Phase 228 X (REQ-LIN-X-004) — ISO region the tenant's "
+            "data MUST stay in (e.g. eu-west-1). Cross-region lineage "
+            "access requires explicit consent header per F1 contract. "
+            "NULL = legacy tenant with no residency rule."
+        ),
+    )
+    # Phase 228 X (REQ-LIN-X-005 / 228.X.5.1) — PII redaction.
+    # Patterns matched against ``LineageEdge.source_field`` /
+    # ``target_field`` when serializing for cross-tenant viewers.
+    # Stored as JSON list of regex patterns; never applied for
+    # own-tenant viewers.
+    lineage_redact_field_patterns = models.JSONField(
+        default=list,
+        blank=True,
+        help_text=(
+            "Phase 228 X (REQ-LIN-X-005) — JSON list of regex patterns. "
+            "When the field name on a LineageEdge matches any pattern "
+            "AND the request's tenant_id != edge.tenant_id, the field "
+            "name is replaced with '[REDACTED]' in the API response. "
+            "Empty list = no redaction (legacy)."
+        ),
+    )
+    # Phase 230.4 (REQ-SEM-MEMENTO-001) — per-tenant Memento (RFC 7089)
+    # versioned-retrieval toggle.  When BOTH this flag AND the global
+    # ``settings.SEMANTIC_MEMENTO_ENABLED`` are True, semantic-resource
+    # updates produce ``SemanticResourceVersion`` snapshots and the
+    # dereference endpoint honours the ``Accept-Datetime`` request
+    # header.  Default False — feature is rolled-out per tenant.
+    semantic_memento_enabled = models.BooleanField(
+        default=False,
+        help_text=(
+            "Phase 230.4 (REQ-SEM-MEMENTO-001) — when True, semantic "
+            "resource updates produce versioned snapshots and the "
+            "dereference endpoint honours Accept-Datetime. Gated by "
+            "the global SEMANTIC_MEMENTO_ENABLED setting in addition."
+        ),
+    )
+    # Phase 230.7 (REQ-SEM-INFERENCE-001) — per-tenant OWL/RDFS reasoning
+    # toggle.  When True, SPARQL execution routes to the Fuseki
+    # ``dataset/inferred`` endpoint that overlays an OWL Mini reasoner
+    # (or RDFSExptRuleReasoner) on the SAME TDB2 store.  When False,
+    # queries route to the plain ``dataset`` endpoint.  Toggle changes
+    # take effect immediately for new queries — no Fuseki restart.
+    # Read at SPARQL-run time per query, NOT cached on the client side.
+    semantic_inference_enabled = models.BooleanField(
+        default=False,
+        help_text=(
+            "Phase 230.7 (REQ-SEM-INFERENCE-001) — when True, SPARQL "
+            "queries see superclass / subproperty / inverseOf "
+            "inferences materialised by the Fuseki reasoner. Expect "
+            "2-5x query latency vs. the plain dataset endpoint."
+        ),
+    )
     plan = models.ForeignKey(
         "tenants.TenantPlan",
         on_delete=models.SET_NULL,

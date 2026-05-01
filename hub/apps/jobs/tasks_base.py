@@ -570,6 +570,12 @@ def _execute_job_logic(job_obj: Job, job_type: str) -> dict:
 
         return _execute_marketplace_sync_job(job_obj)
 
+    elif job_type == JobType.SEMANTIC_SNAPSHOT:
+        # Phase 230.4 (REQ-SEM-MEMENTO-001) — debounced snapshot job.
+        from hub.apps.semantic.tasks import _execute_semantic_snapshot_job
+
+        return _execute_semantic_snapshot_job(job_obj)
+
     else:
         raise ValueError(f"Unknown job type: {job_type}")
 

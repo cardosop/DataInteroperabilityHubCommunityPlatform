@@ -116,3 +116,54 @@ class AuditEvent(models.Model):
         """Override delete to prevent deletion"""
         raise ValueError("Audit events are immutable and cannot be deleted")
 
+
+# Phase 228 (REQ-LIN-007, 228.0.19) — canonical lineage audit-action codes.
+#
+# The ``action`` field on ``AuditEvent`` is a free-form CharField, so the
+# operational invariant we ship here is a NAMED CONSTANT registry: every
+# call site references these constants instead of inlining the string,
+# so a typo can't produce two divergent histories of "the same action".
+# Pinned by ``test_lineage_audit_codes.py`` which asserts the four
+# Phase 228 codes exist and are the only ``LINEAGE_*`` values defined.
+
+LINEAGE_VIEWED = "LINEAGE_VIEWED"
+LINEAGE_VIEWED_CROSS_TENANT = "LINEAGE_VIEWED_CROSS_TENANT"
+LINEAGE_EDGE_CREATED = "LINEAGE_EDGE_CREATED"
+LINEAGE_EDGE_DELETED = "LINEAGE_EDGE_DELETED"
+# Phase 228 F5 (REQ-LIN-F5-001 / DoD-G7) — emitted on every successful
+# point-in-time lineage query (`?as_of=` or `?version=`).
+LINEAGE_SNAPSHOT_QUERIED = "LINEAGE_SNAPSHOT_QUERIED"
+# Phase 228 X (REQ-LIN-X-004 / 228.X.4.3) — emitted when a cross-
+# region lineage view is gated by the data-residency check + the
+# request carried explicit consent. Lets a compliance auditor
+# answer "did somebody view EU lineage from a US viewer with
+# consent — and when?".
+LINEAGE_VIEWED_CROSS_REGION_CONSENTED = "LINEAGE_VIEWED_CROSS_REGION_CONSENTED"
+
+# Phase 228 F4 (REQ-LIN-F4-003) — OpenLineage ingest-key admin
+# audit-action codes. Same registry pattern as the lineage codes
+# above so a typo in the call-site fails the
+# ``test_lineage_audit_codes.py`` constants test.
+OPENLINEAGE_KEY_CREATED = "OPENLINEAGE_KEY_CREATED"
+OPENLINEAGE_KEY_REVOKED = "OPENLINEAGE_KEY_REVOKED"
+OPENLINEAGE_KEY_ROTATED = "OPENLINEAGE_KEY_ROTATED"
+# Phase 228 F4 (REQ-LIN-F4-003 spec scenario "Quarterly rotation grace") —
+# fired the FIRST time a graced (post-rotation, pre-expiry) key is used
+# to authenticate. Once-per-key emission so a busy producer doesn't
+# generate one audit row per request; the field
+# ``OpenLineageIngestApiKey.grace_audit_emitted_at`` is the latch.
+OPENLINEAGE_KEY_GRACE_USED = "OPENLINEAGE_KEY_GRACE_USED"
+
+LINEAGE_AUDIT_ACTIONS: tuple[str, ...] = (
+    LINEAGE_VIEWED,
+    LINEAGE_VIEWED_CROSS_TENANT,
+    LINEAGE_VIEWED_CROSS_REGION_CONSENTED,
+    LINEAGE_EDGE_CREATED,
+    LINEAGE_EDGE_DELETED,
+    LINEAGE_SNAPSHOT_QUERIED,
+    OPENLINEAGE_KEY_CREATED,
+    OPENLINEAGE_KEY_REVOKED,
+    OPENLINEAGE_KEY_ROTATED,
+    OPENLINEAGE_KEY_GRACE_USED,
+)
+
