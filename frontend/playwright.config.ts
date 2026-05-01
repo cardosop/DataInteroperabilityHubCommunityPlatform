@@ -160,6 +160,46 @@ export default defineConfig({
       },
       dependencies: ['setup-auth'],
     },
+    // Phase 228.F2.27 — cross-browser Playwright projects
+    // (Chromium / Firefox / WebKit).  Opt-in via env var so the
+    // default chromium-only run stays fast; CI can enable for
+    // nightly cross-browser validation.
+    //
+    //   E2E_CROSS_BROWSER=1 npx playwright test --project=firefox
+    //   E2E_CROSS_BROWSER=1 npx playwright test --project=webkit
+    //
+    // We deliberately scope the cross-browser matrix to a curated
+    // set of high-value specs (the F1 / F2 lineage surfaces) to
+    // keep the matrix bounded — matrix-multiplying every spec
+    // against three browsers triples runtime for marginal coverage.
+    ...(process.env.E2E_CROSS_BROWSER === '1'
+      ? [
+          {
+            name: 'firefox',
+            testMatch: [
+              '**/use-cases/marketplace/UC-MKT-LINEAGE-*.spec.ts',
+              '**/use-cases/contracts/UC-LIN-FIELD-EDIT-*.spec.ts',
+            ],
+            use: {
+              ...devices['Desktop Firefox'],
+              storageState: 'e2e/.auth/user.json',
+            },
+            dependencies: ['setup-auth'],
+          },
+          {
+            name: 'webkit',
+            testMatch: [
+              '**/use-cases/marketplace/UC-MKT-LINEAGE-*.spec.ts',
+              '**/use-cases/contracts/UC-LIN-FIELD-EDIT-*.spec.ts',
+            ],
+            use: {
+              ...devices['Desktop Safari'],
+              storageState: 'e2e/.auth/user.json',
+            },
+            dependencies: ['setup-auth'],
+          },
+        ]
+      : []),
   ],
 
   // Skip Vite webServer when targeting an external deployment (staging/production).

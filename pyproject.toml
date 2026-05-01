@@ -117,3 +117,42 @@ module = "hub.apps.*.migrations.*"
 ignore_errors = true
 
 
+# ---------------------------------------------------------------------------
+# Phase 228.F2.13 — mutmut configuration for the lineage validator.
+#
+# Mutmut runs are slow (~15 min on a 100-LOC module) and the validator
+# is the highest-value mutation target in F2: a pure-function module
+# whose mutants are deterministically detected by the property-based
+# test suite (test_lineage_validator.py).  We pin the targets and
+# the test runner so a CI nightly job (.github/workflows/mutmut-
+# lineage-validator.yml) can drive mutation testing without touching
+# the rest of the codebase.
+#
+# Run locally:
+#
+#     pip install mutmut
+#     mutmut run --paths-to-mutate=hub/apps/contracts/lineage_validator.py
+#     mutmut results
+#
+# Why pin the runner: ``mutmut`` defaults to discovering pytest
+# without django-setup.  Our validator imports nothing from Django,
+# but ``test_lineage_validator.py`` lives under ``hub/apps/`` whose
+# conftest does Django setup — slow on every mutant.  We re-target
+# tests-only at the module level so each mutant runs the 18-test
+# suite in isolation.
+# ---------------------------------------------------------------------------
+
+[tool.mutmut]
+paths_to_mutate = "hub/apps/contracts/lineage_validator.py"
+tests_dir = "hub/apps/contracts/tests"
+runner = "python -m pytest hub/apps/contracts/tests/test_lineage_validator.py -x -q --no-header"
+backup = false
+# Skip lines that aren't logic-bearing (docstrings, type-hint imports)
+# so mutmut doesn't waste cycles on no-op mutants.
+also_copy = []
+# Per-mutant timeout — the validator's worst-case run (the
+# hypothesis property test on a max-size DAG) finishes in <30s
+# even on a slow runner.
+runner_timeout = 60
+
+
