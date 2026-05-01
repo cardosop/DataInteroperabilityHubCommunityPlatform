@@ -31,6 +31,39 @@ from hub.apps.observability.metrics import trace as _lineage_trace
 logger = structlog.get_logger(__name__)
 
 
+def _edge_belongs_to_tenant(edge: Dict[str, Any], owner_tenant_id: str) -> bool:
+    """Phase 228.F1 audit hardening — confirm an edge dict belongs to
+    ``owner_tenant_id`` by checking the tenant of its (non-NULL) source
+    or target contract.
+
+    The :class:`LineageEdge` table stores ``tenant_id`` as a load-bearing
+    FK invariant — every edge is owned by exactly one tenant — but
+    ``_edges_at`` returns dict rows that don't carry the FK directly.
+    This helper looks up the tenant via the (non-NULL) endpoint
+    contract id.  Edges where BOTH endpoints are NULL (rare, external-
+    to-external) are accepted — they're not addressable by tenant in
+    the dict shape and the upstream caller's tenant scope already
+    bounds them.
+    """
+    from hub.apps.contracts.models import Contract
+
+    for fk_id_key in ("source_contract", "target_contract"):
+        endpoint_id = edge.get(fk_id_key)
+        if not endpoint_id:
+            continue
+        contract = (
+            Contract.objects
+            .filter(id=endpoint_id)
+            .only("id", "tenant_id")
+            .first()
+        )
+        if contract is None:
+            continue
+        return str(contract.tenant_id) == owner_tenant_id
+    # Both endpoints NULL — accept (cross-tenant external, no leak).
+    return True
+
+
 class LineageService(BaseService, LineageEventPublisher):
     """
     Service for lineage operations.
@@ -891,6 +924,27 @@ class LineageService(BaseService, LineageEventPublisher):
                 edges = self._edges_at(
                     contract_id, as_of=as_of, direction=direction,
                 )
+                # F1.5 audit hardening (post-W6): scope edges to the
+                # owner tenant explicitly.  ``_edges_at`` is shared with
+                # other lineage callers that don't enforce tenant
+                # scope; we add a defensive filter here so an edge
+                # rogue-written from another tenant (write-path bug,
+                # post-restore from cross-tenant backup) can't bleed
+                # into a cross-tenant read.  Belt-and-suspenders with
+                # the tenant FK invariant on LineageEdge.
+                edges = [
+                    e for e in edges
+                    if (
+                        # Edges from `_edges_at` are dicts (not model
+                        # instances) — re-confirm tenant via a small
+                        # tenant-id lookup against the source/target
+                        # contract.  Cross-tenant endpoints are
+                        # legitimately allowed to have null source/target
+                        # contract; those carry the owner's tenant_id
+                        # implicitly and are kept.
+                        _edge_belongs_to_tenant(e, owner_tenant_id)
+                    )
+                ]
                 for edge in edges:
                     if len(links) >= self.F1_EDGE_CAP:
                         truncated = True
@@ -898,7 +952,16 @@ class LineageService(BaseService, LineageEventPublisher):
 
                     src_id = edge["source_contract"]
                     tgt_id = edge["target_contract"]
-                    other_id = tgt_id if direction == "incoming" else src_id
+                    # Direction → which endpoint is the OTHER:
+                    # - incoming: target_contract == contract_id, so
+                    #   source_contract is the OTHER endpoint.
+                    # - outgoing: source_contract == contract_id, so
+                    #   target_contract is the OTHER endpoint.
+                    # Pre-fix, this was inverted, which produced a
+                    # one-step BFS that never expanded past depth 1
+                    # for outgoing edges and miscounted incoming
+                    # edges as "self-referential".
+                    other_id = src_id if direction == "incoming" else tgt_id
 
                     # Materialise the foreign endpoint node.  Cross-tenant
                     # / external endpoints carry no tenant_id and a

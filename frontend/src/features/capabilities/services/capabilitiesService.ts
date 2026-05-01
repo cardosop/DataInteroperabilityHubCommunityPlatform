@@ -190,6 +190,21 @@ class CapabilitiesService {
       endpoint: '/api/v1/ai/anomaly-detection/',
     };
 
+    // Phase 228.F1 (REQ-LIN-F1-004) — Cross-tenant marketplace lineage.
+    // Detected via the OpenAPI path for the per-listing lineage action.
+    // drf-spectacular emits the path with the listing id placeholder
+    // (`{id}` or `{listing_id}` depending on the lookup field), so we
+    // accept any path matching `/marketplace/listings/{*}/lineage/`.
+    const lineageMarketplaceAvailable = Object.keys(paths).some(
+      (p) => /\/marketplace\/listings\/\{[^}]+\}\/lineage\/?$/.test(p),
+    );
+    capabilities['lineage.cross_tenant_marketplace'] = {
+      name: 'Cross-Tenant Marketplace Lineage',
+      available: lineageMarketplaceAvailable,
+      endpoint: '/api/v1/marketplace/listings/{id}/lineage/',
+      operationId: 'listing_lineage',
+    };
+
     // Social capabilities
     capabilities['social.ratings'] = {
       name: 'Social Ratings',
