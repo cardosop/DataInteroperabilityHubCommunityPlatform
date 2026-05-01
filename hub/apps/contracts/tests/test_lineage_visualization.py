@@ -98,6 +98,20 @@ class TestLineageVisualization(ContractsTransactionTestBase):
 
     def test_generate_lineage_json_includes_declared_contract_dependencies(self):
         """Declared hub_contract_json.lineage.contracts edges appear in visualization JSON."""
+        # Phase 227 W1.13.1 — see test_generate_lineage_json_includes_referenced_by_edges
+        # for the rationale on the minimum-viable structural-floor shape.
+        # ``_min_models()`` returns a fresh structure on each call so
+        # the two contracts don't share inner-dict references.
+        def _min_models():
+            return [
+                {
+                    "name": "default",
+                    "fields": [
+                        {"name": "id", "data_type": "string", "nullable": False},
+                    ],
+                }
+            ]
+
         provider = Contract.objects.create(
             tenant=self.tenant,
             version=1,
@@ -108,7 +122,7 @@ class TestLineageVisualization(ContractsTransactionTestBase):
             original_raw='{"info": {"name": "lineage-provider"}}',
             hub_contract_json={
                 "info": {"name": "lineage-provider", "domain": "acme.test"},
-                "models": [],
+                "models": _min_models(),
             },
         )
         consumer = Contract.objects.create(
@@ -126,7 +140,7 @@ class TestLineageVisualization(ContractsTransactionTestBase):
                         {"namespace": "acme.test", "name": "lineage-provider"},
                     ]
                 },
-                "models": [],
+                "models": _min_models(),
             },
         )
 
@@ -142,6 +156,26 @@ class TestLineageVisualization(ContractsTransactionTestBase):
 
     def test_generate_lineage_json_includes_referenced_by_edges(self):
         """Other contracts that declare this contract in lineage.contracts appear as edges."""
+        # Phase 227 W1.13.1 — populate the minimum-viable structural-floor
+        # shape (1 model, 1 field, type=string, nullable=False) so the
+        # fixture remains valid under the L3 unconditional floor
+        # enforcement. The lineage assertions don't depend on field
+        # contents; the fields are pure structural-floor satisfiers.
+        #
+        # ``_min_models()`` returns a fresh list-of-dicts so the two
+        # contracts don't share the SAME inner-dict reference (which
+        # would let a test-time mutation of one contract's models
+        # silently propagate to the other).
+        def _min_models():
+            return [
+                {
+                    "name": "default",
+                    "fields": [
+                        {"name": "id", "data_type": "string", "nullable": False},
+                    ],
+                }
+            ]
+
         core = Contract.objects.create(
             tenant=self.tenant,
             version=1,
@@ -150,7 +184,10 @@ class TestLineageVisualization(ContractsTransactionTestBase):
             original_spec_version="3.0.0",
             original_format=OriginalFormat.JSON,
             original_raw='{"info": {"name": "refby-core"}}',
-            hub_contract_json={"info": {"name": "refby-core", "domain": "tenant.refby"}, "models": []},
+            hub_contract_json={
+                "info": {"name": "refby-core", "domain": "tenant.refby"},
+                "models": _min_models(),
+            },
         )
         dependent = Contract.objects.create(
             tenant=self.tenant,
@@ -165,7 +202,7 @@ class TestLineageVisualization(ContractsTransactionTestBase):
                 "lineage": {
                     "contracts": [{"namespace": "tenant.refby", "name": "refby-core"}],
                 },
-                "models": [],
+                "models": _min_models(),
             },
         )
 

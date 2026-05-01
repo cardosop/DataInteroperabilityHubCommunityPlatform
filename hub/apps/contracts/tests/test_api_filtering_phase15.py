@@ -28,6 +28,22 @@ class APIFilteringPhase15TestCase(ContractsAPITestBase):
         """Set up test fixtures."""
         super().setUp()
 
+        # Phase 227 W1.13.4 — populate the minimum-viable structural-floor
+        # shape (1 field per model, type=string, nullable=False).  The
+        # filtering tests only assert on top-level fields (contact /
+        # servers / servicelevels / model name lists) and don't depend
+        # on field contents; the field is a pure floor satisfier so the
+        # fixture remains valid under L3's unconditional enforcement.
+        #
+        # ``_min_fields()`` returns a fresh list-of-dicts on every call
+        # so the per-fixture mutations stay isolated.  An earlier
+        # iteration used ``list(_MIN_FIELDS)`` (a shallow copy that
+        # shared the inner dict across all three contracts); replacing
+        # it with a builder function eliminates that aliasing risk
+        # without depending on ``copy.deepcopy`` being imported.
+        def _min_fields():
+            return [{"name": "id", "data_type": "string", "nullable": False}]
+
         # Create test contracts with various configurations.
         # Each contract gets its own asset to avoid unique_contract_version_per_asset constraint.
         self.contract1 = self._create_contract(
@@ -35,7 +51,7 @@ class APIFilteringPhase15TestCase(ContractsAPITestBase):
             contact=[{"email": "contact1@example.com", "name": "Contact One"}],
             servers=[{"type": "s3", "url": "s3://bucket1"}],
             servicelevels=[{"property": "availability", "target": 99.9}],
-            models=[{"name": "model1", "fields": []}]
+            models=[{"name": "model1", "fields": _min_fields()}]
         )
 
         self.contract2 = self._create_contract(
@@ -43,7 +59,7 @@ class APIFilteringPhase15TestCase(ContractsAPITestBase):
             contact=[{"email": "contact2@example.com", "name": "Contact Two"}],
             servers=[{"type": "postgres", "url": "postgresql://localhost/db"}],
             servicelevels=[{"property": "latency", "target": 100, "metric": "latency_ms"}],
-            models=[{"name": "model2", "fields": []}]
+            models=[{"name": "model2", "fields": _min_fields()}]
         )
 
         self.contract3 = self._create_contract(
@@ -54,7 +70,10 @@ class APIFilteringPhase15TestCase(ContractsAPITestBase):
                 {"property": "availability", "target": 99.5},
                 {"property": "latency", "target": 50, "metric": "latency_ms"}
             ],
-            models=[{"name": "model1", "fields": []}, {"name": "model3", "fields": []}]
+            models=[
+                {"name": "model1", "fields": _min_fields()},
+                {"name": "model3", "fields": _min_fields()},
+            ]
         )
 
     def _create_contract(self, name, contact=None, servers=None, servicelevels=None, models=None):
@@ -64,11 +83,15 @@ class APIFilteringPhase15TestCase(ContractsAPITestBase):
         (tenant, asset, version) is never violated.
         """
         asset = AssetFactory(tenant=self.tenant)
+        # Phase 227 W1.13.4 — normalise the schema field's key to
+        # ``data_type`` (canonical Pydantic field name; ``type`` is
+        # the back-compat alias).  The other fixture sites in setUp
+        # use ``data_type`` so this keeps the helper consistent.
         hub_contract = {
             "hub_contract_version": "1.0.0",
             "id": f"{name.lower().replace(' ', '-')}",
             "info": {"name": name},
-            "schema": {"fields": [{"name": "id", "type": "string"}]}
+            "schema": {"fields": [{"name": "id", "data_type": "string", "nullable": False}]}
         }
 
         if contact:

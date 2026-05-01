@@ -52,8 +52,19 @@ class IndexPerformanceTestCase(TestCase):
                     "contact": [{"email": f"contact{i}@example.com", "name": f"Contact {i}"}],
                     "servers": [{"type": "s3" if i % 2 == 0 else "postgres", "url": f"url-{i}"}],
                     "servicelevels": [{"property": "availability", "target": 99.0 + (i % 10) * 0.1}],
-                    "models": [{"name": f"model-{i}", "fields": []}],
-                    "schema": {"fields": [{"name": "id", "type": "string"}]}
+                    # Phase 227 W1.13.5 — populate the minimum-viable
+                    # structural-floor shape inside each model entry too
+                    # (the schema block already had fields[]; adding the
+                    # model-level field keeps the fixture valid even if
+                    # the floor predicate tightens to "every model must
+                    # carry fields").
+                    "models": [{
+                        "name": f"model-{i}",
+                        "fields": [
+                            {"name": "id", "data_type": "string", "nullable": False},
+                        ],
+                    }],
+                    "schema": {"fields": [{"name": "id", "data_type": "string", "nullable": False}]},
                 },
                 normalization_status=NormalizationStatus.NORMALIZED_OK,
                 status=ContractStatus.ACTIVE,
