@@ -406,3 +406,18 @@ CVE-2026-41989
 #     publishes a fixed libcap2 to bookworm-security / trixie.
 # Review by: 2026-05-31.
 CVE-2026-4878
+
+# Added: 2026-05-01 (worker-service trivy gate — run 25216791341)
+# CVE-2026-31568 — kernel: s390/mm: Add missing secure storage access fixups.
+# Affects linux-libc-dev 6.12.85-1 in the Debian 13.4 base image
+# (Debian bumped the package from 6.12.74-2 to 6.12.85-1 since the prior
+# linux-libc-dev sweep on 2026-04-25, which introduced this new entry).
+# Status=affected, no Debian fix published.
+#
+# Impact: None — same class as every other linux-libc-dev entry in this file:
+#   - The package ships userspace kernel headers; containers use the host
+#     kernel, so the vulnerable kernel code paths are never executed.
+#   - The vulnerability is in s390 (IBM mainframe) memory management code;
+#     we run on AWS x86_64/arm64 EKS nodes, never s390.
+# Review by: 2026-05-31.
+CVE-2026-31568
