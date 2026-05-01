@@ -51,6 +51,10 @@ export interface Asset {
   // Linked resources (populated in detail view)
   contract_id?: string;
   dataset_id?: string;
+  // Phase 230 (REQ-SEM-DISCO-001 / 230.1.2) — canonical IRI
+  // emitted by hub/apps/assets/serializers.py:33. Optional on the
+  // type so list-view payloads (which may omit it) still type-check.
+  canonical_iri?: string;
 }
 
 export interface AssetCreateRequest {

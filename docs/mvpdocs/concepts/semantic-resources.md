@@ -82,6 +82,32 @@ ORDER BY DESC(?score)
 - Linked data notifications (W3C LDN) for cross-catalog synchronization.
 - GraphQL-LD endpoint as an alternative to SPARQL for developers unfamiliar with RDF.
 
+## Discovery in the UI
+
+**Phase 230 (REQ-SEM-DISCO-001 / 230.1):** every Asset, Contract,
+and Dataset detail page now surfaces a **Canonical IRI Card**
+above the metadata block. The card exposes the resource's stable
+IRI (the same URI returned by the API serializers under the
+`canonical_iri` field) along with three actions:
+
+| Action | What it does |
+|---|---|
+| **Copy** | Writes the IRI to the clipboard via `navigator.clipboard.writeText` (HTTPS) or `document.execCommand('copy')` (legacy / non-HTTPS). |
+| **Open in SPARQL** | Pre-fills the SPARQL builder with `DESCRIBE <iri>` so the user can inspect every triple. |
+| **View JSON-LD** | Opens an in-card panel rendering the resource's JSON-LD body via `GET /api/v1/semantic/id/{type}/{id}`. |
+
+The card is hidden when the resource has no `canonical_iri` (legacy records or capability-flag-disabled deployments). Stable `data-testid` attributes (`canonical-iri-card`, `canonical-iri-copy`, `canonical-iri-open-sparql`, `canonical-iri-view-jsonld`, `canonical-iri-jsonld-panel`, `canonical-iri-value`) drive the E2E spec at [`frontend/e2e/journeys/ai-ml-semantic/asset-detail-iri-discovery.spec.ts`](../../../frontend/e2e/journeys/ai-ml-semantic/asset-detail-iri-discovery.spec.ts) — also the first spec in the suite to invoke the `verifySemanticIri()` 5-step dual-channel helper (closes the B5 adoption gap from Phase 226).
+
+```text
+┌── Canonical IRI ──────────────────────────────────────────────┐
+│ https://meshant-internal.example.com/id/asset/abc-123-def-456              │
+│                                                                │
+│ [ Copy ]  [ Open in SPARQL ]  [ View JSON-LD ]                │
+└────────────────────────────────────────────────────────────────┘
+```
+
+A11y: the card uses `<section aria-labelledby>` with a heading, ARIA labels on icon-only buttons, and surfaces error states via `role="alert"` so screen readers announce them. The card surface is included in the WCAG A + AA axe-core scan inside the journey spec (per 228.X.2).
+
 ## API Reference
 
 | Operation | API | CLI | SDK |

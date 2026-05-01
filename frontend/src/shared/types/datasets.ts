@@ -42,6 +42,9 @@ export interface Dataset {
   asset_name?: string;
   tenant_id: string;
   file_id?: string;
+  // Phase 230 (REQ-SEM-DISCO-001 / 230.1.2) — canonical IRI emitted
+  // by hub/apps/datasets/serializers.py:19.
+  canonical_iri?: string;
 }
 
 export interface DatasetCreateRequest {

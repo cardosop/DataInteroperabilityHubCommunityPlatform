@@ -52,6 +52,9 @@ export interface Contract {
   lifecycle_policy?: Record<string, unknown>;
   marketplace_policy?: Record<string, unknown>;
   schema_fields?: Array<Record<string, unknown>>;
+  // Phase 230 (REQ-SEM-DISCO-001 / 230.1.2) — canonical IRI emitted
+  // by hub/apps/contracts/serializers.py:457.
+  canonical_iri?: string;
 }
 
 export interface ContractCreateRequest {
