@@ -101,6 +101,13 @@ def apply_lineage_patch(
             desired_edges, contract,
         )
 
+        # Phase 228.F2.DoD.1 audit (REQ-LIN-F2-002 "Cross-tenant rejected") —
+        # an authorised user editing their own contract MUST NOT be able
+        # to create an edge that references a contract in a different
+        # tenant.  Cross-tenant edges are stored with NULL on the foreign
+        # side per the LineageEdge model convention; this validator
+        # enforces it at the F2 write boundary.
+        _validate_no_cross_tenant_edge_references(contract, desired_normalised)
         _validate_field_existence(contract, desired_normalised)
         _validate_type_compatibility_all(contract, desired_normalised)
         _validate_no_cycles(desired_normalised)
@@ -258,6 +265,88 @@ def _edge_signature(edge: Dict[str, Any]) -> Tuple:
         edge.get("target_field") or "",
         edge.get("edge_type") or "reference",
     )
+
+
+def _validate_no_cross_tenant_edge_references(
+    contract: Any, edges: List[Dict[str, Any]],
+) -> None:
+    """Phase 228.F2.DoD.1 audit (REQ-LIN-F2-002 "Cross-tenant rejected").
+
+    Reject any edge whose ``source_contract`` or ``target_contract``
+    points at a contract owned by a different tenant.  Cross-tenant
+    edges are an F2 v1 non-goal — they're stored with NULL on the
+    foreign side per the LineageEdge model docstring convention; the
+    F2 write boundary enforces it.
+
+    Args
+    ----
+    contract
+        The contract being edited (the tenant whose lineage we own).
+    edges
+        Desired post-patch edge list (already normalised).
+
+    Raises
+    ------
+    ValidationError(code=CROSS_TENANT_EDGE_FORBIDDEN)
+        When any edge references a non-NULL contract id in a
+        different tenant.
+
+    Performance
+    -----------
+    Looks up referenced contracts in a single bulk query so the
+    1000-edge worst case is bounded by one DB round-trip + an
+    in-memory tenant_id check per edge.
+    """
+    from hub.apps.contracts.models import Contract
+
+    own_tenant_id = str(contract.tenant_id)
+
+    referenced_ids: set[str] = set()
+    for edge in edges:
+        for side in ("source_contract", "target_contract"):
+            cid = edge.get(side)
+            if cid:
+                referenced_ids.add(str(cid))
+
+    if not referenced_ids:
+        return
+
+    # Bulk-fetch tenant ids for referenced contracts.
+    contract_tenants = dict(
+        Contract.objects
+        .filter(id__in=referenced_ids)
+        .values_list("id", "tenant_id")
+    )
+
+    for edge in edges:
+        for side in ("source_contract", "target_contract"):
+            cid = edge.get(side)
+            if not cid:
+                continue
+            # Lookup may produce UUID-vs-str key drift (the
+            # ``values_list`` returns UUIDs from Postgres);
+            # normalise both sides.
+            tenant_id = None
+            for k, v in contract_tenants.items():
+                if str(k) == str(cid):
+                    tenant_id = v
+                    break
+            if tenant_id is None:
+                # Referenced contract doesn't exist — let the
+                # field-existence validator surface it.
+                continue
+            if str(tenant_id) != own_tenant_id:
+                raise ValidationError(
+                    f"Lineage edge cannot reference contract "
+                    f"{cid} in a different tenant.  Cross-tenant "
+                    f"edges must use NULL on the foreign side.",
+                    code="CROSS_TENANT_EDGE_FORBIDDEN",
+                    details={
+                        "code": "CROSS_TENANT_EDGE_FORBIDDEN",
+                        "side": side,
+                        "contract_id": str(cid),
+                    },
+                )
 
 
 def _validate_field_existence(

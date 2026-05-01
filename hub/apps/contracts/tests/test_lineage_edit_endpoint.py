@@ -371,6 +371,171 @@ class LineageEditConcurrencyAndRbacTests(TestCase):
 # ---------------------------------------------------------------------------
 
 
+class LineageEditCrossTenantEdgeTests(TestCase):
+    """Phase 228.F2.DoD.1 audit — REQ-LIN-F2-002 "Cross-tenant rejected".
+
+    An authorised user editing their own contract MUST NOT be able to
+    create an edge whose source/target_contract references a contract
+    owned by a different tenant.  Cross-tenant edges must use NULL on
+    the foreign side per the LineageEdge model convention.
+    """
+
+    def test_cross_tenant_edge_reference_rejected(self):
+        tenant_a = _make_tenant("xt-a")
+        tenant_b = _make_tenant("xt-b")
+        user_a = _make_user(tenant_a)
+        _grant_tenant_admin(user_a, tenant_a)
+        # Contract owned by tenant A.
+        c_a = _make_contract_with_field(tenant_a, name="own", field_name="x")
+        # Contract owned by tenant B (foreign).
+        c_b = _make_contract_with_field(tenant_b, name="foreign", field_name="x")
+
+        client = _client(user_a)
+        # User A tries to PATCH their own contract's lineage with an
+        # edge that references tenant B's contract.
+        body = {
+            "edges": [
+                {
+                    "source_contract": str(c_b.id),  # foreign tenant
+                    "source_model": "default", "source_field": "x",
+                    "target_contract": str(c_a.id),
+                    "target_model": "default", "target_field": "x",
+                    "edge_type": "reference",
+                },
+            ],
+        }
+        response = client.patch(
+            _url(c_a), data=body, format="json",
+            HTTP_IF_MATCH=_etag(c_a),
+        )
+        self.assertEqual(response.status_code, 400, response.content)
+        self.assertEqual(
+            response.json().get("code"), "CROSS_TENANT_EDGE_FORBIDDEN",
+        )
+
+
+class LineageEditIdempotencyTests(TestCase):
+    """Phase 228.F2.DoD.1 audit — REQ-LIN-F2-002 "Idempotent retry".
+
+    Same Idempotency-Key + same body must return the cached response
+    on retry without applying the patch a second time.
+    """
+
+    def test_idempotency_key_replay_returns_cached_no_double_apply(self):
+        from hub.apps.contracts.models import LineageEdge
+
+        tenant = _make_tenant("idem")
+        user = _make_user(tenant)
+        _grant_tenant_admin(user, tenant)
+        c_src = _make_contract_with_field(tenant, name="s", field_name="x")
+        c_tgt = _make_contract_with_field(tenant, name="t", field_name="x")
+
+        client = _client(user)
+        body = {
+            "edges": [
+                {
+                    "source_contract": str(c_src.id),
+                    "source_model": "default", "source_field": "x",
+                    "target_contract": str(c_tgt.id),
+                    "target_model": "default", "target_field": "x",
+                    "edge_type": "reference",
+                },
+            ],
+        }
+        idem_key = str(uuid.uuid4())
+
+        # First call lands the patch.
+        first = client.patch(
+            _url(c_tgt), data=body, format="json",
+            HTTP_IF_MATCH=_etag(c_tgt),
+            HTTP_IDEMPOTENCY_KEY=idem_key,
+        )
+        self.assertEqual(first.status_code, 200, first.content)
+        self.assertEqual(first.json()["added"], 1)
+
+        rows_after_first = LineageEdge.objects.filter(
+            target_contract_id=c_tgt.id, valid_to__isnull=True,
+        ).count()
+        self.assertEqual(rows_after_first, 1)
+
+        # Replay with the same key + same body.
+        c_tgt.refresh_from_db()
+        second = client.patch(
+            _url(c_tgt), data=body, format="json",
+            HTTP_IF_MATCH=_etag(c_tgt),
+            HTTP_IDEMPOTENCY_KEY=idem_key,
+        )
+        self.assertEqual(second.status_code, 200)
+        # The cached response is returned; the X-Idempotent-Replay
+        # header signals it (the view sets this).
+        self.assertEqual(second.get("X-Idempotent-Replay"), "true")
+        # Crucially: NO additional row.  If the second call had
+        # re-applied the patch, the SCD Type 2 close-and-reopen would
+        # have closed-and-reopened the edge — same open count but
+        # with a different row id and a closed historical row.
+        rows_after_second = LineageEdge.objects.filter(
+            target_contract_id=c_tgt.id, valid_to__isnull=True,
+        ).count()
+        self.assertEqual(rows_after_second, 1)
+        # No closed historical row from a re-apply (the only edge in
+        # the universe is the one we opened the first time).
+        self.assertEqual(
+            LineageEdge.objects.filter(
+                target_contract_id=c_tgt.id,
+            ).count(),
+            1,
+        )
+
+
+class IncludeFieldsDefaultBehaviourTests(TestCase):
+    """Phase 228.F2.DoD.1 audit — REQ-LIN-F2-001 "Field nodes excluded by default".
+
+    The visualization endpoint's ``?include_fields`` param defaults
+    to false; the response shape MUST stay backwards-compatible (no
+    ``field_nodes`` / ``field_links`` keys) for callers who don't
+    opt in.  Pre-fix nothing asserted this.
+    """
+
+    def test_default_include_fields_omits_field_keys(self):
+        tenant = _make_tenant("default-flag")
+        user = _make_user(tenant)
+        _grant_tenant_admin(user, tenant)
+        c = _make_contract_with_field(tenant, name="default-flag")
+        client = _client(user)
+        # No `include_fields` param.
+        response = client.get(
+            f"/api/v1/contracts/{c.id}/lineage/visualization/?format=json"
+        )
+        self.assertEqual(response.status_code, 200)
+        body = response.json()
+        # Default-false: keys must NOT appear.
+        self.assertNotIn(
+            "field_nodes", body,
+            msg="Default visualization must NOT carry field_nodes",
+        )
+        self.assertNotIn(
+            "field_links", body,
+            msg="Default visualization must NOT carry field_links",
+        )
+
+    def test_include_fields_true_adds_field_keys(self):
+        tenant = _make_tenant("flag-on")
+        user = _make_user(tenant)
+        _grant_tenant_admin(user, tenant)
+        c = _make_contract_with_field(tenant, name="flag-on")
+        client = _client(user)
+        response = client.get(
+            f"/api/v1/contracts/{c.id}/lineage/visualization/"
+            f"?format=json&include_fields=true"
+        )
+        self.assertEqual(response.status_code, 200)
+        body = response.json()
+        self.assertIn("field_nodes", body)
+        self.assertIn("field_links", body)
+        self.assertIsInstance(body["field_nodes"], list)
+        self.assertIsInstance(body["field_links"], list)
+
+
 class LineageEditAuditTests(TestCase):
 
     def test_one_audit_row_per_added_edge(self):

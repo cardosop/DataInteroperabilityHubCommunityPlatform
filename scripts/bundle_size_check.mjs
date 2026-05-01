@@ -95,6 +95,36 @@ async function main() {
   }
 
   const baseline = await loadBaseline();
+
+  // Phase 228.F2.DoD.6 audit fix — first-baseline guard.  The
+  // initial committed baseline is a 0-byte placeholder; without
+  // this guard the very first PR with the gate enabled would
+  // fail because `total - 0 > 30 KB`.  Treat any baseline below
+  // 1 KB as the placeholder (a real bundle has hundreds of KB
+  // gzipped) and skip the gate with a re-baseline instruction.
+  // Once a real baseline lands via `UPDATE_BASELINE=1`, this
+  // branch is permanently bypassed.
+  const FIRST_RUN_THRESHOLD_BYTES = 1024;
+  if (baseline.total_gzipped_bytes < FIRST_RUN_THRESHOLD_BYTES) {
+    console.warn(
+      `[bundle-size-check] WARN: baseline is ${baseline.total_gzipped_bytes} bytes ` +
+      `(below ${FIRST_RUN_THRESHOLD_BYTES} B first-run threshold). ` +
+      `Skipping the gate.  Re-baseline post-merge via:\n` +
+      `    UPDATE_BASELINE=1 node scripts/bundle_size_check.mjs`,
+    );
+    if (process.env.GITHUB_STEP_SUMMARY) {
+      await writeFile(
+        process.env.GITHUB_STEP_SUMMARY,
+        `## Phase 228.F2.30 — bundle-size delta\n\n` +
+        `**First run** — baseline placeholder is ${baseline.total_gzipped_bytes} bytes. ` +
+        `Current bundle is ${total} bytes. ` +
+        `Re-baseline post-merge to activate the gate.\n`,
+        { flag: 'a' },
+      );
+    }
+    return;
+  }
+
   const delta = total - baseline.total_gzipped_bytes;
 
   // Markdown summary for GITHUB_STEP_SUMMARY.

@@ -19,7 +19,7 @@ import type { HttpClient } from '../../../shared/types/api';
 import { type ReactNode } from 'react';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 vi.mock('../../../shared/api/client');
@@ -111,5 +111,93 @@ describe('LineageEditPage — a11y + render-state invariants', () => {
     expect(screen.getByRole('button', { name: /save changes/i })).toBeTruthy();
     expect(screen.getByRole('button', { name: /cancel/i })).toBeTruthy();
     expect(screen.getByRole('button', { name: /add edge/i })).toBeTruthy();
+  });
+
+  // F2.DoD.1-A5 — cycle error panel rendering on 400 LINEAGE_CYCLE.
+  it('renders the cycle error panel when save returns 400 LINEAGE_CYCLE', async () => {
+    vi.mocked(mock.get).mockImplementation((url: string) => {
+      if (url.includes('/lineage/visualization/')) {
+        return Promise.resolve({
+          data: { nodes: [], links: [], field_nodes: [], field_links: [] },
+        }) as never;
+      }
+      return Promise.resolve({
+        data: {
+          id: 'c1',
+          name: 'Test',
+          etag: 'W/"abc"',
+          hub_contract_json: {
+            models: [{ name: 'orders', fields: [{ name: 'id', data_type: 'string' }] }],
+          },
+        },
+      }) as never;
+    });
+    vi.mocked(mock.patch).mockRejectedValue({
+      response: {
+        status: 400,
+        data: {
+          code: 'LINEAGE_CYCLE',
+          details: {
+            code: 'LINEAGE_CYCLE',
+            edge: {
+              source_model: 'orders',
+              source_field: 'id',
+              target_model: 'orders',
+              target_field: 'id',
+            },
+          },
+        },
+      },
+    });
+
+    render(
+      <Wrapper>
+        <LineageEditPage />
+      </Wrapper>,
+    );
+    const saveBtn = await screen.findByRole('button', { name: /save changes/i });
+    fireEvent.click(saveBtn);
+
+    const panel = await screen.findByTestId('lineage-cycle-error');
+    expect(panel.getAttribute('role')).toBe('alert');
+  });
+
+  // F2.DoD.1-A6 — 412 conflict modal renders + draft is preserved.
+  it('renders the conflict modal on 412 with reload + discard CTAs', async () => {
+    vi.mocked(mock.get).mockImplementation((url: string) => {
+      if (url.includes('/lineage/visualization/')) {
+        return Promise.resolve({
+          data: { nodes: [], links: [], field_nodes: [], field_links: [] },
+        }) as never;
+      }
+      return Promise.resolve({
+        data: {
+          id: 'c1',
+          name: 'Test',
+          etag: 'W/"stale"',
+          hub_contract_json: {
+            models: [{ name: 'orders', fields: [{ name: 'id', data_type: 'string' }] }],
+          },
+        },
+      }) as never;
+    });
+    vi.mocked(mock.patch).mockRejectedValue({
+      response: { status: 412, data: { code: 'PRECONDITION_FAILED' } },
+    });
+
+    render(
+      <Wrapper>
+        <LineageEditPage />
+      </Wrapper>,
+    );
+    const saveBtn = await screen.findByRole('button', { name: /save changes/i });
+    fireEvent.click(saveBtn);
+
+    const dialog = await screen.findByTestId('lineage-conflict-modal');
+    expect(dialog.getAttribute('role')).toBe('dialog');
+    expect(dialog.getAttribute('aria-modal')).toBe('true');
+    // Draft-preservation CTAs both present (per F2.23 contract).
+    expect(screen.getByRole('button', { name: /reload and merge/i })).toBeTruthy();
+    expect(screen.getByRole('button', { name: /discard my changes/i })).toBeTruthy();
   });
 });
