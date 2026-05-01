@@ -345,8 +345,36 @@ export const contractService = {
     const search = new URLSearchParams();
     search.set('format', params.format ?? 'json');
     if (params.max_depth != null) search.set('max_depth', String(params.max_depth));
+    // Phase 228 F5 (228.F5.2) — surface the point-in-time knobs.
+    if (params.as_of) search.set('as_of', params.as_of);
+    if (params.version != null) search.set('version', String(params.version));
+    if (params.include_fields) search.set('include_fields', 'true');
     const url = `${CONTRACTS_BASE_PATH}/${id}/lineage/visualization/?${search.toString()}`;
     const response = await apiClient.getClient().get<ContractLineageVisualization>(url);
+    return response.data;
+  },
+
+  /**
+   * Phase 228 F5 (228.F5.3) — point-in-time lineage diff.
+   *
+   * GET /api/v1/contracts/{id}/lineage/diff/?from=&to=
+   *
+   * Anchors accept either ISO-8601 (`from=2026-04-30T00:00:00Z`) or
+   * version int (`from_version=3`). `to` defaults to NOW() server-side.
+   */
+  async getLineageDiff(
+    id: string,
+    params: import('../../../shared/types/lineage').ContractLineageDiffParams = {},
+  ): Promise<import('../../../shared/types/lineage').LineageDiff> {
+    const search = new URLSearchParams();
+    if (params.from) search.set('from', params.from);
+    if (params.to) search.set('to', params.to);
+    if (params.from_version != null) search.set('from_version', String(params.from_version));
+    if (params.to_version != null) search.set('to_version', String(params.to_version));
+    const url = `${CONTRACTS_BASE_PATH}/${id}/lineage/diff/?${search.toString()}`;
+    const response = await apiClient
+      .getClient()
+      .get<import('../../../shared/types/lineage').LineageDiff>(url);
     return response.data;
   },
 

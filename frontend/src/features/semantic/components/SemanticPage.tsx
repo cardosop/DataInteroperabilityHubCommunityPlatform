@@ -25,13 +25,22 @@ import { OntologyTree } from './OntologyTree';
 import { SPARQLResultTable } from './SPARQLResultTable';
 import './SemanticPage.css';
 
-type TabId = 'sparql' | 'uri-lookup' | 'ontology';
+type TabId = 'sparql' | 'uri-lookup' | 'ontology' | 'export';
 type OntologySubTab = 'turtle' | 'jsonld';
+type ExportFormat = 'n-triples' | 'turtle' | 'rdf-xml' | 'ld+json';
 
 const TABS: { id: TabId; label: string }[] = [
   { id: 'sparql', label: 'SPARQL Query' },
   { id: 'uri-lookup', label: 'URI Lookup' },
   { id: 'ontology', label: 'Ontology' },
+  { id: 'export', label: 'Export' },
+];
+
+const EXPORT_FORMATS: { value: ExportFormat; label: string; ext: string }[] = [
+  { value: 'n-triples', label: 'N-Triples', ext: 'nt' },
+  { value: 'turtle', label: 'Turtle', ext: 'ttl' },
+  { value: 'rdf-xml', label: 'RDF/XML', ext: 'rdf' },
+  { value: 'ld+json', label: 'JSON-LD', ext: 'jsonld' },
 ];
 
 const sparqlLang = StreamLanguage.define(sparql);
@@ -46,6 +55,11 @@ export function SemanticPage() {
   const [fieldName, setFieldName] = useState('');
   const [uriLookupType, setUriLookupType] = useState<'resource' | 'field'>('resource');
   const [ontologySubTab, setOntologySubTab] = useState<OntologySubTab>('turtle');
+  // Phase 230.2.10 — Export tab state.
+  const [exportFormat, setExportFormat] = useState<ExportFormat>('n-triples');
+  const [exportLoading, setExportLoading] = useState(false);
+  const [exportError, setExportError] = useState<string | null>(null);
+  const [exportSize, setExportSize] = useState<number | null>(null);
 
   const sparqlMutation = useSPARQLQuery();
   const uriQuery = useResolveURI(
@@ -72,6 +86,35 @@ export function SemanticPage() {
     } catch (err) {
       // Error handled by mutation
       console.error('SPARQL query failed:', err);
+    }
+  };
+
+  const handleExport = async () => {
+    setExportLoading(true);
+    setExportError(null);
+    setExportSize(null);
+    try {
+      const { semanticService } = await import('../services/semanticService');
+      const blob = await semanticService.exportRdf(exportFormat);
+      setExportSize(blob.size);
+      // Trigger browser download via an in-memory <a download> click.
+      const fmt = EXPORT_FORMATS.find((f) => f.value === exportFormat);
+      const ext = fmt ? fmt.ext : 'rdf';
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `semantic-export.${ext}`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      // Surface a structured error message — 413 (cap exceeded) and
+      // 429 (throttle) include guidance the user can act on.
+      const message = err instanceof Error ? err.message : 'Export failed';
+      setExportError(message);
+    } finally {
+      setExportLoading(false);
     }
   };
 
@@ -379,6 +422,65 @@ export function SemanticPage() {
                   </div>
                 )}
               </>
+            )}
+          </section>
+        )}
+
+        {activeTab === 'export' && (
+          <section
+            className="semantic-section"
+            data-testid="semantic-export-section"
+          >
+            <h2>Bulk RDF Export</h2>
+            <p className="semantic-export-help">
+              Export your tenant&rsquo;s entire semantic graph in the
+              requested RDF serialization. Throttled to 5 requests / 5
+              minutes / user. Hard cap 100 million triples — above this,
+              use <code>SPARQL pagination</code> via the SPARQL Query tab.
+            </p>
+            <div className="form-group">
+              <label htmlFor="export-format">Format</label>
+              <select
+                id="export-format"
+                data-testid="semantic-export-format"
+                value={exportFormat}
+                onChange={(e) => setExportFormat(e.target.value as ExportFormat)}
+                disabled={exportLoading}
+              >
+                {EXPORT_FORMATS.map((f) => (
+                  <option key={f.value} value={f.value}>
+                    {f.label}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <button
+              type="button"
+              data-testid="semantic-export-download"
+              onClick={handleExport}
+              disabled={exportLoading}
+              aria-busy={exportLoading ? 'true' : 'false'}
+            >
+              {exportLoading ? 'Exporting…' : 'Download'}
+            </button>
+            {exportError && (
+              <p
+                role="alert"
+                data-testid="semantic-export-error"
+                className="semantic-export-error"
+              >
+                {exportError}
+              </p>
+            )}
+            {exportSize != null && (
+              <p
+                data-testid="semantic-export-size"
+                className="semantic-export-size"
+                role="status"
+                aria-live="polite"
+              >
+                Last export: {(exportSize / 1024).toFixed(1)} KB
+              </p>
             )}
           </section>
         )}

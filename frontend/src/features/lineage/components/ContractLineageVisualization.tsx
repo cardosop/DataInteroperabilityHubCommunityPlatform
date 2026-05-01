@@ -8,11 +8,16 @@
 
 import { useState, useCallback, useMemo } from 'react';
 import { MarkerType, type Node, type Edge } from '@xyflow/react';
-import { useContractLineageVisualization } from '../../contracts/hooks/useContracts';
+import {
+  useContractLineageVisualization,
+  useContractLineageDiff,
+} from '../../contracts/hooks/useContracts';
 import { EmptyState } from '../../../shared/components/EmptyState';
 import { GraphCanvas } from '../../../shared/components/GraphCanvas';
 import { useDagreLayout } from '../../../shared/hooks/useDagreLayout';
 import { ContractNode } from './nodes/ContractNode';
+import { LineageTimeTravelControls } from './LineageTimeTravelControls';
+import { LineageDiffView } from './LineageDiffView';
 import styles from './ContractLineageVisualization.module.css';
 
 const nodeTypes = { contractNode: ContractNode };
@@ -20,17 +25,46 @@ const nodeTypes = { contractNode: ContractNode };
 interface ContractLineageVisualizationProps {
   contractId: string;
   maxDepth?: number;
+  /**
+   * Phase 228 F5 (228.F5.15) — pre-fetched version list. When omitted
+   * the time-travel controls render with no version dropdown (the
+   * date picker still works). Consumers wire this through their own
+   * version-history hook.
+   */
+  availableVersions?: Array<{ version: number; label?: string }>;
 }
 
 export function ContractLineageVisualization({
   contractId,
   maxDepth = 10,
+  availableVersions = [],
 }: ContractLineageVisualizationProps) {
   const [localMaxDepth, setLocalMaxDepth] = useState(maxDepth);
+  // Phase 228 F5 (228.F5.15) — point-in-time anchor.
+  const [asOf, setAsOf] = useState<string | null>(null);
+  const [version, setVersion] = useState<number | null>(null);
+  // Phase 228 F5 (228.F5.13 + GAP-A5) — diff mode. When ON, the
+  // visualization area swaps from the graph canvas to the
+  // LineageDiffView, which renders {added/removed/changed/unchanged}
+  // between the time-travel anchor and now.
+  const [diffMode, setDiffMode] = useState(false);
+
   const { data: lineage, isLoading, error, refetch } = useContractLineageVisualization(
     contractId,
-    { format: 'json', max_depth: localMaxDepth },
+    {
+      format: 'json',
+      max_depth: localMaxDepth,
+      ...(asOf ? { as_of: asOf } : {}),
+      ...(version != null ? { version } : {}),
+    },
   );
+
+  // Phase 228 F5 (228.F5.13 + 228.F5.14) — when diff mode is ON and an
+  // anchor is selected, fetch the diff between the anchor and now.
+  const diffQuery = useContractLineageDiff(diffMode ? contractId : null, {
+    ...(asOf ? { from: asOf } : {}),
+    ...(version != null ? { from_version: version } : {}),
+  });
 
   const handleDepthChange = useCallback(
     (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -92,6 +126,51 @@ export function ContractLineageVisualization({
 
   return (
     <div className={styles.wrapper}>
+      {/* Phase 228 F5 (228.F5.15) — time-travel controls above graph. */}
+      <LineageTimeTravelControls
+        asOf={asOf}
+        version={version}
+        availableVersions={availableVersions}
+        onApply={({ asOf: nextAsOf, version: nextVersion }) => {
+          setAsOf(nextAsOf);
+          setVersion(nextVersion);
+        }}
+        onReset={() => {
+          setAsOf(null);
+          setVersion(null);
+          setDiffMode(false);
+        }}
+      />
+
+      {/* Phase 228 F5 (228.F5.13 + GAP-A5) — diff mode toggle. Visible
+          only when an anchor is set; otherwise the toggle is a no-op. */}
+      {(asOf || version != null) && (
+        <div className={styles.diffModeRow}>
+          <label
+            htmlFor="lineage-diff-mode-toggle"
+            className={styles.diffModeLabel}
+          >
+            <input
+              id="lineage-diff-mode-toggle"
+              data-testid="lineage-diff-mode-toggle"
+              type="checkbox"
+              checked={diffMode}
+              onChange={(e) => setDiffMode(e.target.checked)}
+              className={styles.diffModeCheckbox}
+            />
+            Show diff vs. live
+          </label>
+        </div>
+      )}
+
+      {diffMode ? (
+        <LineageDiffView
+          diff={diffQuery.data ?? null}
+          isLoading={diffQuery.isLoading}
+          error={(diffQuery.error as Error | null) ?? null}
+        />
+      ) : (
+      <>
       <div className={styles.header}>
         <h3>Lineage</h3>
         <div className={styles.controls}>
@@ -137,6 +216,8 @@ export function ContractLineageVisualization({
           error={error ?? undefined}
           onRetry={() => refetch()}
         />
+      )}
+      </>
       )}
     </div>
   );

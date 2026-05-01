@@ -315,3 +315,50 @@ export function useContractLineageVisualization(
     enabled: !!contractId,
   });
 }
+
+/**
+ * Phase 228 F5 (228.F5.14) — point-in-time lineage hook.
+ *
+ * Drives the time-travel UI: caller passes either `as_of` (ISO-8601)
+ * or `version` (int) and the hook re-issues the visualization request
+ * at that anchor. The query key includes both knobs so React Query
+ * caches each (contractId, as_of, version) combination separately.
+ */
+export function useContractLineageAsOf(
+  contractId: string | null,
+  asOf: string | null,
+  version: number | null,
+  extraParams: Omit<
+    ContractLineageVisualizationParams,
+    'as_of' | 'version'
+  > = {},
+) {
+  const params: ContractLineageVisualizationParams = {
+    ...extraParams,
+    ...(asOf ? { as_of: asOf } : {}),
+    ...(version != null ? { version } : {}),
+  };
+  return useQuery({
+    queryKey: ['contracts', 'lineage', 'as_of', contractId, asOf, version, extraParams],
+    queryFn: () => contractService.getLineageVisualization(contractId!, params),
+    enabled: !!contractId && (!!asOf || version != null),
+  });
+}
+
+/**
+ * Phase 228 F5 (228.F5.14) — diff between two points in time.
+ *
+ * GET /api/v1/contracts/{id}/lineage/diff/?from=&to=
+ */
+export function useContractLineageDiff(
+  contractId: string | null,
+  params: import('../../../shared/types/lineage').ContractLineageDiffParams = {},
+) {
+  const hasAnchor =
+    !!params.from || !!params.to || params.from_version != null || params.to_version != null;
+  return useQuery({
+    queryKey: ['contracts', 'lineage', 'diff', contractId, params],
+    queryFn: () => contractService.getLineageDiff(contractId!, params),
+    enabled: !!contractId && hasAnchor,
+  });
+}

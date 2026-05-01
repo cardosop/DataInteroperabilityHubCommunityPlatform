@@ -27,6 +27,74 @@ export interface ContractLineageVisualization {
 export interface ContractLineageVisualizationParams {
   format?: 'json' | 'dot' | 'mermaid';
   max_depth?: number;
+  // Phase 228 F5 (228.F5.2) — point-in-time controls.
+  /** ISO-8601 timestamp; renders the lineage graph at that historical state. */
+  as_of?: string;
+  /** Contract version int; resolves to that contract's `created_at` cutoff. */
+  version?: number;
+  /** Phase 228.F2 (228.F2.3) field-level node expansion (existing flag). */
+  include_fields?: boolean;
+}
+
+// ---------------------------------------------------------------------------
+// Phase 228 F5 (228.F5.3) — diff endpoint types.
+// ---------------------------------------------------------------------------
+
+export interface LineageDiffSummary {
+  added: number;
+  removed: number;
+  /**
+   * Always 0 per REQ-LIN-F5-002 (SCD-2 close-and-reopen).
+   * Field kept on the type for forward-compatible clients.
+   */
+  modified: number;
+  unchanged: number;
+}
+
+export interface LineageDiffEdge {
+  id?: string;
+  source_contract: string | null;
+  target_contract: string | null;
+  source_model?: string;
+  source_field?: string;
+  target_model?: string;
+  target_field?: string;
+  edge_type: string;
+  transformation_ref?: string;
+  job_ref?: string;
+  valid_from?: string;
+  valid_to?: string | null;
+}
+
+export interface LineageDiffAnchor {
+  timestamp: string;
+  source: 'timestamp' | 'version' | 'now';
+}
+
+export interface LineageDiff {
+  added: LineageDiffEdge[];
+  removed: LineageDiffEdge[];
+  /**
+   * Always `[]` per REQ-LIN-F5-002 — SCD-2 represents modifications
+   * as close-and-reopen, so a "modified" edge surfaces as one
+   * removed + one added.
+   */
+  modified: LineageDiffEdge[];
+  unchanged: LineageDiffEdge[];
+  summary: LineageDiffSummary;
+  from: LineageDiffAnchor;
+  to: LineageDiffAnchor;
+}
+
+export interface ContractLineageDiffParams {
+  /** ISO-8601 timestamp for the older anchor. */
+  from?: string;
+  /** ISO-8601 timestamp for the newer anchor; defaults to now. */
+  to?: string;
+  /** Contract version int → resolves to its `created_at`. */
+  from_version?: number;
+  /** Contract version int → resolves to its `created_at`. */
+  to_version?: number;
 }
 
 // ---------------------------------------------------------------------------

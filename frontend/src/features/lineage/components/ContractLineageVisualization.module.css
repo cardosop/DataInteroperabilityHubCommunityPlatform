@@ -38,3 +38,19 @@
   font-size: var(--font-size-sm, 0.875rem);
   color: var(--color-text-secondary, #666);
 }
+
+/* Phase 228 F5 (228.F5.13 + GAP-A5) — diff mode toggle row. */
+.diffModeRow {
+  padding: var(--spacing-sm, 0.5rem) 0;
+  display: flex;
+  gap: var(--spacing-sm, 0.5rem);
+  align-items: center;
+}
+
+.diffModeLabel {
+  font-size: var(--font-size-sm, 0.9rem);
+}
+
+.diffModeCheckbox {
+  margin-right: var(--spacing-xs, 0.4rem);
+}
