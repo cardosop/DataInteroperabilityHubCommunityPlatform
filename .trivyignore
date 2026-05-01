@@ -382,3 +382,27 @@ CVE-2026-31586
 #     terminates at the ingress/ALB, not inside libgcrypt.
 # Review by: 2026-05-25 — drop once Debian backports a fix to bookworm.
 CVE-2026-41989
+
+# Added: 2026-05-01 (api-service trivy gate — run 25215869605)
+# CVE-2026-4878 — libcap: Privilege escalation via TOCTOU race condition.
+# Affects libcap2 1:2.75-10+b8 in the Debian 13.4 ("Trixie") base image.
+# Status=affected, no Debian fix published yet (empty Fixed Version column
+# in Trivy table).
+#
+# Impact: Low for api-service.
+#   - libcap2 is the userspace POSIX capabilities library, pulled in
+#     transitively by base-image components (systemd-helpers, login,
+#     util-linux, etc.). The api-service Python/Django code does not
+#     call into libcap directly (`grep -r libcap services/api/` finds
+#     zero usage).
+#   - The CVE is a Time-Of-Check-Time-Of-Use race on capability-aware
+#     setuid/setcap binaries. Exploitation requires (a) shell access
+#     inside the container, (b) a target setcap'd binary, (c) winning
+#     the race window. The api-service container runs as a non-root
+#     user with no setcap'd binaries in the application path; the
+#     attack surface that the CVE describes is not reachable from
+#     within the running container's normal execution.
+#   - Containers will pick up the patch automatically when Debian
+#     publishes a fixed libcap2 to bookworm-security / trixie.
+# Review by: 2026-05-31.
+CVE-2026-4878
