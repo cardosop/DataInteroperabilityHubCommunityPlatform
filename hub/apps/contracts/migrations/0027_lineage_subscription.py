@@ -88,7 +88,7 @@ class Migration(migrations.Migration):
         migrations.AddConstraint(
             model_name="lineagesubscription",
             constraint=models.CheckConstraint(
-                check=(
+                condition=(
                     models.Q(source_contract__isnull=False, source_asset__isnull=True)
                     | models.Q(source_contract__isnull=True, source_asset__isnull=False)
                 ),

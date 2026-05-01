@@ -167,19 +167,44 @@ def _set_serializable_isolation() -> None:
 
     Works on Postgres (the project's production backend).  No-op on
     SQLite (test fallback) so the function-level tests still run.
+
+    Phase 228.F3.test-execution audit fix: the original implementation
+    issued ``SET TRANSACTION ISOLATION LEVEL`` and swallowed exceptions
+    on failure.  In Postgres, a failed statement aborts the surrounding
+    transaction — every subsequent statement raises
+    ``InFailedSqlTransaction`` until ROLLBACK.  When middleware /
+    pytest-django wrappers cause prior queries on the connection, the
+    SET fails (Postgres rule: SET ISOLATION must precede the first
+    query) and poisons the request transaction even though we caught
+    the exception.
+
+    Fix: bracket the SET in a SAVEPOINT so a rejected SET is rolled
+    back without dirtying the surrounding atomic block.  When the SET
+    can't be applied (nested/mid-transaction), the patch proceeds at
+    READ COMMITTED — the ETag (If-Match) check is the primary
+    concurrency defence; SERIALIZABLE is defence-in-depth for the
+    deferred concurrency-property test (F2.DoD.1-A4).
     """
     from django.db import connection
 
+    if connection.vendor != "postgresql":
+        return
+    sid = None
     try:
-        if connection.vendor == "postgresql":
-            with connection.cursor() as cursor:
-                cursor.execute(
-                    "SET TRANSACTION ISOLATION LEVEL SERIALIZABLE"
-                )
-    except Exception as exc:  # pragma: no cover — defensive
+        sid = connection.savepoint()
+        with connection.cursor() as cursor:
+            cursor.execute("SET TRANSACTION ISOLATION LEVEL SERIALIZABLE")
+        connection.savepoint_commit(sid)
+    except Exception as exc:
+        if sid is not None:
+            try:
+                connection.savepoint_rollback(sid)
+            except Exception:  # pragma: no cover — defensive
+                pass
         logger.warning(
-            "lineage_edit.serializable_set_failed: %s — "
-            "tx falls back to default isolation",
+            "lineage_edit.serializable_set_skipped: %s — "
+            "tx runs at default isolation (ETag concurrency check is "
+            "primary defence)",
             exc,
         )
 

@@ -477,9 +477,14 @@ class LineageEditIdempotencyTests(TestCase):
             HTTP_IDEMPOTENCY_KEY=idem_key,
         )
         self.assertEqual(second.status_code, 200)
-        # The cached response is returned; the X-Idempotent-Replay
-        # header signals it (the view sets this).
-        self.assertEqual(second.get("X-Idempotent-Replay"), "true")
+        # The cached response is returned; the project's
+        # IdempotencyMiddleware (hub/apps/api/middleware/idempotency.py)
+        # sets ``Idempotency-Replayed: true`` to signal a replay.
+        # Phase 228.F3.test-execution audit fix — test was previously
+        # asserting the wrong header name (the view sets a redundant
+        # ``X-Idempotent-Replay`` but the middleware short-circuits
+        # before the view runs, so only the middleware header lands).
+        self.assertEqual(second.get("Idempotency-Replayed"), "true")
         # Crucially: NO additional row.  If the second call had
         # re-applied the patch, the SCD Type 2 close-and-reopen would
         # have closed-and-reopened the edge — same open count but

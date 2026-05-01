@@ -34,8 +34,9 @@ from rest_framework import permissions, status, viewsets
 from rest_framework.exceptions import PermissionDenied
 from rest_framework.response import Response
 
+from rest_framework.pagination import CursorPagination
+
 from hub.apps.api.capabilities import is_capability_enabled
-from hub.apps.api.standards.pagination import StandardCursorPagination
 from hub.apps.contracts.lineage_subscription_serializers import (
     LineageSubscriptionPatchSerializer,
     LineageSubscriptionSerializer,
@@ -46,38 +47,51 @@ from hub.apps.contracts.models import Contract, LineageSubscription
 PER_USER_SUBSCRIPTION_CAP = 100
 
 
-class LineageSubscriptionPagination(StandardCursorPagination):
-    """REQ-LIN-F3-003 spec uses ``?limit=`` for the page-size query
-    param: ``GET /api/v1/lineage/subscriptions/?cursor=<>&limit=50``.
+class LineageSubscriptionPagination(CursorPagination):
+    """REQ-LIN-F3-003 cursor pagination.
 
-    The shared ``StandardCursorPagination`` exposes ``page_size``;
-    this subclass widens the accepted name to BOTH ``limit`` and
-    ``page_size``.  ``limit`` wins when both are sent (spec is the
-    primary contract); ``page_size`` is preserved for the rest of
-    the codebase that uses it.
+    Inherits DRF's ``CursorPagination`` directly (NOT the project's
+    ``StandardCursorPagination`` whose ``decode_cursor`` override has
+    an incompatible signature with the parent and silently returns
+    a fresh-request cursor on every call — pre-existing bug across
+    the rest of the project; unrelated to F3 but caught when the F3
+    spec scenario "Cursor pagination 75 subscriptions" was pinned).
+
+    Adapts to the spec's wire contract:
+      * Page-size query param: ``?limit=N`` (spec) with ``?page_size=N``
+        as a backward-compat alias for the rest of the codebase.
+      * Response keys: ``next_cursor`` / ``previous_cursor`` (NOT
+        DRF's default ``next`` / ``previous``).
     """
 
+    page_size = 50
+    max_page_size = 100
     page_size_query_param = "limit"
+    cursor_query_param = "cursor"
+    ordering = "-created_at"
 
     def get_page_size(self, request):  # type: ignore[override]
-        # Accept either "limit" (spec) or "page_size" (project default).
-        # DRF's CursorPagination.get_page_size reads from
-        # ``self.page_size_query_param`` only; we add a fallback.
-        try:
-            from rest_framework.settings import api_settings
-            from rest_framework.pagination import _positive_int
+        # Accept either "limit" (spec) or "page_size" (alias).
+        from rest_framework.pagination import _positive_int
 
-            for param in ("limit", "page_size"):
-                if param in request.query_params:
-                    raw = request.query_params[param]
+        for param in ("limit", "page_size"):
+            raw = request.query_params.get(param)
+            if raw is not None:
+                try:
                     return _positive_int(
-                        raw,
-                        strict=True,
-                        cutoff=self.max_page_size,
+                        raw, strict=True, cutoff=self.max_page_size,
                     )
-        except (KeyError, ValueError):
-            pass
+                except (KeyError, ValueError):
+                    pass
         return self.page_size
+
+    def get_paginated_response(self, data):
+        return Response({
+            "next_cursor": self.get_next_link(),
+            "previous_cursor": self.get_previous_link(),
+            "page_size": self.get_page_size(self.request),
+            "results": data,
+        })
 
 
 class LineageSubscriptionViewSet(viewsets.ModelViewSet):

@@ -367,9 +367,20 @@ class LineageSubscriptionListTests(TestCase):
         self.assertEqual(len(first_body["results"]), 50)
         self.assertIsNotNone(first_body["next_cursor"])
 
-        # The next_cursor returned by StandardCursorPagination is a
-        # full URL — the test client accepts it via .get().
-        second = _client(user).get(first_body["next_cursor"])
+        # ``next_cursor`` shape varies — DRF's CursorPagination returns
+        # the full URL via ``request.build_absolute_uri``; some
+        # configurations strip the host / scheme leaving just the
+        # cursor value.  Normalise both shapes by extracting the
+        # cursor=<value> query param when present, otherwise treat
+        # the whole string as the cursor value.
+        from urllib.parse import parse_qs, quote, urlparse
+        ncv = first_body["next_cursor"]
+        parsed = urlparse(ncv)
+        if parsed.query and "cursor=" in parsed.query:
+            cursor_val = parse_qs(parsed.query).get("cursor", [""])[0]
+        else:
+            cursor_val = ncv  # bare cursor value, no URL wrapping
+        second = _client(user).get(f"{URL}?cursor={quote(cursor_val)}")
         self.assertEqual(second.status_code, 200, second.content)
         second_body = second.json()
         self.assertEqual(len(second_body["results"]), 25)

@@ -1112,7 +1112,7 @@ class LineageSubscription(models.Model):
             # consistency holds even on direct DB writes.
             models.CheckConstraint(
                 name="lineage_sub_xor_source",
-                check=(
+                condition=(
                     models.Q(source_contract__isnull=False, source_asset__isnull=True)
                     | models.Q(source_contract__isnull=True, source_asset__isnull=False)
                 ),

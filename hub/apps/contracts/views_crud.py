@@ -939,8 +939,36 @@ class ContractCRUDMixin:
             errs = serializer.errors
             # Surface the typed PAYLOAD_TOO_LARGE code as 413 instead
             # of the default 400 — the REQ-LIN-F2-002 contract.
+            #
+            # Phase 228.F3.test-execution audit fix — DRF surfaces
+            # ``raise ValidationError({"detail":..,"code":..})`` from
+            # ``validate_edges`` as ``errors["edges"] = {"detail": [...],
+            # "code": [...]}`` (a dict-of-lists), NOT as the
+            # list-of-dicts the previous check expected.  Accept BOTH
+            # shapes so the 413 path fires regardless of which DRF
+            # internal representation is used.
             edges_err = errs.get("edges")
-            if (
+            payload_too_large = False
+            if isinstance(edges_err, dict):
+                code_val = edges_err.get("code")
+                # ``code_val`` may be ``ErrorDetail("PAYLOAD_TOO_LARGE")``
+                # (DRF wraps strings as ErrorDetail) or a list of them.
+                if isinstance(code_val, list) and code_val:
+                    code_val = code_val[0]
+                payload_too_large = str(code_val) == "PAYLOAD_TOO_LARGE"
+                if payload_too_large:
+                    return Response(
+                        {
+                            "code": "PAYLOAD_TOO_LARGE",
+                            "detail": str(
+                                edges_err.get("detail", ["Payload too large"])[0]
+                                if isinstance(edges_err.get("detail"), list)
+                                else edges_err.get("detail", "Payload too large")
+                            ),
+                        },
+                        status=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+                    )
+            elif (
                 isinstance(edges_err, list)
                 and edges_err
                 and isinstance(edges_err[0], dict)
@@ -1034,8 +1062,18 @@ class ContractCRUDMixin:
                     response_status=200,
                     response_body=result,
                 )
-            except Exception:  # pragma: no cover — best-effort
-                pass
+            except Exception as _idem_exc:
+                # Best-effort: log so a hidden serialization failure
+                # surfaces (rather than silently breaking the replay
+                # contract).  REQ-LIN-F2-002 mandates idempotent retry;
+                # a swallowed exception here means the replay path
+                # ships dark.  Phase 228.F3.test-execution audit fix
+                # — was previously ``pass`` which masked the bug.
+                import logging as _logging
+                _logging.getLogger(__name__).warning(
+                    "lineage_edit.idempotency_store_failed: %s",
+                    _idem_exc,
+                )
 
         # ETag of the post-patch contract — the client uses this on
         # the next round-trip's If-Match.
