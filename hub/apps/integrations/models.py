@@ -862,3 +862,12 @@ class ScheduledMarketplaceSync(models.Model):
         self.next_run_at = self._calculate_next_run_at()
         self.save(update_fields=['last_run_at', 'last_sync_job_id', 'next_run_at', 'updated_at'])
 
+
+# Phase 228 F4 (228.F4.6) — re-export OpenLineage models so Django's
+# app-loader picks them up. The models themselves live in the
+# ``openlineage`` sub-package for namespacing; this re-export is the
+# canonical pattern for sub-package models in a single app.
+from hub.apps.integrations.openlineage.models import (  # noqa: E402, F401
+    OpenLineageDeadLetter,
+    OpenLineageIngestApiKey,
+)
