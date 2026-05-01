@@ -272,3 +272,45 @@ def _connect_lineage_pre_save():
 
 
 _connect_lineage_pre_save()
+
+
+# ---------------------------------------------------------------------------
+# Phase 230.3.6 (REQ-SEM-TOMBSTONE-001) — Contract delete → semantic tombstone
+# ---------------------------------------------------------------------------
+#
+# Contract has hard CASCADE semantics — there's no soft-delete shim,
+# so we hook ``post_delete`` directly.  Dispatches the canonical
+# ``tombstone_resource`` path: mark TOMBSTONED + purge Fuseki +
+# emit audit.
+
+from django.db.models.signals import post_delete  # noqa: E402
+
+
+@receiver(post_delete, sender="contracts.Contract")
+def fire_contract_tombstone_on_delete(sender, instance, **kwargs):
+    """Fire the canonical tombstone path on Contract deletion.
+
+    Runs inside ``transaction.on_commit`` so a rolled-back delete
+    does NOT produce a phantom tombstone — the spec mandates the DB
+    transition is the canonical signal; we honour it.
+    """
+    contract_id = instance.pk
+
+    def _dispatch():
+        try:
+            from hub.apps.semantic.tombstone import (
+                REASON_CONTRACT_DELETED, tombstone_resource,
+            )
+            tombstone_resource(
+                resource_type="CONTRACT",
+                resource_id=contract_id,
+                reason=REASON_CONTRACT_DELETED,
+            )
+        except Exception as exc:
+            logger.warning(
+                "contract_tombstone_dispatch_failed "
+                "contract_id=%s error=%s",
+                contract_id, exc,
+            )
+
+    transaction.on_commit(_dispatch)
