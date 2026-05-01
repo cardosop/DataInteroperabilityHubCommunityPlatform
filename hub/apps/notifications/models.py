@@ -250,6 +250,11 @@ class NotificationCategory(models.TextChoices):
     JOBS = "JOBS", "Jobs"
     CONTRACTS = "CONTRACTS", "Contracts"
     SYSTEM = "SYSTEM", "System"
+    # Phase 228.F3.5 (REQ-LIN-F3-006) — lineage-driven change-impact
+    # notifications.  Emitted by ``LineageImpactDispatcher`` when a
+    # contract's lineage changes and at least one downstream subscriber
+    # crosses their severity threshold.
+    LINEAGE_IMPACT = "LINEAGE_IMPACT", "Lineage Impact"
 
 
 class UserNotification(models.Model):

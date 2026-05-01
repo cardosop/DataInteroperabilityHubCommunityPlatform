@@ -7,6 +7,7 @@ from .views import (
     SwaggerUIView,
     api_info,
     api_not_found,
+    capabilities_view,
     ensure_e2e_invitation_token,
     ensure_e2e_subscription,
     ensure_e2e_tenant_switch_setup,
@@ -23,6 +24,8 @@ from .mailhog_proxy_views import mailhog_message_detail, mailhog_messages_list
 # by MvpModeApiGateMiddleware and omitted from OpenAPI via postprocess_drop_mvp_gated_paths.
 urlpatterns = [
     path("", api_info, name="api-info"),
+    # Phase 228 (REQ-LIN-006, 228.0.18) — capability discovery.
+    path("capabilities/", capabilities_view, name="capabilities"),
     path("openapi.json", OpenAPISchemaView.as_view(), name="openapi-schema-v1"),
     path("openapi.yaml", OpenAPIYAMLView.as_view(), name="openapi-schema-yaml"),
     path("auth/", include("hub.apps.auth.urls")),
@@ -54,6 +57,20 @@ urlpatterns = [
     path("mesh/", include("hub.apps.mesh.urls")),
     path("virtualization/", include("hub.apps.virtualization.urls")),
     path("integrations/", include("hub.apps.integrations.urls")),
+    # Phase 228 F4 (228.F4.7) — OpenLineage standard integration.
+    # Capability-flag-gated: returns 404 unless ``lineage.openlineage_export``
+    # is enabled (see ``capabilities.py`` defaults).
+    path(
+        "lineage/openlineage/",
+        include("hub.apps.integrations.openlineage.urls"),
+    ),
+    # Phase 228.F3.6 (REQ-LIN-F3-003) — lineage subscription CRUD.
+    # Capability-flag-gated by ``lineage.change_notifications`` —
+    # ViewSet returns 404 when the flag is off.
+    path(
+        "lineage/subscriptions/",
+        include("hub.apps.contracts.lineage_subscription_urls"),
+    ),
     path("baas/", include("hub.apps.baas.urls")),
     path("ml/", include("hub.apps.ml.urls")),
     path("billing/", include("hub.apps.billing.urls")),
@@ -107,7 +124,7 @@ urlpatterns = [
         name="mailhog-detail-slash",
     ),
     re_path(
-        r"^(?!auth/|tenants/|users/|audit/|files/|datasets/|jobs/|contracts/|assets/|dq/|compliance/|semantic/|marketplace/|scheduled-ingestions/|scheduled-exports/|search/|developer/|webhooks/|events/|mesh/|virtualization/|integrations/|baas/|ml/|billing/|platform/|versioning/|workflows/|transformation/|notifications/|governance/|test/).*$",
+        r"^(?!auth/|tenants/|users/|audit/|files/|datasets/|jobs/|contracts/|assets/|dq/|compliance/|semantic/|marketplace/|scheduled-ingestions/|scheduled-exports/|search/|developer/|webhooks/|events/|mesh/|virtualization/|integrations/|baas/|ml/|billing/|platform/|versioning/|workflows/|transformation/|notifications/|governance/|test/|lineage/).*$",
         api_not_found,
         name="api-not-found",
     ),

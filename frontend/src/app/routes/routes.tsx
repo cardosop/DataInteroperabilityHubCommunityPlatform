@@ -112,6 +112,12 @@ const TenantSettingsPage = lazy(() =>
     default: m.TenantSettingsPage,
   }))
 );
+// Phase 228.F3.14 — Lineage subscriptions management page.
+const LineageSubscriptionsPage = lazy(() =>
+  import('../../features/contracts/components/LineageSubscriptionsPage').then((m) => ({
+    default: m.LineageSubscriptionsPage,
+  }))
+);
 const BaaSPage = lazy(() =>
   import('../../features/baas/components/BaaSPage').then((m) => ({ default: m.BaaSPage }))
 );
@@ -1458,6 +1464,19 @@ export const appRoutes: Parameters<typeof createBrowserRouter>[0] = [
             element: (
               <EB fallbackMsg="Loading privacy...">
                 <PrivacyPage />
+              </EB>
+            ),
+          },
+          {
+            // Phase 228.F3.14 (REQ-LIN-F3-006) — lineage-impact
+            // subscriptions management.  Capability-gate happens
+            // inside the page component so the route is reachable
+            // even when the flag is off (for the "feature unavailable"
+            // empty state).
+            path: 'subscriptions',
+            element: (
+              <EB fallbackMsg="Loading lineage subscriptions...">
+                <LineageSubscriptionsPage />
               </EB>
             ),
           },

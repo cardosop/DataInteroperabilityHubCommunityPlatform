@@ -752,3 +752,393 @@ class SecurityIncident(models.Model):
         if resolution_notes:
             self.resolution_notes = resolution_notes
         self.save()
+
+
+class LineageEdgeType(models.TextChoices):
+    """Phase 228 (REQ-LIN-001) — edge-type taxonomy.
+
+    The five values map to the lineage operations Meshant tracks:
+
+    * ``upload`` — raw data upload landed an asset.
+    * ``transformation`` — a transformation job (DBT, Spark, custom)
+      produced a target field from one or more source fields.
+    * ``derivation`` — a contract-time derivation rule (a SQL expression
+      stored on the contract) maps source → target.
+    * ``export`` — a target consumer (data product, marketplace listing,
+      external system) reads from the source.
+    * ``reference`` — a contract declares an upstream reference without a
+      transformation rule (the default for contract-to-contract lineage).
+    """
+
+    UPLOAD = "upload", "Upload"
+    TRANSFORMATION = "transformation", "Transformation"
+    DERIVATION = "derivation", "Derivation"
+    EXPORT = "export", "Export"
+    REFERENCE = "reference", "Reference"
+
+
+class LineageEdge(models.Model):
+    """Phase 228 (REQ-LIN-001) — derived lineage-edge index.
+
+    Canonical write source is ``Contract.hub_contract_json.lineage``;
+    this table is maintained by the ``post_save`` signal handler in
+    :mod:`hub.apps.contracts.lineage_sync` (REQ-LIN-002). Application
+    writers SHOULD NOT update this table directly outside the sync
+    handler or the ``backfill_lineage_edges`` management command —
+    direct writes risk drift from the JSONB source of truth.
+
+    The model implements SCD Type 2 versioning (ADR-LIN-002) via the
+    ``valid_from`` / ``valid_to`` columns. An edge is "current" when
+    ``valid_to IS NULL``. Updates close the prior open row and insert
+    a new one, preserving the audit trail.
+
+    Time-travel queries SHALL use:
+
+    .. code-block:: sql
+
+        WHERE valid_from <= :as_of
+          AND (valid_to IS NULL OR valid_to > :as_of)
+
+    See REQ-LIN-004 + the ``LineageService.<method>(as_of=...)``
+    parameter for the production read-path.
+    """
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    tenant = models.ForeignKey(
+        "tenants.Tenant",
+        on_delete=models.CASCADE,
+        related_name="lineage_edges",
+        db_index=True,
+        help_text="Tenant owning the edge (cascade deletes the row).",
+    )
+    source_contract = models.ForeignKey(
+        "contracts.Contract",
+        on_delete=models.SET_NULL,
+        related_name="outgoing_lineage_edges",
+        null=True,
+        blank=True,
+        db_index=True,
+        help_text="Upstream contract; NULL for cross-tenant or external sources.",
+    )
+    target_contract = models.ForeignKey(
+        "contracts.Contract",
+        on_delete=models.SET_NULL,
+        related_name="incoming_lineage_edges",
+        null=True,
+        blank=True,
+        db_index=True,
+        help_text="Downstream contract; NULL for cross-tenant or external targets.",
+    )
+    source_model = models.CharField(
+        max_length=255, blank=True, default="",
+        help_text="Source model name (HubContract.models[*].name).",
+    )
+    source_field = models.CharField(
+        max_length=255, blank=True, default="",
+        help_text="Source field name (HubContract.models[*].fields[*].name).",
+    )
+    target_model = models.CharField(
+        max_length=255, blank=True, default="",
+        help_text="Target model name.",
+    )
+    target_field = models.CharField(
+        max_length=255, blank=True, default="",
+        help_text="Target field name.",
+    )
+    edge_type = models.CharField(
+        max_length=32,
+        choices=LineageEdgeType.choices,
+        default=LineageEdgeType.REFERENCE,
+        help_text="Edge classification (upload / transformation / derivation / export / reference).",
+    )
+    transformation_ref = models.CharField(
+        max_length=512, blank=True, default="",
+        help_text="Reference to the transformation that produced the edge (e.g. dbt model id, SQL expression).",
+    )
+    job_ref = models.CharField(
+        max_length=512, blank=True, default="",
+        help_text="Reference to the job/pipeline that ran the transformation (e.g. Airflow run id).",
+    )
+    valid_from = models.DateTimeField(
+        # ``Func('NOW')`` enforces DB-side timestamps so app clock-skew
+        # cannot violate the SCD Type 2 monotonicity invariant
+        # (REQ-LIN-F5-006). Pinned by ``test_lineage_clock_skew.py``.
+        db_default=models.functions.Now(),
+        db_index=True,
+        help_text="When this edge became current (DB NOW()).",
+    )
+    valid_to = models.DateTimeField(
+        null=True,
+        blank=True,
+        db_index=True,
+        help_text="When this edge stopped being current; NULL means still current.",
+    )
+    created_at = models.DateTimeField(
+        auto_now_add=True,
+        help_text="Row insert timestamp (audit-only; NOT the validity start — see ``valid_from``).",
+    )
+    created_by_run = models.CharField(
+        max_length=255, blank=True, default="",
+        help_text=(
+            "Identifier for the run that created this edge — typically the "
+            "lineage-sync handler's run-id, or the backfill command's "
+            "checkpoint key."
+        ),
+    )
+
+    class Meta:
+        db_table = "contracts_lineage_edge"
+        verbose_name = "Lineage Edge"
+        verbose_name_plural = "Lineage Edges"
+        indexes = [
+            # Composite indexes for the SCD Type 2 read path (REQ-LIN-001).
+            # Each index supports "edges current at :as_of for contract X".
+            models.Index(
+                fields=["source_contract", "valid_from", "valid_to"],
+                name="lin_edge_src_validity_idx",
+            ),
+            models.Index(
+                fields=["target_contract", "valid_from", "valid_to"],
+                name="lin_edge_tgt_validity_idx",
+            ),
+            # Tenant + edge_type for "all transformation edges in tenant T".
+            models.Index(
+                fields=["tenant", "edge_type"],
+                name="lin_edge_tenant_type_idx",
+            ),
+        ]
+        constraints = [
+            # Unique constraint on the open-edge tuple — at most one
+            # current row per scope. Enforced only when ``valid_to IS NULL``
+            # so closed historical rows can repeat the same scope tuple
+            # (an edge can be reopened with the same shape after a close).
+            models.UniqueConstraint(
+                fields=[
+                    "tenant",
+                    "source_contract",
+                    "target_contract",
+                    "source_model",
+                    "source_field",
+                    "target_model",
+                    "target_field",
+                    "edge_type",
+                ],
+                condition=models.Q(valid_to__isnull=True),
+                name="lin_edge_open_unique",
+            ),
+        ]
+
+    def __str__(self) -> str:
+        src = (
+            str(self.source_contract_id)[:8]
+            if self.source_contract_id
+            else "(ext)"
+        )
+        tgt = (
+            str(self.target_contract_id)[:8]
+            if self.target_contract_id
+            else "(ext)"
+        )
+        return f"LineageEdge[{self.edge_type}] {src} → {tgt}"
+
+
+class LineageEdgeArchive(models.Model):
+    """Phase 228 F5 (REQ-LIN-F5-003 / 228.F5.5) — cold-tier archive for
+    closed lineage edges older than the 12-month hot retention window.
+
+    Lifecycle (per OP-3 sign-off, see [docs/architecture/lineage-archive-op3.md](
+    ../../docs/architecture/lineage-archive-op3.md)):
+
+    ``LineageEdge`` (hot, 12 mo) → ``LineageEdgeArchive`` (warm, 24 mo)
+    → S3 standard (36 mo) → S3 Glacier (84 mo) → S3 Deep Archive.
+
+    The ``archive_lineage_edges`` management command (228.F5.6) moves
+    closed-and-old rows from ``LineageEdge`` to this table; the same
+    command with ``--target=s3`` exports a parquet/jsonl bundle to
+    the configured S3 bucket and then deletes the archive rows it
+    successfully exported.
+
+    Schema duplicates ``LineageEdge`` field-for-field — the archive is
+    a literal cold copy. The model intentionally has NO unique
+    constraint on the scope tuple: archived rows are append-only +
+    historical, so two archive rows representing different validity
+    windows for the same scope tuple co-exist by design.
+    """
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    # Original LineageEdge id — preserved so a restore-to-hot operation
+    # (rare but useful in incident recovery) can use the canonical id.
+    original_edge_id = models.UUIDField(
+        db_index=True,
+        help_text="``LineageEdge.id`` from the row this entry was archived from.",
+    )
+    tenant = models.ForeignKey(
+        "tenants.Tenant",
+        on_delete=models.CASCADE,
+        related_name="archived_lineage_edges",
+        db_index=True,
+    )
+    # Source / target contracts may have been deleted by the time
+    # archival runs — store as nullable FK with SET_NULL so a deleted
+    # contract doesn't cascade-delete the archive entry.
+    source_contract = models.ForeignKey(
+        "contracts.Contract",
+        on_delete=models.SET_NULL,
+        related_name="+",
+        null=True, blank=True, db_index=True,
+    )
+    target_contract = models.ForeignKey(
+        "contracts.Contract",
+        on_delete=models.SET_NULL,
+        related_name="+",
+        null=True, blank=True, db_index=True,
+    )
+    source_model = models.CharField(max_length=255, blank=True, default="")
+    source_field = models.CharField(max_length=255, blank=True, default="")
+    target_model = models.CharField(max_length=255, blank=True, default="")
+    target_field = models.CharField(max_length=255, blank=True, default="")
+    edge_type = models.CharField(
+        max_length=32,
+        choices=LineageEdgeType.choices,
+        default=LineageEdgeType.REFERENCE,
+    )
+    transformation_ref = models.CharField(max_length=512, blank=True, default="")
+    job_ref = models.CharField(max_length=512, blank=True, default="")
+    valid_from = models.DateTimeField(db_index=True)
+    valid_to = models.DateTimeField(null=True, blank=True, db_index=True)
+    # When this row was moved out of the hot table.
+    archived_at = models.DateTimeField(auto_now_add=True, db_index=True)
+    # When (if) the row was exported to S3 — set by ``archive_lineage_edges
+    # --target=s3``. ``s3_uri`` carries the resulting object key.
+    exported_to_s3_at = models.DateTimeField(null=True, blank=True, db_index=True)
+    s3_uri = models.CharField(max_length=2048, blank=True, default="")
+
+    class Meta:
+        db_table = "contracts_lineage_edge_archive"
+        verbose_name = "Archived Lineage Edge"
+        verbose_name_plural = "Archived Lineage Edges"
+        indexes = [
+            models.Index(
+                fields=["tenant", "valid_to"],
+                name="lin_arch_tenant_validto_idx",
+            ),
+            models.Index(
+                fields=["archived_at"],
+                name="lin_arch_archived_at_idx",
+            ),
+            models.Index(
+                fields=["exported_to_s3_at"],
+                name="lin_arch_s3_exported_idx",
+            ),
+        ]
+
+    def __str__(self) -> str:
+        return f"LineageEdgeArchive[{self.edge_type}] orig={self.original_edge_id}"
+
+
+class LineageSubscriptionSeverity(models.TextChoices):
+    """Severity tier choices for ``LineageSubscription.severity_threshold``.
+
+    Mirrors :class:`hub.apps.contracts.lineage_severity.Severity` so the
+    DB column and the classifier share a single canonical vocabulary.
+    """
+    LOW = "LOW", "Low"
+    MEDIUM = "MEDIUM", "Medium"
+    HIGH = "HIGH", "High"
+    CRITICAL = "CRITICAL", "Critical"
+
+
+class LineageSubscription(models.Model):
+    """Phase 228.F3.3 (REQ-LIN-F3-002) — user opt-in for lineage-impact
+    notifications.
+
+    A subscription points at exactly ONE source — either a contract or
+    an asset — and the dispatcher walks the downstream lineage graph
+    from that source on each ``contract.updated`` event to decide who
+    to page.
+
+    Constraints (DB-level, not just app-level):
+
+    * **Exactly one of** ``source_contract`` / ``source_asset`` is set.
+      Enforced by a ``CheckConstraint`` so the dispatcher's "subscription
+      keyed on (contract OR asset)" walk has no ambiguous rows.
+    * **Unique** ``(user, source_contract, source_asset)`` — a user
+      cannot subscribe twice to the same source.
+
+    The per-user 100-subscription cap (REQ-LIN-F3-002) is enforced at
+    the API layer (the DB UNIQUE doesn't bound count, just duplicates).
+    """
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="lineage_subscriptions",
+        db_index=True,
+    )
+    source_contract = models.ForeignKey(
+        "contracts.Contract",
+        on_delete=models.CASCADE,
+        related_name="lineage_subscriptions",
+        null=True, blank=True, db_index=True,
+    )
+    source_asset = models.ForeignKey(
+        "assets.Asset",
+        on_delete=models.CASCADE,
+        related_name="lineage_subscriptions",
+        null=True, blank=True, db_index=True,
+    )
+    severity_threshold = models.CharField(
+        max_length=16,
+        choices=LineageSubscriptionSeverity.choices,
+        default=LineageSubscriptionSeverity.HIGH,
+    )
+    in_app = models.BooleanField(default=True)
+    email = models.BooleanField(default=False)
+    # F3 v1 channel-decision (REQ-LIN-F3-008): Slack is a v2 follow-on.
+    # Field exists so v2 doesn't need a migration; UI hides the toggle
+    # in v1 and the dispatcher ignores the flag.
+    slack = models.BooleanField(default=False)
+    created_at = models.DateTimeField(auto_now_add=True, db_index=True)
+    last_dispatched_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        db_table = "contracts_lineage_subscription"
+        verbose_name = "Lineage Subscription"
+        verbose_name_plural = "Lineage Subscriptions"
+        constraints = [
+            # Exactly one of (source_contract, source_asset) must be
+            # set — XOR enforced at the DB level so cross-tenant
+            # consistency holds even on direct DB writes.
+            models.CheckConstraint(
+                name="lineage_sub_xor_source",
+                check=(
+                    models.Q(source_contract__isnull=False, source_asset__isnull=True)
+                    | models.Q(source_contract__isnull=True, source_asset__isnull=False)
+                ),
+            ),
+            # A user cannot have two subscriptions pointing at the
+            # same source.  ``UniqueConstraint`` with the nullable
+            # FK columns relies on Postgres treating NULLs as
+            # distinct in unique indexes — so the constraint reduces
+            # to "unique per non-null source", which is exactly the
+            # spec semantics.
+            models.UniqueConstraint(
+                fields=["user", "source_contract", "source_asset"],
+                name="lineage_sub_unique_user_source",
+            ),
+        ]
+        indexes = [
+            models.Index(
+                fields=["user", "created_at"],
+                name="lin_sub_user_created_idx",
+            ),
+            models.Index(
+                fields=["source_contract", "severity_threshold"],
+                name="lin_sub_contract_sev_idx",
+            ),
+        ]
+
+    def __str__(self) -> str:
+        target = self.source_contract_id or self.source_asset_id
+        return f"LineageSubscription[user={self.user_id} source={target}]"

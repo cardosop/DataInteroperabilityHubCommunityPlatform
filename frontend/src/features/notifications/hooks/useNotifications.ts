@@ -93,3 +93,48 @@ export function useNotificationRealtimeSync(): void {
     };
   }, [qc, user]);
 }
+
+/**
+ * Phase 228.F3.16 — SSE-backed notification stream with polling
+ * fallback.
+ *
+ * The hook opens an `EventSource` to `/api/v1/notifications/stream/`.
+ * On every `notification.created` SSE event, the React Query
+ * `notifications` cache is invalidated so the bell + list re-fetch.
+ *
+ * Failure mode: if the browser's `EventSource` constructor throws
+ * (no SSE support or proxy strips it), or the stream errors before
+ * the first event, the hook bails — the existing 60-second polling
+ * (`useUnreadNotificationCount`) continues to refresh the inbox.
+ */
+export function useNotificationStream(): void {
+  const qc = useQueryClient();
+  const user = useAuthStore((s) => s.user);
+
+  useEffect(() => {
+    if (!user) return;
+    if (typeof EventSource === 'undefined') return;
+
+    let source: EventSource | null = null;
+    try {
+      source = new EventSource('/api/v1/notifications/stream/', {
+        withCredentials: true,
+      });
+    } catch {
+      return;
+    }
+
+    const handler = () => {
+      qc.invalidateQueries({ queryKey: ['notifications'] });
+    };
+    source.addEventListener('notification.created', handler);
+    source.addEventListener('error', () => {
+      // Let the browser retry; if it can't, polling fallback covers us.
+    });
+
+    return () => {
+      source?.removeEventListener('notification.created', handler);
+      source?.close();
+    };
+  }, [qc, user]);
+}

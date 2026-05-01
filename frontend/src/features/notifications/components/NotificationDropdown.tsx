@@ -23,6 +23,12 @@ export interface NotificationDropdownProps {
 /** Map a notification's resource_type/_id to a SPA route, if we have one. */
 function resolveRoute(n: UserNotification): string | null {
   if (!n.resource_type || !n.resource_id) return null;
+  // Phase 228.F3.12 — LINEAGE_IMPACT notifications deep-link to the
+  // contract's lineage view rather than the contract detail tab so the
+  // user lands on the changed surface.
+  if (n.category === 'LINEAGE_IMPACT' && n.resource_type === 'contract') {
+    return `/contracts/${n.resource_id}/lineage`;
+  }
   switch (n.resource_type) {
     case 'ACCESS_REQUEST':
       return `/governance/access-requests/${n.resource_id}`;
@@ -36,6 +42,24 @@ function resolveRoute(n: UserNotification): string | null {
       return `/assets/${n.resource_id}`;
     default:
       return null;
+  }
+}
+
+/** Phase 228.F3.12 — category-specific icon (REQ-LIN-F3-006). */
+function categoryIcon(category: UserNotification['category']): string {
+  switch (category) {
+    case 'LINEAGE_IMPACT':
+      return '↯';   // Lightning-style mark for lineage impact.
+    case 'GOVERNANCE':
+      return '⚖';
+    case 'MARKETPLACE':
+      return '🛒';
+    case 'JOBS':
+      return '⚙';
+    case 'CONTRACTS':
+      return '📄';
+    default:
+      return '🔔';
   }
 }
 
@@ -112,7 +136,12 @@ export function NotificationDropdown({ onClose }: NotificationDropdownProps) {
               className="notification-dropdown-row"
               onClick={() => handleRowClick(n)}
             >
-              <span className="notification-dropdown-row-title">{n.title}</span>
+              <span className="notification-dropdown-row-title">
+                <span aria-hidden="true" data-testid="notification-category-icon">
+                  {categoryIcon(n.category)}
+                </span>{' '}
+                {n.title}
+              </span>
               <span className="notification-dropdown-row-message">
                 {n.message}
               </span>

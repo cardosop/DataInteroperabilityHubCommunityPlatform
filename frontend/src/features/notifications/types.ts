@@ -9,7 +9,11 @@ export type NotificationCategory =
   | 'MARKETPLACE'
   | 'JOBS'
   | 'CONTRACTS'
-  | 'SYSTEM';
+  | 'SYSTEM'
+  // Phase 228.F3.5 (REQ-LIN-F3-006) — lineage-driven change-impact
+  // notifications.  Backend emits this from the LineageImpactDispatcher
+  // when a subscriber's source contract changes above their threshold.
+  | 'LINEAGE_IMPACT';
 
 export interface UserNotification {
   id: string;

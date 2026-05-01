@@ -143,3 +143,132 @@ def rebuild_contract_search_vector(sender, instance, **kwargs):
             )
 
     transaction.on_commit(_enqueue)
+
+
+# ---------------------------------------------------------------------------
+# Phase 228.F3.2 (REQ-LIN-F3-001) — contract.updated event publication
+# ---------------------------------------------------------------------------
+
+
+def _hash_lineage(hub_contract_json) -> str:
+    """SHA-256 of the canonical-JSON lineage subtree.
+
+    Pure function, no I/O — the dispatcher hashes both the pre-save
+    snapshot and the new state to decide whether to fire.  ``None``
+    or missing lineage hashes the same as ``{}`` so we don't fire
+    on save-with-empty-lineage churn.
+    """
+    if not isinstance(hub_contract_json, dict):
+        return hashlib.sha256(b"{}").hexdigest()
+    lineage = hub_contract_json.get("lineage") or {}
+    canonical = json.dumps(lineage, sort_keys=True, separators=(",", ":"))
+    return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+
+
+# pre_save snapshot side-channel: stash the prior lineage hash on the
+# instance so post_save can diff against it without an extra DB read.
+# We use a private attribute name to avoid clashes with user code.
+_PRIOR_LINEAGE_HASH_ATTR = "_f3_prior_lineage_hash"
+
+
+def _capture_prior_lineage_hash(sender, instance, **kwargs):
+    """``pre_save`` listener — fetch the unsaved row's prior lineage
+    hash so the post_save handler can decide whether the lineage
+    subtree actually changed.
+
+    For new contracts (no PK yet) we record the empty-lineage hash;
+    the post_save handler then compares against the new state and
+    fires only when the new state has non-empty lineage.
+    """
+    from hub.apps.contracts.models import Contract
+
+    if not instance.pk:
+        # Newly-created Contract — prior is the empty-lineage hash so
+        # any non-empty lineage on the first save is a change.
+        setattr(instance, _PRIOR_LINEAGE_HASH_ATTR, _hash_lineage({}))
+        return
+
+    try:
+        prior = Contract.objects.only("hub_contract_json").get(pk=instance.pk)
+    except Contract.DoesNotExist:
+        setattr(instance, _PRIOR_LINEAGE_HASH_ATTR, _hash_lineage({}))
+        return
+    setattr(
+        instance, _PRIOR_LINEAGE_HASH_ATTR,
+        _hash_lineage(prior.hub_contract_json),
+    )
+
+
+@receiver(post_save, sender="contracts.Contract")
+def publish_contract_updated_for_lineage(sender, instance, created, **kwargs):
+    """REQ-LIN-F3-001 — emit a ``contract.updated`` event when the
+    lineage subtree of ``hub_contract_json`` changes.
+
+    Behaviour:
+
+    * Compute ``new_hash = SHA-256(canonical(hub_contract_json.lineage))``.
+    * Read ``old_hash`` from the pre_save side-channel attribute.
+    * Skip if the hashes match — F3 is lineage-only; non-lineage
+      saves (e.g. status flip) must NOT fire the dispatcher.
+    * Otherwise enqueue ``LineageImpactDispatcher.handle_contract_updated``
+      via the project's job-system (django-rq) **after commit** so a
+      rolled-back transaction never produces a phantom event.
+
+    Errors in the dispatch path are logged and swallowed — the event
+    bus is best-effort; a contract save must not be blocked by a
+    notifier outage.
+    """
+    new_hash = _hash_lineage(instance.hub_contract_json)
+    old_hash = getattr(instance, _PRIOR_LINEAGE_HASH_ATTR, None)
+    if old_hash is None:
+        # pre_save didn't run for some reason — fall back to "always
+        # emit on create".  This is conservative: the dispatcher's
+        # debounce key prevents notification storms.
+        old_hash = _hash_lineage({})
+
+    if old_hash == new_hash:
+        return  # No lineage change.
+
+    contract_id = instance.pk
+    tenant_id = getattr(instance, "tenant_id", None)
+    version = getattr(instance, "version", None)
+    # actor_user_id is a best-effort lookup — Django signals don't
+    # carry the request user; ops set it via a thread-local in the
+    # view layer before saving (see lineage_edit_service).
+    actor_user_id = getattr(instance, "_f3_actor_user_id", None)
+
+    def _enqueue():
+        try:
+            from hub.apps.contracts.lineage_impact_dispatcher import (
+                handle_contract_updated,
+            )
+            handle_contract_updated(
+                contract_id=str(contract_id),
+                tenant_id=str(tenant_id) if tenant_id else "",
+                old_lineage_hash=old_hash,
+                new_lineage_hash=new_hash,
+                version=version,
+                actor_user_id=str(actor_user_id) if actor_user_id else "",
+            )
+        except Exception as exc:
+            logger.warning(
+                "lineage_impact_dispatch_enqueue_failed "
+                "contract_id=%s error=%s",
+                contract_id, exc,
+            )
+
+    transaction.on_commit(_enqueue)
+
+
+# Wire the pre_save listener.  Imported lazily inside ready() to keep
+# Django's migration/apps loading order clean.
+def _connect_lineage_pre_save():
+    from django.db.models.signals import pre_save
+    pre_save.connect(
+        _capture_prior_lineage_hash,
+        sender="contracts.Contract",
+        dispatch_uid="f3_capture_prior_lineage_hash",
+    )
+
+
+_connect_lineage_pre_save()

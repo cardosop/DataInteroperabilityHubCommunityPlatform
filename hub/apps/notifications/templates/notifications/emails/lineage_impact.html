@@ -1,0 +1,18 @@
+{% extends "notifications/emails/base.html" %}
+
+{% block title %}Lineage updated: {{ contract_name }}{% endblock %}
+
+{% block content %}
+<h2>{{ title }}</h2>
+<p>Hello{% if user.display_name %} {{ user.display_name }}{% endif %},</p>
+<p>{{ body }}</p>
+<p><strong>Severity:</strong> {{ severity }}</p>
+<p><strong>Contract:</strong> {{ contract_name }}</p>
+<p style="text-align: center;">
+    <a href="/contracts/{{ contract_id }}" class="button">Open contract</a>
+</p>
+<p style="font-size: 0.85em; color: #666;">
+    You're receiving this because you subscribed to lineage-change notifications for this contract.
+    Manage your subscriptions in <a href="/settings/subscriptions">Settings → Subscriptions</a>.
+</p>
+{% endblock %}

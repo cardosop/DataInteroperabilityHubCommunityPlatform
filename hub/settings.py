@@ -2241,3 +2241,113 @@ PREFECT_K8S_CPU_REQUEST = env("PREFECT_K8S_CPU_REQUEST", default="100m")
 PREFECT_K8S_CPU_LIMIT = env("PREFECT_K8S_CPU_LIMIT", default="1000m")
 PREFECT_K8S_MEMORY_REQUEST = env("PREFECT_K8S_MEMORY_REQUEST", default="256Mi")
 PREFECT_K8S_MEMORY_LIMIT = env("PREFECT_K8S_MEMORY_LIMIT", default="1Gi")
+
+# ===========================================================================
+# Phase 228 F4 (228.F4.13) — OpenLineage standard integration
+# ===========================================================================
+# Marquez (self-hosted on EKS) is the default OP-1 receiver. The
+# adapter POSTs every translated RunEvent here. Override per-environment
+# via OPENLINEAGE_URL env var; the default targets the in-cluster
+# service name so the call stays inside the VPC (228.F4.16 mTLS /
+# VPC-internal TLS Hub ↔ Marquez).
+OPENLINEAGE_URL = env.str(
+    "OPENLINEAGE_URL",
+    default="http://marquez.marquez.svc.cluster.local:5000/api/v1/lineage",
+)
+
+# Producer URL surfaced on every outbound RunEvent. Marquez + Datakin
+# both display this so external observers can identify the source.
+OPENLINEAGE_PRODUCER_NAME = env.str(
+    "OPENLINEAGE_PRODUCER_NAME",
+    default="https://meshant.com/lineage/openlineage",
+)
+
+# HMAC signing key for the inbound endpoint. Populated from AWS
+# Secrets Manager (`meshant/staging/openlineage/hmac_signing_key`,
+# 90-day rotation per 228.F4.14). Empty default in dev → endpoint
+# rejects every signature so a misconfigured dev never authenticates
+# inadvertently.
+OPENLINEAGE_HMAC_SIGNING_KEY = env.str(
+    "OPENLINEAGE_HMAC_SIGNING_KEY",
+    default="",
+)
+
+# Phase 228 F4 (228.F4.27 self-audit GAP-1) — under pytest / unittest the
+# default in-cluster service URL is unreachable and the adapter would
+# burn 31s on retry-then-DLQ for every Contract save in the test suite.
+# Setting OPENLINEAGE_URL="" makes ``send_openlineage_event_async``
+# skip-fast with ``return "skipped:no_target_url"`` (the function's
+# documented contract). Tests that need an actual target URL override
+# via ``@override_settings(OPENLINEAGE_URL=...)`` per-class.
+if "pytest" in sys.modules or "unittest" in sys.modules or os.getenv("TESTING"):
+    OPENLINEAGE_URL = env.str("OPENLINEAGE_URL", default="")
+
+
+# ===========================================================================
+# Phase 228 F5 (228.F5.7) — lineage archive S3 bucket
+# ===========================================================================
+# Cold-tier bucket name consumed by ``archive_lineage_edges --target=s3``.
+# Provisioned by [infrastructure/terraform/lineage_archive/](infrastructure/terraform/lineage_archive/).
+# Default empty so the dev / test environments don't need an S3 round-trip;
+# the management command refuses to run with `--target=s3` if neither this
+# setting nor the `--bucket` CLI flag is set.
+LINEAGE_ARCHIVE_S3_BUCKET = env.str(
+    "LINEAGE_ARCHIVE_S3_BUCKET",
+    default="",
+)
+
+# ===========================================================================
+# Phase 228 F5 (228.F5.DoD.6) — per-tenant rollout overrides
+# ===========================================================================
+# When ``CAPABILITY_FLAGS["<name>"] == False`` the per-tenant
+# allow-list below promotes the call for the listed tenants.  Lets
+# ops phase the F5 rollout (5 internal canary → 50% → 100%) via
+# Helm value flips alone — no code changes between phases.
+#
+# Helm pattern:
+#   api:
+#     env:
+#       CAPABILITY_FLAGS_ROLLOUT_TENANTS: '{"lineage.snapshots": ["uuid1", "uuid2"]}'
+# settings.py reads the env var as a JSON string; default empty.
+_CAPABILITY_FLAGS_ROLLOUT_TENANTS_RAW = env.str(
+    "CAPABILITY_FLAGS_ROLLOUT_TENANTS", default="",
+)
+try:
+    import json as _json
+    CAPABILITY_FLAGS_ROLLOUT_TENANTS: dict[str, list[str]] = (
+        _json.loads(_CAPABILITY_FLAGS_ROLLOUT_TENANTS_RAW)
+        if _CAPABILITY_FLAGS_ROLLOUT_TENANTS_RAW.strip()
+        else {}
+    )
+except (ValueError, TypeError):
+    CAPABILITY_FLAGS_ROLLOUT_TENANTS = {}
+
+
+# ===========================================================================
+# Phase 228 F3 (228.F3.10) — Lineage Impact Dispatcher DB connection pool
+# ===========================================================================
+# REQ-LIN-F3-005 mandates a dedicated DB connection pool of 5–10 connections
+# for the dispatcher so notification storms cannot starve request handlers.
+#
+# Deployment model: the dispatcher runs in the existing ``job_low`` worker
+# pod (django-rq).  To dedicate a pool, deploy a SEPARATE worker pod with:
+#
+#     env:
+#       LINEAGE_IMPACT_DISPATCHER_DEDICATED=true
+#       DATABASE_CONN_MAX_AGE=60        # short-lived; recycled every minute
+#       DATABASE_MAX_CONNS=10           # hard cap per worker
+#       RQ_QUEUES_NAMES=lineage_impact  # only this queue
+#
+# The dispatcher itself reads the toggle below to decide whether to apply
+# extra defensive limits.  When ``False`` (default), the dispatcher runs
+# in-process from ``transaction.on_commit`` — fine for low-volume tenants;
+# the dedicated worker is opt-in for tenants that approach the F3.20 load
+# target (1000 subscribers per event).
+LINEAGE_IMPACT_DISPATCHER_DEDICATED = env.bool(
+    "LINEAGE_IMPACT_DISPATCHER_DEDICATED",
+    default=False,
+)
+LINEAGE_IMPACT_DISPATCHER_MAX_CONNS = env.int(
+    "LINEAGE_IMPACT_DISPATCHER_MAX_CONNS",
+    default=10,
+)
