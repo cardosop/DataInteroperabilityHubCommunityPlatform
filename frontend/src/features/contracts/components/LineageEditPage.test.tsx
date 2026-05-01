@@ -113,8 +113,10 @@ describe('LineageEditPage — a11y + render-state invariants', () => {
     expect(screen.getByRole('button', { name: /add edge/i })).toBeTruthy();
   });
 
-  // F2.DoD.1-A5 — cycle error panel rendering on 400 LINEAGE_CYCLE.
-  it('renders the cycle error panel when save returns 400 LINEAGE_CYCLE', async () => {
+  // F2.DoD.1-A5 — cycle error panel rendering on 409 LINEAGE_CYCLE.
+  // REQ-LIN-F2-002 mandates 409 (state-conflict) + cycle path in the
+  // response body; the panel surfaces the path to the user.
+  it('renders the cycle error panel when save returns 409 LINEAGE_CYCLE', async () => {
     vi.mocked(mock.get).mockImplementation((url: string) => {
       if (url.includes('/lineage/visualization/')) {
         return Promise.resolve({
@@ -134,11 +136,12 @@ describe('LineageEditPage — a11y + render-state invariants', () => {
     });
     vi.mocked(mock.patch).mockRejectedValue({
       response: {
-        status: 400,
+        status: 409,
         data: {
           code: 'LINEAGE_CYCLE',
           details: {
             code: 'LINEAGE_CYCLE',
+            cycle: ['A:orders.id', 'B:orders.id', 'A:orders.id'],
             edge: {
               source_model: 'orders',
               source_field: 'id',
@@ -160,6 +163,8 @@ describe('LineageEditPage — a11y + render-state invariants', () => {
 
     const panel = await screen.findByTestId('lineage-cycle-error');
     expect(panel.getAttribute('role')).toBe('alert');
+    // The cycle path is rendered so the user can locate the loop.
+    expect(panel.textContent).toContain('A:orders.id');
   });
 
   // F2.DoD.1-A6 — 412 conflict modal renders + draft is preserved.

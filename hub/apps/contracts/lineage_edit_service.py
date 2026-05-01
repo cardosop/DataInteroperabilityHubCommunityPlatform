@@ -505,15 +505,23 @@ def _validate_no_cycles(edges: List[Dict[str, Any]]) -> None:
     Tests every edge against the rest using ``detect_cycle`` —
     simple O(N²·V) but N is bounded by F2_MAX_EDGES_PER_PATCH=1000
     in the worst case.  For typical patches (≤50 edges) this is sub-ms.
+
+    Phase 228.F2.MetaDoD audit (REQ-LIN-F2-002) — cycle is a
+    state-conflict, not a malformed request, so we raise
+    :class:`ConflictError` (mapped to HTTP 409 by the view) and
+    surface the full cycle path in the response body per the spec
+    scenario "the response body contains ``cycle: ["A", "B", "C", "A"]``".
     """
     for i, candidate in enumerate(edges):
         rest = edges[:i] + edges[i + 1 :]
-        if detect_cycle(rest, candidate):
-            raise ValidationError(
+        cycle_path = detect_cycle(rest, candidate)
+        if cycle_path:
+            raise ConflictError(
                 "Lineage edges form a cycle.",
                 code="LINEAGE_CYCLE",
                 details={
                     "code": "LINEAGE_CYCLE",
+                    "cycle": cycle_path,
                     "edge": candidate,
                 },
             )

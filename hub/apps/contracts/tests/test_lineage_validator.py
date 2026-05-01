@@ -44,22 +44,29 @@ def _edge(src_c, tgt_c, src_f="", tgt_f="", model_s="", model_t=""):
 
 
 class TestDetectCycle:
+    """``detect_cycle`` returns ``Optional[List[str]]`` per
+    REQ-LIN-F2-002 spec; ``None`` means no cycle, otherwise the
+    closed-loop path of node ids (first == last)."""
 
     def test_empty_graph_no_cycle(self):
-        assert detect_cycle([], _edge("A", "B")) is False
+        assert detect_cycle([], _edge("A", "B")) is None
 
     def test_self_loop_is_a_cycle(self):
-        assert detect_cycle([], _edge("A", "A", "x", "x")) is True
+        path = detect_cycle([], _edge("A", "A", "x", "x"))
+        assert path is not None
+        assert path[0] == path[-1]
 
     def test_a_b_then_b_a_closes_cycle(self):
         existing = [_edge("A", "B")]
         candidate = _edge("B", "A")
-        assert detect_cycle(existing, candidate) is True
+        path = detect_cycle(existing, candidate)
+        assert path is not None
+        assert path[0] == path[-1]
 
     def test_a_b_then_b_c_does_not_cycle(self):
         existing = [_edge("A", "B")]
         candidate = _edge("B", "C")
-        assert detect_cycle(existing, candidate) is False
+        assert detect_cycle(existing, candidate) is None
 
     def test_long_chain_back_to_start_is_a_cycle(self):
         # A → B → C → D, candidate D → A closes.
@@ -69,7 +76,12 @@ class TestDetectCycle:
             _edge("C", "D"),
         ]
         candidate = _edge("D", "A")
-        assert detect_cycle(existing, candidate) is True
+        path = detect_cycle(existing, candidate)
+        assert path is not None
+        # Path traverses ≥4 nodes: D → ... → A → D (or A → ... → D → A
+        # depending on the DFS root).
+        assert len(path) >= 4
+        assert path[0] == path[-1]
 
     def test_disjoint_components_dont_cycle(self):
         # A → B and C → D; candidate D → A does NOT close — A and D
@@ -79,7 +91,7 @@ class TestDetectCycle:
             _edge("C", "D"),
         ]
         candidate = _edge("D", "A")
-        assert detect_cycle(existing, candidate) is False
+        assert detect_cycle(existing, candidate) is None
 
     def test_cycle_at_field_level(self):
         # Same contract pair but different field qnames — only the
@@ -88,7 +100,9 @@ class TestDetectCycle:
             _edge("A", "B", src_f="x", tgt_f="y"),
         ]
         candidate = _edge("B", "A", src_f="y", tgt_f="x")
-        assert detect_cycle(existing, candidate) is True
+        path = detect_cycle(existing, candidate)
+        assert path is not None
+        assert path[0] == path[-1]
 
     def test_field_pair_distinguished_from_other_pair(self):
         existing = [
@@ -96,7 +110,20 @@ class TestDetectCycle:
         ]
         # Different source-field — not a cycle (distinct edge).
         candidate = _edge("B", "A", src_f="z", tgt_f="w")
-        assert detect_cycle(existing, candidate) is False
+        assert detect_cycle(existing, candidate) is None
+
+    def test_returned_path_starts_and_ends_at_same_node(self):
+        # Per REQ-LIN-F2-002 example ``cycle: ["A", "B", "C", "A"]`` —
+        # closed-loop format (first == last).
+        existing = [_edge("A", "B"), _edge("B", "C")]
+        candidate = _edge("C", "A")
+        path = detect_cycle(existing, candidate)
+        assert path is not None
+        assert path[0] == path[-1]
+        # Each node is the canonical "<contract_id>:<qname>" form (or
+        # bare qname when contract_id is empty).  All elements are
+        # non-empty strings.
+        assert all(isinstance(n, str) and n for n in path)
 
 
 # ---------------------------------------------------------------------------
@@ -268,4 +295,10 @@ def test_cycle_detection_iff_reverse_path_exists(graph, pair):
     expected_cycle = (u in closure[v]) or (u == v)
 
     candidate = _edge(u, v)
-    assert detect_cycle(edges, candidate) is expected_cycle
+    actual = detect_cycle(edges, candidate)
+    if expected_cycle:
+        # The path is non-None and forms a closed loop (first == last).
+        assert actual is not None
+        assert actual[0] == actual[-1]
+    else:
+        assert actual is None

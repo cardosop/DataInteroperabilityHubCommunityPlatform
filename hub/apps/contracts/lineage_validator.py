@@ -66,8 +66,8 @@ def _edge_key(edge: Dict[str, Any]) -> EdgeKey:
 def detect_cycle(
     edges: Iterable[Dict[str, Any]],
     new_edge: Dict[str, Any],
-) -> bool:
-    """Return True if adding ``new_edge`` to ``edges`` would close a cycle.
+) -> Optional[List[str]]:
+    """Return the cycle path if adding ``new_edge`` to ``edges`` closes one.
 
     Args
     ----
@@ -82,14 +82,20 @@ def detect_cycle(
 
     Returns
     -------
-    True if the new edge closes a cycle; False otherwise.
+    ``None`` if the new edge does NOT close a cycle.  Otherwise the
+    cycle path as a list of node identifiers — strings of the form
+    ``"<contract_id>:<model>.<field>"`` (or ``"<contract_id>:<field>"``
+    for schema-level fields).  The list starts and ends at the same
+    node (``[A, B, C, A]``), per REQ-LIN-F2-002 spec scenario.
 
     Algorithm
     ---------
     Build the directed adjacency list from ``edges`` keyed on the
     qname pair (contract_id + qname for both endpoints), then ask:
     "is there a path from ``new_edge.target`` back to ``new_edge.source``?"
-    DFS with a visited set; O(V+E).
+    DFS with a parent map; O(V+E).  When the search reaches
+    ``new_src_node``, walk the parent map back to reconstruct the
+    cycle path and return it.
     """
     new_src_node = (
         str(new_edge.get("source_contract") or ""),
@@ -106,9 +112,13 @@ def detect_cycle(
         ),
     )
 
+    def _format(node: Tuple[str, str]) -> str:
+        cid, qname = node
+        return f"{cid}:{qname}" if cid else qname
+
     # Self-loop is a cycle by definition.
     if new_src_node == new_tgt_node:
-        return True
+        return [_format(new_src_node), _format(new_src_node)]
 
     # Build adjacency.
     adj: Dict[Tuple[str, str], List[Tuple[str, str]]] = defaultdict(list)
@@ -118,19 +128,36 @@ def detect_cycle(
         tgt = (key[2], key[3])
         adj[src].append(tgt)
 
-    # Reachability from new_tgt to new_src.  If reachable, the new
-    # edge (src → tgt) would close the loop tgt → ... → src → tgt.
+    # Reachability from new_tgt to new_src with parent tracking.  If
+    # reachable, the new edge (src → tgt) would close the loop
+    # tgt → ... → src → tgt; the path is reconstructed from the
+    # parent map.
     visited: Set[Tuple[str, str]] = set()
+    parent: Dict[Tuple[str, str], Tuple[str, str]] = {}
     stack: List[Tuple[str, str]] = [new_tgt_node]
     while stack:
         node = stack.pop()
-        if node == new_src_node:
-            return True
         if node in visited:
             continue
         visited.add(node)
-        stack.extend(adj.get(node, ()))
-    return False
+        if node == new_src_node:
+            # Reconstruct the path: src → ... → tgt → src
+            # Walk parent map from new_src_node back to new_tgt_node,
+            # then prepend the new edge (new_src → new_tgt) to close
+            # the cycle.
+            path: List[Tuple[str, str]] = [new_src_node]
+            cursor = new_src_node
+            while cursor in parent and parent[cursor] != new_tgt_node:
+                cursor = parent[cursor]
+                path.append(cursor)
+            path.append(new_tgt_node)
+            path.append(new_src_node)
+            return [_format(n) for n in path]
+        for neighbour in adj.get(node, ()):
+            if neighbour not in visited:
+                parent[neighbour] = node
+                stack.append(neighbour)
+    return None
 
 
 # ---------------------------------------------------------------------------

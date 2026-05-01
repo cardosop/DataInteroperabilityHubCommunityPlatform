@@ -1,0 +1,17 @@
+/* Phase 228.F2 — CycleErrorPanel styles.
+ *
+ * Surfaces a cycle-detection error returned by PATCH
+ * /api/v1/contracts/{id}/lineage/ (HTTP 409, code=LINEAGE_CYCLE).
+ * Moved out of inline styles per the project lint rule. */
+
+.lineage-cycle-error {
+  padding: 1rem;
+  background: #fff5f5;
+  border: 1px solid #fca5a5;
+  border-radius: 8px;
+}
+
+.lineage-cycle-error__detail {
+  margin-top: 8px;
+  font-size: 0.85rem;
+}

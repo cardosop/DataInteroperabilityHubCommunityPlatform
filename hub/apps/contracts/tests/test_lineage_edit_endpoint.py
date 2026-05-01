@@ -215,7 +215,10 @@ class LineageEditSuccessTests(TestCase):
 
 class LineageEditValidationTests(TestCase):
 
-    def test_cycle_returns_400_with_typed_code(self):
+    def test_cycle_returns_409_with_cycle_path(self):
+        """REQ-LIN-F2-002 spec — cycle returns HTTP 409 (not 400) with
+        a ``cycle: [path]`` array in the response body.  Phase 228.F2
+        meta-DoD audit corrected the prior 400 implementation."""
         from hub.apps.contracts.models import LineageEdge
 
         tenant = _make_tenant("cycle")
@@ -256,8 +259,16 @@ class LineageEditValidationTests(TestCase):
             _url(c_a), data=body, format="json",
             HTTP_IF_MATCH=_etag(c_a),
         )
-        self.assertEqual(response.status_code, 400)
-        self.assertEqual(response.json().get("code"), "LINEAGE_CYCLE")
+        self.assertEqual(response.status_code, 409, response.content)
+        body_json = response.json()
+        self.assertEqual(body_json.get("code"), "LINEAGE_CYCLE")
+        # Spec mandates ``cycle: [...]`` path in the response body.
+        details = body_json.get("details") or {}
+        self.assertIn("cycle", details)
+        self.assertIsInstance(details["cycle"], list)
+        self.assertGreaterEqual(len(details["cycle"]), 2)
+        # Path is a closed loop (first == last).
+        self.assertEqual(details["cycle"][0], details["cycle"][-1])
 
     def test_field_not_found_returns_400(self):
         tenant = _make_tenant("fnf")
@@ -519,13 +530,26 @@ class IncludeFieldsDefaultBehaviourTests(TestCase):
         )
 
     def test_include_fields_true_adds_field_keys(self):
+        from hub.apps.contracts.models import LineageEdge
+
         tenant = _make_tenant("flag-on")
         user = _make_user(tenant)
         _grant_tenant_admin(user, tenant)
-        c = _make_contract_with_field(tenant, name="flag-on")
+        c_src = _make_contract_with_field(tenant, name="src", field_name="x")
+        c_tgt = _make_contract_with_field(tenant, name="tgt", field_name="x")
+        # Seed a real field-level lineage edge so the visualization
+        # endpoint has data to project into field_nodes / field_links.
+        LineageEdge.objects.create(
+            tenant=tenant,
+            source_contract_id=c_src.id, target_contract_id=c_tgt.id,
+            source_model="default", source_field="x",
+            target_model="default", target_field="x",
+            edge_type="reference",
+        )
+
         client = _client(user)
         response = client.get(
-            f"/api/v1/contracts/{c.id}/lineage/visualization/"
+            f"/api/v1/contracts/{c_tgt.id}/lineage/visualization/"
             f"?format=json&include_fields=true"
         )
         self.assertEqual(response.status_code, 200)
@@ -534,6 +558,16 @@ class IncludeFieldsDefaultBehaviourTests(TestCase):
         self.assertIn("field_links", body)
         self.assertIsInstance(body["field_nodes"], list)
         self.assertIsInstance(body["field_links"], list)
+        # REQ-LIN-F2-001 spec scenario "Field nodes returned when toggle on" —
+        # the response MUST include nodes with ``type='field'``.
+        self.assertGreaterEqual(
+            len(body["field_nodes"]), 1,
+            msg="field_nodes should be populated when seeded edges exist",
+        )
+        self.assertTrue(
+            all(n.get("type") == "field" for n in body["field_nodes"]),
+            msg="every entry in field_nodes must carry type='field' per the spec",
+        )
 
 
 class LineageEditAuditTests(TestCase):

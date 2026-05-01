@@ -37,7 +37,7 @@ import { useUpdateContractLineage } from '../hooks/useUpdateContractLineage';
 
 interface ServerError {
   code?: string;
-  details?: { code?: string; edge?: EdgeDraft };
+  details?: { code?: string; edge?: EdgeDraft; cycle?: string[] };
 }
 
 export function LineageEditPage() {
@@ -120,7 +120,10 @@ export function LineageEditPage() {
       </header>
 
       {isCycleError && (
-        <CycleErrorPanel edge={serverError?.details?.edge} />
+        <CycleErrorPanel
+          edge={serverError?.details?.edge}
+          cycle={serverError?.details?.cycle}
+        />
       )}
 
       {serverError && !isCycleError && (

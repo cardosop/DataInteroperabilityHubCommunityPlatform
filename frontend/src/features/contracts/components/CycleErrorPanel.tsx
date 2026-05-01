@@ -7,6 +7,7 @@
  * mapping table.
  */
 import { t } from './lineageEditorStrings';
+import './CycleErrorPanel.css';
 
 export interface CycleErrorPanelProps {
   edge?: {
@@ -17,24 +18,31 @@ export interface CycleErrorPanelProps {
     target_model?: string;
     target_field?: string;
   };
+  // REQ-LIN-F2-002 — cycle path as a closed-loop list of node ids
+  // ("contract_id:model.field"); first == last.  Server now returns
+  // this as `details.cycle` per the spec scenario.
+  cycle?: string[];
 }
 
-export function CycleErrorPanel({ edge }: CycleErrorPanelProps) {
+export function CycleErrorPanel({ edge, cycle }: CycleErrorPanelProps) {
   return (
     <section
       role="alert"
+      className="lineage-cycle-error"
       data-testid="lineage-cycle-error"
-      style={{
-        padding: '1rem',
-        background: '#fff5f5',
-        border: '1px solid #fca5a5',
-        borderRadius: 8,
-      }}
     >
       <h3>{t('lineage.editor.cycle.title')}</h3>
       <p>{t('lineage.editor.cycle.body')}</p>
-      {edge && (
-        <pre style={{ marginTop: 8, fontSize: '0.85rem' }}>
+      {cycle && cycle.length > 0 && (
+        <pre
+          className="lineage-cycle-error__detail"
+          data-testid="lineage-cycle-path"
+        >
+          {cycle.join(' → ')}
+        </pre>
+      )}
+      {!cycle && edge && (
+        <pre className="lineage-cycle-error__detail">
           {edge.source_model}.{edge.source_field}
           {' → '}
           {edge.target_model}.{edge.target_field}
