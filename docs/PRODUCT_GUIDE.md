@@ -287,6 +287,25 @@ Data quality checks, monitoring, alerting, and scorecards.
 - `GET /api/v1/dq/runs/{id}/` - Get DQ run
 - `GET /api/v1/dq/runs/{id}/results/` - Get DQ results
 
+### Engine Selection (Phase 240.3.A — GX vs Soda)
+
+The platform ships two DQ engines. Both implement the same `DQAdapter` ABC and produce engine-agnostic results, so `DQRun` rows + scorecards + alerting work identically across engines. Tenants pick per-profile via the `profile_key` suffix.
+
+| Profile key | Engine | When to choose |
+|-------------|--------|----------------|
+| `intake_basic_gx` | Great Expectations 0.18 + project-native pandas checks | **Default** — broadest expectation coverage, tightest integration with the contract-quality custom-check codepath (Phase 16 GAP-8.2.1), no extra image weight. |
+| `intake_basic_soda` | soda-core 3.x via `soda-core-pandas-df` | Tenants standardised on SodaCL, or whose downstream pipelines already consume Soda's check-result shape (Soda Cloud, Soda CLI). Same logical check inventory as `intake_basic_gx` (parity-pinned by `test_soda_engine.py`); switch is non-destructive. |
+
+Routing is automatic — `hub.apps.dq.services.DQService.create_dq_run` resolves the engine from the `profile_key` (suffix-based: `_gx` → GX, `_soda` → Soda; default → GX). The dq-service mirrors the same dispatch via `services/dq-service/main.py::get_adapter_for_profile`. There is **no per-tenant feature flag** — engines are picked per-run by selecting the profile.
+
+When in doubt, choose `intake_basic_gx`. Switch a specific run to Soda only when:
+
+- A tenant's external workflow already consumes Soda check results (e.g. Soda Cloud).
+- A custom check needs SodaCL-specific metric expressions that don't have a GX equivalent.
+- An A/B comparison is being done to validate engine-agnostic results.
+
+Operationally, both engines emit the same `DQ_RUN_CREATED` / `DQ_RUN_COMPLETED` audit events, the same Prometheus metrics (`dq_runs_total{engine}`), and the same retention behaviour under `purge_dq_runs`. The `engine` label on metrics is the only place the engine is visible to ops dashboards.
+
 ### Documentation
 
 - [API Endpoints Reference](API_ENDPOINTS_REFERENCE.md#data-quality)

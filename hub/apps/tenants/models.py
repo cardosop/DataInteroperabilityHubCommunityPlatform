@@ -96,6 +96,14 @@ class TenantPlan(models.Model):
             "max_api_calls_per_month",
             "max_compliance_runs_per_month",
             "max_dq_runs_per_month",
+            # Phase 240.3.B.2 — daily cap on advanced-quality endpoints
+            # (anomalies / trends / scorecards / root-cause-analysis).
+            # Counter source: AuditEvent rows with action=DQ_QUALITY_QUERY
+            # filtered to the current UTC day.  Plan default omits the
+            # key entirely (treated as unlimited); operators flip it on
+            # for tenants whose query volume needs throttling beyond
+            # the per-endpoint per-minute throttle.
+            "max_quality_queries_per_day",
             "max_access_requests_per_month",
             "max_storage_gb",
             # ── ML / AI limits (Phase 114A) ──
@@ -381,6 +389,111 @@ class Tenant(models.Model):
             "from this tenant's authenticated users (subject to "
             "the depth/complexity/timeout/throttle caps).  When "
             "False the endpoint returns 403."
+        ),
+    )
+    # Phase 240.4.B.1 — per-tenant Data Quality kill-switch.
+    #
+    # ``data_quality_enabled`` is the BASE flag — when False, ALL DQ
+    # API endpoints (DQRunViewSet, DQAlertingRuleViewSet,
+    # DQQualityViewSet) return HTTP 403 + ``error_code:
+    # DATA_QUALITY_DISABLED`` regardless of role.  Default True for
+    # backward compatibility with existing tenants per D240.18 — the
+    # flag is purely a kill-switch for incident response, not a
+    # paywall surface.  Setting it to False instantly disables the
+    # entire DQ feature for the tenant; a stuck DQ run continues to
+    # execute (the worker has no flag to consult), but no NEW runs
+    # can be created and no read endpoints are accessible.
+    data_quality_enabled = models.BooleanField(
+        default=True,
+        help_text=(
+            "Phase 240.4.B.1 — kill-switch for the entire DQ feature. "
+            "Default True (existing tenants keep current behaviour); "
+            "flip to False to instantly disable all DQ API access for "
+            "incident response / cost containment."
+        ),
+    )
+    # ``data_quality_advanced_enabled`` ADDITIONALLY gates the Phase
+    # 240.3.B advanced quality endpoints (anomalies / trends /
+    # scorecards / root-cause-analysis).  Default False per D240.18 —
+    # advanced endpoints are compute-heavy (per-action throttle scopes
+    # of 60/30/30/5 per minute) and need staged per-tenant rollout
+    # after 14d production stability of 240.3.B.  The base flag must
+    # ALSO be True for the advanced surface to work — i.e. the gate
+    # is conjunctive ``data_quality_enabled AND
+    # data_quality_advanced_enabled``.
+    data_quality_advanced_enabled = models.BooleanField(
+        default=False,
+        help_text=(
+            "Phase 240.4.B.1 — gate for advanced DQ endpoints "
+            "(anomalies / trends / scorecards / "
+            "root-cause-analysis). Default False; flip to True "
+            "per-tenant after the basic DQ feature is stable. "
+            "Conjunctive with data_quality_enabled — the base "
+            "flag must ALSO be True."
+        ),
+    )
+    # Phase 240.1.C.2 — per-tenant DQ-run retention. The
+    # ``purge_dq_runs`` management command soft-deletes ``DQRun``
+    # rows older than this many days; soft-deleted rows are then
+    # hard-deleted after a fixed 30-day grace window. Default 90 d
+    # matches the platform-wide retention SLA; bounds [7, 365] per
+    # D240.7 (lower = compliance shouldn't allow stripping audit
+    # trails too aggressively; upper = storage/cost guard).
+    dq_run_retention_days = models.PositiveIntegerField(
+        default=90,
+        validators=[
+            MinValueValidator(7),
+            MaxValueValidator(365),
+        ],
+        help_text=(
+            "Phase 240.1.C — number of days to retain DQRun rows "
+            "for this tenant before soft-delete (purge_dq_runs). "
+            "Bounds: [7, 365] per D240.7."
+        ),
+    )
+    # Phase 240.3.D.2 — per-tenant DQ input thresholds (D240.15).
+    #
+    # ``dq_input_max_bytes``: NULL → use platform default
+    # (``DQ_INPUT_TOO_LARGE_BYTES`` env var on dq-service, currently
+    # 500 MiB). When set, the api-service forwards as
+    # ``X-Tenant-Threshold-Bytes`` to dq-service /run and that becomes
+    # the 413 trip-wire for the upload size. Bounds [10 MiB, 5 GiB]:
+    # lower keeps tenants from accidentally setting a value smaller
+    # than a single sample CSV; upper keeps a misconfigured tenant
+    # from saturating the dq-service worker memory.
+    #
+    # ``dq_sampling_threshold_rows``: NULL → platform default
+    # (``DQ_SAMPLING_THRESHOLD_ROWS``, currently 1 M). When the
+    # parsed DataFrame has > threshold rows, the dq-service samples
+    # deterministically via ``hashlib.sha256(row_pk).hexdigest()``
+    # modulo bucket selection (D240.15). Bounds [10 000, 100 000 000]:
+    # lower keeps the deterministic sampler from being a no-op on
+    # trivial inputs; upper keeps it from never firing on legitimately
+    # large datasets.
+    dq_input_max_bytes = models.BigIntegerField(
+        null=True,
+        blank=True,
+        validators=[
+            MinValueValidator(10 * 1024 * 1024),         # 10 MiB
+            MaxValueValidator(5 * 1024 * 1024 * 1024),   # 5 GiB
+        ],
+        help_text=(
+            "Phase 240.3.D — per-tenant DQ input upload cap (bytes). "
+            "NULL = use platform default (DQ_INPUT_TOO_LARGE_BYTES). "
+            "Bounds: [10 MiB, 5 GiB] per D240.15."
+        ),
+    )
+    dq_sampling_threshold_rows = models.BigIntegerField(
+        null=True,
+        blank=True,
+        validators=[
+            MinValueValidator(10_000),
+            MaxValueValidator(100_000_000),
+        ],
+        help_text=(
+            "Phase 240.3.D — per-tenant DQ sampling threshold (rows). "
+            "NULL = use platform default (DQ_SAMPLING_THRESHOLD_ROWS). "
+            "Bounds: [10 000, 100 000 000] per D240.15."
         ),
     )
     plan = models.ForeignKey(

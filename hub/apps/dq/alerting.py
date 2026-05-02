@@ -2,9 +2,17 @@
 DQ Alerting
 
 Configurable alerting rules for data quality metrics with threshold-based alerts.
+
+Phase 240.1.A — delivery is no longer log-only stubs. ``_deliver_alert``
+dispatches to per-channel clients (``hub.apps.dq.clients``) which return
+structured ``DeliveryResult``s; a deterministic dedup window (D240.8)
+short-circuits re-fires; failures schedule RQ retries with exponential
+back-off and dead-letter to the ops PagerDuty after the budget is
+exhausted (see ``hub.apps.dq.tasks``).
 """
 from __future__ import annotations
 
+import hashlib
 from typing import Any, Dict, List, Optional
 from django.db.models import Q
 from django.utils import timezone
@@ -16,6 +24,32 @@ from hub.apps.assets.models import Asset
 from hub.apps.datasets.models import Dataset
 
 logger = structlog.get_logger(__name__)
+
+
+# ---------------------------------------------------------------------------
+# Dedup window (D240.8)
+# ---------------------------------------------------------------------------
+#
+# Re-firing the SAME alert (same rule, same dq_run, same alert_type)
+# inside a 24 h window is short-circuited so a stuck condition doesn't
+# flood partners. Window is per-rule, persisted on
+# ``DQAlertingRule.last_fired_at``.
+DEDUP_WINDOW_HOURS: int = 24
+
+
+def compute_alert_id(*, rule_id: str, run_id: str, alert_type: str) -> str:
+    """Deterministic alert_id used by the dedup short-circuit.
+
+    Mirrors the format pinned in D240.8::
+
+        sha256(f"{rule_id}:{run_id}:{alert_type}").hexdigest()[:32]
+
+    Same rule + same DQ run + same alert_type => same alert_id, so
+    the dispatcher can compare against ``rule.last_alert_id`` and
+    skip delivery within the dedup window.
+    """
+    raw = f"{rule_id}:{run_id}:{alert_type}".encode("utf-8")
+    return hashlib.sha256(raw).hexdigest()[:32]
 
 
 class DQAlertingService:
@@ -130,87 +164,110 @@ class DQAlertingService:
     @staticmethod
     def _deliver_alert(
         alert: Dict[str, Any],
-        rule: DQAlertingRule
-    ):
-        """Deliver alert through configured channels"""
-        for channel in rule.alert_channels:
+        rule: DQAlertingRule,
+    ) -> List[Dict[str, Any]]:
+        """Deliver alert through configured channels.
+
+        Phase 240.1.A.2 / 240.1.A.4 — replaces the four log-only stubs.
+        Each configured ``rule.alert_channels`` entry is dispatched to
+        the matching client (``hub.apps.dq.clients``); the synchronous
+        first attempt is made via
+        ``hub.apps.dq.tasks.deliver_or_schedule_retry`` so all paths
+        share the same audit + retry + dead-letter machinery.
+
+        A 24 h dedup window short-circuits re-fires of the same alert
+        (rule + run + type → same ``alert_id``) so a stuck condition
+        cannot flood partners.
+
+        Returns
+        -------
+        list[dict]
+            One outcome dict per channel attempted (channel, success,
+            delivery_id, next_action). Empty if the dedup window
+            short-circuited delivery for every channel.
+        """
+        from hub.apps.dq.tasks import deliver_or_schedule_retry
+
+        run_id = alert.get("dq_run_id") or ""
+        alert_type = alert.get("metric_type") or "metric"
+        alert_id = compute_alert_id(
+            rule_id=str(rule.id), run_id=str(run_id), alert_type=alert_type,
+        )
+        # Decorate the payload with the dedup token so every client
+        # sends the SAME alert_id to its partner (PagerDuty dedup_key,
+        # webhook X-DQ-Delivery-Id-friendly, audit row correlation).
+        payload = dict(alert)
+        payload.setdefault("alert_id", alert_id)
+
+        if DQAlertingService._is_within_dedup_window(rule, alert_id):
+            logger.info(
+                "dq_alert_dedup_short_circuit",
+                rule_id=str(rule.id),
+                alert_id=alert_id,
+                last_alert_id=rule.last_alert_id,
+                last_fired_at=(
+                    rule.last_fired_at.isoformat()
+                    if rule.last_fired_at else None
+                ),
+            )
+            return []
+
+        outcomes: List[Dict[str, Any]] = []
+        # ``rule.alert_channels`` is a JSON list of channel strings;
+        # dedupe in case a tenant double-listed a channel.
+        seen: set = set()
+        for channel in rule.alert_channels or []:
+            if not isinstance(channel, str) or channel in seen:
+                continue
+            seen.add(channel)
             try:
-                if channel == DQAlertChannel.EMAIL:
-                    DQAlertingService._send_email_alert(alert, rule)
-                elif channel == DQAlertChannel.SLACK:
-                    DQAlertingService._send_slack_alert(alert, rule)
-                elif channel == DQAlertChannel.WEBHOOK:
-                    DQAlertingService._send_webhook_alert(alert, rule)
-                elif channel == DQAlertChannel.PAGERDUTY:
-                    DQAlertingService._send_pagerduty_alert(alert, rule)
-            except Exception as e:
+                outcome = deliver_or_schedule_retry(
+                    rule_id=str(rule.id),
+                    channel=channel,
+                    payload=payload,
+                    attempt_number=1,
+                )
+            except Exception as exc:  # noqa: BLE001 — boundary
+                # The dispatcher itself should never raise; if it does
+                # we still want to emit a failure audit + log so the
+                # delivery doesn't silently disappear.
                 logger.error(
-                    "Failed to deliver alert",
+                    "dq_alert_dispatcher_unexpected_error",
                     channel=channel,
                     rule_id=str(rule.id),
-                    error=str(e),
-                    exc_info=True
+                    alert_id=alert_id,
+                    error=str(exc),
+                    exc_info=True,
                 )
-    
+                outcome = {
+                    "success": False,
+                    "delivery_id": "",
+                    "error": f"dispatcher_error: {exc}",
+                    "attempt_number": 1,
+                    "next_action": "none",
+                }
+            outcome["channel"] = channel
+            outcomes.append(outcome)
+
+        return outcomes
+
     @staticmethod
-    def _send_email_alert(alert: Dict[str, Any], rule: DQAlertingRule):
-        """Send email alert"""
-        # In production, integrate with email service
-        # For now, just log
-        emails = rule.get_channel_config().get("emails", [])
-        if emails:
-            logger.info(
-                "Email alert would be sent",
-                emails=emails,
-                alert=alert
-            )
-            # TODO: Integrate with email service
-            # send_email(emails, subject, body)
-    
-    @staticmethod
-    def _send_slack_alert(alert: Dict[str, Any], rule: DQAlertingRule):
-        """Send Slack alert"""
-        # In production, integrate with Slack API
-        # For now, just log
-        webhook_url = rule.get_channel_config().get("webhook_url")
-        if webhook_url:
-            logger.info(
-                "Slack alert would be sent",
-                webhook_url=webhook_url,
-                alert=alert
-            )
-            # TODO: Integrate with Slack API
-            # send_slack_message(webhook_url, message)
-    
-    @staticmethod
-    def _send_webhook_alert(alert: Dict[str, Any], rule: DQAlertingRule):
-        """Send webhook alert"""
-        # In production, make HTTP POST to webhook URL
-        # For now, just log
-        webhook_url = rule.get_channel_config().get("url")
-        if webhook_url:
-            logger.info(
-                "Webhook alert would be sent",
-                webhook_url=webhook_url,
-                alert=alert
-            )
-            # TODO: Make HTTP POST request
-            # requests.post(webhook_url, json=alert)
-    
-    @staticmethod
-    def _send_pagerduty_alert(alert: Dict[str, Any], rule: DQAlertingRule):
-        """Send PagerDuty alert"""
-        # In production, integrate with PagerDuty API
-        # For now, just log
-        integration_key = rule.get_channel_config().get("integration_key")
-        if integration_key:
-            logger.info(
-                "PagerDuty alert would be sent",
-                integration_key=integration_key,
-                alert=alert
-            )
-            # TODO: Integrate with PagerDuty API
-            # send_pagerduty_event(integration_key, alert)
+    def _is_within_dedup_window(
+        rule: DQAlertingRule, alert_id: str,
+    ) -> bool:
+        """True if the same alert_id was delivered within the dedup window.
+
+        The window is the constant ``DEDUP_WINDOW_HOURS`` (24 h per
+        D240.8). Returns False if the rule has never fired (NULL
+        ``last_alert_id`` / ``last_fired_at``) — that's the
+        first-fire path and MUST always be delivered.
+        """
+        if not rule.last_alert_id or not rule.last_fired_at:
+            return False
+        if rule.last_alert_id != alert_id:
+            return False
+        cutoff = timezone.now() - timedelta(hours=DEDUP_WINDOW_HOURS)
+        return rule.last_fired_at >= cutoff
     
     @staticmethod
     def get_alert_history(

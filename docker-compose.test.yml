@@ -541,6 +541,17 @@ services:
       - ./services/shared/middleware.py:/app/shared/middleware.py:ro
       - ./services/shared/__init__.py:/app/shared/__init__.py:ro
       - ./services/dq-service/tests:/app/tests:ro
+      # Phase 240.3.A — files added/refactored by the Soda engine
+      # work. Bind-mounted so iteration on adapter logic doesn't
+      # require an image rebuild every time. The image still bakes
+      # the previous content at build time as a fallback for any
+      # path that's not in this list.
+      - ./services/dq-service/adapters:/app/adapters:ro
+      - ./services/dq-service/dispatcher.py:/app/dispatcher.py:ro
+      - ./services/dq-service/gx_adapter.py:/app/gx_adapter.py:ro
+      - ./services/dq-service/soda_adapter.py:/app/soda_adapter.py:ro
+      - ./services/dq-service/dq_profile.py:/app/dq_profile.py:ro
+      - ./services/dq-service/pytest.ini:/app/pytest.ini:ro
     networks:
       - hub-test-net
     healthcheck:

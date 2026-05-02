@@ -186,6 +186,81 @@ dq_success_rate = _safe_gauge(
     ['service', 'engine']
 )
 
+# Phase 240.1.B.5 (REQ-DQ-RETENTION + 240.1.B Grafana panel "S3 payload-bucket
+# size trend") — total bytes used by DQ payload artefacts in S3, broken down
+# by tenant. Populated by the daily ``collect_dq_s3_metrics`` management
+# command (run via the ``collect-dq-s3-metrics`` Kubernetes CronJob). Gauge
+# semantics — the value is the OBSERVED current total at last collection,
+# NOT a monotonic counter, so the Grafana "S3 payload-bucket size trend"
+# panel can plot it directly without ``rate()`` smoothing.
+dq_s3_payload_bytes_total = _safe_gauge(
+    'dq_s3_payload_bytes_total',
+    (
+        'Total bytes of DQ payload artefacts in S3 at last collection. '
+        'Populated daily by collect_dq_s3_metrics; alerts on >2σ '
+        'growth from 7d-baseline trip DQS3PayloadGrowthAnomaly.'
+    ),
+    ['service', 'tenant_id'],
+)
+
+# Phase 240.1.B audit-fix — series referenced by alerts dq.yml + dashboard
+# data-quality.json that didn't exist in the codebase prior.  Adding them
+# alongside the rest of the DQ family so the alerts can actually fire and
+# the panels can actually populate in production.
+#
+# 1) dq_alert_deliveries_total — used by DQAlertDeliveryFailing alert AND
+#    dashboard panel "DQ alert rule firing count by channel".  Incremented
+#    at each delivery attempt (success / failure) in
+#    ``hub/apps/dq/tasks.py``; ``status`` ∈ {SUCCESS, FAIL}, ``channel`` ∈
+#    {email, slack, webhook, pagerduty}.
+dq_alert_deliveries_total = _safe_counter(
+    'dq_alert_deliveries_total',
+    (
+        'Total DQ alert delivery attempts split by channel + status. '
+        'Drives the DQAlertDeliveryFailing alert (>10% FAIL over 30m).'
+    ),
+    ['service', 'channel', 'status'],
+)
+
+# 2) dq_async_queue_depth — used by DQRunQueueDepth alert.  Sampled
+#    periodically from the RQ queue length by the
+#    ``sample_dq_queue_depth`` management command (Kubernetes CronJob,
+#    every 5 minutes — see helm/templates/cronjob/sample-dq-queue-depth.yaml).
+dq_async_queue_depth = _safe_gauge(
+    'dq_async_queue_depth',
+    (
+        'Pending DQ run jobs in the worker queue at last sample. '
+        'Drives the DQRunQueueDepth alert (>100 sustained 30m).'
+    ),
+    ['service', 'queue'],
+)
+
+# 3) dq_audit_write_errors_total — used by DQAuditWriteFailing alert.
+#    Incremented at every site that catches an exception from
+#    ``create_audit_event`` for a DQ-domain action; the audit utils helper
+#    is best-effort so the surrounding write doesn't fail, but the metric
+#    captures the deny path so oncall can see compliance evidence at risk.
+dq_audit_write_errors_total = _safe_counter(
+    'dq_audit_write_errors_total',
+    (
+        'Total DQ-action audit-event write failures.  Pages oncall '
+        'when sustained > 1/min for 5m via DQAuditWriteFailing.'
+    ),
+    ['service', 'action'],
+)
+
+# 4) dq_run_quality_score — histogram of quality-score values observed at
+#    run completion.  Drives the "DQ score distribution" heat-map panel.
+#    Buckets cover the 0..1 quality-score range with finer resolution at
+#    the upper end (where most healthy runs sit) and at the lower end
+#    (where regressions are most actionable).
+dq_run_quality_score = _safe_histogram(
+    'dq_run_quality_score',
+    'DQ run quality score distribution (0.0-1.0).',
+    ['service', 'engine', 'tenant_id'],
+    buckets=(0.1, 0.25, 0.5, 0.7, 0.8, 0.9, 0.95, 0.99, 1.0),
+)
+
 # Compliance Service Metrics
 compliance_runs_total = _safe_counter(
     'compliance_runs_total',

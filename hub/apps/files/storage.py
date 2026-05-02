@@ -681,6 +681,82 @@ class S3StorageClient:
         except ClientError as e:
             raise Exception(f"Failed to delete file: {str(e)}")
 
+    def delete_prefix(
+        self,
+        prefix: str,
+        *,
+        bucket: Optional[str] = None,
+    ) -> int:
+        """Delete every object under ``prefix`` in ``bucket``.
+
+        Phase 240.1.C.7 — used by ``purge_dq_runs`` to clean up
+        ``s3://<bucket>/<prefix>/<run_id>/`` payload directories
+        when a DQRun is hard-deleted. Without this, the lifecycle
+        rule on the S3 bucket would still expire stale objects, but
+        we'd be paying for storage during the (up to) 14-day overlap
+        between hard-delete and lifecycle expiry.
+
+        Args:
+            prefix: S3 key prefix to delete (everything under here
+                is removed). Trailing slash is added if missing so
+                ``"dq/abc"`` does not accidentally match ``"dq/abcd"``.
+            bucket: Override ``self.bucket_name`` for this call —
+                lets the purge command target a separate
+                ``DQ_S3_BUCKET`` without re-instantiating the client.
+
+        Returns:
+            Number of objects deleted. ``0`` on an empty / nonexistent
+            prefix (idempotent re-runs are safe).
+
+        Notes:
+            * Uses ``list_objects_v2`` paginator + batched
+              ``delete_objects`` (S3 hard cap: 1000 keys / call).
+            * Versioned buckets retain delete markers per AWS
+              semantics; this helper does NOT delete object versions.
+              Buckets that need full version purge must run a
+              separate sweep with ``ListObjectVersions``.
+            * Wraps boto3 ``ClientError`` in a generic ``Exception``
+              for parity with the other helpers in this class.
+        """
+        target_bucket = bucket or self.bucket_name
+        if not prefix:
+            raise ValueError(
+                "delete_prefix() refuses empty prefix — would delete "
+                "the entire bucket. Pass an explicit prefix."
+            )
+        if not prefix.endswith("/"):
+            prefix = prefix + "/"
+
+        deleted_count = 0
+        try:
+            paginator = self.client.get_paginator("list_objects_v2")
+            for page in paginator.paginate(
+                Bucket=target_bucket, Prefix=prefix,
+            ):
+                contents = page.get("Contents") or []
+                if not contents:
+                    continue
+                # delete_objects accepts up to 1000 keys; pages from
+                # list_objects_v2 default to 1000 too, so a single
+                # delete call per page is the right shape.
+                self.client.delete_objects(
+                    Bucket=target_bucket,
+                    Delete={
+                        "Objects": [
+                            {"Key": obj["Key"]} for obj in contents
+                        ],
+                        "Quiet": True,
+                    },
+                )
+                deleted_count += len(contents)
+        except ClientError as e:
+            raise Exception(
+                f"Failed to delete prefix {prefix!r} on bucket "
+                f"{target_bucket!r}: {e}"
+            ) from e
+
+        return deleted_count
+
     def file_exists(self, key: str) -> bool:
         """
         Check if a file exists in S3.

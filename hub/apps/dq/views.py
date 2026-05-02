@@ -4,15 +4,22 @@ DQ Views
 REST API views for DQ run management.
 """
 
+import uuid
 from datetime import datetime, timedelta, timezone as dt_timezone
 
 import structlog
 from django.db import connection, transaction
 from django.utils import timezone
-from drf_spectacular.utils import OpenApiResponse, extend_schema, inline_serializer
+from drf_spectacular.utils import (
+    OpenApiParameter,
+    OpenApiResponse,
+    extend_schema,
+    inline_serializer,
+)
 from rest_framework import permissions, serializers, status, viewsets
 from rest_framework.decorators import action
 from rest_framework.response import Response
+from rest_framework.throttling import ScopedRateThrottle
 
 from hub.apps.assets.models import Asset
 from hub.apps.assets.models import DQStatus as AssetDQStatus
@@ -24,7 +31,19 @@ from hub.apps.jobs.utils import create_job, get_job_timeout
 from hub.apps.tenants.request_tenant import get_request_tenant, get_request_tenant_id
 from hub.apps.tenants.services import get_tenant_dq_profile
 
-from .models import DQAlertingRule, DQEngine, DQRun, DQRunStatus
+from .anomaly_detection import AnomalyDetector
+from .feature_flags import DQFeatureFlagMixin
+from .log_helpers import _redact
+from .models import (
+    DQAlertingRule,
+    DQAnomaly,
+    DQEngine,
+    DQRun,
+    DQRunStatus,
+    DQTrend,
+)
+from .root_cause_analysis import RootCauseAnalyzer
+from .scorecards import DQScorecardService
 from .serializers import (
     DQAlertingRuleCreateSerializer,
     DQAlertingRuleSerializer,
@@ -33,17 +52,23 @@ from .serializers import (
 )
 from .service_client import DQServiceClient
 from .services import DQService
+from .trend_analysis import TrendAnalyzer
 
 logger = structlog.get_logger(__name__)
 
 
-class DQRunViewSet(viewsets.ModelViewSet):
+class DQRunViewSet(DQFeatureFlagMixin, viewsets.ModelViewSet):
     """
     ViewSet for DQ run management.
 
     Tenant-scoped: users can only see/manage DQ runs in their tenant.
+
+    Phase 240.4.B.2 — gated on ``Tenant.data_quality_enabled`` via
+    ``DQFeatureFlagMixin`` (scope=basic).  Returns HTTP 403 +
+    ``error_code: DATA_QUALITY_DISABLED`` when the flag is off.
     """
 
+    dq_flag_scope = "basic"
     queryset = DQRun.objects.all()
     serializer_class = DQRunSerializer
     permission_classes = [permissions.IsAuthenticated]
@@ -458,7 +483,10 @@ class DQRunViewSet(viewsets.ModelViewSet):
             # Trend analysis not available (model may not have trend fields)
             logger.debug(
                 "Trend analysis not available",
-                extra={"dq_run_id": str(dq_run.id), "error_type": type(e).__name__},
+                # Phase 240.5.F.3 — wrap extra payload in _redact() so a
+                # future field addition (e.g. ``details_json``) is
+                # auto-scrubbed before it reaches stdout.
+                extra=_redact({"dq_run_id": str(dq_run.id), "error_type": type(e).__name__}),
             )
 
         # Get anomalies (if available)
@@ -485,7 +513,8 @@ class DQRunViewSet(viewsets.ModelViewSet):
             # Anomaly detection not available (model may not exist or fields missing)
             logger.debug(
                 "Anomaly detection not available",
-                extra={"dq_run_id": str(dq_run.id), "error_type": type(e).__name__},
+                # Phase 240.5.F.3 — wrap extra payload in _redact().
+                extra=_redact({"dq_run_id": str(dq_run.id), "error_type": type(e).__name__}),
             )
 
         # Generate recommendations based on failed checks
@@ -550,13 +579,17 @@ class DQRunViewSet(viewsets.ModelViewSet):
         )
 
 
-class DQAlertingRuleViewSet(viewsets.ModelViewSet):
+class DQAlertingRuleViewSet(DQFeatureFlagMixin, viewsets.ModelViewSet):
     """
     ViewSet for DQ alerting rule management.
 
     Tenant-scoped: users can only see/manage alerting rules in their tenant.
+
+    Phase 240.4.B.2 — gated on ``Tenant.data_quality_enabled`` via
+    ``DQFeatureFlagMixin`` (scope=basic).
     """
 
+    dq_flag_scope = "basic"
     queryset = DQAlertingRule.objects.all()
     serializer_class = DQAlertingRuleSerializer
     permission_classes = [permissions.IsAuthenticated]
@@ -645,6 +678,532 @@ class DQAlertingRuleViewSet(viewsets.ModelViewSet):
             DQAlertingRuleSerializer(rule).data,
             status=status.HTTP_201_CREATED,
         )
+
+
+# Phase 240.3.B (REQ-DQ-A2) — advanced quality endpoints.
+#
+# Single ViewSet wraps the four read-only ``@action``s: anomalies,
+# trends, scorecards, root_cause_analysis.  Routes are dual-mounted
+# under ``/api/v1/dq/quality/`` (canonical) and ``/api/v1/quality/``
+# (deprecated alias) per D240.10.  The view itself is identical for
+# both prefixes; the deprecation headers are attached by URL-router
+# wiring (see ``dq/urls.py``) so the view doesn't have to know which
+# prefix the request came in under.
+class DQQualityViewSet(DQFeatureFlagMixin, viewsets.ViewSet):
+    """ViewSet for advanced data-quality query endpoints (read-only).
+
+    Each ``@action`` is:
+    - tenant-scoped via ``get_request_tenant_id``;
+    - read-only — AUDITOR is allowed to GET, write methods are not
+      defined (DRF returns 405 by default);
+    - rate-limited per-action via ``ScopedRateThrottle`` with the
+      scope set by ``throttle_scope`` on the action;
+    - plan-limit enforced — every successful invocation increments
+      the daily ``max_quality_queries_per_day`` counter by emitting a
+      ``DQ_QUALITY_QUERY`` audit row before the response is returned;
+    - audit-logged with the endpoint name + tenant + actor in
+      ``details_json`` (PII-redacted by ``create_audit_event``);
+    - Phase 240.4.B.2: gated on the conjunctive flag pair
+      (``Tenant.data_quality_enabled AND
+      Tenant.data_quality_advanced_enabled``) via
+      ``DQFeatureFlagMixin`` (scope=advanced).  Base flag wins when
+      off — denials carry ``DATA_QUALITY_DISABLED``; advanced-only
+      denials carry ``DATA_QUALITY_ADVANCED_DISABLED``.
+    """
+
+    dq_flag_scope = "advanced"
+    permission_classes = [permissions.IsAuthenticated]
+    throttle_classes = [ScopedRateThrottle]
+
+    # Phase 240.3.B.5 — per-action throttle scope.  ``ScopedRateThrottle``
+    # reads ``view.throttle_scope`` during ``check_throttles`` (which runs
+    # in ``initial(request)`` BEFORE the action method body), so setting
+    # ``self.throttle_scope`` inside the action body is too late — the
+    # throttle has already returned True (no scope = no limit).  We set
+    # the scope in ``get_throttles()`` (called BY ``check_throttles``)
+    # using ``self.action`` (already populated by ``initialize_request``).
+    _ACTION_THROTTLE_SCOPE = {
+        "anomalies": "dq_quality_anomalies",
+        "trends": "dq_quality_trends",
+        "scorecards": "dq_quality_scorecards",
+        "root_cause_analysis": "dq_quality_root_cause",
+    }
+
+    def get_throttles(self):
+        scope = self._ACTION_THROTTLE_SCOPE.get(getattr(self, "action", None))
+        if scope:
+            self.throttle_scope = scope
+        return super().get_throttles()
+
+    # ─── Plan-limit / audit helpers ──────────────────────────────
+
+    def _enforce_plan_limit_and_emit_audit(
+        self, request, tenant, endpoint, extra=None,
+    ):
+        """Atomic ``max_quality_queries_per_day`` check **+** audit-row
+        emit, both inside the same ``transaction.atomic()`` so the
+        SELECT FOR UPDATE held by ``PlanLimitService.check_limit`` covers
+        the audit insert too.
+
+        Race-safety: ``check_limit`` acquires SELECT FOR UPDATE on the
+        ``Tenant`` row; in PostgreSQL the lock is released only at
+        outer-transaction commit, so the audit row inserted afterwards
+        in this same transaction is committed atomically with the lock
+        release.  A concurrent request waiting on the lock will see the
+        new audit row in ITS count query — eliminating the TOCTOU
+        window where two parallel requests both see ``count=N`` then
+        both emit and end up at ``count=N+2`` over the cap.
+
+        Returns ``None`` on success (audit committed).  On exhaustion
+        returns a 403 ``api_error_response`` with code
+        ``plan_limit_exceeded`` (audit NOT emitted in that case).
+        """
+        from hub.apps.core.services.base import (
+            ValidationError as SvcValidationError,
+        )
+        from hub.apps.tenants.services import PlanLimitService
+
+        plan_svc = PlanLimitService(tenant_id=str(tenant.id))
+        try:
+            with transaction.atomic():
+                plan_svc.check_limit(
+                    tenant_id=str(tenant.id),
+                    limit_key="max_quality_queries_per_day",
+                    delta=1,
+                )
+                # Inside the same outer atomic so the lock covers the
+                # insert.  ``create_audit_event`` runs ``Model.objects.
+                # create``, which will not commit until the outer
+                # ``with`` exits.
+                self._emit_quality_query_audit(
+                    request, tenant, endpoint, extra=extra,
+                )
+        except SvcValidationError as plan_err:
+            if plan_err.code == "plan_limit_exceeded":
+                return api_error_response(
+                    message=plan_err.message,
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    code="plan_limit_exceeded",
+                    details=plan_err.details or {},
+                )
+            # Surface other validation errors faithfully.
+            return handle_service_exception(plan_err)
+        return None
+
+    def _emit_quality_query_audit(self, request, tenant, endpoint, extra=None):
+        """Emit ``DQ_QUALITY_QUERY`` so the daily counter increments."""
+        details = {"endpoint": endpoint}
+        if extra:
+            details.update(extra)
+        create_audit_event(
+            resource_type="DQ_QUALITY",
+            action="DQ_QUALITY_QUERY",
+            actor_user=request.user,
+            tenant=tenant,
+            details=details,
+            request=request,
+        )
+
+    # ─── Anomalies ───────────────────────────────────────────────
+
+    @extend_schema(
+        operation_id="list_dq_quality_anomalies",
+        parameters=[
+            OpenApiParameter("asset_id", str, OpenApiParameter.QUERY, required=False),
+            OpenApiParameter("dataset_id", str, OpenApiParameter.QUERY, required=False),
+            OpenApiParameter(
+                "severity", str, OpenApiParameter.QUERY, required=False,
+                description="One of CRITICAL / HIGH / MEDIUM / LOW",
+            ),
+            OpenApiParameter(
+                "since", str, OpenApiParameter.QUERY, required=False,
+                description="ISO-8601 timestamp; only anomalies detected at or after this point are returned",
+            ),
+        ],
+        responses={
+            200: inline_serializer(
+                name="DQQualityAnomaliesResponse",
+                fields={"results": serializers.ListField()},
+            ),
+            403: OpenApiResponse(description="Plan limit exceeded"),
+            429: OpenApiResponse(description="Rate-limited"),
+        },
+        tags=["Data Quality"],
+    )
+    @action(detail=False, methods=["get"], url_path="anomalies")
+    def anomalies(self, request):
+        """List detected DQ anomalies for the requesting tenant."""
+        tenant_id, tenant = get_request_tenant(request)
+        if not tenant:
+            return api_error_response(
+                message="User must belong to a tenant",
+                status_code=status.HTTP_400_BAD_REQUEST,
+                code="VALIDATION_ERROR",
+            )
+
+        denied = self._enforce_plan_limit_and_emit_audit(
+            request, tenant, "anomalies",
+        )
+        if denied is not None:
+            return denied
+
+        qs = DQAnomaly.objects.filter(tenant_id=str(tenant.id))
+
+        asset_id = request.query_params.get("asset_id")
+        if asset_id:
+            try:
+                uuid.UUID(asset_id)
+                qs = qs.filter(asset_id=asset_id)
+            except (ValueError, TypeError):
+                qs = qs.none()
+
+        dataset_id = request.query_params.get("dataset_id")
+        if dataset_id:
+            try:
+                uuid.UUID(dataset_id)
+                qs = qs.filter(dataset_id=dataset_id)
+            except (ValueError, TypeError):
+                qs = qs.none()
+
+        severity = request.query_params.get("severity")
+        if severity:
+            qs = qs.filter(severity=severity.upper())
+
+        since = request.query_params.get("since")
+        if since:
+            try:
+                since_dt = datetime.fromisoformat(
+                    since.replace("Z", "+00:00")
+                )
+                if timezone.is_naive(since_dt):
+                    since_dt = timezone.make_aware(since_dt, dt_timezone.utc)
+                qs = qs.filter(detected_at__gte=since_dt)
+            except (ValueError, TypeError):
+                pass
+
+        qs = qs.order_by("-detected_at")[:500]
+
+        results = [
+            {
+                "id": str(a.id),
+                "tenant_id": str(a.tenant_id),
+                "asset_id": str(a.asset_id) if a.asset_id else None,
+                "dataset_id": str(a.dataset_id) if a.dataset_id else None,
+                "dq_run_id": str(a.dq_run_id) if a.dq_run_id else None,
+                "metric_type": a.metric_type,
+                "expected_value": a.expected_value,
+                "actual_value": a.actual_value,
+                "deviation": a.deviation,
+                "severity": a.severity,
+                "anomaly_type": a.anomaly_type,
+                "description": a.description,
+                "metadata": a.metadata,
+                "detected_at": a.detected_at.isoformat() if a.detected_at else None,
+                "acknowledged": a.acknowledged,
+            }
+            for a in qs
+        ]
+
+        return Response({"results": results}, status=status.HTTP_200_OK)
+
+    # ─── Trends ──────────────────────────────────────────────────
+
+    @extend_schema(
+        operation_id="list_dq_quality_trends",
+        parameters=[
+            OpenApiParameter("asset_id", str, OpenApiParameter.QUERY, required=False),
+            OpenApiParameter("dataset_id", str, OpenApiParameter.QUERY, required=False),
+            OpenApiParameter(
+                "metric_type", str, OpenApiParameter.QUERY, required=False,
+                description="Default: ``quality_score``",
+            ),
+            OpenApiParameter(
+                "time_range", int, OpenApiParameter.QUERY, required=False,
+                description="Lookback window in days (1–365). Default 30.",
+            ),
+            OpenApiParameter(
+                "period_type", str, OpenApiParameter.QUERY, required=False,
+                description="HOURLY / DAILY / WEEKLY / MONTHLY. Default DAILY.",
+            ),
+        ],
+        responses={
+            200: inline_serializer(
+                name="DQQualityTrendsResponse",
+                fields={"results": serializers.ListField()},
+            ),
+            403: OpenApiResponse(description="Plan limit exceeded"),
+            429: OpenApiResponse(description="Rate-limited"),
+        },
+        tags=["Data Quality"],
+    )
+    @action(detail=False, methods=["get"], url_path="trends")
+    def trends(self, request):
+        """Compute / list quality trends for an asset or dataset."""
+        tenant_id, tenant = get_request_tenant(request)
+        if not tenant:
+            return api_error_response(
+                message="User must belong to a tenant",
+                status_code=status.HTTP_400_BAD_REQUEST,
+                code="VALIDATION_ERROR",
+            )
+
+        asset_id = request.query_params.get("asset_id")
+        dataset_id = request.query_params.get("dataset_id")
+        metric_type = request.query_params.get("metric_type", "quality_score")
+        period_type = request.query_params.get("period_type", "DAILY")
+
+        time_range_raw = request.query_params.get("time_range", "30")
+        try:
+            periods = max(1, min(365, int(time_range_raw)))
+        except (ValueError, TypeError):
+            periods = 30
+
+        # Validate id-shaped query params BEFORE consuming the
+        # plan-limit budget so callers don't get charged for
+        # malformed input.
+        if asset_id:
+            try:
+                uuid.UUID(asset_id)
+            except (ValueError, TypeError):
+                return api_error_response(
+                    message="Invalid asset_id",
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    code="VALIDATION_ERROR",
+                )
+
+        denied = self._enforce_plan_limit_and_emit_audit(
+            request, tenant, "trends",
+            extra={"metric_type": metric_type},
+        )
+        if denied is not None:
+            return denied
+
+        # Tenant isolation: if the supplied asset_id is not in this
+        # tenant, return an empty result set rather than leaking the
+        # existence of cross-tenant rows.  ``calculate_trend`` would
+        # also return [] but this short-circuit is explicit + cheap.
+        if asset_id and not Asset.objects.filter(
+            id=asset_id, tenant_id=str(tenant.id),
+        ).exists():
+            return Response({"results": []}, status=status.HTTP_200_OK)
+
+        trends = TrendAnalyzer.calculate_trend(
+            asset_id=asset_id,
+            dataset_id=dataset_id,
+            tenant_id=str(tenant.id),
+            metric_type=metric_type,
+            period_type=period_type,
+            periods=periods,
+        )
+        results = TrendAnalyzer.get_trend_visualization(trends, format="json")
+
+        return Response({"results": results}, status=status.HTTP_200_OK)
+
+    # ─── Scorecards ──────────────────────────────────────────────
+
+    @extend_schema(
+        operation_id="get_dq_quality_scorecard",
+        parameters=[
+            OpenApiParameter(
+                "asset_id", str, OpenApiParameter.QUERY, required=False,
+                description="If supplied, returns asset-level scorecard; else tenant-level executive dashboard.",
+            ),
+            OpenApiParameter(
+                "time_range", int, OpenApiParameter.QUERY, required=False,
+                description="Lookback window in days (1–365). Default 30.",
+            ),
+        ],
+        responses={
+            200: OpenApiResponse(description="Scorecard payload"),
+            404: OpenApiResponse(description="Asset not found in this tenant"),
+            403: OpenApiResponse(description="Plan limit exceeded"),
+            429: OpenApiResponse(description="Rate-limited"),
+        },
+        tags=["Data Quality"],
+    )
+    @action(detail=False, methods=["get"], url_path="scorecards")
+    def scorecards(self, request):
+        """Return an executive dashboard or per-asset scorecard."""
+        tenant_id, tenant = get_request_tenant(request)
+        if not tenant:
+            return api_error_response(
+                message="User must belong to a tenant",
+                status_code=status.HTTP_400_BAD_REQUEST,
+                code="VALIDATION_ERROR",
+            )
+
+        asset_id = request.query_params.get("asset_id")
+        time_range_raw = request.query_params.get("time_range", "30")
+        try:
+            days = max(1, min(365, int(time_range_raw)))
+        except (ValueError, TypeError):
+            days = 30
+
+        # Validate id-shape BEFORE budget consumption.
+        if asset_id:
+            try:
+                uuid.UUID(asset_id)
+            except (ValueError, TypeError):
+                return api_error_response(
+                    message="Invalid asset_id",
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    code="VALIDATION_ERROR",
+                )
+
+        denied = self._enforce_plan_limit_and_emit_audit(
+            request, tenant, "scorecards",
+            extra={"asset_id": asset_id, "days": days},
+        )
+        if denied is not None:
+            return denied
+
+        if asset_id:
+            # Tenant isolation: refuse to compute a scorecard for
+            # an asset outside the tenant.  Returning 404 (vs 403)
+            # is the standard cross-tenant pattern in this codebase
+            # (don't disclose whether the resource exists at all).
+            if not Asset.objects.filter(
+                id=asset_id, tenant_id=str(tenant.id)
+            ).exists():
+                return api_error_response(
+                    message="Asset not found",
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    code="NOT_FOUND",
+                )
+            payload = DQScorecardService.get_asset_scorecard(
+                asset_id=str(asset_id),
+                tenant_id=str(tenant.id),
+                days=days,
+            )
+        else:
+            payload = DQScorecardService.get_executive_dashboard(
+                tenant_id=str(tenant.id),
+                days=days,
+            )
+
+        return Response(payload, status=status.HTTP_200_OK)
+
+    # ─── Root-cause analysis ─────────────────────────────────────
+
+    @extend_schema(
+        operation_id="get_dq_quality_root_cause_analysis",
+        parameters=[
+            OpenApiParameter(
+                "dq_run_id", str, OpenApiParameter.QUERY, required=False,
+                description="Analyse a specific DQ run.  Mutually exclusive with ``asset_id``.",
+            ),
+            OpenApiParameter(
+                "asset_id", str, OpenApiParameter.QUERY, required=False,
+                description="If supplied without ``dq_run_id``, the latest SUCCEEDED run for the asset is analysed.",
+            ),
+            OpenApiParameter(
+                "lookback_days", int, OpenApiParameter.QUERY, required=False,
+                description="Window of historical context (1–365).  Default 30.",
+            ),
+        ],
+        responses={
+            200: OpenApiResponse(description="Root-cause analysis payload"),
+            400: OpenApiResponse(description="Missing dq_run_id / asset_id"),
+            404: OpenApiResponse(description="DQ run / asset not found in this tenant"),
+            403: OpenApiResponse(description="Plan limit exceeded"),
+            429: OpenApiResponse(description="Rate-limited"),
+        },
+        tags=["Data Quality"],
+    )
+    @action(detail=False, methods=["get"], url_path="root_cause_analysis")
+    def root_cause_analysis(self, request):
+        """Return a root-cause analysis report for a DQ run."""
+        tenant_id, tenant = get_request_tenant(request)
+        if not tenant:
+            return api_error_response(
+                message="User must belong to a tenant",
+                status_code=status.HTTP_400_BAD_REQUEST,
+                code="VALIDATION_ERROR",
+            )
+
+        dq_run_id = request.query_params.get("dq_run_id")
+        asset_id = request.query_params.get("asset_id")
+        lookback_raw = request.query_params.get("lookback_days", "30")
+        try:
+            lookback_days = max(1, min(365, int(lookback_raw)))
+        except (ValueError, TypeError):
+            lookback_days = 30
+
+        # Validate inputs BEFORE consuming the budget.
+        if not dq_run_id and not asset_id:
+            return api_error_response(
+                message="Either dq_run_id or asset_id is required",
+                status_code=status.HTTP_400_BAD_REQUEST,
+                code="VALIDATION_ERROR",
+            )
+        if dq_run_id:
+            try:
+                uuid.UUID(dq_run_id)
+            except (ValueError, TypeError):
+                return api_error_response(
+                    message="Invalid dq_run_id",
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    code="VALIDATION_ERROR",
+                )
+        else:
+            try:
+                uuid.UUID(asset_id)
+            except (ValueError, TypeError):
+                return api_error_response(
+                    message="Invalid asset_id",
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    code="VALIDATION_ERROR",
+                )
+
+        denied = self._enforce_plan_limit_and_emit_audit(
+            request, tenant, "root_cause_analysis",
+            extra={"dq_run_id": dq_run_id, "asset_id": asset_id},
+        )
+        if denied is not None:
+            return denied
+
+        # Resolve a single DQRun, tenant-scoped.
+        target_run = None
+        if dq_run_id:
+            target_run = DQRun.objects.filter(
+                id=dq_run_id, tenant_id=str(tenant.id)
+            ).first()
+            if target_run is None:
+                return api_error_response(
+                    message="DQ run not found",
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    code="NOT_FOUND",
+                )
+        else:
+            if not Asset.objects.filter(
+                id=asset_id, tenant_id=str(tenant.id)
+            ).exists():
+                return api_error_response(
+                    message="Asset not found",
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    code="NOT_FOUND",
+                )
+            target_run = (
+                DQRun.objects.filter(
+                    asset_id=asset_id,
+                    tenant_id=str(tenant.id),
+                    status=DQRunStatus.SUCCEEDED,
+                )
+                .order_by("-completed_at")
+                .first()
+            )
+            if target_run is None:
+                return api_error_response(
+                    message="No SUCCEEDED DQ run found for asset",
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    code="NOT_FOUND",
+                )
+
+        report = RootCauseAnalyzer.analyze_root_cause(
+            target_run, lookback_days=lookback_days,
+        )
+
+        return Response(report, status=status.HTTP_200_OK)
 
 
 def _persist_dq_run_failure_state(
@@ -773,9 +1332,16 @@ def execute_dq_run(dq_run_id: str) -> None:
         file_content = storage_client.download_file(file_obj.storage_path)
 
         # Call DQ service
+        # Phase 240.3.D — forward the DQRun's tenant_id so the
+        # client resolves any per-tenant threshold overrides into
+        # X-Tenant-Threshold-* headers. NULL overrides fall through
+        # to the dq-service env defaults silently.
         dq_client = DQServiceClient()
         result = dq_client.run_dq(
-            file_content=file_content, file_format=file_format, profile_key=dq_run.profile_key
+            file_content=file_content,
+            file_format=file_format,
+            profile_key=dq_run.profile_key,
+            tenant_id=str(dq_run.tenant_id) if dq_run.tenant_id else None,
         )
 
         # Phase 69: deadline check after service call (fail-closed)
@@ -842,6 +1408,51 @@ def execute_dq_run(dq_run_id: str) -> None:
                 "completed_at",
             ]
         )
+
+        # Phase 240.5.A.2 — emit billing event for SUCCEEDED runs.
+        #
+        # The emit is intentionally best-effort: ``emit_event``
+        # swallows bus errors and returns None, so a Redis outage
+        # or serialisation failure can NEVER block the DQ pipeline
+        # (notifications + asset-status update below also depend
+        # on this codepath continuing to run). Failed runs do NOT
+        # reach this point — they take the ``except`` branch at
+        # the end of the function and call
+        # ``_persist_dq_run_failure_state`` instead, which by spec
+        # 240.5.A is NOT billable.
+        try:
+            from hub.apps.billing.event_types import DQ_RUN_COMPLETED
+            from hub.apps.billing.events import emit_event
+
+            emit_event(
+                event_type=DQ_RUN_COMPLETED,
+                payload={
+                    "tenant_id": str(dq_run.tenant_id) if dq_run.tenant_id else None,
+                    "dq_run_id": str(dq_run.id),
+                    "engine": result.get("engine_type"),
+                    "rows_inspected": row_count,
+                    "columns_inspected": column_count,
+                    "execution_time_seconds": round(execution_time, 2),
+                    "quality_score": result.get("quality_score"),
+                },
+                tenant_id=str(dq_run.tenant_id) if dq_run.tenant_id else None,
+            )
+        except Exception as billing_emit_exc:  # noqa: BLE001 — defence-in-depth
+            # ``emit_event`` already catches bus errors internally
+            # and returns None. The outer try/except here covers
+            # the import path itself (e.g., a circular-import
+            # regression that would otherwise crash the pipeline).
+            #
+            # Audit-fix (240.5.A): include exception details so ops
+            # triaging the warning have a one-line root-cause
+            # signal — without ``error_type`` an oncall would have
+            # to attach a debugger to figure out which import broke.
+            logger.warning(
+                "billing_emit_outer_guard_tripped",
+                dq_run_id=str(dq_run.id),
+                error=str(billing_emit_exc),
+                error_type=type(billing_emit_exc).__name__,
+            )
 
         # Update asset DQ status if applicable
         if dq_run.asset:

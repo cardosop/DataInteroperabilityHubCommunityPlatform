@@ -15,6 +15,29 @@ from hub.apps.dq.models import DQRun, DQRunStatus, DQEngine
 from hub.apps.dq.business_rules import DQBusinessRules
 
 
+def resolve_engine_for_profile(profile_key: str) -> str:
+    """Phase 240.3.A.8 — single source of truth for engine routing.
+
+    Lifted out of ``DQService.create_dq_run`` so unit tests can pin
+    the contract without standing up the full create-run flow
+    (which involves business-rule validation + dq-service HTTP).
+    The behaviour matches the previous inline block verbatim:
+
+    * ``*_gx`` / contains ``"gx"`` → ``DQEngine.GREAT_EXPECTATIONS``
+    * ``*_soda`` / contains ``"soda"`` → ``DQEngine.SODA``
+    * anything else → ``DQEngine.GREAT_EXPECTATIONS`` (safe default)
+
+    Order matters: ``_gx`` is checked first so a profile that
+    accidentally contains both substrings (legacy keys) routes to
+    GX rather than Soda.
+    """
+    if profile_key.endswith("_gx") or "gx" in profile_key.lower():
+        return DQEngine.GREAT_EXPECTATIONS
+    if profile_key.endswith("_soda") or "soda" in profile_key.lower():
+        return DQEngine.SODA
+    return DQEngine.GREAT_EXPECTATIONS
+
+
 class DQService(BaseService):
     """
     Service for DQ run operations.
@@ -196,12 +219,10 @@ class DQService(BaseService):
                 )
 
         profile_key = profile_key or get_tenant_dq_profile(tenant_id)
-        if profile_key.endswith("_gx") or "gx" in profile_key.lower():
-            engine = DQEngine.GREAT_EXPECTATIONS
-        elif profile_key.endswith("_soda") or "soda" in profile_key.lower():
-            engine = DQEngine.SODA
-        else:
-            engine = DQEngine.GREAT_EXPECTATIONS
+        # Phase 240.3.A.8 — engine resolution lives in the
+        # module-level helper so tests can pin the contract
+        # without exercising the rest of create_dq_run.
+        engine = resolve_engine_for_profile(profile_key)
 
         # Validate via DQBusinessRules before any mutation (unsaved payload)
         payload_run = DQRun(

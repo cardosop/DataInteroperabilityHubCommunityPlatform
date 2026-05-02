@@ -1311,6 +1311,14 @@ if USE_S3:
         )
 
     AWS_STORAGE_BUCKET_NAME = env("AWS_STORAGE_BUCKET_NAME", default="hub-files")
+    # Phase 240.1.B.5 — bucket + prefix where DQ payload artefacts live.
+    # Defaults track AWS_STORAGE_BUCKET_NAME so a fresh deploy works
+    # without operator action; operators with a dedicated DQ bucket
+    # override DQ_S3_BUCKET via env. Prefix is virtual — `collect_dq_s3_metrics`
+    # walks `s3://{DQ_S3_BUCKET}/{DQ_S3_PREFIX}` and aggregates the per-
+    # tenant subkey size into the dq_s3_payload_bytes_total gauge.
+    DQ_S3_BUCKET = env("DQ_S3_BUCKET", default=AWS_STORAGE_BUCKET_NAME)
+    DQ_S3_PREFIX = env("DQ_S3_PREFIX", default="dq/")
     # Environment variable always takes precedence (set by Docker Compose)
     AWS_S3_ENDPOINT_URL = env("AWS_S3_ENDPOINT_URL", default=default_s3_endpoint)
     AWS_S3_USE_SSL = env.bool("AWS_S3_USE_SSL", default=False)
@@ -1531,6 +1539,15 @@ REST_FRAMEWORK = {
         # the GraphQL-LD endpoint.  Read by
         # ``hub.apps.graphql_ld.views.SemanticGraphQLThrottle``.
         "semantic_graphql": "60/minute",
+        # Phase 240.3.B.5 — per-action throttle scopes on the advanced
+        # quality endpoints (DQQualityViewSet).  Compute-heavy
+        # ``root_cause_analysis`` gets a tighter rate.  DRF's
+        # ``ScopedRateThrottle`` reads the rate from this dict at
+        # request time.
+        "dq_quality_anomalies": "60/minute",
+        "dq_quality_trends": "30/minute",
+        "dq_quality_scorecards": "30/minute",
+        "dq_quality_root_cause": "5/minute",
     },
 }
 

@@ -43,6 +43,55 @@ class DQTrendDirection(models.TextChoices):
     STABLE = "STABLE", "Stable"
 
 
+# ---------------------------------------------------------------------------
+# Soft-delete plumbing (Phase 240.1.C.3)
+# ---------------------------------------------------------------------------
+
+
+class _ActiveDQQuerySet(models.QuerySet):
+    """QuerySet helper that exposes ``soft_delete`` for bulk paths."""
+
+    def soft_delete(self):
+        """Mark every row in the queryset as soft-deleted.
+
+        Returns the number of rows updated. Idempotent — re-running
+        on already-soft-deleted rows is a no-op (the filter on
+        ``is_deleted=False`` keeps the timestamp stable).
+        """
+        from django.utils import timezone
+
+        return self.filter(is_deleted=False).update(
+            is_deleted=True, deleted_at=timezone.now(),
+        )
+
+
+class SoftDeleteManager(models.Manager):
+    """Default manager that hides soft-deleted rows from normal queries.
+
+    Pattern mirrors the existing ``ActiveAuditEventManager`` in
+    ``hub.apps.audit.models`` — the model exposes ``objects`` (live
+    rows) AND ``all_objects`` (everything, for admin / management
+    commands like ``purge_dq_runs``).
+    """
+
+    def get_queryset(self):
+        return _ActiveDQQuerySet(self.model, using=self._db).filter(
+            is_deleted=False,
+        )
+
+
+class _AllObjectsManager(models.Manager):
+    """Raw manager — sees BOTH live and soft-deleted rows.
+
+    Bound to ``Model.all_objects`` so management commands and admin
+    paths can iterate the full table without manually re-applying
+    ``filter(is_deleted=False)`` semantics in reverse.
+    """
+
+    def get_queryset(self):
+        return _ActiveDQQuerySet(self.model, using=self._db)
+
+
 class DQRun(models.Model):
     """
     DQ Run model representing a data quality check execution.
@@ -134,7 +183,36 @@ class DQRun(models.Model):
     )
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
-    
+
+    # Phase 240.1.C.1 — soft-delete fields. ``is_deleted=True`` rows
+    # are hidden from the default manager and become candidates for
+    # hard-deletion 30 days later (per D240.7). ``deleted_at`` pins
+    # the soft-delete moment; the purge command compares against it.
+    is_deleted = models.BooleanField(
+        default=False,
+        db_index=True,
+        help_text=(
+            "Phase 240.1.C — soft-delete tombstone. True = hidden "
+            "from default manager + eligible for hard-delete after "
+            "the 30-day grace window."
+        ),
+    )
+    deleted_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        help_text=(
+            "Phase 240.1.C — when this row was soft-deleted. NULL "
+            "when ``is_deleted=False``."
+        ),
+    )
+
+    # Manager binding (Phase 240.1.C.3). ``objects`` filters out
+    # soft-deleted rows by default; ``all_objects`` gives raw
+    # access for admin / management-command code that NEEDS to see
+    # tombstones (the purge command being the canonical caller).
+    objects = SoftDeleteManager()
+    all_objects = _AllObjectsManager()
+
     class Meta:
         db_table = "dq_runs"
         ordering = ["-created_at"]
@@ -144,24 +222,50 @@ class DQRun(models.Model):
             models.Index(fields=["tenant", "status"]),
             models.Index(fields=["tenant", "file"]),
             models.Index(fields=["job"]),
+            # Phase 240.1.C.3 — purge query walks
+            # ``is_deleted=False AND created_at < cutoff`` per tenant
+            # then ``is_deleted=True AND deleted_at < cutoff`` for the
+            # hard-delete pass; this composite supports both.
+            models.Index(
+                fields=["tenant", "is_deleted", "created_at"],
+                name="dq_runs_softdelete_purge_idx",
+            ),
         ]
-    
+
     def __str__(self):
         return f"DQ Run {self.id} ({self.profile_key})"
-    
+
     def clean(self):
         """Validate that at least one of asset_id, dataset_id, or file_id is set"""
         super().clean()
-        
+
         if not self.asset and not self.dataset and not self.file:
             raise ValidationError(
                 "At least one of asset, dataset, or file must be set"
             )
-    
+
     def save(self, *args, **kwargs):
         """Override save to validate before saving"""
         self.full_clean()
         super().save(*args, **kwargs)
+
+    def soft_delete(self):
+        """Mark this row as soft-deleted.
+
+        Idempotent — calling on an already-soft-deleted row is a
+        no-op (returns immediately without touching the database).
+        Stamps ``deleted_at`` to ``timezone.now()``.
+        """
+        from django.utils import timezone
+
+        if self.is_deleted:
+            return
+        self.is_deleted = True
+        self.deleted_at = timezone.now()
+        # Skip ``full_clean()`` to avoid running the asset/dataset/
+        # file-presence validator against an old row whose related
+        # objects might already be tombstoned at this point.
+        super().save(update_fields=["is_deleted", "deleted_at"])
 
 
 class DQAnomaly(models.Model):
@@ -256,7 +360,22 @@ class DQAnomaly(models.Model):
         blank=True,
         help_text="User who acknowledged the anomaly"
     )
-    
+
+    # Phase 240.1.C.1 — soft-delete fields (mirror DQRun).
+    is_deleted = models.BooleanField(
+        default=False,
+        db_index=True,
+        help_text="Phase 240.1.C — soft-delete tombstone.",
+    )
+    deleted_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        help_text="Phase 240.1.C — when this row was soft-deleted.",
+    )
+
+    objects = SoftDeleteManager()
+    all_objects = _AllObjectsManager()
+
     class Meta:
         db_table = "dq_anomalies"
         ordering = ["-detected_at"]
@@ -267,10 +386,24 @@ class DQAnomaly(models.Model):
             models.Index(fields=["tenant", "metric_type"]),
             models.Index(fields=["tenant", "acknowledged"]),
             models.Index(fields=["detected_at"]),
+            models.Index(
+                fields=["tenant", "is_deleted", "detected_at"],
+                name="dq_anomalies_softdelete_idx",
+            ),
         ]
-    
+
     def __str__(self):
         return f"DQ Anomaly {self.id} ({self.metric_type}, {self.severity})"
+
+    def soft_delete(self):
+        """Idempotent soft-delete (mirror DQRun.soft_delete)."""
+        from django.utils import timezone
+
+        if self.is_deleted:
+            return
+        self.is_deleted = True
+        self.deleted_at = timezone.now()
+        super().save(update_fields=["is_deleted", "deleted_at"])
 
 
 class DQTrend(models.Model):
@@ -355,7 +488,22 @@ class DQTrend(models.Model):
     )
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
-    
+
+    # Phase 240.1.C.1 — soft-delete fields (mirror DQRun).
+    is_deleted = models.BooleanField(
+        default=False,
+        db_index=True,
+        help_text="Phase 240.1.C — soft-delete tombstone.",
+    )
+    deleted_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        help_text="Phase 240.1.C — when this row was soft-deleted.",
+    )
+
+    objects = SoftDeleteManager()
+    all_objects = _AllObjectsManager()
+
     class Meta:
         db_table = "dq_trends"
         ordering = ["-period_start"]
@@ -366,10 +514,24 @@ class DQTrend(models.Model):
             models.Index(fields=["tenant", "period_type"]),
             models.Index(fields=["period_start", "period_end"]),
             models.Index(fields=["direction"]),
+            models.Index(
+                fields=["tenant", "is_deleted", "period_start"],
+                name="dq_trends_softdelete_idx",
+            ),
         ]
-    
+
     def __str__(self):
         return f"DQ Trend {self.id} ({self.metric_type}, {self.direction})"
+
+    def soft_delete(self):
+        """Idempotent soft-delete (mirror DQRun.soft_delete)."""
+        from django.utils import timezone
+
+        if self.is_deleted:
+            return
+        self.is_deleted = True
+        self.deleted_at = timezone.now()
+        super().save(update_fields=["is_deleted", "deleted_at"])
 
 
 class DQAlertChannel(models.TextChoices):
@@ -458,7 +620,30 @@ class DQAlertingRule(models.Model):
     )
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
-    
+
+    # Phase 240.1.A.3 — alert-delivery dedup window. ``last_alert_id``
+    # is the deterministic ``sha256(rule_id:run_id:alert_type)[:32]``
+    # of the most-recently-delivered alert; ``last_fired_at`` pins
+    # the time it was delivered. The dispatcher uses these two
+    # columns + a 24 h window to short-circuit re-fires of the same
+    # alert (see ``hub/apps/dq/alerting.py``).
+    last_alert_id = models.CharField(
+        max_length=64,
+        null=True,
+        blank=True,
+        help_text=(
+            "Phase 240.1.A — deterministic alert_id of the last "
+            "delivered alert (sha256(rule:run:type)[:32])."
+        ),
+    )
+    last_fired_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        help_text=(
+            "Phase 240.1.A — timestamp of the last delivery attempt."
+        ),
+    )
+
     class Meta:
         db_table = "dq_alerting_rules"
         ordering = ["-created_at"]
@@ -467,8 +652,14 @@ class DQAlertingRule(models.Model):
             models.Index(fields=["tenant", "enabled"]),
             models.Index(fields=["tenant", "metric_type"]),
             models.Index(fields=["tenant", "severity"]),
+            # Phase 240.1.A.3 — dedup probe index. Created CONCURRENTLY
+            # in migration 0007 to avoid blocking writes during deploy.
+            models.Index(
+                fields=["tenant", "id", "last_alert_id"],
+                name="dq_alerting_dedup_idx",
+            ),
         ]
-    
+
     def __str__(self):
         return f"DQ Alerting Rule {self.name} ({self.metric_type})"
     

@@ -4,6 +4,7 @@
  */
 
 import { useState, useMemo } from 'react';
+import { DQ_CATEGORIES } from '../../../shared/types/dq';
 import type { DQRunResults } from '../../../shared/types/dq';
 import './DQRunResultsViewer.css';
 
@@ -16,13 +17,25 @@ export function DQRunResultsViewer({ results }: DQRunResultsViewerProps) {
   const [categoryFilter, setCategoryFilter] = useState<string>('ALL');
   const [statusFilter, setStatusFilter] = useState<'ALL' | 'PASS' | 'FAIL' | 'WARN'>('ALL');
 
-  // Get unique categories
+  // Phase 240.3.C — surface the six canonical DQ dimensions
+  // (COMPLETENESS / VALIDITY / UNIQUENESS / CONSISTENCY / ACCURACY /
+  // TIMELINESS) in the dropdown so users see all dimensions even
+  // before encountering a check that emits one.  Union with any
+  // categories actually in the results so historical runs that emit
+  // non-canonical types (e.g. custom-profile categories) still
+  // appear.
   const categories = useMemo(() => {
-    const cats = new Set<string>();
+    const cats = new Set<string>(DQ_CATEGORIES);
     results.check_details.forEach((check) => {
       if (check.type) cats.add(check.type);
     });
-    return Array.from(cats).sort();
+    // Stable display order: canonical six first (in their
+    // declaration order), then anything else alphabetically.
+    const canonical = DQ_CATEGORIES.filter((c) => cats.has(c));
+    const extras = Array.from(cats)
+      .filter((c) => !DQ_CATEGORIES.includes(c as (typeof DQ_CATEGORIES)[number]))
+      .sort();
+    return [...canonical, ...extras];
   }, [results.check_details]);
 
   // Filter check details

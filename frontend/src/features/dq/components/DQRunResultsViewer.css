@@ -344,3 +344,113 @@
   color: var(--color-accent-500);
   font-weight: 500;
 }
+
+/* ─────────────────────────────────────────────────────────────────────
+ * Phase 240.4.A — advanced-feature UI styling.
+ *
+ * Phase 240.4.A audit-fix Gap 3: the original closeout used several
+ * class names that were never declared in this file (.dq-results-header,
+ * .dq-results-subtitle, .dq-trends-chart-wrapper, .dq-trends-chart,
+ * .alerting-rule-form, .rca-tree, .form-error).  The components rendered
+ * but were unstyled — visible regression vs. the rest of the DQ feature.
+ * Adding them here keeps the styling co-located with DQRunResultsViewer
+ * since the new dashboards explicitly reuse this stylesheet.
+ * ───────────────────────────────────────────────────────────────────── */
+
+.dq-results-header {
+  margin-bottom: 1.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.dq-results-header h1 {
+  margin: 0;
+  font-size: 1.5rem;
+  font-weight: 600;
+}
+
+.dq-results-subtitle {
+  margin: 0;
+  color: var(--color-text-secondary, #6b7280);
+  font-size: 0.95rem;
+}
+
+.dq-trends-chart-wrapper {
+  margin: 1.5rem 0;
+  padding: 1rem;
+  background: var(--color-surface, #fff);
+  border: 1px solid var(--color-border, #e5e7eb);
+  border-radius: 8px;
+}
+
+.dq-trends-chart {
+  width: 100%;
+  height: auto;
+  max-width: 800px;
+  display: block;
+  margin: 0 auto;
+}
+
+.alerting-rule-form {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  margin: 1.5rem 0;
+  padding: 1.5rem;
+  background: var(--color-surface, #fff);
+  border: 1px solid var(--color-border, #e5e7eb);
+  border-radius: 8px;
+}
+
+.alerting-rule-form h3 {
+  margin: 0 0 0.5rem 0;
+  font-size: 1.1rem;
+  font-weight: 600;
+}
+
+.alerting-rule-form fieldset {
+  border: 1px solid var(--color-border, #e5e7eb);
+  border-radius: 6px;
+  padding: 0.75rem;
+  margin: 0;
+}
+
+.alerting-rule-form fieldset legend {
+  padding: 0 0.5rem;
+  font-weight: 600;
+  font-size: 0.95rem;
+}
+
+.rca-tree {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.rca-tree li {
+  padding: 0.75rem;
+  background: var(--color-surface, #fff);
+  border: 1px solid var(--color-border, #e5e7eb);
+  border-radius: 6px;
+}
+
+/* Phase 240.4.A audit-fix — replaces the inline ``style={{ color: ... }}``
+ * on the form-validation message so the lint rule
+ * (no-inline-styles) is satisfied. */
+.form-error {
+  color: var(--color-error, #ef4444);
+  margin: 0.5rem 0;
+  font-size: 0.9rem;
+  font-weight: 500;
+}
+
+/* Phase 240.4.A audit-fix Gap 3 — replaces inline ``alignSelf: 'end'``
+ * on the export-button container so the lint rule (no-inline-styles)
+ * is satisfied. */
+.filter-group--bottom-aligned {
+  align-self: end;
+}

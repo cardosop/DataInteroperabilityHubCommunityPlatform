@@ -71,6 +71,59 @@ Both threat models include a "Legal-team sign-off" section that MUST be filled i
 
 - [scripts/bundle_size_check.mjs](scripts/bundle_size_check.mjs) gains a layered 5% growth-ratio cap atop the existing 30 KB absolute cap. PRs fail on either trip.
 
+### Added — Phase 240: Data-quality feature hardening (240.0–240.5 sub-phases)
+
+> Phase 240 closes the 28-gap audit on the data-quality feature
+> identified pre-MVP: engine-agnostic adapter abstraction, ODPS-aligned
+> profile suite, alert-delivery channel parity, structured-logging
+> migration, distributed tracing across the hub→dq-service boundary,
+> Helm-canonical configuration, payload signing on the internal
+> network, PII redaction sweep, and the operational runbook + SLOs.
+> Per-tenant rollout follows D240.18: `Tenant.data_quality_enabled`
+> defaults TRUE on existing tenants (no surprise disable);
+> `Tenant.data_quality_advanced_enabled` defaults FALSE everywhere
+> and is flipped per-tenant after a 14d soak of 240.3.B.
+
+**New endpoints / capabilities:**
+
+- `POST /api/v1/quality/dq-runs/{id}/trends/`, `/scorecards/`, `/anomalies/`, `/root-cause-analysis/` — advanced quality endpoints gated by `data_quality_enabled AND data_quality_advanced_enabled` (Phase 240.3.B).
+- `POST /run` (dq-service) now routes by profile-key suffix to the engine-agnostic `DQAdapter`: `*_soda` → `SodaAdapter`, all others → `GXAdapter` (Phase 240.3.A).
+- DQ alert delivery across 4 channels (`EMAIL`, `SLACK`, `WEBHOOK`, `PAGERDUTY`) at [hub/apps/dq/clients/](hub/apps/dq/clients/), each with circuit-breaker integration via `hub.apps.core.resilience.service_breakers` (Phase 240.1.A).
+- Tenant-scoped DQ alerting rules (`DQAlertingRule`) with comparison operator + threshold + dedup window + retry / dead-letter lifecycle (Phase 240.1.A.5).
+
+**Behaviour changes (additive-only — no MODIFIED endpoints):**
+
+- All hub→dq-service calls now carry `traceparent` + `tracestate` (W3C TraceContext) — `service.name=hub-api` and `service.name=dq-service` spans connect in Tempo (Phase 240.2.C).
+- Hub→dq-service POST bodies now carry `X-Internal-Payload-Signature` + `X-Internal-Payload-Timestamp` headers (HMAC-SHA256 over `timestamp + "\n" + body`); dq-service verifies in soak mode (`DQ_REQUIRE_PAYLOAD_SIGNATURE=false`) on day-0, flips to enforce after 7d telemetry confirms 100% Hub coverage (Phase 240.5.G).
+- DQ runs that exhaust dq-service retries now route to the dead-letter queue + emit `DQ_ALERT_DEAD_LETTER_OPS_PAGERDUTY` audit events for ops paging (Phase 240.5.A).
+- All `logger.*(..., extra={...})` calls in DQ Hub-side files (`views.py`, `services.py`, `service_client.py`, `alerting.py`, `tasks.py`, `clients/*.py`) wrap their dict in `_redact()` from `hub.apps.dq.log_helpers` — recursively strips `row_samples`, `sample_value`, `sample_data_json`, `file_content`, `body`, `raw_data`, `data`, `details_json` keys before log emission (Phase 240.5.F).
+
+**New audit-event codes (registered in [hub/apps/audit/models.py](hub/apps/audit/models.py)):**
+
+- `DQ_RUN_STARTED`, `DQ_RUN_COMPLETED`, `DQ_RUN_FAILED` (Phase 240.0)
+- `DQ_ALERT_RULE_CREATED`, `DQ_ALERT_RULE_UPDATED`, `DQ_ALERT_RULE_DELETED` (Phase 240.1.A.5)
+- `DQ_ALERT_FIRED`, `DQ_ALERT_DELIVERED`, `DQ_ALERT_DELIVERY_FAILED`, `DQ_ALERT_RETRY_SCHEDULED`, `DQ_ALERT_DEAD_LETTER_OPS_PAGERDUTY` (Phase 240.1.A)
+- `DQ_ALERT_CHANNEL_DEGRADED`, `DQ_ALERT_CHANNEL_RECOVERED` (Phase 240.1.A.6 — circuit-breaker)
+
+**New per-tenant flags:**
+
+- `Tenant.data_quality_enabled` — default **True** on existing tenants (no surprise disable per D240.18).  Kill-switch: flip to False to disable the entire DQ feature for the tenant; in-flight runs complete (no abort), subsequent reads return 403 (D240.18 + 240.4.B.2 / OQ240.4).
+- `Tenant.data_quality_advanced_enabled` — default **False** everywhere.  Conjunctive with the base flag.  Gates the four 240.3.B advanced endpoints (`/trends/`, `/scorecards/`, `/anomalies/`, `/root-cause-analysis/`).  Per-tenant flip after 14d production stability of the 240.3.B endpoints (D240.18).
+
+**Operational assets:**
+
+- Grafana dashboard at [monitoring/grafana/dashboards/data-quality.json](monitoring/grafana/dashboards/data-quality.json) with run-rate / latency / engine success / queue-depth / alert-delivery panels (Phase 240.5.B.1).
+- Prometheus alert rules at [monitoring/prometheus/alerts/dq.yml](monitoring/prometheus/alerts/dq.yml) — 8 alerts covering run-failure-rate, p95 duration regression, circuit-open, alert-delivery, engine-success, queue-depth, audit-write, S3 payload growth (Phase 240.5.B.2).
+- Synthetic firing tests at [monitoring/prometheus/alerts/dq-synthetic-firing.yml](monitoring/prometheus/alerts/dq-synthetic-firing.yml) (Phase 240.5.B.4).
+- Operational runbook at [docs/runbooks/data-quality.md](docs/runbooks/data-quality.md) — SLOs, alert anchors, capacity sizing, kill switches, rolling-deploy for payload signing, PII redaction contract.
+- Trivy DQ-service image vulnerability gate enforced in [.github/workflows/deploy.yml](.github/workflows/deploy.yml) — blocks deploy on CRITICAL/HIGH; pinned by contract test [tests/ci/test_dq_image_vulnerability_scan.py](tests/ci/test_dq_image_vulnerability_scan.py) (Phase 240.5.D).
+- Helm-canonical DQ-service configuration at [helm/values.yaml](helm/values.yaml) under `dqService.config.*` — single source of truth replacing the prior `k8s/dq-service/base/` Kustomize tree (Phase 240.1.D).
+
+**Internal (no API surface):**
+
+- Hub-side `_redact()` helper at [hub/apps/dq/log_helpers.py](hub/apps/dq/log_helpers.py); AST-based lint script at [scripts/check_dq_log_extras.py](scripts/check_dq_log_extras.py); pre-commit + CI gates (`check-dq-log-extras` + `lint-dq-log-extras`) — drift safeguard `TestLintRuleParity` pins `_REDACTED_KEYS` ↔ `_FORBIDDEN_KEYS` parity (Phase 240.5.F).
+- Post-deploy DQ smoke-test script at [scripts/smoke_tests_dq.sh](scripts/smoke_tests_dq.sh) covering DoD.4: synthetic runs across registered profile keys, alert dry-run for all 4 channels, Grafana DQ board non-zero-data check (Phase 240.DoD.4).
+
 ### BREAKING — Phase 227: Structureless contracts now rejected at the API edge
 
 **What changed:** `POST /api/v1/contracts/` and

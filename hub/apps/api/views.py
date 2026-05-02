@@ -322,10 +322,17 @@ def capabilities_view(request):
     REQ-LIN-006: registered + queryable. Default policy:
     production/staging → all flags ``False``;
     test → all flags ``True``;
-    Django settings ``CAPABILITY_FLAGS`` map overrides per flag."""
-    from hub.apps.api.capabilities import get_capabilities
+    Django settings ``CAPABILITY_FLAGS`` map overrides per flag.
 
-    return Response({"capabilities": get_capabilities()})
+    Phase 240.4.B.4 — uses ``get_capabilities_for_request`` so the
+    response also carries the per-tenant Data Quality flags
+    (``data_quality``, ``data_quality_advanced``) resolved from the
+    authenticated user's tenant.  The SPA reads these to render menus
+    without a separate "tenant features" round-trip.
+    """
+    from hub.apps.api.capabilities import get_capabilities_for_request
+
+    return Response({"capabilities": get_capabilities_for_request(request)})
 
 
 @extend_schema(responses={200: APIInfoSerializer}, tags=["API"])

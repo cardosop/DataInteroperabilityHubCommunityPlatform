@@ -18,6 +18,7 @@ import { useAuthStore } from '../../auth/store/authStore';
 import { isMvpModeEnabledFromEnv, isPathHiddenInMvpMode } from '../utils/mvpNav';
 import { SIDEBAR_NAV_ITEMS } from '../utils/navItems';
 import { filterVisibleNavItems } from '../utils/sidebarNavFilter';
+import { flattenNavItemsForPalette } from '../utils/flattenNavItemsForPalette';
 import './AppShell.css';
 import { Header } from './Header';
 import { Sidebar } from './Sidebar';
@@ -58,12 +59,22 @@ function ShellBody() {
       if (!user) return false;
       return requiredRoles.some((role) => user.roles.includes(role));
     };
-    return filterVisibleNavItems(SIDEBAR_NAV_ITEMS, {
+    const filtered = filterVisibleNavItems(SIDEBAR_NAV_ITEMS, {
       mvpModeEnabled,
       hasRole,
       isCapabilityAvailable,
       sidebarAdvancedEnabled: FEATURE_SIDEBAR_ADVANCED,
-    }).map((item) => ({ label: item.label, path: item.path }));
+    });
+    // Phase 240.4.A audit-fix Gap 1 — flatten sub-menu children into
+    // the palette so ⌘K surfaces the new DQ sub-items (Anomalies /
+    // Trends / Scorecards / Alerting Rules / Root Cause).  Without
+    // this, the palette only ever lists the parent /dq link even
+    // though the navItems comment marks itself as "the single source
+    // of truth for the Sidebar AND CommandPalette".  Logic extracted
+    // to ``flattenNavItemsForPalette`` so it's unit-testable in
+    // isolation (the AppShell render suite is JSDOM-bound and can't
+    // be relied on in environments without ResizeObserver).
+    return flattenNavItemsForPalette(filtered);
   }, [user, isCapabilityAvailable, mvpModeEnabled]);
 
   const paletteActions: PaletteItem[] = useMemo(

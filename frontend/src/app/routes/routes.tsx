@@ -195,6 +195,32 @@ const DQRunDetailPage = lazy(() =>
 const DQRunListPage = lazy(() =>
   import('../../features/dq/components/DQRunListPage').then((m) => ({ default: m.DQRunListPage }))
 );
+// Phase 240.4.A.8 — advanced DQ feature routes.
+const AnomaliesDashboard = lazy(() =>
+  import('../../features/dq/components/AnomaliesDashboard').then((m) => ({
+    default: m.AnomaliesDashboard,
+  }))
+);
+const TrendsVisualization = lazy(() =>
+  import('../../features/dq/components/TrendsVisualization').then((m) => ({
+    default: m.TrendsVisualization,
+  }))
+);
+const ScorecardsExecutiveDashboard = lazy(() =>
+  import('../../features/dq/components/ScorecardsExecutiveDashboard').then((m) => ({
+    default: m.ScorecardsExecutiveDashboard,
+  }))
+);
+const AlertingRuleManager = lazy(() =>
+  import('../../features/dq/components/AlertingRuleManager').then((m) => ({
+    default: m.AlertingRuleManager,
+  }))
+);
+const RootCauseAnalysisPage = lazy(() =>
+  import('../../features/dq/components/RootCauseAnalysisPage').then((m) => ({
+    default: m.RootCauseAnalysisPage,
+  }))
+);
 const FileListPage = lazy(() =>
   import('../../features/files/components/FileListPage').then((m) => ({ default: m.FileListPage }))
 );
@@ -934,7 +960,22 @@ export const appRoutes: Parameters<typeof createBrowserRouter>[0] = [
         ],
       },
       {
+        // Phase 240.4.B.3 — wrap the entire /dq subtree in
+        // ``MvpGatedRoute`` (matches the existing pattern for other
+        // MVP-gated features) AND ``CapabilityRoute capability="data_quality"``.
+        // The capability is sourced from ``Tenant.data_quality_enabled``
+        // via ``GET /api/v1/capabilities/`` (see Phase 240.4.B.4) — the
+        // SPA never navigates to /dq/* when the tenant has the feature
+        // disabled, complementing the backend's HTTP 403 +
+        // DATA_QUALITY_DISABLED gate from Phase 240.4.B.2.
         path: 'dq',
+        element: (
+          <MvpGatedRoute>
+            <CapabilityRoute capability="data_quality">
+              <Outlet />
+            </CapabilityRoute>
+          </MvpGatedRoute>
+        ),
         children: [
           {
             index: true,
@@ -943,6 +984,61 @@ export const appRoutes: Parameters<typeof createBrowserRouter>[0] = [
           {
             path: 'runs/:id',
             element: <EB fallbackMsg="Loading..."><DQRunDetailPage /></EB>,
+          },
+          // Phase 240.4.A.8 — advanced DQ feature routes.
+          //
+          // Phase 240.4.B.3 — each advanced sub-route is additionally
+          // wrapped in ``CapabilityRoute capability="data_quality_advanced"``.
+          // The advanced capability is conjunctive on the wire (per
+          // Phase 240.4.B.4: ``data_quality_advanced = base AND advanced``)
+          // so the wrapper denies access whenever EITHER flag is off.
+          {
+            path: 'anomalies',
+            element: (
+              <CapabilityRoute capability="data_quality_advanced">
+                <EB fallbackMsg="Loading..."><AnomaliesDashboard /></EB>
+              </CapabilityRoute>
+            ),
+          },
+          {
+            path: 'trends',
+            element: (
+              <CapabilityRoute capability="data_quality_advanced">
+                <EB fallbackMsg="Loading..."><TrendsVisualization /></EB>
+              </CapabilityRoute>
+            ),
+          },
+          {
+            path: 'scorecards',
+            element: (
+              <CapabilityRoute capability="data_quality_advanced">
+                <EB fallbackMsg="Loading..."><ScorecardsExecutiveDashboard /></EB>
+              </CapabilityRoute>
+            ),
+          },
+          {
+            path: 'alerting-rules',
+            element: (
+              <CapabilityRoute capability="data_quality_advanced">
+                <EB fallbackMsg="Loading..."><AlertingRuleManager /></EB>
+              </CapabilityRoute>
+            ),
+          },
+          {
+            path: 'rca',
+            element: (
+              <CapabilityRoute capability="data_quality_advanced">
+                <EB fallbackMsg="Loading..."><RootCauseAnalysisPage /></EB>
+              </CapabilityRoute>
+            ),
+          },
+          {
+            path: 'runs/:id/rca',
+            element: (
+              <CapabilityRoute capability="data_quality_advanced">
+                <EB fallbackMsg="Loading..."><RootCauseAnalysisPage /></EB>
+              </CapabilityRoute>
+            ),
           },
         ],
       },

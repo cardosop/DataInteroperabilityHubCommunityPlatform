@@ -39,6 +39,11 @@ urlpatterns = [
     path("security/", include("hub.apps.contracts.security_urls")),
     path("assets/", include("hub.apps.assets.urls")),
     path("dq/", include("hub.apps.dq.urls")),
+    # Phase 240.3.B.3 / D240.10 — deprecated dual-mount of the advanced
+    # quality endpoints. Canonical prefix is ``/api/v1/dq/quality/``;
+    # this alias serves the same ViewSet but adds Sunset / Deprecation /
+    # Link response headers per Phase 227 conventions.
+    path("quality/", include("hub.apps.dq.quality_deprecated_urls")),
     path("compliance/", include("hub.apps.compliance.urls")),
     path("semantic/", include("hub.apps.semantic.urls")),
     path("marketplace/", include("hub.apps.marketplace.urls")),

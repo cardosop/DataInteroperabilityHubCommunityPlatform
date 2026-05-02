@@ -120,9 +120,60 @@ def is_capability_enabled_for_tenant(name: str, tenant_id: str | None) -> bool:
     return str(tenant_id) in {str(x) for x in allow_list}
 
 
+def get_capabilities_for_request(request) -> Dict[str, bool]:
+    """Phase 240.4.B.4 — per-request capability map.
+
+    Extends :func:`get_capabilities` with PER-TENANT capability values
+    resolved from the authenticated user's tenant.  The SPA reads this
+    response to render menus correctly without a separate
+    "tenant features" endpoint round-trip.
+
+    Currently exposes:
+
+    * ``data_quality`` — mirror of ``Tenant.data_quality_enabled``
+      (default True per D240.18).
+    * ``data_quality_advanced`` — conjunctive
+      ``Tenant.data_quality_enabled AND
+      Tenant.data_quality_advanced_enabled``.  Conjunctive on the wire
+      so the SPA never advertises a sub-feature whose parent is
+      disabled — matches the backend gate semantics in
+      ``check_data_quality_advanced_enabled``.
+
+    Falls back to the global static map (``get_capabilities()``) when
+    the request has no resolved tenant — anonymous + unauthenticated
+    requests see only the lineage flags.
+    """
+    base = get_capabilities()
+
+    tenant = None
+    try:
+        from hub.apps.tenants.request_tenant import get_request_tenant
+        _tid, tenant = get_request_tenant(request)
+    except Exception:  # noqa: BLE001 — capabilities must NEVER 500
+        # If tenant resolution itself blows up (e.g. middleware not
+        # in pipeline), degrade gracefully — anonymous capability
+        # response is correct for an unauthenticated request.
+        tenant = None
+
+    dq_base = bool(getattr(tenant, "data_quality_enabled", True)) if tenant else False
+    dq_advanced_flag = (
+        bool(getattr(tenant, "data_quality_advanced_enabled", False))
+        if tenant
+        else False
+    )
+    base["data_quality"] = dq_base
+    # Conjunctive on the wire so the SPA never sees
+    # ``data_quality=False, data_quality_advanced=True`` — that would
+    # mislead the menu-rendering code.
+    base["data_quality_advanced"] = dq_base and dq_advanced_flag
+
+    return base
+
+
 __all__ = [
     "LINEAGE_CAPABILITY_FLAGS",
     "get_capabilities",
+    "get_capabilities_for_request",
     "is_capability_enabled",
     "is_capability_enabled_for_tenant",
 ]

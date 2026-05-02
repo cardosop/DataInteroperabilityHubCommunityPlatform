@@ -80,6 +80,26 @@ export function Sidebar() {
             </span>
           )}
         </NavLink>
+        {/* Phase 240.4.A.9 — render sub-menu items (e.g. DQ advanced
+            features) when the nav item has visible children.  Indented
+            via the nav-sublist class. */}
+        {item.children && item.children.length > 0 && (
+          <ul className="nav-sublist">
+            {item.children.map((child) => (
+              <li key={child.path}>
+                <NavLink
+                  to={child.path}
+                  className={({ isActive }) =>
+                    `nav-link nav-link--sub ${isActive ? 'active' : ''}`
+                  }
+                >
+                  {child.icon && <span className="nav-icon">{child.icon}</span>}
+                  <span className="nav-label">{child.label}</span>
+                </NavLink>
+              </li>
+            ))}
+          </ul>
+        )}
       </li>
     ));
 

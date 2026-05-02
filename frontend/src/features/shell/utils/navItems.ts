@@ -17,6 +17,16 @@ export interface NavItem {
   /** When true, this item is hidden unless FEATURE_SIDEBAR_ADVANCED is enabled.
    *  Used for non-core features (Mesh, Virtualization, AI, etc.). */
   advanced?: boolean;
+  /**
+   * Phase 240.4.A.9 — optional sub-menu.  When present, the parent
+   * entry expands to a collapsible group whose children render below
+   * it.  Each child uses the same NavItem shape so role / capability
+   * gates apply uniformly.
+   *
+   * Sub-items are gated on ``data_quality_advanced_enabled`` per the
+   * 240.4.B contract by setting ``requiredCapability`` on each child.
+   */
+  children?: NavItem[];
 }
 
 export const SIDEBAR_NAV_ITEMS: NavItem[] = [
@@ -37,7 +47,58 @@ export const SIDEBAR_NAV_ITEMS: NavItem[] = [
     icon: '🔌',
     requiredCapability: 'integrations.marketplace',
   },
-  { path: '/dq', label: 'Data Quality', icon: '✅' },
+  {
+    path: '/dq',
+    label: 'Data Quality',
+    icon: '✅',
+    // Phase 240.4.B.4 — parent gated on ``data_quality`` capability
+    // (mirror of ``Tenant.data_quality_enabled``).  When False the
+    // entire DQ navigation is hidden from the sidebar; the route
+    // wrappers in ``routes.tsx`` redirect direct URL navigation as
+    // well.  Default True per D240.18 so existing tenants keep the
+    // current behaviour.
+    requiredCapability: 'data_quality',
+    // Phase 240.4.A.9 — sub-menu.
+    //
+    // All children additionally require ``data_quality_advanced``
+    // (conjunctive ``data_quality AND data_quality_advanced_enabled``
+    // resolved server-side per Phase 240.4.B.4).  ``Alerting Rules``
+    // keeps its TENANT_ADMIN role gate — role and capability gates
+    // are independent, both must pass.
+    children: [
+      {
+        path: '/dq/anomalies',
+        label: 'Anomalies',
+        icon: '🔔',
+        requiredCapability: 'data_quality_advanced',
+      },
+      {
+        path: '/dq/trends',
+        label: 'Trends',
+        icon: '📈',
+        requiredCapability: 'data_quality_advanced',
+      },
+      {
+        path: '/dq/scorecards',
+        label: 'Scorecards',
+        icon: '📊',
+        requiredCapability: 'data_quality_advanced',
+      },
+      {
+        path: '/dq/alerting-rules',
+        label: 'Alerting Rules',
+        icon: '🚨',
+        requiredRole: ['TENANT_ADMIN', 'PLATFORM_ADMIN'],
+        requiredCapability: 'data_quality_advanced',
+      },
+      {
+        path: '/dq/rca',
+        label: 'Root Cause',
+        icon: '🔬',
+        requiredCapability: 'data_quality_advanced',
+      },
+    ],
+  },
   { path: '/compliance', label: 'Compliance', icon: '🛡️' },
   { path: '/mesh', label: 'Data Mesh', icon: '🌐', requiredCapability: 'mesh.domains', advanced: true },
   {

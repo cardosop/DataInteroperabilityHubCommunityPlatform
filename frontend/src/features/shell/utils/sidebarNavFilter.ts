@@ -13,20 +13,32 @@ export function filterVisibleNavItems(
   },
 ): NavItem[] {
   const { mvpModeEnabled, hasRole, isCapabilityAvailable, sidebarAdvancedEnabled = true } = options;
-  return items.filter((item) => {
-    // Feature flag: hide advanced items when sidebar advanced flag is disabled
-    if (item.advanced && !sidebarAdvancedEnabled) {
-      return false;
+
+  // Phase 240.4.A.9 — recursive filter that respects role / capability
+  // gates on sub-items too.  When ALL children of a parent are hidden
+  // (e.g. tenant doesn't have ``data_quality_advanced_enabled``), the
+  // parent stays visible WITHOUT the sub-menu so basic DQ navigation
+  // remains accessible.
+  const filterOne = (item: NavItem): NavItem | null => {
+    if (item.advanced && !sidebarAdvancedEnabled) return null;
+    if (isPathHiddenInMvpMode(item.path, mvpModeEnabled)) return null;
+    if (!hasRole(item.requiredRole)) return null;
+    if (item.requiredCapability && !isCapabilityAvailable(item.requiredCapability)) {
+      return null;
     }
-    if (isPathHiddenInMvpMode(item.path, mvpModeEnabled)) {
-      return false;
+    if (item.children && item.children.length > 0) {
+      const visibleChildren = item.children
+        .map(filterOne)
+        .filter((c): c is NavItem => c !== null);
+      if (visibleChildren.length === 0) {
+        // Hide the children block (parent-only) when no child passed
+        // its gates.  Falls back to the parent's own link.
+        return { ...item, children: undefined };
+      }
+      return { ...item, children: visibleChildren };
     }
-    if (!hasRole(item.requiredRole)) {
-      return false;
-    }
-    if (item.requiredCapability) {
-      return isCapabilityAvailable(item.requiredCapability);
-    }
-    return true;
-  });
+    return item;
+  };
+
+  return items.map(filterOne).filter((i): i is NavItem => i !== null);
 }

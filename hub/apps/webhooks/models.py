@@ -111,6 +111,12 @@ class WebhookEventType(models.TextChoices):
     # Billing events (Phase 116A.9)
     BILLING_REPORT_GENERATED = "billing.report.generated", "Billing Report Generated"
     BILLING_REPORT_SENT = "billing.report.sent", "Billing Report Sent"
+    # Phase 240.5.A — DQ run completion billing event.  Wire-stable
+    # string MUST equal ``hub.apps.billing.event_types.DQ_RUN_COMPLETED``;
+    # adding the entry here makes the event subscribable by tenants
+    # via the public ``POST /api/v1/webhooks/`` endpoint (the
+    # serializer validates against ``WebhookEventType.choices``).
+    BILLING_DQ_RUN_COMPLETED = "billing.dq.run.completed", "Billing DQ Run Completed"
 
     # ML events (Phase 114C.6)
     ML_MODEL_REGISTERED = "ml.model.registered", "ML Model Registered"
@@ -148,6 +154,7 @@ class WebhookEventType(models.TextChoices):
         return [
             str(cls.BILLING_REPORT_GENERATED),
             str(cls.BILLING_REPORT_SENT),
+            str(cls.BILLING_DQ_RUN_COMPLETED),
         ]
 
     @classmethod

@@ -33,6 +33,20 @@ class DQTestBase(TestCase):
             slug=f"test-tenant-{uuid.uuid4().hex[:8]}",
             status=TenantStatus.ACTIVE,
             kyc_status=KYCStatus.VERIFIED,
+            # Phase 240.4.B audit-fix Gap 1 — both DQ flags default
+            # ON in test fixtures so the existing 240.3.B
+            # advanced-endpoint tests (test_quality_endpoints.py)
+            # don't regress to 403 on the conjunctive gate.  The
+            # advanced flag's PRODUCTION default is False (D240.18,
+            # staged rollout) but TEST fixtures want full DQ access
+            # by default — feature-flag-specific tests
+            # (test_feature_flag.py) override these via
+            # _set_flags(...) when they need to assert per-flag
+            # behaviour.  The model default is still False
+            # production-side; this only changes test-fixture
+            # behaviour.
+            data_quality_enabled=True,
+            data_quality_advanced_enabled=True,
         )
         ensure_tenant_has_active_subscription(self.tenant)
 
@@ -84,6 +98,10 @@ class DQTransactionTestBase(TestCase):
             slug=f"test-tenant-{uuid.uuid4().hex[:8]}",
             status=TenantStatus.ACTIVE,
             kyc_status=KYCStatus.VERIFIED,
+            # Phase 240.4.B audit-fix Gap 1 — both DQ flags default
+            # ON in test fixtures (mirror of DQTestBase above).
+            data_quality_enabled=True,
+            data_quality_advanced_enabled=True,
         )
         ensure_tenant_has_active_subscription(self.tenant)
 

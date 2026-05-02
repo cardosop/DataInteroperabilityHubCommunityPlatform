@@ -444,11 +444,16 @@ class DataQualityCheckWorkflow:
         dq_run.save(update_fields=["status", "started_at"])
 
         # Run DQ check
+        # Phase 240.3.D — forward the DQRun's tenant for per-tenant
+        # threshold-header resolution (X-Tenant-Threshold-Bytes /
+        # X-Tenant-Threshold-Rows). NULL-override tenants fall through
+        # to the dq-service env defaults.
         dq_result = dq_client.run_dq(
             file_content=file_content,
             file_format=file_format.lower(),
             profile_key=dq_run.profile_key,
             contract=contract,
+            tenant_id=str(dq_run.tenant_id) if dq_run.tenant_id else None,
         )
 
         logger.info(

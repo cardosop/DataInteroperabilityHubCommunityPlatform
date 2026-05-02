@@ -93,6 +93,24 @@ repos:
         always_run: false
         description: "Validate Django URL patterns against API naming standards"
 
+      - id: check-dq-log-extras
+        name: 240.5.F.4 — DQ logger extras PII gate
+        entry: python scripts/check_dq_log_extras.py
+        language: system
+        # Run on ANY change to the canonical DQ Hub-side files so the
+        # check fires whenever a log call is added/edited.  Pass no
+        # filenames — the script defaults to scanning the canonical
+        # five files per Phase 240.5.F.1 (views/services/service_client/
+        # alerting/tasks) PLUS the alert-delivery client subtree
+        # (hub/apps/dq/clients/{base,email_client,webhook_client,
+        # slack_client,pagerduty_client}.py — extension scope from
+        # 240.5.F audit pass).  Globally-scoped (always_run when files
+        # match) so a refactor that splits a log call across two
+        # files is still caught.
+        files: ^hub/apps/dq/((views|services|service_client|alerting|tasks)\.py|clients/[^/]+\.py)$
+        pass_filenames: false
+        description: "Phase 240.5.F.4 — bans raw redacted-key payloads in DQ logger.* extra= args. Wrap the dict in _redact() from hub.apps.dq.log_helpers."
+
       - id: lint-marketplace-code
         name: Lint Marketplace Integration Code
         entry: bash -c 'ruff check --select I,F,E,W --ignore E501 "$@"' --
