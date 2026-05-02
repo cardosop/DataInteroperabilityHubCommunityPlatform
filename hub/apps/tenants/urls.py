@@ -5,6 +5,8 @@ Tenant URL Configuration
 from django.urls import include, path
 from rest_framework.routers import DefaultRouter
 
+from hub.apps.semantic.views import TenantSparqlEndpointViewSet
+
 from .ephemeral_views import ephemeral_tenant
 from .views import TenantConfigViewSet, TenantViewSet
 
@@ -37,6 +39,29 @@ urlpatterns = [
         "<uuid:tenant_id>/config/",
         TenantConfigViewSet.as_view({"get": "retrieve", "patch": "partial_update"}),
         name="tenant-config-detail",
+    ),
+    # Phase 230.8 (REQ-SEM-FED-001) — per-tenant SPARQL allowlist CRUD.
+    # Mounted under tenants/ rather than semantic/ because the route is
+    # nested under <tenant_id>; the implementation lives in semantic/
+    # so the model + view + serializer travel together.
+    path(
+        "<uuid:tenant_id>/sparql-endpoints/",
+        TenantSparqlEndpointViewSet.as_view(
+            {"get": "list", "post": "create"},
+        ),
+        name="tenant-sparql-endpoint-list",
+    ),
+    path(
+        "<uuid:tenant_id>/sparql-endpoints/<uuid:pk>/",
+        TenantSparqlEndpointViewSet.as_view(
+            {
+                "get": "retrieve",
+                "patch": "partial_update",
+                "put": "update",
+                "delete": "destroy",
+            },
+        ),
+        name="tenant-sparql-endpoint-detail",
     ),
     path("", include(router.urls)),
 ]

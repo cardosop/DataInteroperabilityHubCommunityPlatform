@@ -43,6 +43,15 @@ describe('AssetDetailPage', () => {
         id: 'test-uuid-123',
         name: 'Test Item',
         status: 'ACTIVE',
+        // ``visibility`` is required by the component template
+        // (``asset.visibility.toLowerCase()`` at line 371) — without
+        // it the render throws TypeError BEFORE the
+        // CanonicalIriCard renders, masking the actual assertion.
+        // The existing smoke tests (``renders without crashing``)
+        // pass anyway because they only check
+        // ``document.body.innerHTML.length > 0``, which is satisfied
+        // by a partial render before the throw.
+        visibility: 'PRIVATE',
         created_at: '2026-01-01T00:00:00Z',
         updated_at: '2026-01-01T00:00:00Z',
         canonical_iri: 'https://meshant-internal.example.com/id/asset/test-uuid-123',
@@ -78,6 +87,7 @@ describe('AssetDetailPage', () => {
         id: 'test-uuid-123',
         name: 'Test Item',
         status: 'ACTIVE',
+        visibility: 'PRIVATE',
         created_at: '2026-01-01T00:00:00Z',
         updated_at: '2026-01-01T00:00:00Z',
         // canonical_iri intentionally omitted.

@@ -3,7 +3,8 @@
  * Tabs: SPARQL Query, URI Lookup, Ontology Browser (real API; no mocks)
  */
 
-import { useState } from 'react';
+import { Suspense, lazy, useEffect, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import ReactCodeMirror from '@uiw/react-codemirror';
 import { StreamLanguage } from '@codemirror/language';
 import { sparql } from '@codemirror/legacy-modes/mode/sparql';
@@ -21,20 +22,48 @@ import {
   useSPARQLQuery,
 } from '../hooks/useSemantic';
 import { useSPARQLHistory } from '../hooks/useSPARQLHistory';
+import { LdnSettings } from './LdnSettings';
+import { OntologyManager } from './OntologyManager';
 import { OntologyTree } from './OntologyTree';
 import { SPARQLResultTable } from './SPARQLResultTable';
+import { useAuthStore } from '../../auth/store/authStore';
 import './SemanticPage.css';
 
-type TabId = 'sparql' | 'uri-lookup' | 'ontology' | 'export';
+type TabId =
+  | 'sparql'
+  | 'uri-lookup'
+  | 'ontology'
+  | 'export'
+  | 'custom-ontologies'
+  | 'ldn'
+  | 'graphql';
 type OntologySubTab = 'turtle' | 'jsonld';
 type ExportFormat = 'n-triples' | 'turtle' | 'rdf-xml' | 'ld+json';
 
-const TABS: { id: TabId; label: string }[] = [
+const TABS: { id: TabId; label: string; tenantAdminOnly?: boolean }[] = [
   { id: 'sparql', label: 'SPARQL Query' },
   { id: 'uri-lookup', label: 'URI Lookup' },
   { id: 'ontology', label: 'Ontology' },
   { id: 'export', label: 'Export' },
+  // Phase 230.10 (REQ-SEM-ONTO-001) — TENANT_ADMIN-only sub-tab.
+  // The OntologyManager component itself enforces the role guard on
+  // render; this flag only controls visibility in the tab strip so
+  // non-admins don't see a tab they can't use.
+  { id: 'custom-ontologies', label: 'Custom Ontologies', tenantAdminOnly: true },
+  // Phase 230.12 (REQ-SEM-LDN-001) — TENANT_ADMIN-only LDN tab.
+  { id: 'ldn', label: 'LDN', tenantAdminOnly: true },
+  // Phase 230.13 (REQ-SEM-GQL-001) — GraphQL-LD playground tab.
+  { id: 'graphql', label: 'GraphQL-LD' },
 ];
+
+// Phase 230.13.9 — GraphiQL playground is loaded lazily so the
+// main bundle doesn't grow with the GraphQL playground assets.
+// Per the spec ("lazy-loaded via React.lazy()") and the bundlesize
+// CI gate (D230.10) — the playground is only fetched when the user
+// activates the tab.
+const GraphQLPlayground = lazy(
+  () => import('./GraphQLLDPlayground'),
+);
 
 const EXPORT_FORMATS: { value: ExportFormat; label: string; ext: string }[] = [
   { value: 'n-triples', label: 'N-Triples', ext: 'nt' },
@@ -46,7 +75,28 @@ const EXPORT_FORMATS: { value: ExportFormat; label: string; ext: string }[] = [
 const sparqlLang = StreamLanguage.define(sparql);
 
 export function SemanticPage() {
-  const [activeTab, setActiveTab] = useState<TabId>('sparql');
+  const user = useAuthStore((s) => s.user);
+  const isTenantAdmin =
+    !!user && (user.is_platform_admin || (user.roles ?? []).includes('TENANT_ADMIN'));
+  const visibleTabs = TABS.filter((t) => !t.tenantAdminOnly || isTenantAdmin);
+
+  // Phase 230.13.9 — read ``?tab=graphql`` so the spec-mandated
+  // deep link (`/semantic?tab=graphql`) lands directly on the
+  // playground.  Other tab ids are also honoured.
+  const [searchParams, setSearchParams] = useSearchParams();
+  const initialTab = (searchParams.get('tab') || 'sparql') as TabId;
+  const [activeTab, setActiveTab] = useState<TabId>(
+    visibleTabs.some((t) => t.id === initialTab) ? initialTab : 'sparql',
+  );
+
+  // Mirror tab → URL so deep-linking + back/forward stay consistent.
+  useEffect(() => {
+    if (searchParams.get('tab') === activeTab) return;
+    const next = new URLSearchParams(searchParams);
+    next.set('tab', activeTab);
+    setSearchParams(next, { replace: true });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeTab]);
   const [sparqlQuery, setSparqlQuery] = useState('SELECT ?s ?p ?o WHERE { ?s ?p ?o } LIMIT 10');
   const [sparqlFormat, setSparqlFormat] = useState<SPARQLOutputFormat>('json');
   const [uriResourceType, setUriResourceType] = useState('asset');
@@ -133,12 +183,13 @@ export function SemanticPage() {
       </div>
 
       <div className="semantic-tabs">
-        {TABS.map((tab) => (
+        {visibleTabs.map((tab) => (
           <button
             key={tab.id}
             type="button"
             className={`semantic-tab ${activeTab === tab.id ? 'active' : ''}`}
             onClick={() => setActiveTab(tab.id)}
+            data-testid={`semantic-tab-${tab.id}`}
           >
             {tab.label}
           </button>
@@ -483,6 +534,26 @@ export function SemanticPage() {
               </p>
             )}
           </section>
+        )}
+
+        {/* Phase 230.10 (REQ-SEM-ONTO-001) — TENANT_ADMIN-only sub-tab */}
+        {activeTab === 'custom-ontologies' && <OntologyManager />}
+
+        {/* Phase 230.12 (REQ-SEM-LDN-001) — TENANT_ADMIN-only LDN sub-tab */}
+        {activeTab === 'ldn' && <LdnSettings />}
+
+        {/* Phase 230.13 (REQ-SEM-GQL-001) — GraphQL-LD playground.
+            Lazy-loaded via React.lazy() so the playground bundle is
+            only fetched when the tab is activated (D230.10 bundle-
+            size gate). */}
+        {activeTab === 'graphql' && (
+          <Suspense
+            fallback={
+              <LoadingSpinner message="Loading GraphQL playground..." />
+            }
+          >
+            <GraphQLPlayground />
+          </Suspense>
         )}
       </div>
     </div>

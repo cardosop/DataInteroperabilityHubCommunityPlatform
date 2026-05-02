@@ -132,6 +132,7 @@ INSTALLED_APPS = [
     "hub.apps.developer",
     "hub.apps.api",
     "hub.apps.graphql",
+    "hub.apps.graphql_ld",  # Phase 230.13 (REQ-SEM-GQL-001) — GraphQL-LD endpoint
     # hub.apps.graphql_graphene is optional - only add if graphene_django is available
     # "hub.apps.graphql_graphene",  # Made optional to prevent startup failures if not installed
     "hub.apps.health",
@@ -1515,8 +1516,19 @@ REST_FRAMEWORK = {
     # cap is the spec-mandated value.
     "DEFAULT_THROTTLE_RATES": {
         "semantic_export": "5/5min",
+        # Phase 230.13 (REQ-SEM-GQL-001) — per-user 60 q/min throttle on
+        # the GraphQL-LD endpoint.  Read by
+        # ``hub.apps.graphql_ld.views.SemanticGraphQLThrottle``.
+        "semantic_graphql": "60/minute",
     },
 }
+
+# Phase 230.13 (REQ-SEM-GQL-001) — GraphQL-LD DoS caps.  Pulled from
+# settings so the test suite can override per-test (depth/complexity
+# caps via @override_settings, timeout via SEMANTIC_GRAPHQL_TIMEOUT_SECONDS).
+SEMANTIC_GRAPHQL_DEPTH_LIMIT = 5
+SEMANTIC_GRAPHQL_COMPLEXITY_LIMIT = 100
+SEMANTIC_GRAPHQL_TIMEOUT_SECONDS = 10.0
 
 # OpenAPI/Spectacular Configuration
 SPECTACULAR_SETTINGS = {

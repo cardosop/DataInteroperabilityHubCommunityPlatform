@@ -36,8 +36,15 @@ const DIST_DIR = path.join(REPO_ROOT, 'frontend', 'dist', 'assets');
 const BASELINE_PATH = path.join(
   REPO_ROOT, 'frontend', '.bundle-size-baseline.json',
 );
-// Phase 228.F2.30 — 30 KB gzipped delta.
+// Phase 228.F2.30 — 30 KB gzipped delta (absolute).
 const MAX_DELTA_BYTES = 30 * 1024;
+// Phase 230.13.10 (REQ-SEM-GQL-001) — 5% production-chunk growth cap.
+// Layered on top of the absolute cap above so a small bundle's
+// percentage gate doesn't trip on noise (the absolute gate dominates
+// at small sizes), AND so a large bundle's percentage gate catches
+// growth that would otherwise stay under the 30 KB absolute gate
+// (the GraphiQL playground was the motivating case — 600+ KB raw).
+const MAX_GROWTH_RATIO = 0.05;
 
 async function listAssets() {
   let files = [];
@@ -126,17 +133,24 @@ async function main() {
   }
 
   const delta = total - baseline.total_gzipped_bytes;
+  const growthRatio =
+    baseline.total_gzipped_bytes > 0
+      ? delta / baseline.total_gzipped_bytes
+      : 0;
 
   // Markdown summary for GITHUB_STEP_SUMMARY.
   const lines = [];
-  lines.push('## Phase 228.F2.30 — bundle-size delta');
+  lines.push('## Phase 228.F2.30 + 230.13.10 — bundle-size delta');
   lines.push('');
   lines.push(`| | Total (gzipped) |`);
   lines.push(`| --- | ---: |`);
   lines.push(`| Baseline | ${baseline.total_gzipped_bytes} bytes |`);
   lines.push(`| Current | ${total} bytes |`);
   lines.push(`| **Delta** | **${delta >= 0 ? '+' : ''}${delta} bytes** |`);
-  lines.push(`| Budget | ±${MAX_DELTA_BYTES} bytes |`);
+  lines.push(
+    `| **Growth** | **${(growthRatio * 100).toFixed(2)}%** (cap ${MAX_GROWTH_RATIO * 100}%) |`,
+  );
+  lines.push(`| Absolute budget | ±${MAX_DELTA_BYTES} bytes |`);
   lines.push('');
   console.log(lines.join('\n'));
 
@@ -148,9 +162,17 @@ async function main() {
     );
   }
 
+  // Both gates apply — the PR fails on the FIRST cap that trips.
   if (delta > MAX_DELTA_BYTES) {
     console.error(
-      `[bundle-size-check] FAIL: delta ${delta} > budget ${MAX_DELTA_BYTES} bytes`,
+      `[bundle-size-check] FAIL: absolute delta ${delta} > budget ${MAX_DELTA_BYTES} bytes`,
+    );
+    process.exit(1);
+  }
+  if (growthRatio > MAX_GROWTH_RATIO) {
+    console.error(
+      `[bundle-size-check] FAIL: growth ${(growthRatio * 100).toFixed(2)}% ` +
+      `> cap ${MAX_GROWTH_RATIO * 100}% (Phase 230.13.10)`,
     );
     process.exit(1);
   }

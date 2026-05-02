@@ -27,6 +27,7 @@ posts a comment listing which sections are blank.
 - [ ] Frontend unit tests added/updated (`*.test.tsx`).
 - [ ] Frontend E2E covered (`frontend/e2e/features/*.spec.ts`).
 - [ ] OpenAPI surface verified (`python manage.py spectacular`) when adding/changing endpoints.
+- [ ] OpenAPI drift snapshot updated (`UPDATE_OPENAPI_SNAPSHOT=1 npx playwright test e2e/dimensions/openapi-drift.spec.ts`) when adding/removing endpoints. Phase 230.AUDIT.11 / D273.9 — frontend-ci runs the drift gate; PRs with new endpoints + stale snapshot will fail there.
 - [ ] No-test rationale documented below (when the change is doc-only / config-only).
 
 ## Rollback plan

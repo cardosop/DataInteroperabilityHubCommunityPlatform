@@ -20,6 +20,13 @@ class SearchResultSerializer(serializers.Serializer):
     quality_status = serializers.CharField(allow_null=True)
     compliance_status = serializers.CharField(allow_null=True)
     indexed_at = serializers.DateTimeField(allow_null=True)
+    # Phase 230.11 (REQ-SEM-SEARCH-EXPAND-001) — present only on
+    # rows surfaced via ontology query expansion.  Exact matches MUST
+    # NOT carry these fields so the frontend can render the badge
+    # unambiguously.
+    matched_via = serializers.CharField(required=False, allow_null=True)
+    bridge_term = serializers.CharField(required=False, allow_null=True)
+    bridge_relation = serializers.CharField(required=False, allow_null=True)
 
 
 class SearchResponseSerializer(serializers.Serializer):

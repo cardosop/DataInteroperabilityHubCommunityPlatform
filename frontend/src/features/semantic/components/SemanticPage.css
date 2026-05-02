@@ -239,3 +239,42 @@
   max-height: 600px;
   overflow-y: auto;
 }
+
+/* Phase 230.13 (REQ-SEM-GQL-001) — GraphQL-LD playground. */
+.semantic-graphql-playground h2 {
+  margin-top: 0;
+}
+
+.graphql-playground-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--spacing-md);
+  margin-top: var(--spacing-md);
+}
+
+@media (max-width: 900px) {
+  .graphql-playground-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.graphql-playground-input,
+.graphql-playground-output {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-sm);
+}
+
+.graphql-playground-textarea {
+  width: 100%;
+  font-family: 'Courier New', monospace;
+  font-size: var(--font-size-sm);
+  padding: var(--spacing-sm);
+  border-radius: var(--border-radius-md);
+  border: 1px solid var(--color-border);
+}
+
+.graphql-playground-actions {
+  display: flex;
+  justify-content: flex-end;
+}

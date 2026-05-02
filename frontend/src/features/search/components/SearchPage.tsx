@@ -79,6 +79,11 @@ export function SearchPage() {
   // if mesh backend is unavailable, the dropdown shows only "All domains")
   const { data: domainsData } = useMeshDomains();
 
+  // Phase 230.11 (REQ-SEM-SEARCH-EXPAND-001) — ontology-aware search
+  // toggle.  Off by default — preserves existing search semantics
+  // unless the user explicitly opts in.
+  const [semanticEnabled, setSemanticEnabled] = useState(false);
+
   const [data, setData] = useState<SearchResponse | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<ApiError | null>(null);
@@ -96,6 +101,7 @@ export function SearchPage() {
   const debouncedDomain = useDebouncedValue(domainFilter, SEARCH_DEBOUNCE_MS);
   const debouncedDq = useDebouncedValue(dqStatusFilter, SEARCH_DEBOUNCE_MS);
   const debouncedCompliance = useDebouncedValue(complianceFilter, SEARCH_DEBOUNCE_MS);
+  const debouncedSemantic = useDebouncedValue(semanticEnabled, SEARCH_DEBOUNCE_MS);
 
   const currentScopeSupported = SCOPES.find((s) => s.value === debouncedScope)?.supported ?? true;
 
@@ -118,12 +124,13 @@ export function SearchPage() {
     }
 
     let cancelled = false;
-    const filters: Record<string, string | number> = { limit: 50 };
+    const filters: Record<string, string | number | boolean> = { limit: 50 };
     const type = toSearchResultType(debouncedScope);
     if (type) filters.type = type;
     if (debouncedDomain) filters.domain = debouncedDomain;
     if (debouncedDq) filters.quality_status = debouncedDq;
     if (debouncedCompliance) filters.compliance_status = debouncedCompliance;
+    if (debouncedSemantic) filters.semantic = true;
 
     setLoading(true);
     setError(null);
@@ -154,6 +161,7 @@ export function SearchPage() {
     debouncedDomain,
     debouncedDq,
     debouncedCompliance,
+    debouncedSemantic,
     currentScopeSupported,
   ]);
 
@@ -302,6 +310,23 @@ export function SearchPage() {
               <option value="PENDING">Pending</option>
             </select>
           </div>
+          <div className="search-filter-group search-filter-semantic">
+            <label htmlFor="search-semantic-toggle" className="search-semantic-label">
+              <input
+                id="search-semantic-toggle"
+                type="checkbox"
+                checked={semanticEnabled}
+                onChange={(e) => setSemanticEnabled(e.target.checked)}
+                aria-label="Toggle ontology-aware search"
+                data-testid="search-semantic-toggle"
+              />
+              <span>Ontology-aware search</span>
+            </label>
+            <span className="search-filter-hint">
+              Expands queries via tenant ontology relations (synonyms,
+              equivalent classes, parent/child concepts).
+            </span>
+          </div>
         </div>
       </div>
 
@@ -344,6 +369,15 @@ export function SearchPage() {
                   <span className="relevance-score">
                     Relevance: {(item.relevance_score * 100).toFixed(0)}%
                   </span>
+                  {item.matched_via === 'ontology' && item.bridge_term && (
+                    <span
+                      className="ontology-match-badge"
+                      data-testid={`ontology-badge-${item.id}`}
+                      title="Surfaced via ontology-aware query expansion"
+                    >
+                      matched via ontology: {item.bridge_term}
+                    </span>
+                  )}
                 </Link>
               </li>
             ))}

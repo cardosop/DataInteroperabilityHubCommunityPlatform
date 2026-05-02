@@ -13,6 +13,7 @@ import type { ApiError } from '../../../shared/types/api';
 import type { TenantConfig, TenantConfigUpdate, TenantUsage } from '../../../shared/types/tenants';
 import { normalizeError } from '../../../shared/utils/errorUtils';
 import { tenantService } from '../services/tenantService';
+import { SparqlFederationPanel } from './SparqlFederationPanel';
 import './TenantSettingsPage.css';
 
 const VALID_DQ_PROFILES = ['intake_basic_gx', 'intake_basic_soda'];
@@ -20,7 +21,7 @@ const VALID_COMPLIANCE_REGIMES = ['GDPR', 'LGPD', 'CCPA', 'HIPAA', 'SOX'];
 const DATA_RETENTION_MIN = 90;
 const DATA_RETENTION_MAX = 3650;
 
-type Tab = 'usage' | 'config';
+type Tab = 'usage' | 'config' | 'federation';
 
 export function TenantSettingsPage() {
   const [activeTab, setActiveTab] = useState<Tab>('usage');
@@ -232,6 +233,14 @@ export function TenantSettingsPage() {
           aria-selected={activeTab === 'config'}
         >
           Configuration
+        </button>
+        <button
+          type="button"
+          className={`tenant-settings-tab ${activeTab === 'federation' ? 'active' : ''}`}
+          onClick={() => setActiveTab('federation')}
+          aria-selected={activeTab === 'federation'}
+        >
+          SPARQL Federation
         </button>
       </div>
 
@@ -534,6 +543,14 @@ export function TenantSettingsPage() {
             <LoadingSpinner message="Loading configuration..." />
           )}
         </section>
+      )}
+
+      {activeTab === 'federation' && (
+        config && config.tenant_id ? (
+          <SparqlFederationPanel tenantId={config.tenant_id} />
+        ) : (
+          <LoadingSpinner message="Loading tenant context..." />
+        )
       )}
     </div>
   );

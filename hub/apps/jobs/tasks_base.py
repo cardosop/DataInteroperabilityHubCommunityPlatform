@@ -576,6 +576,18 @@ def _execute_job_logic(job_obj: Job, job_type: str) -> dict:
 
         return _execute_semantic_snapshot_job(job_obj)
 
+    elif job_type == JobType.ONTOLOGY_VALIDATE:
+        # Phase 230.10 (REQ-SEM-ONTO-001) — async ontology re-validation.
+        from hub.apps.semantic.tasks import _execute_ontology_validate_job
+
+        return _execute_ontology_validate_job(job_obj)
+
+    elif job_type == JobType.LDN_OUTBOUND_DELIVERY:
+        # Phase 230.12 (REQ-SEM-LDN-003) — outbound LDN delivery.
+        from hub.apps.semantic.tasks_ldn import _execute_ldn_outbound_delivery_job
+
+        return _execute_ldn_outbound_delivery_job(job_obj)
+
     else:
         raise ValueError(f"Unknown job type: {job_type}")
 

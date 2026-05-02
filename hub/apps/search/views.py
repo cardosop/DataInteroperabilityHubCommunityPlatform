@@ -144,6 +144,13 @@ class SearchViewSet(viewsets.ViewSet):
         # memcached-unsafe characters like spaces and colons).
         import hashlib
         from django.core.cache import cache
+        # Phase 230.11 — read the semantic flag here so it can
+        # contribute to the cache key (different responses for
+        # ?semantic=true vs the legacy path).
+        _semantic_for_cache = (
+            request.query_params.get("semantic", "").strip().lower()
+            in ("1", "true", "yes")
+        )
         cache_key_parts = [
             str(tenant.id),
             query or "",
@@ -158,6 +165,7 @@ class SearchViewSet(viewsets.ViewSet):
             str(offset),
             sort_by,
             sort_order,
+            "sem=1" if _semantic_for_cache else "sem=0",
         ]
         raw_key = "|".join(cache_key_parts)
         key_hash = hashlib.md5(raw_key.encode()).hexdigest()
@@ -188,6 +196,86 @@ class SearchViewSet(viewsets.ViewSet):
                 sort_order=sort_order,
                 user_id=str(request.user.id) if request.user.is_authenticated else None
             )
+
+            # Phase 230.11 (REQ-SEM-SEARCH-EXPAND-001) — when the
+            # request opts into semantic expansion AND the tenant has
+            # the per-tenant flag enabled, run the expansion module
+            # for each bridge term, dedupe by (id, type), apply the
+            # 0.5× rank multiplier, and tag expansion-only matches
+            # with matched_via=ontology + bridge_term.  Both flags
+            # required → defence-in-depth (a tenant cannot opt itself
+            # in via the URL alone).
+            semantic_param = (
+                request.query_params.get("semantic", "").strip().lower()
+                in ("1", "true", "yes")
+            )
+            tenant_semantic_enabled = bool(
+                getattr(tenant, "semantic_search_enabled", False),
+            )
+            if semantic_param and tenant_semantic_enabled:
+                try:
+                    from .semantic_query_expansion import expand_query_terms
+                    bridges = expand_query_terms(
+                        query=query, tenant_id=str(tenant.id),
+                    )
+                except Exception as _e:  # noqa: BLE001 — fail-soft
+                    import logging as _l
+                    _l.getLogger(__name__).warning(
+                        "search_semantic_expansion_failed tenant=%s error=%s",
+                        tenant.id, _e,
+                    )
+                    bridges = []
+
+                if bridges:
+                    seen_keys = {(r.get("type"), str(r.get("id"))) for r in results}
+                    for bridge in bridges:
+                        try:
+                            bridge_results, _bridge_total = search_service.search(
+                                tenant_id=str(tenant.id),
+                                query=bridge.label,
+                                resource_type=resource_type,
+                                classification=classification,
+                                owner_id=owner_id,
+                                tags=tags,
+                                domain=domain,
+                                quality_status=quality_status,
+                                compliance_status=compliance_status,
+                                limit=limit,
+                                offset=offset,
+                                sort_by=sort_by,
+                                sort_order=sort_order,
+                                user_id=str(request.user.id) if request.user.is_authenticated else None,
+                            )
+                        except Exception as _e:  # noqa: BLE001
+                            import logging as _l
+                            _l.getLogger(__name__).warning(
+                                "search_semantic_bridge_query_failed bridge=%r error=%s",
+                                bridge.label, _e,
+                            )
+                            continue
+                        for row in bridge_results:
+                            key = (row.get("type"), str(row.get("id")))
+                            if key in seen_keys:
+                                # Exact match wins — keep the higher
+                                # original rank, never relabel.
+                                continue
+                            row["relevance_score"] = (
+                                float(row.get("relevance_score", 0.0)) * 0.5
+                            )
+                            row["matched_via"] = "ontology"
+                            row["bridge_term"] = bridge.label
+                            row["bridge_relation"] = bridge.relation
+                            results.append(row)
+                            seen_keys.add(key)
+                    # Re-sort merged list — exact + expansion together —
+                    # by relevance descending so the bridge multiplier
+                    # bumps expansion matches below exact ones.
+                    results.sort(
+                        key=lambda r: float(r.get("relevance_score", 0.0)),
+                        reverse=True,
+                    )
+                    total = len(results)
+
             # Cache results for 5 minutes
             cache.set(cache_key, (results, total), 300)
 
@@ -493,6 +581,78 @@ class UnifiedSearchView(APIView):
 
     permission_classes = [IsAuthenticated]
 
+    @staticmethod
+    def _fts_query(
+        *,
+        tenant,
+        term: str,
+        requested_types: set,
+        rank_multiplier: float,
+        bridge_term,
+    ) -> list:
+        """Run the existing tenant-scoped FTS for a single term and
+        return the standard result rows.
+
+        Factored out so the Phase 230.11 expansion path can call the
+        same query for the original query and for each ontology
+        bridge term, applying a 0.5× rank multiplier on the latter
+        (REQ-SEM-SEARCH-EXPAND-001 ranking contract).
+
+        ``bridge_term`` is unused inside this helper but the caller
+        passes it through so the merging logic can attach it to each
+        row.
+        """
+        from hub.apps.assets.models import Asset
+        from hub.apps.contracts.models import Contract
+
+        if not term:
+            return []
+
+        sq = SearchQuery(term, search_type="websearch")
+        out = []
+
+        if "assets" in requested_types:
+            for row in (
+                Asset.objects.filter(
+                    tenant=tenant,
+                    search_vector__isnull=False,
+                )
+                .filter(search_vector=sq)
+                .annotate(rank=SearchRank(db_models.F("search_vector"), sq))
+                .order_by("-rank")
+                .values("id", "name", "rank")
+            ):
+                out.append(
+                    {
+                        "type": "asset",
+                        "id": str(row["id"]),
+                        "name": row["name"],
+                        "rank": float(row["rank"]) * rank_multiplier,
+                    }
+                )
+
+        if "contracts" in requested_types:
+            for row in (
+                Contract.objects.filter(
+                    tenant=tenant,
+                    search_vector__isnull=False,
+                )
+                .filter(search_vector=sq)
+                .annotate(rank=SearchRank(db_models.F("search_vector"), sq))
+                .order_by("-rank")
+                .values("id", "original_spec_type", "rank")
+            ):
+                out.append(
+                    {
+                        "type": "contract",
+                        "id": str(row["id"]),
+                        "name": row["original_spec_type"],
+                        "rank": float(row["rank"]) * rank_multiplier,
+                    }
+                )
+
+        return out
+
     def get(self, request: Request) -> Response:
         from hub.apps.assets.models import Asset
         from hub.apps.contracts.models import Contract
@@ -535,63 +695,72 @@ class UnifiedSearchView(APIView):
             t.strip().lower() for t in types_raw.split(",") if t.strip()
         }
 
-        search_query = SearchQuery(q, search_type="websearch")
+        # Phase 230.11 (REQ-SEM-SEARCH-EXPAND-001) — ontology-aware
+        # query expansion is gated by BOTH the request-side
+        # ?semantic=true flag AND the per-tenant
+        # ``semantic_search_enabled`` flag.  Either off → expansion is
+        # skipped entirely (legacy search semantics preserved).
+        semantic_param = (
+            request.query_params.get("semantic", "").strip().lower()
+            in ("1", "true", "yes")
+        )
+        tenant_semantic_enabled = bool(
+            getattr(tenant, "semantic_search_enabled", False),
+        )
+        semantic_active = semantic_param and tenant_semantic_enabled
 
-        results = []
+        bridges = []  # list of ExpansionBridge — populated only when active
+        if semantic_active:
+            try:
+                from hub.apps.search.semantic_query_expansion import (
+                    expand_query_terms,
+                )
+                bridges = expand_query_terms(
+                    query=q, tenant_id=str(tenant.id),
+                )
+            except Exception as exc:  # noqa: BLE001 — fail-soft; expansion
+                # is an enhancement, never a blocker.
+                import logging
+                logging.getLogger(__name__).warning(
+                    "semantic_expansion_failed tenant=%s error=%s",
+                    tenant.id, exc,
+                )
+                bridges = []
 
-        # ── assets ───────────────────────────────────────────────────────
-        if "assets" in requested_types:
-            asset_qs = (
-                Asset.objects.filter(
+        results = self._fts_query(
+            tenant=tenant,
+            term=q,
+            requested_types=requested_types,
+            rank_multiplier=1.0,
+            bridge_term=None,
+        )
+
+        # Phase 230.11 — for each ontology bridge, run the same FTS
+        # against the asset/contract index, then merge while:
+        # (a) tagging expansion-only matches with matched_via=ontology,
+        # (b) applying a 0.5× rank multiplier (exact > expanded), and
+        # (c) deduping by (type, id) — exact match wins on collision.
+        if bridges:
+            seen = {(r["type"], r["id"]) for r in results}
+            for bridge in bridges:
+                bridge_rows = self._fts_query(
                     tenant=tenant,
-                    search_vector__isnull=False,
+                    term=bridge.label,
+                    requested_types=requested_types,
+                    rank_multiplier=0.5,
+                    bridge_term=bridge.label,
                 )
-                .filter(search_vector=search_query)
-                .annotate(
-                    rank=SearchRank(
-                        db_models.F("search_vector"), search_query
-                    )
-                )
-                .order_by("-rank")
-                .values("id", "name", "rank")
-            )
-            for row in asset_qs:
-                results.append(
-                    {
-                        "type": "asset",
-                        "id": str(row["id"]),
-                        "name": row["name"],
-                        "rank": float(row["rank"]),
-                    }
-                )
-
-        # ── contracts ────────────────────────────────────────────────────
-        if "contracts" in requested_types:
-            # Contracts don't have a `name` field; use original_spec_type
-            # as the display label.
-            contract_qs = (
-                Contract.objects.filter(
-                    tenant=tenant,
-                    search_vector__isnull=False,
-                )
-                .filter(search_vector=search_query)
-                .annotate(
-                    rank=SearchRank(
-                        db_models.F("search_vector"), search_query
-                    )
-                )
-                .order_by("-rank")
-                .values("id", "original_spec_type", "rank")
-            )
-            for row in contract_qs:
-                results.append(
-                    {
-                        "type": "contract",
-                        "id": str(row["id"]),
-                        "name": row["original_spec_type"],
-                        "rank": float(row["rank"]),
-                    }
-                )
+                for row in bridge_rows:
+                    key = (row["type"], row["id"])
+                    if key in seen:
+                        # Already matched the exact term; keep the
+                        # higher-ranked exact match unmodified.
+                        continue
+                    row["matched_via"] = "ontology"
+                    row["bridge_term"] = bridge.label
+                    row["bridge_relation"] = bridge.relation
+                    results.append(row)
+                    seen.add(key)
 
         # ── sort merged results by rank desc ─────────────────────────────
         results.sort(key=lambda r: r["rank"], reverse=True)
