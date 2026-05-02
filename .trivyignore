@@ -441,3 +441,30 @@ CVE-2026-31568
 #     publishes a fixed libgnutls30t64 to bookworm-security / trixie.
 # Review by: 2026-05-31.
 CVE-2026-33845
+
+# Added: 2026-05-02 (worker-service trivy gate — run 25261396354)
+# Eight kernel CVEs published in the Debian vulndb against
+# linux-libc-dev 6.12.85-1 (Debian 13.4 "Trixie"). All status=affected,
+# no fixed version available. Same class as every other linux-libc-dev
+# entry in this file: container userspace headers only — runtime uses
+# the host kernel, the package's kernel code is never executed.
+#
+# Subsystems touched (per CVE titles, none invoked from Meshant
+# container workloads):
+#   - rtnetlink netlink_ns_capable() check (kernel-side netlink)
+#   - smb client DACL validation (CIFS — not used in Python workloads)
+#   - Bluetooth hci_event wake-reason storage (no BT in EKS)
+#   - ALSA ctxfi index mapping (audio drivers)
+#   - bpf pruning + atomic fetch (eBPF; we don't load eBPF programs)
+#   - mptcp soft lockup in mptcp_recvmsg() (multipath TCP)
+#   - mpls platform_label seqcount (MPLS networking — not used)
+#   - HID core OOB mitigation (input devices)
+# Review by: 2026-06-02.
+CVE-2026-31692
+CVE-2026-31709
+CVE-2026-31771
+CVE-2026-31777
+CVE-2026-43009
+CVE-2026-43029
+CVE-2026-43042
+CVE-2026-43048
