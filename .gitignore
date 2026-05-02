@@ -111,3 +111,22 @@ node_modules
 # Keep README.md tracked (instructions); ignore everything else.
 audit-reports/*
 !audit-reports/README.md
+
+# Docker buildkit progress lines accidentally captured to files when
+# `docker compose ... > some-file` runs without proper redirection.
+# Phase 228 cleanup — zero-byte files that keep getting recreated
+# during interactive compose-from-repo-root sessions.
+CACHED
+transferring
+[builder
+[internal]
+[stage-1
+
+# Playwright test result captures (`npx playwright test --reporter line
+# > tests-results.txt`). Belong in CI artifact paths, never the repo.
+test-artifacts/
+/frontend/tests-results*.txt
+/frontend/frontend/
+
+# Frontend guard / drift tooling output (Phase 228 lineage hardening).
+/frontend/guard-failures/
