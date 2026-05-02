@@ -421,3 +421,23 @@ CVE-2026-4878
 #     we run on AWS x86_64/arm64 EKS nodes, never s390.
 # Review by: 2026-05-31.
 CVE-2026-31568
+
+# Added: 2026-05-01 (api-service trivy gate — run 25234255226)
+# CVE-2026-33845 — GnuTLS: Denial of Service via DTLS zero-length packets.
+# Affects libgnutls30t64 3.8.9-3+deb13u2 in the Debian 13.4 base image.
+# Status=affected, no Debian fix published.
+#
+# Impact: None for api-service.
+#   - libgnutls30t64 is pulled in transitively by base-image components
+#     (curl, gnutls-bin, etc.); the api-service Python/Django code does
+#     not call into GnuTLS directly (`grep -r gnutls services/api/`
+#     finds zero usage). Django/uvicorn use OpenSSL via Python's `ssl`
+#     module, not GnuTLS.
+#   - The CVE is a DoS via DTLS (Datagram TLS) zero-length packets.
+#     api-service exposes only HTTPS (TLS over TCP), terminated at the
+#     ALB/ingress, never DTLS. The vulnerable code path is not on any
+#     reachable surface.
+#   - Containers will pick up the patch automatically when Debian
+#     publishes a fixed libgnutls30t64 to bookworm-security / trixie.
+# Review by: 2026-05-31.
+CVE-2026-33845
