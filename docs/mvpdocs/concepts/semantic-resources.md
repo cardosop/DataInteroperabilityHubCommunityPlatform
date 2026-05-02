@@ -73,14 +73,17 @@ ORDER BY DESC(?score)
 - Tombstone responses for archived resources.
 - API endpoint for bulk RDF export (N-Triples format).
 
-**Post-MVP:**
+**Available at launch (Phase 230):**
 
-- SPARQL federation with external endpoints.
-- Custom ontology registration per tenant.
-- OWL reasoning for inferred relationships.
-- Schema.org markup in the web UI for SEO and external discovery.
-- Linked data notifications (W3C LDN) for cross-catalog synchronization.
-- GraphQL-LD endpoint as an alternative to SPARQL for developers unfamiliar with RDF.
+The following capabilities were promoted from "Post-MVP" to MVP after Phase 230 (REQ-SEM-EXPORT-001 / TOMBSTONE-001 / MEMENTO-001 / INFERENCE-001 / ONTO-001 / LDN-001 / GQL-001 / SEO-001). All are available at launch; per-tenant capability flags control gradual rollout where applicable.
+
+- **SPARQL federation** with external endpoints — `SERVICE <url>` clauses gated by per-tenant allowlist (Phase 230.8).
+- **Custom ontology registration per tenant** — TENANT_ADMIN uploads Turtle / RDF/XML / JSON-LD; loaded into Fuseki named graph `urn:tenant:{id}:ontology:{name}` (Phase 230.10).
+- **OWL/RDFS reasoning for inferred relationships** — per-tenant flag `Tenant.semantic_inference_enabled` routes SPARQL to Fuseki's `dataset/inferred` overlay with `OWLMicroFBRuleReasoner` (Phase 230.7).
+- **Schema.org markup in the web UI** for SEO + external discovery — `<script type="application/ld+json">` injected on public pages via `react-helmet-async` (Phase 230.9).
+- **Linked Data Notifications (W3C LDN)** for cross-catalog synchronization — signed inbox + outbound delivery with HTTP signatures, 90-day key rotation (Phase 230.12).
+- **GraphQL-LD endpoint** as an alternative to SPARQL — `POST /api/v1/semantic/graphql` (Phase 230.13).
+- **Memento (RFC 7089) versioned retrieval** — `Accept-Datetime` header → 302 to nearest-past snapshot; TimeMap endpoint enumerates all snapshots (Phase 230.4).
 
 ## Discovery in the UI
 

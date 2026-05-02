@@ -122,6 +122,19 @@ Expected:
 
 ## Known limitations
 
+* **No pre-deploy snapshot backfill** (Phase 230.AUDIT.4 — DECIDED skip).
+  Memento returns the nearest-past `SemanticResourceVersion` row.
+  Resources updated AFTER the Phase 230.4 deploy date have
+  snapshots; resources that haven't been updated since deploy
+  have no snapshots and dereference with `Accept-Datetime` returns
+  404. **Pre-deploy state is not represented in the version history.**
+  The skip-backfill decision is intentional: snapshots are useless
+  for time-travel until enough wall-clock time passes for the
+  history to span the queried date — backfilling a single
+  "deploy-time" snapshot per resource produces a degenerate history
+  that misleads operators into thinking time-travel works further
+  back than it does. Resources mature into the Memento surface
+  organically as they receive updates post-deploy.
 * Blank-node IDs are NOT canonicalised. Two graphs that differ only
   in blank-node naming will hash differently, producing a redundant
   snapshot. Acceptable for v1; URDNA2015 canonicalisation is a
