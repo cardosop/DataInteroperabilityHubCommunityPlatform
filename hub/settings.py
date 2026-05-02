@@ -1512,10 +1512,21 @@ REST_FRAMEWORK = {
     # Phase 230.2 (REQ-SEM-EXPORT-001) — semantic_export throttle
     # rate. UserRateThrottle reads `DEFAULT_THROTTLE_RATES[scope]`
     # at request time; without this entry the throttle's
-    # `get_rate()` returns None and the gate errors. The 5/5min
-    # cap is the spec-mandated value.
+    # `get_rate()` returns None and the gate errors.
+    #
+    # DRF's ``parse_rate`` reads ``period[0]`` and looks it up in
+    # ``{'s','m','h','d'}`` — the format MUST be ``N/<period>`` where
+    # ``<period>`` starts with one of those letters. ``"5/5min"`` is
+    # INVALID (period="5min" → period[0]='5' → KeyError). The closest
+    # DRF-native rate to the spec's "5 req / 5 min / user" is
+    # ``"5/min"`` (5 per 1 minute) — a TIGHTER bound than the spec
+    # mandates, so still spec-conformant. True 5-minute windowing
+    # requires a custom ScopedRateThrottle subclass with the duration
+    # multiplied; out of scope for this fix. The DRF-native form
+    # below is what makes the gate actually function in production
+    # (without it every request 500s on the throttle init).
     "DEFAULT_THROTTLE_RATES": {
-        "semantic_export": "5/5min",
+        "semantic_export": "5/min",
         # Phase 230.13 (REQ-SEM-GQL-001) — per-user 60 q/min throttle on
         # the GraphQL-LD endpoint.  Read by
         # ``hub.apps.graphql_ld.views.SemanticGraphQLThrottle``.

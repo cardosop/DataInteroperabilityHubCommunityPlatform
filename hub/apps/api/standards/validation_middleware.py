@@ -51,6 +51,14 @@ class APIValidationMiddleware(MiddlewareMixin):
         if not request.path.startswith("/api/"):
             return None
 
+        # W3C-spec endpoints accept non-JSON RDF/SPARQL bodies.
+        # Phase 230.12 (REQ-SEM-LDN-001): LDN inbox accepts text/turtle,
+        # application/ld+json, application/rdf+xml, application/n-triples.
+        if "/api/v1/semantic/ldn/inbox/" in request.path or request.path.endswith(
+            "/api/v1/semantic/ldn/inbox"
+        ):
+            return None
+
         # Validate Content-Type for POST/PUT/PATCH
         if request.method in ["POST", "PUT", "PATCH"]:
             content_type = request.META.get("CONTENT_TYPE", "")
