@@ -154,6 +154,63 @@ OPENLINEAGE_KEY_ROTATED = "OPENLINEAGE_KEY_ROTATED"
 # ``OpenLineageIngestApiKey.grace_audit_emitted_at`` is the latch.
 OPENLINEAGE_KEY_GRACE_USED = "OPENLINEAGE_KEY_GRACE_USED"
 
+# Phase 230.8 (REQ-SEM-FED-001) — SPARQL federation audit codes.
+# - SEMANTIC_FEDERATED_QUERY: emitted on every federated SERVICE call
+#   (including timeouts + DENIED).  Carries target_url + SHA-256 query
+#   hash + response_time_ms in details_json so an auditor can answer
+#   "did tenant T query partner P with what shape, when, and was it
+#   slow".
+# - SEMANTIC_FEDERATION_ALLOWLIST_ADD / _REMOVE: emitted on
+#   TenantSparqlEndpoint mutations.  Allowlist changes are a security
+#   event — auditor must reconstruct the allowlist state at any past
+#   point in time from the audit log alone (defence-in-depth against
+#   silent allowlist drift).
+SEMANTIC_FEDERATED_QUERY = "SEMANTIC_FEDERATED_QUERY"
+SEMANTIC_FEDERATION_ALLOWLIST_ADD = "SEMANTIC_FEDERATION_ALLOWLIST_ADD"
+SEMANTIC_FEDERATION_ALLOWLIST_REMOVE = "SEMANTIC_FEDERATION_ALLOWLIST_REMOVE"
+
+# Phase 230.2 (REQ-SEM-EXPORT-001) — bulk RDF export audit code.
+# Emitted on every successful export with byte-count, format, and
+# tenant in details_json. Rejected exports (400/413/429) do NOT
+# emit (matches the LDN inbound pattern — failed attempts surface
+# in structured logs, not as audit rows).
+SEMANTIC_EXPORT = "SEMANTIC_EXPORT"
+
+# Phase 230.3 (REQ-SEM-TOMBSTONE-001) — tombstone lifecycle audit
+# code. Emitted on Asset retire / Contract delete / Dataset archive
+# AND on the GDPR-purge path. ``details_json`` carries the
+# tombstoned IRI + reason (asset_retired / contract_deleted /
+# dataset_archived / gdpr_purge).
+SEMANTIC_TOMBSTONE = "SEMANTIC_TOMBSTONE"
+
+# Phase 230.10 (REQ-SEM-ONTO-001) — custom ontology lifecycle audit
+# codes. UPLOAD covers BOTH successful and validation-failed
+# attempts (per audit-fix GAP-A — INVALID rows are persisted with
+# validation_errors populated; the audit row distinguishes via
+# ``details_json.validation_status``). ACTIVATE / DEACTIVATE fire
+# on PATCH is_active transitions.
+SEMANTIC_ONTOLOGY_UPLOAD = "SEMANTIC_ONTOLOGY_UPLOAD"
+SEMANTIC_ONTOLOGY_ACTIVATE = "SEMANTIC_ONTOLOGY_ACTIVATE"
+SEMANTIC_ONTOLOGY_DEACTIVATE = "SEMANTIC_ONTOLOGY_DEACTIVATE"
+
+# Phase 230.12 (REQ-SEM-LDN-001/003) — W3C LDN audit codes.
+# INBOUND fires on accepted notifications only (rejected requests
+# — 401/413/429 — do NOT emit per spec).
+# OUTBOUND fires per delivery attempt (successful + failed retries).
+# SUBSCRIPTION_CREATED fires on LdnSubscription.objects.create.
+SEMANTIC_LDN_INBOUND = "SEMANTIC_LDN_INBOUND"
+SEMANTIC_LDN_OUTBOUND = "SEMANTIC_LDN_OUTBOUND"
+SEMANTIC_LDN_SUBSCRIPTION_CREATED = "SEMANTIC_LDN_SUBSCRIPTION_CREATED"
+
+# Phase 230.13 (REQ-SEM-GQL-001) — GraphQL-LD endpoint audit code.
+# Emitted on every authenticated GraphQL query (success + failure).
+# Carries SHA-256 of the query text in details_json.query_sha256
+# (the body is NOT stored — GraphQL queries can carry user-supplied
+# input that may contain PII).  Resolver-level outcome
+# (SUCCESS/DEPTH_EXCEEDED/COMPLEXITY_EXCEEDED/TIMEOUT/THROTTLED) is
+# captured in details_json.outcome.
+SEMANTIC_GRAPHQL_QUERY = "SEMANTIC_GRAPHQL_QUERY"
+
 LINEAGE_AUDIT_ACTIONS: tuple[str, ...] = (
     LINEAGE_VIEWED,
     LINEAGE_VIEWED_CROSS_TENANT,
@@ -165,5 +222,29 @@ LINEAGE_AUDIT_ACTIONS: tuple[str, ...] = (
     OPENLINEAGE_KEY_REVOKED,
     OPENLINEAGE_KEY_ROTATED,
     OPENLINEAGE_KEY_GRACE_USED,
+    SEMANTIC_FEDERATED_QUERY,
+    SEMANTIC_FEDERATION_ALLOWLIST_ADD,
+    SEMANTIC_FEDERATION_ALLOWLIST_REMOVE,
+    SEMANTIC_GRAPHQL_QUERY,
+)
+
+# Phase 230.14.12 — canonical registry of all SEMANTIC_* audit
+# action codes added across Phase 230 sub-phases. Pinned by a
+# constants test (mirror of LINEAGE_AUDIT_ACTIONS) so a future
+# rename or accidental delete fails CI rather than silently
+# drifting the audit-trail vocabulary.
+SEMANTIC_AUDIT_ACTIONS: tuple[str, ...] = (
+    SEMANTIC_EXPORT,
+    SEMANTIC_TOMBSTONE,
+    SEMANTIC_FEDERATED_QUERY,
+    SEMANTIC_FEDERATION_ALLOWLIST_ADD,
+    SEMANTIC_FEDERATION_ALLOWLIST_REMOVE,
+    SEMANTIC_ONTOLOGY_UPLOAD,
+    SEMANTIC_ONTOLOGY_ACTIVATE,
+    SEMANTIC_ONTOLOGY_DEACTIVATE,
+    SEMANTIC_LDN_INBOUND,
+    SEMANTIC_LDN_OUTBOUND,
+    SEMANTIC_LDN_SUBSCRIPTION_CREATED,
+    SEMANTIC_GRAPHQL_QUERY,
 )
 

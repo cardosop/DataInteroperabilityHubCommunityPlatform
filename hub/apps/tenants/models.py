@@ -317,6 +317,72 @@ class Tenant(models.Model):
             "2-5x query latency vs. the plain dataset endpoint."
         ),
     )
+    # Phase 230.10 (REQ-SEM-ONTO-002) — per-tenant capability gate for
+    # custom-ontology registration. Default False — feature is sold
+    # as a paid add-on; flipping the flag unlocks the upload/manage
+    # surface for the tenant's TENANT_ADMINs. The viewset returns 403
+    # when this is False regardless of user role, so a forgotten flag
+    # cannot grant access through role drift alone.
+    semantic_custom_ontology_enabled = models.BooleanField(
+        default=False,
+        help_text=(
+            "Phase 230.10 (REQ-SEM-ONTO-002) — when True, "
+            "TENANT_ADMINs may upload and manage custom ontologies "
+            "via /api/v1/semantic/ontologies/. When False the "
+            "endpoint returns 403 regardless of role."
+        ),
+    )
+    # Phase 230.12 (REQ-SEM-LDN-001) — per-tenant capability gate for
+    # the W3C Linked Data Notifications inbox + outbound delivery.
+    # When False the inbox POST returns 401 (signature verification
+    # always fails because there are no allow-listed keys to check
+    # against) and the outbound signal handler short-circuits.
+    # Default False — the feature is sold as a paid add-on AND
+    # carries security review obligations (signed-HTTP-request
+    # surface; threat-model + legal sign-off per D230.11).
+    semantic_ldn_enabled = models.BooleanField(
+        default=False,
+        help_text=(
+            "Phase 230.12 (REQ-SEM-LDN-001) — when True, the tenant's "
+            "LDN inbox accepts signed RDF notifications from "
+            "allow-listed partners and the platform fires outbound "
+            "notifications on resource updates. Default False."
+        ),
+    )
+    # Phase 230.11 (REQ-SEM-SEARCH-EXPAND-001) — per-tenant gate for
+    # ontology-aware query expansion in the search endpoint.  When
+    # False the ``?semantic=true`` flag on /api/search/ is a no-op
+    # (legacy behaviour preserved per the spec scenario "Toggle off
+    # reproduces today's behaviour").  When True the endpoint walks
+    # the tenant's active TenantOntology rows + the Meshant base
+    # ontology for skos:altLabel / skos:related / owl:equivalentClass
+    # / rdfs:subClassOf bridges (depth ≤ 2).
+    semantic_search_enabled = models.BooleanField(
+        default=False,
+        help_text=(
+            "Phase 230.11 (REQ-SEM-SEARCH-EXPAND-001) — when True, "
+            "search requests with ?semantic=true expand the user's "
+            "query via tenant ontology relations. When False the "
+            "?semantic flag is a no-op (existing search semantics "
+            "preserved)."
+        ),
+    )
+    # Phase 230.13 (REQ-SEM-GQL-002) — per-tenant gate for the
+    # GraphQL-LD endpoint at POST /api/v1/semantic/graphql.  When
+    # False the endpoint returns 403 regardless of role.  Default
+    # False because the feature carries DoS surface area (depth /
+    # complexity / timeout caps notwithstanding) and is sold as a
+    # paid add-on per the proposal.
+    semantic_graphql_ld_enabled = models.BooleanField(
+        default=False,
+        help_text=(
+            "Phase 230.13 (REQ-SEM-GQL-002) — when True, "
+            "/api/v1/semantic/graphql accepts GraphQL-LD queries "
+            "from this tenant's authenticated users (subject to "
+            "the depth/complexity/timeout/throttle caps).  When "
+            "False the endpoint returns 403."
+        ),
+    )
     plan = models.ForeignKey(
         "tenants.TenantPlan",
         on_delete=models.SET_NULL,

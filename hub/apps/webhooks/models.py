@@ -24,7 +24,33 @@ class WebhookStatus(models.TextChoices):
 
 
 class WebhookEventType(models.TextChoices):
-    """Webhook event types"""
+    """Webhook event types.
+
+    Phase 230.AUDIT.12 / D273.8 — DECIDED: NO ``semantic.*`` webhook
+    event types in Phase 230. Semantic surface (export, tombstone,
+    federation, ontology, LDN, GraphQL, memento, inference) is
+    AUDIT-ONLY for now — every state transition emits an
+    ``AuditEvent`` (see ``hub/apps/audit/models.py::SEMANTIC_AUDIT_ACTIONS``)
+    but does NOT fan out as a webhook delivery. Rationale:
+
+      1. Semantic state transitions are high-volume (LDN inbound on
+         a busy tenant can hit the rate limit cap of 10 req/min/IP,
+         times N partner keys; outbound delivery fans out per
+         subscription). Adding webhook delivery on top would multiply
+         the per-event work by the subscriber count.
+      2. The Phase 230.12 LDN outbound surface IS the semantic-events
+         webhook by another name — partners subscribe via
+         ``LdnSubscription`` rather than ``Webhook``. Two parallel
+         delivery paths would diverge.
+      3. No customer has asked for ``semantic.*`` webhooks. Revisit
+         when one does — at that point the webhook surface should
+         reuse the LDN outbound infrastructure (signed deliveries,
+         exponential back-off, dead-letter) rather than build a
+         second delivery pipeline.
+
+    DO NOT extend this enum with ``semantic.*`` values without
+    revisiting D273.8.
+    """
     # Contract events
     CONTRACT_CREATED = "contract.created", "Contract Created"
     CONTRACT_UPDATED = "contract.updated", "Contract Updated"

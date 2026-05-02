@@ -126,7 +126,17 @@ class Dataset(models.Model):
     )
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
-    
+    # Phase 230.8.9 (REQ-SEM-FED-002) — per-resource federation
+    # opt-out.  When True, this dataset's triples are excluded from
+    # incoming federated SERVICE responses.
+    semantic_federate_optout = models.BooleanField(
+        default=False,
+        help_text=(
+            "When True, this resource's triples are NOT exposed to "
+            "external federated SERVICE queries (REQ-SEM-FED-002)."
+        ),
+    )
+
     class Meta:
         db_table = "datasets"
         ordering = ["-created_at"]

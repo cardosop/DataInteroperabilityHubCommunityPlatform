@@ -42,6 +42,19 @@ class JobType(models.TextChoices):
     # hash differs from the latest row (the UniqueConstraint on
     # (resource, content_hash) gives us the dedupe primitive).
     SEMANTIC_SNAPSHOT = "SEMANTIC_SNAPSHOT", "Semantic Snapshot"
+    # Phase 230.10 (REQ-SEM-ONTO-001) — async validation of an
+    # uploaded TenantOntology (size, rdflib parse, declared
+    # namespace, reserved-namespace rejection, per-tenant
+    # uniqueness). The job mutates the TenantOntology row in place
+    # (validation_status, validation_errors, triple_count).
+    ONTOLOGY_VALIDATE = "ONTOLOGY_VALIDATE", "Ontology Validate"
+    # Phase 230.12 (REQ-SEM-LDN-003) — outbound LDN delivery to a
+    # partner inbox URL. Job carries the LdnSubscription id + the
+    # serialised RDF notification body in details_json. Retries
+    # follow exponential back-off (1m / 5m / 30m / 4h / 24h) with
+    # dead-letter at 5 attempts; the worker layer reads
+    # ``details_json["attempt"]`` to compute the next delay.
+    LDN_OUTBOUND_DELIVERY = "LDN_OUTBOUND_DELIVERY", "LDN Outbound Delivery"
 
 
 class JobStatus(models.TextChoices):

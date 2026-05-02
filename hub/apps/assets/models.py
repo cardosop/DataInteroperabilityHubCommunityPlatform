@@ -174,6 +174,17 @@ class Asset(models.Model):
         blank=True,
         help_text="PostgreSQL tsvector for full-text search (auto-maintained)",
     )
+    # Phase 230.8.9 (REQ-SEM-FED-002) — per-resource federation
+    # opt-out.  When True, this asset's triples are excluded from
+    # incoming federated SERVICE responses.  Defaults to False so the
+    # opt-out is explicit, not implicit.
+    semantic_federate_optout = models.BooleanField(
+        default=False,
+        help_text=(
+            "When True, this resource's triples are NOT exposed to "
+            "external federated SERVICE queries (REQ-SEM-FED-002)."
+        ),
+    )
 
     class Meta:
         db_table = "assets"
