@@ -803,7 +803,10 @@ class ExternalResourceReference(models.Model):
             models.Index(fields=["connection_id"]),
             # Phase 250.5.A.5 — supports the cleanup task that scans
             # for rows whose grace window has expired.
-            models.Index(fields=["source_tenant_deleted_at"]),
+            models.Index(
+                fields=["source_tenant_deleted_at"],
+                name="err_src_deleted_at_idx",
+            ),
         ]
         constraints = [
             models.UniqueConstraint(

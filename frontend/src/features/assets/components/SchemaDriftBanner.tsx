@@ -32,6 +32,8 @@
  * keys are namespaced under `assets.schema_drift.*` so a per-
  * feature locale split doesn't collide with other surfaces.
  */
+import type { JSX } from 'react';
+
 import { useTranslation } from '../../../shared/i18n/useTranslation';
 
 export interface TypeMismatch {
