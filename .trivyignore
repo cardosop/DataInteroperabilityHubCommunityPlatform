@@ -468,3 +468,22 @@ CVE-2026-43009
 CVE-2026-43029
 CVE-2026-43042
 CVE-2026-43048
+
+# Added: 2026-05-05 (api-service trivy gate — run 25356242697)
+# CVE-2026-33846 — GnuTLS: Denial of Service via heap buffer overflow.
+# Affects libgnutls30t64 3.8.9-3+deb13u2 in the Debian 13.4 base image.
+# Status=affected, no Debian fix published at scan time.
+#
+# Impact: None for api-service. Same rationale as CVE-2026-33845 (its
+# DTLS-zero-length sibling, ignored 2026-05-01):
+#   - libgnutls30t64 is pulled in transitively by base-image components;
+#     api-service Python/Django code does not call into GnuTLS
+#     (`grep -r gnutls services/api/` finds zero usage). Django/uvicorn
+#     use OpenSSL via Python's `ssl` module, not GnuTLS.
+#   - The vulnerable heap-overflow path is in GnuTLS protocol handlers
+#     never reached by api-service workloads (no DTLS surface; HTTPS is
+#     terminated at the ALB/ingress).
+#   - Containers will pick up the patch automatically when Debian
+#     publishes a fixed libgnutls30t64 to bookworm-security / trixie.
+# Review by: 2026-06-04.
+CVE-2026-33846
