@@ -190,7 +190,7 @@ class ChunkedUploadTest(FilesAPITestBase):
             f"{getattr(response, 'data', '')}",
         )
         file_obj.refresh_from_db()
-        self.assertEqual(file_obj.status, FileStatus.ACTIVE)
+        self.assertEqual(file_obj.status, FileStatus.COMPLETED)
 
         # Clean up multipart upload
         try:

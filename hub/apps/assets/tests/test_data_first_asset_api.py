@@ -19,6 +19,7 @@ from hub.apps.files.models import File, FileStatus
 from hub.apps.files.storage import S3StorageClient
 from hub.apps.tenants.models import Tenant
 from hub.apps.testing.billing_support import ensure_tenant_has_active_subscription
+from hub.apps.testing.idempotency_helpers import post_data_first
 from hub.apps.testing.role_support import ensure_user_has_data_provider_role
 from hub.apps.users.models import UserStatus
 
@@ -64,7 +65,7 @@ class DataFirstAssetAPITestBase(TestCase):
         )
 
     def _create_active_file(self, tenant, user, csv_content=None):
-        """Create File record and upload to storage (for success/integration tests)."""
+        """Create File record and upload to storage (legacy ACTIVE fixture)."""
         if csv_content is None:
             csv_content = b"id,name,email\n1,John,john@example.com\n2,Jane,jane@example.com\n"
         file_obj = File.objects.create(
@@ -89,6 +90,13 @@ class DataFirstAssetAPITestBase(TestCase):
             file_obj.save(update_fields=["storage_path"])
         return file_obj
 
+    def _create_completed_file(self, tenant, user, csv_content=None):
+        """Create an uploaded file in COMPLETED state (canonical terminal state)."""
+        file_obj = self._create_active_file(tenant, user, csv_content=csv_content)
+        file_obj.status = FileStatus.COMPLETED
+        file_obj.save(update_fields=["status", "updated_at"])
+        return file_obj
+
 
 class DataFirstAssetAPIValidationTest(DataFirstAssetAPITestBase):
     """Validation tests: missing file_id, invalid file_id, 401."""
@@ -111,10 +119,11 @@ class DataFirstAssetAPIValidationTest(DataFirstAssetAPITestBase):
 
     def test_data_first_returns_400_when_file_id_missing(self):
         """POST /api/v1/assets/data-first/ without file_id returns 400."""
-        response = self.client.post(
+        response = post_data_first(
+            self.client,
             "/api/v1/assets/data-first/",
             {"key": "my-asset", "name": "My Asset"},
-            format="json",
+            tenant=self.tenant,
         )
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
         self.assertIn("file_id", str(response.data).lower())
@@ -122,10 +131,11 @@ class DataFirstAssetAPIValidationTest(DataFirstAssetAPITestBase):
     def test_data_first_returns_400_when_key_missing(self):
         """POST /api/v1/assets/data-first/ without key returns 400."""
         file_obj = self._create_file_record_only(self.tenant, self.user)
-        response = self.client.post(
+        response = post_data_first(
+            self.client,
             "/api/v1/assets/data-first/",
             {"file_id": str(file_obj.id), "name": "My Asset"},
-            format="json",
+            tenant=self.tenant,
         )
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
         self.assertIn("key", str(response.data).lower())
@@ -133,24 +143,26 @@ class DataFirstAssetAPIValidationTest(DataFirstAssetAPITestBase):
     def test_data_first_returns_400_when_name_missing(self):
         """POST /api/v1/assets/data-first/ without name returns 400."""
         file_obj = self._create_file_record_only(self.tenant, self.user)
-        response = self.client.post(
+        response = post_data_first(
+            self.client,
             "/api/v1/assets/data-first/",
             {"file_id": str(file_obj.id), "key": "my-asset"},
-            format="json",
+            tenant=self.tenant,
         )
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
         self.assertIn("name", str(response.data).lower())
 
     def test_data_first_returns_400_or_404_when_file_id_invalid(self):
         """POST /api/v1/assets/data-first/ with non-existent file_id returns 400 or 404."""
-        response = self.client.post(
+        response = post_data_first(
+            self.client,
             "/api/v1/assets/data-first/",
             {
                 "file_id": str(uuid.uuid4()),
                 "key": "my-asset",
                 "name": "My Asset",
             },
-            format="json",
+            tenant=self.tenant,
         )
         self.assertIn(
             response.status_code,
@@ -160,12 +172,30 @@ class DataFirstAssetAPIValidationTest(DataFirstAssetAPITestBase):
 
     def test_data_first_returns_400_when_file_id_malformed(self):
         """POST /api/v1/assets/data-first/ with malformed file_id returns 400."""
-        response = self.client.post(
+        response = post_data_first(
+            self.client,
             "/api/v1/assets/data-first/",
             {"file_id": "not-a-uuid", "key": "my-asset", "name": "My Asset"},
-            format="json",
+            tenant=self.tenant,
         )
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_data_first_returns_400_when_file_status_is_active(self):
+        """Only COMPLETED files are accepted for data-first asset creation."""
+        file_obj = self._create_file_record_only(self.tenant, self.user)
+        self.assertEqual(file_obj.status, FileStatus.ACTIVE)
+        response = post_data_first(
+            self.client,
+            "/api/v1/assets/data-first/",
+            {
+                "file_id": str(file_obj.id),
+                "key": "active-file-rejected",
+                "name": "Should Fail",
+            },
+            tenant=self.tenant,
+        )
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertEqual(response.data.get("code"), "INVALID_STATE")
 
 
 class DataFirstAssetAPITenantIsolationTest(DataFirstAssetAPITestBase):
@@ -180,14 +210,15 @@ class DataFirstAssetAPITenantIsolationTest(DataFirstAssetAPITestBase):
 
     def test_data_first_cross_tenant_file_id_returns_403_or_404(self):
         """User from tenant A POSTing tenant B's file_id returns 403 or 404."""
-        response = self.client.post(
+        response = post_data_first(
+            self.client,
             "/api/v1/assets/data-first/",
             {
                 "file_id": str(self.file_b.id),
                 "key": "my-asset",
                 "name": "My Asset",
             },
-            format="json",
+            tenant=self.tenant_a,
         )
         self.assertIn(
             response.status_code,
@@ -202,12 +233,13 @@ class DataFirstAssetAPISuccessTest(DataFirstAssetAPITestBase):
     def setUp(self):
         super().setUp()
         self.tenant, self.user = self._create_tenant_and_user()
-        self.file_obj = self._create_active_file(self.tenant, self.user)
+        self.file_obj = self._create_completed_file(self.tenant, self.user)
         self.client.force_authenticate(user=self.user)
 
     def test_data_first_success_returns_201_with_ids(self):
         """POST /api/v1/assets/data-first/ with valid data returns 201 and asset_id, dataset_id, contract_id."""
-        response = self.client.post(
+        response = post_data_first(
+            self.client,
             "/api/v1/assets/data-first/",
             {
                 "file_id": str(self.file_obj.id),
@@ -215,7 +247,7 @@ class DataFirstAssetAPISuccessTest(DataFirstAssetAPITestBase):
                 "name": "Data First Asset",
                 "description": "Created via data-first API",
             },
-            format="json",
+            tenant=self.tenant,
         )
         self.assertEqual(
             response.status_code,
@@ -233,3 +265,20 @@ class DataFirstAssetAPISuccessTest(DataFirstAssetAPITestBase):
         asset = Asset.objects.get(id=data["asset_id"])
         self.assertEqual(asset.tenant_id, self.tenant.id)
         self.assertEqual(asset.created_by_id, self.user.id)
+
+    def test_data_first_success_with_completed_file_returns_success(self):
+        """COMPLETED file status is accepted by the data-first endpoint."""
+        self.file_obj.status = FileStatus.COMPLETED
+        self.file_obj.save(update_fields=["status", "updated_at"])
+        response = post_data_first(
+            self.client,
+            "/api/v1/assets/data-first/",
+            {
+                "file_id": str(self.file_obj.id),
+                "key": f"completed-file-{uuid.uuid4().hex[:8]}",
+                "name": "Completed File Asset",
+            },
+            tenant=self.tenant,
+        )
+        self.assertIn(response.status_code, (status.HTTP_200_OK, status.HTTP_201_CREATED))
+        self.assertIsNotNone(response.data.get("asset_id"))

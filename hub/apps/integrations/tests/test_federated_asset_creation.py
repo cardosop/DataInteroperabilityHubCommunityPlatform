@@ -77,7 +77,17 @@ class TestFederatedAssetCreation(TestCase):
             pass
 
         uid = uuid.uuid4().hex[:8]
-        self.tenant = Tenant.objects.create(name=f"Test Tenant {uid}", slug=f"test-tenant-{uid}")
+        # Phase 250.5.A.2 — federated import is opt-in per D250.3
+        # (default False on existing tenants). Existing tests that
+        # exercise the federated-import path MUST set the flag True
+        # at fixture time, otherwise the gate at
+        # ``DiscoveryServiceMixin._enforce_federated_import_gates``
+        # rejects with FederatedImportRejected("FEDERATED_IMPORT_DISABLED").
+        self.tenant = Tenant.objects.create(
+            name=f"Test Tenant {uid}",
+            slug=f"test-tenant-{uid}",
+            federated_import_enabled=True,
+        )
         self.user = User.objects.create_user(
             email=f"test-{uid}@example.com", tenant=self.tenant, status=UserStatus.ACTIVE
         )

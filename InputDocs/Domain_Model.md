@@ -432,3 +432,146 @@ A formal JSON Schema definition for HubContract v1 is maintained at:
     }
   }
 }
+```
+
+---
+
+## 3. Asset Domain
+
+Phase 250.5.D.1 (closes Gap 6) — adds dedicated documentation
+for the Asset entity. Pre-Phase the spec only covered "Asset
+Activation Rules" embedded inside section 2.2; SDK / API
+consumers had no single source of truth for `source_type` or
+`data_strategy`. This section documents both fields with their
+valid values AND their effect on the activation gate.
+
+### 3.1 Asset Entity
+
+Represents a logical data product (contract + dataset + governance
+metadata). Assets are the primary entities in the catalog; they
+link contracts and datasets and carry the lifecycle state +
+governance signals (DQ, compliance, marketplace visibility).
+
+**Fields**
+
+- `id` (UUID)
+- `tenant_id` (UUID)
+- `key` (string, max 255) – human-friendly identifier, **unique per
+  tenant**.
+- `name` (string, max 255)
+- `description` (text, optional)
+- `domain` (string, optional) – logical domain (e.g. `marketing`,
+  `finance`).
+- `status` (enum) – **lifecycle state**:
+  - `DRAFT` – Asset is being created/edited.
+  - `ACTIVE` – Asset is in use; eligible for marketplace listing
+    when other gates pass.
+  - `PUBLIC` – Asset is published to the public marketplace
+    (listing-level visibility).
+  - `RETIRED` – Asset is no longer in use; retained for audit
+    history.
+- `dq_status` (enum) – Data Quality result; `UNKNOWN` / `PASS` /
+  `WARN` / `FAIL`.
+- `compliance_status` (enum) – Compliance scan result; same enum
+  shape as `dq_status`.
+- `version` (integer) – optimistic-locking version counter.
+- `created_by` (User FK, optional)
+- `health_score` (float 0-100, optional) – aggregate health.
+- `popularity_score` (float 0-100, optional)
+- `view_count` (integer)
+- `download_count` (integer)
+- `created_at` (datetime)
+- `updated_at` (datetime)
+
+#### 3.1.1 `source_type`
+
+Identifies where the asset originates from. Drives the activation
+gate (FEDERATED requires the tenant to opt into federated import
+per ADR-AST-002 / D250.3).
+
+**Valid values**
+
+| Value | Meaning |
+| --- | --- |
+| `HUB_NATIVE` | Asset was created directly in this Hub via
+upload / data-first / contract-first flows. **Default for new
+assets.** Subject to the standard activation gates: contract
+ACTIVE + DQ PASS/WARN + compliance PASS/WARN. |
+| `FEDERATED` | Asset was imported from an external marketplace
+(CKAN, dados.gov.br, AWS Data Exchange, Snowflake Marketplace,
+etc.). Activation requires the consumer tenant to have
+`Tenant.federated_import_enabled = True` (default `False` per
+ADR-AST-002 / D250.3 — flipped per-tenant after explicit DPO +
+Legal sign-off because federated import has cross-tenant
+data-sharing implications). |
+
+**Activation-gate effect**
+
+- `HUB_NATIVE`: standard activation rules from section 2.2.
+- `FEDERATED`: REQUIRES `tenant.federated_import_enabled=True`;
+  REQUIRES compliance scan to PASS (mandatory regardless of
+  `data_strategy` because metadata + URL itself may carry
+  compliance obligations such as cross-border PII transfer);
+  may relax DQ per `data_strategy` (see 3.1.2).
+
+#### 3.1.2 `data_strategy`
+
+Identifies how the asset's data is materialised relative to the
+Hub. Drives whether Data Quality runs at intake and whether the
+Hub stores the payload.
+
+**Valid values**
+
+| Value | Meaning |
+| --- | --- |
+| `METADATA_ONLY` | Hub stores the asset metadata + schema +
+sample, NOT the actual data. The data lives at its source
+(external marketplace URL or upstream system). **Default for
+new assets.** Used by all `HUB_NATIVE` contract-only assets and
+by `FEDERATED` assets that the consumer tenant chooses not to
+download. |
+| `DOWNLOAD_SELECTIVE` | Hub fetches specific resources on
+demand (lazy materialisation). The asset metadata is stored at
+intake; individual file fetches happen at first access. |
+| `DOWNLOAD_ALL` | Hub eagerly downloads the full payload at
+intake. Equivalent to a HUB_NATIVE upload but driven by the
+federated-import workflow. |
+
+**Activation-gate effect**
+
+- `METADATA_ONLY`: **DQ checks SKIPPED** at intake — there is
+  no payload to scan. ADR-AST-002 decision #3 (D250.3)
+  specifies that the skip MUST be auditable; the exact
+  tracking-field design (a `DQRun.skipped=True` flag plus a
+  dedicated audit-event code) is the ADR's design intent and
+  is tracked as a separate implementation deliverable — see
+  ADR-AST-002 for the canonical contract. Compliance remains
+  mandatory regardless (see 3.1.1).
+- `DOWNLOAD_SELECTIVE`: DQ runs against the schema sample at
+  intake; full-resource DQ runs lazily at first download.
+- `DOWNLOAD_ALL`: Full DQ against the eagerly-fetched payload.
+
+**Source-tenant deletion cascade (D250.16)**
+
+When `source_type=FEDERATED` AND the source tenant is soft-
+deleted, the consumer-side asset is **tombstoned** (not
+deleted) for a 90-day grace window so the consumer can export
+their copy. After grace expires, scheduled cleanup hard-
+deletes. See ADR-AST-002 decision #6 + the tombstone scenarios
+in `openspec/changes/preprod01/specs/asset-creation/spec.md`
+("Source-Tenant Deletion Tombstone (D250.16)").
+
+#### 3.1.3 Other fields
+
+- `source_metadata` (JSON, optional) – federated-only payload
+  carrying `marketplace_type` / `marketplace_id` / `listing_id`
+  / `listing_url` / `synced_at` / `sync_job_id`.
+- `metadata_json` (JSON, optional) – Hub-managed metadata (e.g.
+  `contract_warnings` from invalidation cascade).
+- `visibility` (derived `@property` per Phase 250.3.B / D250.4)
+  – computed from `status`: `PUBLIC` iff `status=PUBLIC`, else
+  `INTERNAL`. **NOT** a stored column post-Phase-250.3.B.
+- `semantic_federate_optout` (bool, default `False`) – when
+  `True`, this asset's triples are excluded from federated
+  SPARQL queries (Phase 230.8 / REQ-SEM-FED-002).
+

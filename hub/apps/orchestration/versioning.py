@@ -216,6 +216,80 @@ class WorkflowVersionManager:
         return f"{major}.{minor}.{patch + 1}"
 
     @classmethod
+    def get_versions_eligible_for_inflight_runs(
+        cls,
+        workflow_name: str,
+        soak_days: int = 14,
+    ) -> List[WorkflowDefinition]:
+        """Return versions still eligible to handle in-flight runs.
+
+        Phase 250.0.12 / D250.7 — when a new workflow version is activated,
+        the previous version is NOT immediately rejected. Existing in-flight
+        runs (e.g. long-running async asset-creation workflows) MUST be able
+        to complete on the version they started on. A 14-day soak window
+        keeps prior versions eligible for new step-progressions of in-flight
+        runs even after a newer version becomes the default for fresh runs.
+
+        Eligibility rules:
+
+        * The currently-active version is ALWAYS eligible.
+        * A version that became inactive within the last ``soak_days`` is
+          eligible.
+        * A version that became inactive more than ``soak_days`` ago is NOT
+          eligible — in-flight runs against it MUST be marked
+          ``REQUIRES_VERSION_MIGRATION`` and either migrated or aborted.
+
+        Args:
+            workflow_name: Workflow name (e.g. ``asset_creation``).
+            soak_days: Soak window length. Default 14 days per D250.7
+                (covers P99 long-running workflow durations); per-tenant or
+                per-workflow override allowed via call-site configuration.
+
+        Returns:
+            List of ``WorkflowDefinition`` instances ordered by version,
+            newest first. The first element is the active version.
+        """
+        from datetime import timedelta
+        from django.utils import timezone
+
+        soak_cutoff = timezone.now() - timedelta(days=soak_days)
+        active = WorkflowDefinition.objects.filter(
+            name=workflow_name,
+            is_active=True,
+        )
+        recently_deactivated = WorkflowDefinition.objects.filter(
+            name=workflow_name,
+            is_active=False,
+            updated_at__gte=soak_cutoff,
+        )
+        eligible_qs = (active | recently_deactivated).distinct()
+        # Order: active first, then recently-deactivated by newest first.
+        return sorted(
+            eligible_qs,
+            key=lambda d: (not d.is_active, -d.created_at.timestamp()),
+        )
+
+    @classmethod
+    def is_version_eligible_for_inflight(
+        cls,
+        workflow_name: str,
+        version: str,
+        soak_days: int = 14,
+    ) -> bool:
+        """True iff ``version`` is currently eligible to handle in-flight runs.
+
+        Phase 250.0.12 / D250.7 — convenience wrapper around
+        :meth:`get_versions_eligible_for_inflight_runs` for the common
+        per-run dispatch check: given a ``WorkflowInstance.workflow_version``,
+        can the engine still progress this run?
+        """
+        eligible = cls.get_versions_eligible_for_inflight_runs(
+            workflow_name=workflow_name,
+            soak_days=soak_days,
+        )
+        return any(d.version == version for d in eligible)
+
+    @classmethod
     def compare_versions(cls, version1: str, version2: str) -> int:
         """
         Compare two versions.

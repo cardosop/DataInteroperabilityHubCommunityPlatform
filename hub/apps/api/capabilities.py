@@ -27,7 +27,7 @@ flags inherit the same shape.
 """
 from __future__ import annotations
 
-from typing import Dict
+from typing import Any, Dict, Optional
 
 from django.conf import settings
 
@@ -120,7 +120,48 @@ def is_capability_enabled_for_tenant(name: str, tenant_id: str | None) -> bool:
     return str(tenant_id) in {str(x) for x in allow_list}
 
 
-def get_capabilities_for_request(request) -> Dict[str, bool]:
+def _compute_asset_creation_blocked_reason(tenant) -> Optional[str]:
+    """Phase 250.6.D.2 — discriminate WHY ``asset_creation_enabled`` is False.
+
+    Returns one of:
+
+    * ``None`` — when the gate is OPEN (``asset_creation_enabled=True``).
+      The SPA reads this and renders the normal create flow.
+    * ``"ONBOARDING_INCOMPLETE"`` — gate closed AND
+      ``onboarding_completed_at IS None``. New tenant whose admin /
+      KYC / billing signals haven't all fired yet. SPA renders the
+      "Complete onboarding" CTA (the picker variant from 250.6.D.3).
+    * ``"DISABLED_BY_OPS"`` — gate closed AND
+      ``onboarding_completed_at IS NOT None``. Fully-onboarded tenant
+      that ops manually flipped (compliance hold, billing dispute).
+      SPA redirects to the existing generic "disabled" page.
+
+    Defensive defaults:
+
+    * Returns ``None`` when ``tenant`` is None (no tenant context →
+      anonymous / unresolved → "no block reason").
+    * Returns ``None`` when ``asset_creation_enabled`` is True
+      (regardless of onboarding state — an explicit True means ops
+      has affirmatively unlocked the tenant).
+    * For pre-migration rows where ``onboarding_completed_at``
+      doesn't yet exist as an attribute, we treat it as None →
+      ONBOARDING_INCOMPLETE. This is the conservative answer
+      (suggest CTA rather than redirect to ops disabled), and
+      the data migration backfills existing tenants so this
+      pre-migration branch is short-lived.
+    """
+    if tenant is None:
+        return None
+    enabled = bool(getattr(tenant, "asset_creation_enabled", True))
+    if enabled:
+        return None
+    completed_at = getattr(tenant, "onboarding_completed_at", None)
+    if completed_at is None:
+        return "ONBOARDING_INCOMPLETE"
+    return "DISABLED_BY_OPS"
+
+
+def get_capabilities_for_request(request) -> Dict[str, Any]:
     """Phase 240.4.B.4 — per-request capability map.
 
     Extends :func:`get_capabilities` with PER-TENANT capability values
@@ -143,7 +184,12 @@ def get_capabilities_for_request(request) -> Dict[str, bool]:
     the request has no resolved tenant — anonymous + unauthenticated
     requests see only the lineage flags.
     """
-    base = get_capabilities()
+    # Widen to ``Dict[str, Any]`` so the per-tenant enrichment can
+    # carry non-bool values (250.6.D.2 ``asset_creation_blocked_reason``
+    # is ``str | None``). The wire shape is documented in the
+    # capability response schema; SPA consumers must accept mixed
+    # value types per-key.
+    base: Dict[str, Any] = dict(get_capabilities())
 
     tenant = None
     try:
@@ -166,6 +212,35 @@ def get_capabilities_for_request(request) -> Dict[str, bool]:
     # ``data_quality=False, data_quality_advanced=True`` — that would
     # mislead the menu-rendering code.
     base["data_quality_advanced"] = dq_base and dq_advanced_flag
+
+    # Phase 250.6.A.4 (D250.17) — per-tenant asset-creation kill switch.
+    # Mirrors ``Tenant.asset_creation_enabled`` so the SPA can render
+    # the create button / form vs the disabled-capability page upstream
+    # of any form-submit. The backend gate at
+    # ``hub.apps.assets.views._check_asset_creation_kill_switch``
+    # returns 403 + ``code="ASSET_CREATION_DISABLED"`` regardless, so
+    # this capability is purely UX-grade (preferable UX path: SPA
+    # never lets the user fill out a form that's guaranteed to 403).
+    #
+    # Default True for an UNRESOLVED tenant context (anonymous /
+    # unauthenticated requests see the "feature exists" answer; the
+    # backend gate handles the actual block). Default True for a
+    # tenant without the attribute too (defensive: pre-migration
+    # rows that haven't yet had the field added shouldn't suddenly
+    # report disabled).
+    base["asset_creation"] = (
+        bool(getattr(tenant, "asset_creation_enabled", True)) if tenant else True
+    )
+
+    # Phase 250.6.D.2 — discriminator field so the SPA can render
+    # different UI for "incomplete onboarding" (CTA back to onboarding
+    # flow) vs. "ops killed it" (generic disabled page). The plain
+    # boolean ``asset_creation`` above stays for backward-compat with
+    # 250.6.A's CapabilityRoute gate; the reason field is purely
+    # additive enrichment.
+    base["asset_creation_blocked_reason"] = (
+        _compute_asset_creation_blocked_reason(tenant)
+    )
 
     return base
 

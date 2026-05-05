@@ -3,12 +3,18 @@ Assets Models
 
 Asset model for managing data products (contract + dataset).
 """
+import logging
 import uuid
+import warnings
+
 from django.db import models
 from django.conf import settings
 from django.core.exceptions import ValidationError
 from django.contrib.postgres.search import SearchVectorField
 from django.contrib.postgres.indexes import GinIndex
+
+
+_logger = logging.getLogger(__name__)
 
 
 class AssetStatus(models.TextChoices):
@@ -35,6 +41,26 @@ class DQStatus(models.TextChoices):
 
 class ComplianceStatus(models.TextChoices):
     """Compliance status enumeration"""
+    UNKNOWN = "UNKNOWN", "Unknown"
+    PASS = "PASS", "Pass"
+    WARN = "WARN", "Warning"
+    FAIL = "FAIL", "Fail"
+
+
+class SemanticStatus(models.TextChoices):
+    """Phase 250.7.A.1 — semantic-mapping + search-indexing status.
+
+    Tracks whether the asset is fully discoverable in the semantic
+    layer + search index, OR landed in a degraded state because one
+    of the post-activation best-effort steps (semantic mapping via
+    Fuseki RPC, search indexing via OpenSearch) failed. Per D250.6
+    the asset still ACTIVATES on degradation; this field is the
+    durable signal so the SPA can render a "active but not yet
+    discoverable" banner inline.
+
+    Values mirror the DQ / Compliance enum shape so the FE can use
+    the same status-badge component across all three surfaces.
+    """
     UNKNOWN = "UNKNOWN", "Unknown"
     PASS = "PASS", "Pass"
     WARN = "WARN", "Warning"
@@ -92,12 +118,16 @@ class Asset(models.Model):
         default=AssetStatus.DRAFT,
         help_text="Asset lifecycle status: DRAFT, ACTIVE, PUBLIC, RETIRED"
     )
-    visibility = models.CharField(
-        max_length=20,
-        choices=AssetVisibility.choices,
-        default=AssetVisibility.INTERNAL,
-        help_text="Asset visibility: INTERNAL, PUBLIC"
-    )
+    # Phase 250.3.B.1 — ``visibility`` is no longer a stored column. It
+    # is exposed as a ``@property`` (see below) deriving its value from
+    # ``status`` per D250.4. The DB column itself is RETAINED for
+    # phase-1 (nulled by migration ``0013_visibility_to_property``);
+    # phase-2 column-drop ships only after three release cycles of
+    # green ``ASSET_VISIBILITY_WRITE_DEPRECATED`` telemetry. Removing
+    # the model-field declaration here is what makes Django state
+    # forget about the column — the migration uses
+    # ``SeparateDatabaseAndState`` so the underlying DB column stays
+    # for forensic / rollback safety.
     dq_status = models.CharField(
         max_length=20,
         choices=DQStatus.choices,
@@ -109,6 +139,27 @@ class Asset(models.Model):
         choices=ComplianceStatus.choices,
         default=ComplianceStatus.UNKNOWN,
         help_text="Compliance status: UNKNOWN, PASS, WARN, FAIL"
+    )
+    # Phase 250.7.A.1 — semantic-mapping + search-indexing status.
+    # Per D250.6, semantic / search failures during activation are
+    # observability events, not gates: the asset still ACTIVATES on
+    # degradation and this field carries the marker so the SPA can
+    # render a "active but not yet discoverable" banner inline.
+    # Default UNKNOWN so pre-existing assets are NOT silently flagged
+    # as PASS or FAIL by the migration backfill — UNKNOWN is the
+    # honest "we haven't checked yet" state.
+    semantic_status = models.CharField(
+        max_length=20,
+        choices=SemanticStatus.choices,
+        default=SemanticStatus.UNKNOWN,
+        help_text=(
+            "Phase 250.7.A — semantic-mapping + search-indexing "
+            "status: UNKNOWN (default; not yet checked), PASS "
+            "(both succeeded), WARN (partial degradation reserved "
+            "for future granular failures), FAIL (one or both "
+            "failed; asset is ACTIVE but not discoverable in "
+            "semantic search)."
+        ),
     )
     version = models.IntegerField(
         default=1,
@@ -191,7 +242,12 @@ class Asset(models.Model):
         ordering = ["-created_at"]
         indexes = [
             models.Index(fields=["tenant", "key"]),
-            models.Index(fields=["tenant", "visibility"]),
+            # Phase 250.3.B.2 — ``(tenant, visibility)`` index removed
+            # alongside the visibility model-field declaration. Queries
+            # that previously filtered by visibility are translated to
+            # ``status`` filters at the view layer (see
+            # ``AssetViewSet.get_queryset`` visibility-filter branch),
+            # so the existing ``(tenant, status)`` index covers them.
             models.Index(fields=["tenant", "dq_status"]),
             models.Index(fields=["tenant", "compliance_status"]),
             models.Index(fields=["tenant", "status"]),
@@ -213,6 +269,117 @@ class Asset(models.Model):
 
     def __str__(self):
         return f"{self.name} ({self.key})"
+
+    # ------------------------------------------------------------------
+    # Phase 250.3.B — visibility-as-property (deprecation phase 1)
+    # ------------------------------------------------------------------
+    #
+    # Per D250.4, ``visibility`` is no longer a stored column — it
+    # derives from ``status``: PUBLIC iff ``status == AssetStatus.PUBLIC``,
+    # else INTERNAL. Phase-1 deprecation:
+    #
+    # * Reads route through the ``visibility`` property (returns derived).
+    # * Writes are silently absorbed: a ``DeprecationWarning`` fires AND
+    #   an ``ASSET_VISIBILITY_WRITE_DEPRECATED`` audit row is emitted
+    #   (best-effort; audit-DB outages don't block the no-op).
+    # * Construction with ``Asset(visibility=X, ...)`` is supported for
+    #   backwards compat — the kwarg is popped in ``__init__`` and
+    #   routed through the deprecation setter so the legacy call site
+    #   doesn't crash with ``TypeError: 'visibility' is an invalid
+    #   keyword argument``.
+
+    def __init__(self, *args, **kwargs):
+        legacy_visibility_write = kwargs.pop("visibility", None)
+        super().__init__(*args, **kwargs)
+        if legacy_visibility_write is not None:
+            # Route through the setter so the deprecation signals fire
+            # uniformly regardless of whether the call site used
+            # ``Asset(visibility=X)`` or ``asset.visibility = X``.
+            self.visibility = legacy_visibility_write
+
+    @property
+    def visibility(self) -> str:
+        """Derived asset visibility per D250.4.
+
+        Returns ``AssetVisibility.PUBLIC`` iff ``self.status ==
+        AssetStatus.PUBLIC``, otherwise ``AssetVisibility.INTERNAL``.
+        Reads NEVER touch the legacy DB column (which is being nulled
+        by migration ``0013_visibility_to_property`` and dropped in
+        phase-2).
+        """
+        if self.status == AssetStatus.PUBLIC:
+            return AssetVisibility.PUBLIC
+        return AssetVisibility.INTERNAL
+
+    @visibility.setter
+    def visibility(self, value):
+        """Phase-1 deprecation no-op.
+
+        The write is silently absorbed (status — and therefore the
+        derived visibility — is not mutated) but BOTH:
+
+        1. A ``DeprecationWarning`` is issued so ``-W
+           error::DeprecationWarning`` in CI catches stragglers.
+        2. An ``ASSET_VISIBILITY_WRITE_DEPRECATED`` audit row is
+           emitted (best-effort) so dashboards can track caller-side
+           adoption and gate the phase-2 column-drop on zero events
+           per D250.4.
+        """
+        warnings.warn(
+            (
+                "Asset.visibility is a derived @property as of Phase "
+                "250.3.B (D250.4); writes are silently ignored. To "
+                "make an asset publicly visible, set ``status="
+                "AssetStatus.PUBLIC``. The visibility column is "
+                "scheduled for removal in phase-2 — three release "
+                "cycles after zero deprecation events."
+            ),
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        # Best-effort audit emission. Using local imports so the model
+        # module doesn't pull in audit at import time (avoids circular
+        # imports — ``audit.utils`` imports from a few other apps and
+        # the assets app is high in the dependency graph).
+        try:
+            from hub.apps.audit import event_types as _audit_event_types
+            from hub.apps.audit.utils import create_audit_event
+
+            create_audit_event(
+                resource_type=_audit_event_types.ASSET_RESOURCE_TYPE,
+                action=_audit_event_types.ASSET_VISIBILITY_WRITE_DEPRECATED,
+                actor_user=getattr(self, "created_by", None),
+                tenant=getattr(self, "tenant", None),
+                resource_id=str(self.pk) if self.pk else None,
+                result="WARNING",
+                details={
+                    "tenant_id": (
+                        str(self.tenant_id)
+                        if getattr(self, "tenant_id", None)
+                        else None
+                    ),
+                    "asset_id": str(self.pk) if self.pk else None,
+                    "attempted_value": str(value) if value is not None else None,
+                    "call_site": "model.setter",
+                    "current_status": str(self.status),
+                    "derived_visibility": (
+                        AssetVisibility.PUBLIC
+                        if self.status == AssetStatus.PUBLIC
+                        else AssetVisibility.INTERNAL
+                    ),
+                },
+            )
+        except Exception as audit_exc:  # noqa: BLE001
+            # Audit emission is best-effort. The deprecation warning
+            # above is the load-bearing signal — losing the audit row
+            # to a transient outage doesn't break callers.
+            _logger.warning(
+                "asset_visibility_deprecation_audit_emit_failed",
+                extra={
+                    "asset_id": str(self.pk) if self.pk else None,
+                    "error": str(audit_exc),
+                },
+            )
 
     # Valid status transitions (state machine)
     VALID_TRANSITIONS = {
@@ -569,6 +736,62 @@ class ExternalResourceReference(models.Model):
         blank=True,
         help_text="Additional metadata about the external resource"
     )
+    # Phase 250.5.A.5 (D250.16) — when the federated source is another
+    # Hub tenant, ``source_tenant_id`` carries the producer-side
+    # ``Tenant.id``. NULL when the source isn't a Hub tenant (e.g.
+    # public CKAN catalogs) — the tombstone cascade only fires for
+    # rows where this column is populated, so external (non-Hub)
+    # federations are unaffected by Hub tenant deletions. The field
+    # is a UUID rather than a real FK to avoid blocking source-tenant
+    # row deletes during the 90-day grace window.
+    source_tenant_id = models.UUIDField(
+        null=True,
+        blank=True,
+        db_index=True,
+        help_text=(
+            "Phase 250.5.A.5 (D250.16) — Hub Tenant.id of the federated "
+            "source (NULL when source is non-Hub, e.g. public CKAN). "
+            "Drives the source-tenant deletion tombstone cascade."
+        ),
+    )
+    # Phase 250.5.A.5 (D250.16) — populated by the Tenant soft-delete
+    # signal (`hub.apps.tenants.signals.tombstone_federated_resources_on_tenant_delete`)
+    # when the source tenant is soft-deleted. The consumer-side row
+    # remains queryable for 90 days after this timestamp (the grace
+    # window per D250.16) so the consumer can export; after the grace
+    # expires, a scheduled cleanup task may hard-delete the row.
+    source_tenant_deleted_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        db_index=True,
+        help_text=(
+            "Phase 250.5.A.5 (D250.16) — set by the Tenant soft-delete "
+            "signal when ``source_tenant_id`` matches the deleted "
+            "tenant. The consumer-side row stays queryable until "
+            "this + 90 days; after that, scheduled cleanup may "
+            "hard-delete."
+        ),
+    )
+    # Phase 250.5.F.2 (closes G2-4) — consumer-side soft-deletion
+    # timestamp INDEPENDENT of ``source_tenant_deleted_at``. Marks
+    # user-initiated deletion of the consumer's federated COPY
+    # without affecting the source-tenant row. Distinct semantics:
+    #   * source_tenant_deleted_at: source-side cascade signal;
+    #     90-day grace window before hard-delete.
+    #   * deleted_at: consumer-side delete; row hidden from listing
+    #     queries but kept for audit history (no automatic
+    #     hard-delete).
+    deleted_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        db_index=True,
+        help_text=(
+            "Phase 250.5.F.2 — consumer-side soft-delete timestamp. "
+            "Independent of ``source_tenant_deleted_at``. When set, "
+            "the federated copy is hidden from consumer-side list "
+            "views but kept for audit history."
+        ),
+    )
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -578,6 +801,9 @@ class ExternalResourceReference(models.Model):
         indexes = [
             models.Index(fields=["asset", "resource_id"]),
             models.Index(fields=["connection_id"]),
+            # Phase 250.5.A.5 — supports the cleanup task that scans
+            # for rows whose grace window has expired.
+            models.Index(fields=["source_tenant_deleted_at"]),
         ]
         constraints = [
             models.UniqueConstraint(
@@ -586,12 +812,62 @@ class ExternalResourceReference(models.Model):
             )
         ]
 
+    #: Phase 250.5.A.5 (D250.16) — number of days the consumer-side
+    #: row remains queryable after ``source_tenant_deleted_at`` is
+    #: set. After this window, the row is eligible for cleanup. The
+    #: window is intentionally hard-coded (not a setting) because the
+    #: spec calls for a uniform 90-day grace across all tenants —
+    #: per-tenant overrides would create operator confusion + audit
+    #: complexity.
+    TOMBSTONE_GRACE_DAYS: int = 90
+
     def __str__(self):
         return f"{self.name} ({self.resource_id}) - {self.asset.name}"
+
+    @property
+    def is_within_tombstone_grace(self) -> bool:
+        """True iff the source-tenant tombstone is unset OR was set
+        within the last ``TOMBSTONE_GRACE_DAYS`` days. False once the
+        grace window has expired (so the cleanup task can hard-delete).
+        """
+        if self.source_tenant_deleted_at is None:
+            return True
+        from datetime import timedelta
+        from django.utils import timezone
+
+        grace_end = self.source_tenant_deleted_at + timedelta(
+            days=self.TOMBSTONE_GRACE_DAYS,
+        )
+        return timezone.now() < grace_end
 
     def clean(self):
         """Validate external resource reference"""
         super().clean()
+
+        # Phase 250.5.B.2 (closes Gap 14) — SSRF guard on the
+        # external URL BEFORE the row is persisted. The URL is
+        # tenant-supplied and may point at loopback / RFC1918 /
+        # link-local (169.254.169.254 AWS IMDS) / disallowed
+        # schemes (file://, gopher://, ftp://). Rejecting at
+        # ``clean()`` time ensures the row never reaches the DB,
+        # so a worker that fetches the URL later cannot be
+        # tricked into hitting an attacker-controlled internal
+        # endpoint. Re-resolution at fetch time
+        # (``SSRFGuard.revalidate_resolved_ip``) catches the
+        # DNS-rebinding case where the registered hostname's A
+        # record gets flipped post-save.
+        if self.url:
+            from hub.apps.security.url_validators import (
+                SSRFGuard,
+                SSRFViolationError,
+            )
+            try:
+                SSRFGuard.validate(self.url)
+            except SSRFViolationError as exc:
+                raise ValidationError(
+                    f"External resource URL failed SSRF "
+                    f"validation: {exc}"
+                )
 
         # Validate format is one of known formats
         valid_formats = ["CSV", "JSON", "PARQUET", "XML", "XLSX", "PDF", "OTHER"]

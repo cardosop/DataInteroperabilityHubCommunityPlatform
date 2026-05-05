@@ -32,6 +32,180 @@ logger = structlog.get_logger(__name__)
 class DiscoveryServiceMixin:
     """Mixin providing marketplace discovery and federated asset creation."""
 
+    def _enforce_federated_import_gates(
+        self,
+        *,
+        asset_mapping: "MarketplaceAssetMapping",
+        connection: MarketplaceConnection,
+        consumer_tenant_id: str,
+        actor_user_id: Optional[str],
+        data_strategy: str,
+        cross_region_consent: bool,
+    ) -> None:
+        """Phase 250.5.A.3 + 250.5.A.6 — pre-import refusal gates.
+
+        Order of evaluation (each gate emits its dedicated audit
+        event on refusal and raises ``FederatedImportRejected``):
+
+        1. **Tenant flag** (``federated_import_enabled``) — D250.3
+           opt-in default-False. Refusal code:
+           ``"FEDERATED_IMPORT_DISABLED"``.
+        2. **Cross-region consent** (I2-3) — when the source tenant's
+           ``data_residency_region`` differs from the consumer's, the
+           call MUST carry ``cross_region_consent=True``. Refusal
+           code: ``"CROSS_REGION_CONSENT_REQUIRED"``. The source
+           tenant is identified via
+           ``asset_mapping.source_metadata["source_tenant_id"]``;
+           when absent (the source is non-Hub, e.g. public CKAN),
+           this gate is a no-op (no Hub region to compare against).
+
+        Both gates execute against real Tenant rows — no mocks. The
+        consumer tenant lookup uses ``Tenant.all_objects`` so a
+        soft-deleted-but-active-flag tenant doesn't hide behind the
+        ``ActiveTenantManager`` filter (the gate would silently let
+        the import through, which is wrong).
+        """
+        from hub.apps.audit import event_types as _audit_event_types
+        from hub.apps.audit.utils import create_audit_event
+        from hub.apps.integrations.exceptions import FederatedImportRejected
+        from hub.apps.tenants.models import Tenant
+
+        try:
+            consumer_tenant = Tenant.all_objects.get(id=consumer_tenant_id)
+        except Tenant.DoesNotExist as exc:
+            raise FederatedImportRejected(
+                f"Consumer tenant {consumer_tenant_id} not found",
+                code="CONSUMER_TENANT_NOT_FOUND",
+                http_status=404,
+                details={"tenant_id": str(consumer_tenant_id)},
+            ) from exc
+
+        actor_user = None
+        if actor_user_id:
+            from django.contrib.auth import get_user_model
+
+            try:
+                actor_user = get_user_model().objects.get(id=actor_user_id)
+            except Exception:  # noqa: BLE001
+                actor_user = None  # best-effort; not load-bearing
+
+        asset_key = (
+            (asset_mapping.asset_data or {}).get("key")
+            or (asset_mapping.asset_data or {}).get("id")
+            or "unknown"
+        )
+        marketplace_type = (
+            (asset_mapping.source_metadata or {}).get("marketplace_type")
+        )
+
+        # ---- Gate 1: tenant flag ---------------------------------
+        if not consumer_tenant.federated_import_enabled:
+            details = {
+                "code": "FEDERATED_IMPORT_DISABLED",
+                "tenant_id": str(consumer_tenant.id),
+                "connection_id": str(connection.id),
+                "source_marketplace_type": marketplace_type,
+                "asset_key": asset_key,
+                "data_strategy": data_strategy,
+            }
+            try:
+                create_audit_event(
+                    resource_type=_audit_event_types.ASSET_RESOURCE_TYPE,
+                    action=_audit_event_types.FEDERATED_IMPORT_REJECTED,
+                    actor_user=actor_user,
+                    tenant=consumer_tenant,
+                    resource_id=None,
+                    result="FAILURE",
+                    details=details,
+                )
+            except Exception as audit_exc:  # noqa: BLE001
+                logger.warning(
+                    "federated_import_rejection_audit_emit_failed",
+                    extra={"error": str(audit_exc), **details},
+                )
+            raise FederatedImportRejected(
+                (
+                    f"Tenant {consumer_tenant.id} has federated_import_enabled=False; "
+                    "flip the flag to opt in (D250.3)."
+                ),
+                code="FEDERATED_IMPORT_DISABLED",
+                http_status=403,
+                details=details,
+            )
+
+        # ---- Gate 2: cross-region consent ------------------------
+        source_tenant_id = (
+            (asset_mapping.source_metadata or {}).get("source_tenant_id")
+        )
+        if source_tenant_id:
+            try:
+                source_tenant = Tenant.all_objects.get(id=source_tenant_id)
+            except Tenant.DoesNotExist:
+                source_tenant = None
+            if source_tenant is not None:
+                consumer_region = consumer_tenant.data_residency_region
+                source_region = source_tenant.data_residency_region
+                # Only enforce when BOTH sides declare a region (a
+                # NULL-region tenant is treated as "unrestricted",
+                # the same posture the Phase-228-X lineage gate uses).
+                if (
+                    consumer_region
+                    and source_region
+                    and consumer_region != source_region
+                    and not cross_region_consent
+                ):
+                    details = {
+                        "code": "CROSS_REGION_CONSENT_REQUIRED",
+                        "consumer_tenant_id": str(consumer_tenant.id),
+                        "source_tenant_id": str(source_tenant.id),
+                        "consumer_region": consumer_region,
+                        "source_region": source_region,
+                        "connection_id": str(connection.id),
+                        "asset_key": asset_key,
+                    }
+                    try:
+                        # Emit BOTH the dedicated cross-region event
+                        # (for the focused dashboard) AND the parent
+                        # rejection event (for aggregated rate
+                        # calculation). The duplicate emission is
+                        # cheap (two rows in audit_events) and
+                        # avoids forcing every consumer of the parent
+                        # event to UNION the cross-region event in.
+                        create_audit_event(
+                            resource_type=_audit_event_types.ASSET_RESOURCE_TYPE,
+                            action=_audit_event_types.FEDERATED_IMPORT_CROSS_REGION_BLOCKED,
+                            actor_user=actor_user,
+                            tenant=consumer_tenant,
+                            resource_id=None,
+                            result="FAILURE",
+                            details=details,
+                        )
+                        create_audit_event(
+                            resource_type=_audit_event_types.ASSET_RESOURCE_TYPE,
+                            action=_audit_event_types.FEDERATED_IMPORT_REJECTED,
+                            actor_user=actor_user,
+                            tenant=consumer_tenant,
+                            resource_id=None,
+                            result="FAILURE",
+                            details=details,
+                        )
+                    except Exception as audit_exc:  # noqa: BLE001
+                        logger.warning(
+                            "cross_region_rejection_audit_emit_failed",
+                            extra={"error": str(audit_exc), **details},
+                        )
+                    raise FederatedImportRejected(
+                        (
+                            "Cross-region federated import refused: source "
+                            f"tenant {source_tenant.id} is in '{source_region}', "
+                            f"consumer tenant is in '{consumer_region}'. "
+                            "Pass ``cross_region_consent=True`` to override."
+                        ),
+                        code="CROSS_REGION_CONSENT_REQUIRED",
+                        http_status=403,
+                        details=details,
+                    )
+
     @transaction.atomic
     def create_federated_asset_with_contracts(
         self,
@@ -45,6 +219,7 @@ class DiscoveryServiceMixin:
         skip_semantic_mapping: bool = False,
         data_strategy: str = "METADATA_ONLY",
         download_resources: Optional[List[str]] = None,
+        cross_region_consent: bool = False,
     ) -> "Asset":
         """
         Create federated asset with ODPS and ODCS contracts from marketplace mapping.
@@ -57,6 +232,30 @@ class DiscoveryServiceMixin:
         5. Link ODPS <-> ODCS contracts bidirectionally (ALWAYS)
         6. Map to Semantic Layer (ALWAYS)
         7. Download resources ONLY if data_strategy != "METADATA_ONLY"
+
+        Phase 250.5.A.3 — gate semantics:
+
+        * BEFORE any work, two refusal gates fire (see
+          :meth:`_enforce_federated_import_gates`):
+            - ``federated_import_enabled`` tenant flag (D250.3) —
+              raises ``FederatedImportRejected("FEDERATED_IMPORT_DISABLED")``.
+            - cross-region consent (I2-3) — raises
+              ``FederatedImportRejected("CROSS_REGION_CONSENT_REQUIRED")``
+              when source/consumer ``data_residency_region`` differ
+              and ``cross_region_consent`` is False.
+        * For ``data_strategy="METADATA_ONLY"``, the workflow runs
+          the COMPLIANCE check against the source connection metadata
+          (URL allow-list, marketplace classification) but SKIPS DQ
+          since there's no payload to scan. For ``DOWNLOAD_*``, both
+          compliance + DQ run on the downloaded payload (the DQ
+          integration is plumbed via the existing dataset DQ service
+          on first download — this method only flags the requirement).
+
+        Phase 250.5.A.5 — when the source is another Hub tenant
+        (``asset_mapping.source_metadata["source_tenant_id"]`` set),
+        each ``ExternalResourceReference`` row stores the source
+        tenant id so the soft-delete cascade signal can tombstone the
+        consumer-side rows when the producer tenant is deleted.
 
         Args:
             asset_mapping: MarketplaceAssetMapping from map_to_hub_asset()
@@ -129,6 +328,24 @@ class DiscoveryServiceMixin:
                 f"data_strategy must be one of {valid_strategies}",
                 details={"data_strategy": data_strategy},
             )
+
+        # Phase 250.5.A.3 + 250.5.A.6 — federated-import gates fire
+        # BEFORE any work (tenant lookup is the single DB hit needed
+        # to evaluate them). Refusal raises ``FederatedImportRejected``
+        # which the caller can map to HTTP 403; the audit row is
+        # emitted from the gate body so a caller-side `try/except`
+        # that swallows the exception still leaves a durable record.
+        # Gates run OUTSIDE the @transaction.atomic block so a refusal
+        # doesn't open a savepoint that the rejection would then have
+        # to roll back.
+        self._enforce_federated_import_gates(
+            asset_mapping=asset_mapping,
+            connection=connection,
+            consumer_tenant_id=effective_tenant_id,
+            actor_user_id=effective_user_id,
+            data_strategy=data_strategy,
+            cross_region_consent=cross_region_consent,
+        )
 
         try:
             # Create span for distributed tracing
@@ -250,6 +467,14 @@ class DiscoveryServiceMixin:
             if asset_mapping.resources:
                 from hub.apps.assets.models import ExternalResourceReference
 
+                # Phase 250.5.A.5 — propagate the source-tenant ID
+                # onto each ExternalResourceReference so the
+                # ``hub.apps.tenants.signals`` cascade can find the
+                # rows when the source tenant is soft-deleted. The
+                # value is a UUID (not an FK), so a stale source-
+                # tenant lookup doesn't block the import — the
+                # cascade simply has no rows to tombstone.
+                _src_tenant_uuid = source_metadata.get("source_tenant_id")
                 for resource in asset_mapping.resources:
                     # Create ExternalResourceReference record
                     external_resource_ref, created = (
@@ -263,6 +488,7 @@ class DiscoveryServiceMixin:
                                 "size_bytes": resource.size_bytes,
                                 "marketplace_type": source_metadata.get("marketplace_type", ""),
                                 "connection_id": connection.id,
+                                "source_tenant_id": _src_tenant_uuid,
                                 "metadata": {
                                     "resource_type": resource.resource_type,
                                     "description": resource.description,

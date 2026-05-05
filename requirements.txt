@@ -75,6 +75,13 @@ httpx==0.28.1
 requests==2.32.4
 urllib3>=2.6.3
 
+# DNS — dnspython is BSD-licensed (verified per Phase 250.5.B.6
+# license-gate). Used by hub.apps.security.url_validators
+# .SSRFGuard.revalidate_resolved_ip for worker-time DNS-rebinding
+# protection (re-resolves the hostname independent of the OS
+# resolver cache, with explicit per-call timeout control).
+dnspython>=2.4,<3.0
+
 # Email Services
 sendgrid==6.12.5
 

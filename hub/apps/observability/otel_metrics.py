@@ -1197,6 +1197,22 @@ scheduled_ingestion_datasets_created_total = _CounterWrapper(
     expected_labels=("scheduled_ingestion_id", "tenant_id"),
 )
 
+# Phase 250.2.C.3 (closes Gap 4 / B2-9) — fired by the scheduled-
+# ingestion worker when ``AssetService.create_or_get_idempotent``
+# refuses an asset bootstrap because the (tenant, key) pair is held
+# by a RETIRED Asset row. This is an operator-actionable signal: a
+# scheduled-ingestion job cannot proceed until ops either transitions
+# the RETIRED asset or reconfigures the schedule with a new key.
+# Alert routing: Prometheus alerting rule fires when this counter
+# increments faster than 1/hour for any (tenant_id) pair.
+scheduled_ingestion_asset_key_retired_total = _CounterWrapper(
+    "scheduled_ingestion_asset_key_retired_total",
+    "Scheduled-ingestion runs refused because the target asset key "
+    "is held by a RETIRED Asset row (Phase 250.2.C / B2-9).",
+    unit="1",
+    expected_labels=("scheduled_ingestion_id", "tenant_id"),
+)
+
 scheduled_ingestion_duration_seconds = _HistogramWrapper(
     "scheduled_ingestion_duration_seconds",
     "Duration of scheduled ingestion runs in seconds",

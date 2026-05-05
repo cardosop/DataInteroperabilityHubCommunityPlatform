@@ -1,0 +1,230 @@
+"""
+Phase 250.6.E TDD pin for the tenant feature-flags admin endpoints.
+
+The new admin page at ``/admin/tenant-settings/`` (frontend) needs
+two backend surfaces:
+
+1. ``GET  /api/v1/tenants/me/feature-flags/`` — return the per-tenant
+   capability flags + their human-readable descriptions + their
+   default values. Lets the SPA render a self-describing settings
+   page without a separate "schema" round-trip.
+
+2. ``PATCH /api/v1/tenants/me/feature-flags/`` — let TENANT_ADMIN
+   flip flags on / off. Each PATCH writes a
+   ``TENANT_FEATURE_FLAG_UPDATED`` audit row carrying the
+   before/after values so the audit-log panel below the settings
+   form can render the change history.
+
+3. ``GET  /api/v1/tenants/me/feature-flag-history/`` — return the
+   audit-event rows for the calling tenant, scoped to
+   ``action=TENANT_FEATURE_FLAG_UPDATED`` so the SPA can render
+   "who changed what when" without scanning the full audit log.
+
+Per Phase 250.6.E.2, all three endpoints are TENANT_ADMIN-only —
+non-admin users see HTTP 403 with ``code="PERMISSION_DENIED"``. The
+gate runs BEFORE the body parse so a non-admin POST can't influence
+the audit emission either.
+
+Tests use real Django ORM rows + real DRF APIClient — no mocks.
+"""
+from __future__ import annotations
+
+import uuid
+
+import pytest
+from django.contrib.auth import get_user_model
+from django.test import TestCase
+from rest_framework.test import APIClient
+
+from hub.apps.audit import event_types as audit_event_types
+from hub.apps.audit.models import AuditEvent
+from hub.apps.tenants.models import Tenant, TenantStatus
+from hub.apps.testing.billing_support import ensure_tenant_has_active_subscription
+from hub.apps.testing.role_support import (
+    ensure_user_has_data_provider_role,
+    ensure_user_has_tenant_admin_role,
+)
+from hub.apps.users.models import UserStatus
+
+
+pytestmark = pytest.mark.django_db(transaction=True)
+User = get_user_model()
+
+
+def _seed_tenant(*, slug_prefix: str = "t"):
+    uid = uuid.uuid4().hex[:8]
+    tenant = Tenant.objects.create(
+        name=f"{slug_prefix} {uid}",
+        slug=f"{slug_prefix}-{uid}",
+        status=TenantStatus.ACTIVE,
+        kyc_status="UNVERIFIED",
+    )
+    ensure_tenant_has_active_subscription(tenant)
+    user = User.objects.create_user(
+        email=f"u-{uid}@example.com",
+        password="testpass123",
+        tenant=tenant,
+        status=UserStatus.ACTIVE,
+    )
+    return tenant, user
+
+
+class FeatureFlagsGetTest(TestCase):
+    """``GET`` returns the per-tenant flag values + descriptions."""
+
+    def test_admin_can_read_flags(self):
+        tenant, user = _seed_tenant()
+        ensure_user_has_tenant_admin_role(user)
+
+        client = APIClient()
+        client.force_authenticate(user=user)
+        resp = client.get("/api/v1/tenants/me/feature-flags/")
+        assert resp.status_code == 200, resp.content
+        body = resp.json()
+        # Each flag entry carries its current value + a description
+        # so the SPA can render a self-describing settings page.
+        assert "flags" in body
+        flags = {f["name"]: f for f in body["flags"]}
+        # Anchor on a few flags from prior phases — these are the
+        # canonical per-tenant capability flags the admin surface
+        # exposes:
+        assert "asset_creation_enabled" in flags  # Phase 250.6.A
+        assert "federated_import_enabled" in flags  # Phase 250.5.A
+        assert "asset_auto_activate_on_gate_pass" in flags  # 250.2.A
+        # Each flag has the contract shape we render against.
+        for f in body["flags"]:
+            assert "name" in f
+            assert "value" in f
+            assert "description" in f
+            assert isinstance(f["value"], bool)
+
+    def test_non_admin_gets_403(self):
+        tenant, user = _seed_tenant()
+        # DATA_PROVIDER (non-admin) — must NOT see the admin endpoint.
+        ensure_user_has_data_provider_role(user)
+
+        client = APIClient()
+        client.force_authenticate(user=user)
+        resp = client.get("/api/v1/tenants/me/feature-flags/")
+        assert resp.status_code == 403, resp.content
+
+
+class FeatureFlagsPatchTest(TestCase):
+    """``PATCH`` lets TENANT_ADMIN flip flags + emits the audit row."""
+
+    def test_admin_can_flip_flag_emits_audit(self):
+        tenant, user = _seed_tenant()
+        ensure_user_has_tenant_admin_role(user)
+        # Pre-condition: federated_import_enabled defaults to False
+        # (per Phase 250.5.A.2) — flipping to True is the canonical
+        # flow that exercises the audit emission.
+        assert tenant.federated_import_enabled is False
+
+        client = APIClient()
+        client.force_authenticate(user=user)
+        before = AuditEvent.objects.filter(
+            action=audit_event_types.TENANT_FEATURE_FLAG_UPDATED,
+            tenant=tenant,
+        ).count()
+        resp = client.patch(
+            "/api/v1/tenants/me/feature-flags/",
+            data={"federated_import_enabled": True},
+            format="json",
+        )
+        assert resp.status_code == 200, resp.content
+        # Tenant row updated.
+        tenant.refresh_from_db()
+        assert tenant.federated_import_enabled is True
+        # Audit row emitted with before/after values for forensic
+        # replay (the audit-log panel renders these as "User X
+        # changed federated_import_enabled from False to True").
+        after = AuditEvent.objects.filter(
+            action=audit_event_types.TENANT_FEATURE_FLAG_UPDATED,
+            tenant=tenant,
+        ).order_by("-created_at")
+        assert after.count() - before == 1
+        ev = after.first()
+        assert ev.details_json["flag_name"] == "federated_import_enabled"
+        assert ev.details_json["previous_value"] is False
+        assert ev.details_json["new_value"] is True
+
+    def test_non_admin_patch_gets_403_no_side_effects(self):
+        tenant, user = _seed_tenant()
+        ensure_user_has_data_provider_role(user)
+
+        client = APIClient()
+        client.force_authenticate(user=user)
+        before_audit = AuditEvent.objects.filter(
+            action=audit_event_types.TENANT_FEATURE_FLAG_UPDATED,
+            tenant=tenant,
+        ).count()
+        resp = client.patch(
+            "/api/v1/tenants/me/feature-flags/",
+            data={"federated_import_enabled": True},
+            format="json",
+        )
+        assert resp.status_code == 403, resp.content
+        # No side-effects on the tenant row (refusal is structurally
+        # side-effect-free — gate runs BEFORE the model write).
+        tenant.refresh_from_db()
+        assert tenant.federated_import_enabled is False
+        # No audit row emitted (the gate refused before the audit
+        # emission would have fired).
+        after_audit = AuditEvent.objects.filter(
+            action=audit_event_types.TENANT_FEATURE_FLAG_UPDATED,
+            tenant=tenant,
+        ).count()
+        assert after_audit == before_audit
+
+    def test_unknown_flag_returns_400(self):
+        tenant, user = _seed_tenant()
+        ensure_user_has_tenant_admin_role(user)
+
+        client = APIClient()
+        client.force_authenticate(user=user)
+        resp = client.patch(
+            "/api/v1/tenants/me/feature-flags/",
+            data={"never_heard_of_this_flag": True},
+            format="json",
+        )
+        assert resp.status_code == 400, resp.content
+        body = resp.json()
+        assert body.get("code") == "UNKNOWN_FLAG"
+
+
+class FeatureFlagHistoryTest(TestCase):
+    """``GET /me/feature-flag-history/`` returns audit rows scoped to
+    ``TENANT_FEATURE_FLAG_UPDATED``. Cross-tenant rows are excluded
+    (existence-leak protection per the IDOR pattern)."""
+
+    def test_admin_sees_own_tenant_history(self):
+        tenant, user = _seed_tenant()
+        ensure_user_has_tenant_admin_role(user)
+
+        client = APIClient()
+        client.force_authenticate(user=user)
+
+        # Flip a flag to seed an audit row.
+        client.patch(
+            "/api/v1/tenants/me/feature-flags/",
+            data={"federated_import_enabled": True},
+            format="json",
+        )
+
+        resp = client.get("/api/v1/tenants/me/feature-flag-history/")
+        assert resp.status_code == 200, resp.content
+        body = resp.json()
+        assert "events" in body
+        assert len(body["events"]) >= 1
+        ev = body["events"][0]
+        assert ev["action"] == "TENANT_FEATURE_FLAG_UPDATED"
+        assert ev["details_json"]["flag_name"] == "federated_import_enabled"
+
+    def test_non_admin_history_gets_403(self):
+        tenant, user = _seed_tenant()
+        ensure_user_has_data_provider_role(user)
+
+        client = APIClient()
+        client.force_authenticate(user=user)
+        resp = client.get("/api/v1/tenants/me/feature-flag-history/")
+        assert resp.status_code == 403, resp.content

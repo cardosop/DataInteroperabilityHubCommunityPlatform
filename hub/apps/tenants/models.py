@@ -496,6 +496,146 @@ class Tenant(models.Model):
             "Bounds: [10 000, 100 000 000] per D240.15."
         ),
     )
+    # ------------------------------------------------------------------
+    # Phase 250.1.A.8 — fail-closed-at-intake flags (preprod01)
+    # ------------------------------------------------------------------
+    # ``compliance_fail_closed_enabled`` governs whether a compliance
+    # FAIL/UNKNOWN at intake refuses to persist the Asset row (the
+    # 250.1.A workflow re-sequence). Default True for NEW tenants so
+    # the platform ships with the safer behaviour; the migration
+    # (0034_tenant_fail_closed_flag) backfills FALSE on EXISTING
+    # tenants so their workload runs unchanged until the tenant is
+    # opted in by ops. Read at workflow-time per request — flipping
+    # the flag mid-execution does NOT affect an in-flight workflow,
+    # only subsequent intakes.
+    compliance_fail_closed_enabled = models.BooleanField(
+        default=True,
+        help_text=(
+            "Phase 250.1.A.8 — when True, a compliance FAIL/UNKNOWN at "
+            "intake refuses to persist the Asset row (fail-closed). "
+            "Default True for NEW tenants (production-safe); existing "
+            "tenants are backfilled to False by migration 0034 to "
+            "preserve legacy draft-then-scan behaviour until ops opts "
+            "them in."
+        ),
+    )
+    # ``allow_intake_on_compliance_degraded`` is a per-tenant override
+    # for the compliance-service-degraded-mode path (D250.9): when the
+    # shared circuit breaker for compliance-service is OPEN, intake
+    # SHOULD block with 503 + Retry-After. Setting this flag True
+    # opts the tenant out of that block — useful for tenants that
+    # have explicit BAA carve-outs for delayed compliance scanning.
+    # Default False (fail closed) per S-8.
+    allow_intake_on_compliance_degraded = models.BooleanField(
+        default=False,
+        help_text=(
+            "Phase 250.1.A.8 / D250.9 — when True, allow asset intake "
+            "while the compliance-service circuit breaker is OPEN (the "
+            "scan is queued for later). Default False — intake blocks "
+            "with 503 + Retry-After until the breaker recovers."
+        ),
+    )
+    # ------------------------------------------------------------------
+    # Phase 250.2.A.1 — auto-activate-on-gate-pass governance flag
+    # (closes Gap 2)
+    # ------------------------------------------------------------------
+    # ``asset_auto_activate_on_gate_pass`` is a tenant-level kill-switch
+    # for the Phase 250.1.A.3 / D250.2 default-True auto-activation
+    # behaviour. When True (default), the asset-creation workflow flips
+    # an Asset from DRAFT to ACTIVE the moment all gates (DQ,
+    # compliance, contract validation, structural floor) pass.  When
+    # False, the workflow leaves the Asset in DRAFT regardless of the
+    # per-call ``auto_activate`` argument — a caller cannot bypass the
+    # tenant policy by passing ``auto_activate=True``.  Read at
+    # ``execute()`` time and frozen into ``workflow_input`` so a flag
+    # flip mid-execution does NOT affect an in-flight workflow (same
+    # contract as ``compliance_fail_closed_enabled``).
+    #
+    # Default True for both new AND existing tenants because the
+    # platform Python-level default (Phase 250.1.A.3) is already True;
+    # backfilling False would silently regress current customer
+    # behaviour.  Tenants who want DRAFT-first reviews opt out
+    # explicitly by flipping the flag to False.
+    asset_auto_activate_on_gate_pass = models.BooleanField(
+        default=True,
+        help_text=(
+            "Phase 250.2.A.1 — when True (default), the asset-creation "
+            "workflow auto-activates an Asset (DRAFT → ACTIVE) once "
+            "all gates pass. When False, the workflow leaves the Asset "
+            "in DRAFT regardless of the per-call auto_activate "
+            "argument; a per-tenant DRAFT-first review queue. The "
+            "effective decision is "
+            "``per_call_auto_activate AND tenant_flag``."
+        ),
+    )
+    # Phase 250.5.A.2 (D250.3) — federated import is opt-in. Default
+    # FALSE on every tenant (including back-filled rows via the
+    # 0036_tenant_federated_flag migration) so the deploy doesn't
+    # silently enable the federated-asset code path for customers who
+    # never asked for it. Tenants that explicitly want federated
+    # import flip the flag via the platform-admin tenant management
+    # surface; the gate at
+    # ``DiscoveryService.create_federated_asset_with_contracts``
+    # refuses any call whose effective tenant has the flag False and
+    # emits the ``FEDERATED_IMPORT_REJECTED`` audit row.
+    federated_import_enabled = models.BooleanField(
+        default=False,
+        help_text=(
+            "Phase 250.5.A.2 (D250.3) — when True, this tenant may "
+            "import federated assets from configured marketplace "
+            "connections. Default False so existing tenants are "
+            "unchanged by the phase deploy; opt-in is required to "
+            "activate the federated-import code path."
+        ),
+    )
+    # Phase 250.6.A.1 (D250.17) — per-tenant asset-creation kill switch.
+    # Default TRUE on every existing tenant so the deploy doesn't
+    # accidentally freeze customer creation flows. New tenants created
+    # via the onboarding flow START at False and flip to True when
+    # onboarding completes (so a partially-onboarded tenant can't
+    # create production assets). Ops uses the flag to FREEZE creation
+    # on a tenant under investigation (e.g. compliance breach,
+    # billing-dispute hold) without touching code — flipping the flag
+    # to False makes ``POST /assets/`` and ``POST /assets/data-first/``
+    # return 403 + ``code="ASSET_CREATION_DISABLED"`` BEFORE any
+    # serializer / workflow / persistence work begins. The
+    # ``/api/v1/capabilities/`` response mirrors this flag as
+    # ``asset_creation`` so the SPA can render a "disabled capability"
+    # page instead of letting the user fill out a form that will 403.
+    asset_creation_enabled = models.BooleanField(
+        default=True,
+        help_text=(
+            "Phase 250.6.A.1 (D250.17) — when True (default), this "
+            "tenant may create assets via POST /assets/ and "
+            "POST /assets/data-first/. Default TRUE so existing "
+            "tenants are unaffected by the kill-switch deploy; ops "
+            "flips to False to freeze creation under investigation. "
+            "New tenants created via onboarding START at False until "
+            "onboarding completes (separate code path)."
+        ),
+    )
+    # Phase 250.5.F.1 (closes G2-3) — default classification stamped
+    # on EVERY federated-import asset's metadata at intake. Production-
+    # safe default INTERNAL (NEVER PUBLIC) — federated metadata may
+    # carry PII the source tenant hasn't yet classified, so the
+    # consumer-side intake must NOT auto-publicise. Tenants can pin
+    # to PII / RESTRICTED / CONFIDENTIAL for marketplaces known to
+    # carry sensitive payloads.
+    federated_import_classification_default = models.CharField(
+        max_length=20,
+        default="INTERNAL",
+        help_text=(
+            "Phase 250.5.F.1 — default sensitivity classification "
+            "stamped on every imported federated-asset metadata blob "
+            "at intake. Values mirror "
+            "``governance.ClassificationCategory`` "
+            "(PUBLIC / INTERNAL / CONFIDENTIAL / RESTRICTED / PII / "
+            "PHI / PCI / FINANCIAL / LEGAL). Default INTERNAL — "
+            "production-safe posture for unknown source-tenant "
+            "classification. Tenants flip to PII / RESTRICTED for "
+            "marketplaces carrying sensitive payloads."
+        ),
+    )
     plan = models.ForeignKey(
         "tenants.TenantPlan",
         on_delete=models.SET_NULL,
@@ -517,6 +657,27 @@ class Tenant(models.Model):
     )
     kyc_expires_at = models.DateTimeField(
         null=True, blank=True, help_text="Timestamp when KYC verification expires"
+    )
+    # Phase 250.6.D.1 (closes G2-1 / P2-1) — onboarding-completion timestamp.
+    # NULL when onboarding has not yet completed; set to ``timezone.now()``
+    # the moment all three signals (TENANT_ADMIN role granted, KYC
+    # submitted, active subscription) are first satisfied. The setter is
+    # ``hub.apps.tenants.onboarding.mark_onboarding_complete_if_ready``
+    # which is invoked from post_save signals on UserRole / Tenant /
+    # Subscription. Field is also DB-indexed to support the
+    # ``onboarding_completed_at IS NULL`` filter the capabilities
+    # endpoint uses to differentiate ONBOARDING_INCOMPLETE from
+    # DISABLED_BY_OPS reasons.
+    onboarding_completed_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        db_index=True,
+        help_text=(
+            "Phase 250.6.D.1 — timestamp the tenant FIRST satisfied all "
+            "three onboarding signals (TENANT_ADMIN role granted, KYC "
+            "submitted, active Subscription). NULL = onboarding not yet "
+            "complete. One-way ratchet: never cleared once set."
+        ),
     )
     deleted_at = models.DateTimeField(
         null=True, blank=True, help_text="Timestamp when tenant was marked for deletion"

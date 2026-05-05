@@ -166,6 +166,36 @@ class TenantScopingMiddleware:
 
             if not getattr(settings, "FEATURE_TENANT_SWITCH_ENABLED", True):
                 return HttpResponse(status=403)
+
+            # Phase 250.5.C.1 — UUID format validation MUST run BEFORE
+            # the auth-class checks (401) and membership-class checks
+            # (403). A malformed value is a structurally-invalid
+            # request — the right response is 400 regardless of
+            # whether credentials are present.
+            #
+            # Rationale for "before auth": an attacker probing without
+            # credentials could otherwise distinguish "401 = malformed
+            # tenant" from "401 = bad creds" by header timing, leaking
+            # signal about backend behaviour. Returning 400 first
+            # makes both unauthenticated cases indistinguishable.
+            #
+            # Rationale for "before membership": the membership check
+            # at ``UserTenantMembershipService.validate_membership``
+            # already swallows malformed UUIDs (catches ValueError,
+            # returns False), which would surface a misleading 403
+            # ("not a member") instead of the correct 400 ("malformed
+            # request"). Up-front validation keeps the response
+            # contract honest.
+            try:
+                import uuid as _uuid_for_xtid
+
+                _uuid_for_xtid.UUID(x_tenant_id)
+            except (ValueError, TypeError, AttributeError):
+                return HttpResponse(
+                    b'{"error":"INVALID_TENANT_ID","code":"BAD_REQUEST"}',
+                    status=400,
+                    content_type="application/json",
+                )
             user = getattr(request, "user", None) or getattr(request, "_force_auth_user", None)
             is_anon = user is None or isinstance(user, AnonymousUser)
             # When user not in request (e.g. JWT/ApiKey before DRF auth), try to resolve
@@ -210,6 +240,7 @@ class TenantScopingMiddleware:
                 from hub.apps.users.services import UserTenantMembershipService
                 if not UserTenantMembershipService().validate_membership(user, x_tenant_id):
                     return HttpResponse(status=403)
+            from django.core.exceptions import ValidationError
             from hub.apps.tenants.models import Tenant
 
             try:
@@ -218,6 +249,25 @@ class TenantScopingMiddleware:
                 request.tenant = tenant
             except Tenant.DoesNotExist:
                 return HttpResponse(status=403)
+            except (ValidationError, ValueError):
+                # Phase 250.5.C.1 — malformed X-Tenant-Id header
+                # (non-UUID value, e.g. ``"not-a-uuid"``) MUST surface
+                # as 400, NOT 500. Without this guard, Django's
+                # UUIDField.to_python raises ValidationError on the
+                # ORM lookup, propagating as an unhandled middleware
+                # exception → 500 with a stack-trace fragment in the
+                # response body (an information-disclosure risk on
+                # top of the wrong status code). 403 would also be
+                # incorrect because the request is structurally
+                # invalid, not permission-denied. The guard catches
+                # ValueError too because some Django paths raise
+                # ValueError instead of ValidationError on UUID
+                # coercion.
+                return HttpResponse(
+                    b'{"error":"INVALID_TENANT_ID","code":"BAD_REQUEST"}',
+                    status=400,
+                    content_type="application/json",
+                )
             return None
 
         # If tenant_id is already set, ensure it's a string and get tenant object

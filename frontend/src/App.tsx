@@ -3,6 +3,7 @@
  */
 
 import { useEffect } from 'react';
+import { HelmetProvider } from 'react-helmet-async';
 import { RouterProvider } from 'react-router-dom';
 import * as Sentry from '@sentry/react';
 import './App.css';
@@ -37,9 +38,18 @@ function App() {
 
   return (
     <ErrorBoundary>
-      <AppProviders>
-        <RouterProvider router={router} />
-      </AppProviders>
+      {/*
+        Phase 230.9 (REQ-SEM-SEO-001) — HelmetProvider wraps the entire
+        app so any descendant component can declaratively add <head>
+        tags via <Helmet>. Public-page Schema.org JSON-LD injection
+        depends on this. The provider has zero render cost when no
+        Helmet child is mounted, so wrapping unconditionally is safe.
+      */}
+      <HelmetProvider>
+        <AppProviders>
+          <RouterProvider router={router} />
+        </AppProviders>
+      </HelmetProvider>
     </ErrorBoundary>
   );
 }

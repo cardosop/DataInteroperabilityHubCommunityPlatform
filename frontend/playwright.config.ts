@@ -172,33 +172,57 @@ export default defineConfig({
     // set of high-value specs (the F1 / F2 lineage surfaces) to
     // keep the matrix bounded — matrix-multiplying every spec
     // against three browsers triples runtime for marginal coverage.
+    // Phase 250.6.F.5 — extended the cross-browser matrix to
+    // cover the asset-creation flow (250.6.B / 250.6.D) and the
+    // KYC remediation banner (250.3.A) alongside the original
+    // 228.F lineage scope. The matrix is still opt-in via
+    // ``E2E_CROSS_BROWSER=1`` so the default chromium-only run
+    // stays fast; CI nightly + pre-release sweeps enable it.
+    //
+    // The ``CROSS_BROWSER_MATCH`` array below is the canonical
+    // source of truth for which specs are bound to all three
+    // browsers. Editing it in one place keeps Firefox + WebKit
+    // aligned and avoids drift between them.
     ...(process.env.E2E_CROSS_BROWSER === '1'
-      ? [
-          {
-            name: 'firefox',
-            testMatch: [
-              '**/use-cases/marketplace/UC-MKT-LINEAGE-*.spec.ts',
-              '**/use-cases/contracts/UC-LIN-FIELD-EDIT-*.spec.ts',
-            ],
-            use: {
-              ...devices['Desktop Firefox'],
-              storageState: 'e2e/.auth/user.json',
+      ? (() => {
+          const CROSS_BROWSER_MATCH = [
+            // 228.F lineage (existing — kept intact).
+            '**/use-cases/marketplace/UC-MKT-LINEAGE-*.spec.ts',
+            '**/use-cases/contracts/UC-LIN-FIELD-EDIT-*.spec.ts',
+            // 250.6.B — asset type-picker (Phase 250.6.F.5
+            // extension): keyboard + radiogroup semantics differ
+            // subtly across engines (WebKit's role-tree, Firefox's
+            // focus-visible behaviour); cross-browser proves the
+            // WCAG 2.1 AA scaffolding actually holds.
+            '**/journeys/dpo/asset-type-picker.spec.ts',
+            // 250.3.A — KYC remediation banner on the marketplace
+            // publish page. The banner's CTA + focus management
+            // is the load-bearing UX path for the Phase 250.3
+            // gating; drift here would be a customer-visible bug.
+            '**/journeys/**/marketplace-kyc-remediation*.spec.ts',
+            '**/journeys/**/listing-publish*.spec.ts',
+          ];
+          return [
+            {
+              name: 'firefox',
+              testMatch: CROSS_BROWSER_MATCH,
+              use: {
+                ...devices['Desktop Firefox'],
+                storageState: 'e2e/.auth/user.json',
+              },
+              dependencies: ['setup-auth'],
             },
-            dependencies: ['setup-auth'],
-          },
-          {
-            name: 'webkit',
-            testMatch: [
-              '**/use-cases/marketplace/UC-MKT-LINEAGE-*.spec.ts',
-              '**/use-cases/contracts/UC-LIN-FIELD-EDIT-*.spec.ts',
-            ],
-            use: {
-              ...devices['Desktop Safari'],
-              storageState: 'e2e/.auth/user.json',
+            {
+              name: 'webkit',
+              testMatch: CROSS_BROWSER_MATCH,
+              use: {
+                ...devices['Desktop Safari'],
+                storageState: 'e2e/.auth/user.json',
+              },
+              dependencies: ['setup-auth'],
             },
-            dependencies: ['setup-auth'],
-          },
-        ]
+          ];
+        })()
       : []),
   ],
 

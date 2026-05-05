@@ -1,12 +1,33 @@
 """
 Data Quality operations for DataHub SDK.
 """
-from typing import Any, Dict, Optional
+from __future__ import annotations
+
+import asyncio
+from typing import Any, Dict, FrozenSet, Optional
 
 from .client import DataHubClient
 
 
 class DQAPI:
+    """SDK surface for the ``/dq/`` endpoint family."""
+
+    #: Phase 250.4.4 — terminal DQ-run statuses recognised by
+    #: :meth:`wait_for`. The hub exposes both an uppercase variant
+    #: (``PASS`` / ``FAIL`` / ``WARN`` from the Great Expectations
+    #: result mapping) AND a lowercase ``completed`` / ``failed``
+    #: variant from the worker-service status field. The helper
+    #: accepts both so the contract works against any hub version
+    #: regardless of which serializer the deployment uses.
+    TERMINAL_STATUSES: FrozenSet[str] = frozenset({
+        "PASS",
+        "FAIL",
+        "WARN",
+        "completed",
+        "failed",
+        "cancelled",
+    })
+
     def __init__(self, client: DataHubClient):
         self.client = client
 
@@ -68,3 +89,60 @@ class DQAPI:
 
     async def get_trends(self, asset_id: str) -> Dict[str, Any]:
         return await self.client.get(f"dq/trends/{asset_id}/")
+
+    async def wait_for(
+        self,
+        asset_id: str,
+        timeout: float = 180.0,
+        interval: float = 2.0,
+    ) -> Dict[str, Any]:
+        """Phase 250.4.4 — poll the latest DQ run on an asset
+        until it reaches a terminal status.
+
+        The DE-1 programmatic flow doesn't know the run_id ahead
+        of time — the workflow creates the run asynchronously
+        when the dataset is intaken. This helper polls the
+        ``/dq/runs/?asset_id=<id>`` listing for the most recent
+        run; if no run has been created yet, it keeps polling
+        until one appears, then waits for it to terminate.
+
+        Args:
+            asset_id: The asset UUID to poll for DQ runs.
+            timeout: Total seconds to poll before giving up.
+                Default 180s — covers the slow-end tail of DQ
+                checks on multi-MB payloads. The DE-1 SLO
+                (250.4.10) targets P95 ≤ 60s for the FULL
+                sequence; 180s for DQ alone is a generous
+                individual-step budget.
+            interval: Seconds between polls. Default 2.0s.
+
+        Returns:
+            The final DQ-run payload (terminal status). Returns
+            the payload for any of ``PASS`` / ``FAIL`` / ``WARN``
+            / ``completed`` / ``failed`` / ``cancelled`` — the
+            caller's policy decides whether non-PASS is an
+            exception. WARN in particular is intentionally
+            terminal-but-not-failure.
+
+        Raises:
+            asyncio.TimeoutError: ``timeout`` elapsed before a
+                run appeared OR before an existing run reached
+                a terminal status.
+        """
+        elapsed = 0.0
+        while elapsed < timeout:
+            response = await self.list_runs(
+                asset_id=asset_id, limit=1,
+            )
+            results = response.get("results") or []
+            if results:
+                latest: Dict[str, Any] = results[0]
+                if latest.get("status") in self.TERMINAL_STATUSES:
+                    return latest
+            await asyncio.sleep(interval)
+            elapsed += interval
+        raise TimeoutError(
+            f"No terminal DQ run for asset {asset_id} "
+            f"within {timeout}s "
+            f"(terminal statuses: {sorted(self.TERMINAL_STATUSES)})."
+        )

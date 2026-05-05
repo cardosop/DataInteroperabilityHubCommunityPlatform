@@ -5,9 +5,11 @@
 
 import { apiClient } from '../../../shared/api/client';
 import type {
+  AssetCreationBlockedReason,
   CapabilitiesMap,
   Capability,
   OpenAPISchema,
+  RuntimeCapabilitiesSnapshot,
 } from '../../../shared/types/capabilities';
 
 const CACHE_TTL = 5 * 60 * 1000; // 5 minutes
@@ -16,6 +18,9 @@ class CapabilitiesService {
   private capabilities: CapabilitiesMap = {};
   private openApiSchema: OpenAPISchema | null = null;
   private cachedAt = 0;
+  // Phase 250.6.D.2 — runtime capabilities snapshot (per-tenant).
+  // Fetched alongside the OpenAPI schema; null until first fetch.
+  private runtimeSnapshot: RuntimeCapabilitiesSnapshot | null = null;
 
   /**
    * Load OpenAPI schema and derive capabilities
@@ -53,6 +58,19 @@ class CapabilitiesService {
 
       // Derive capabilities from OpenAPI paths
       this.capabilities = this.deriveCapabilitiesFromOpenAPI(this.openApiSchema);
+
+      // Phase 250.6.D.2 — fetch runtime per-tenant capabilities so the
+      // SPA can branch on ``asset_creation_blocked_reason``. Failure
+      // here is non-fatal: the OpenAPI-derived caps are already
+      // available, and a missing runtime snapshot just means the
+      // SPA can't differentiate "incomplete onboarding" from
+      // "ops-disabled" — the route-level CapabilityRoute still
+      // redirects on the boolean flag in either case.
+      try {
+        await this.refreshRuntimeSnapshot();
+      } catch {
+        // Already logged inside refreshRuntimeSnapshot; nothing to do.
+      }
 
       // Cache in-memory only when we have a valid schema (never cache empty on error)
       this.cachedAt = Date.now();
@@ -344,6 +362,94 @@ class CapabilitiesService {
     };
 
     return capabilities;
+  }
+
+  /**
+   * Phase 250.6.D.2 — fetch the per-tenant runtime capability response.
+   *
+   * Hits ``GET /api/v1/capabilities/`` (an AllowAny endpoint that
+   * resolves the tenant from the session/JWT when present and
+   * returns sensible anonymous defaults otherwise). Stores the
+   * subset we care about today (``asset_creation`` +
+   * ``asset_creation_blocked_reason``) in ``this.runtimeSnapshot``;
+   * the OpenAPI-derived ``capabilities`` map remains the source of
+   * truth for static-feature presence.
+   *
+   * Throws on network error so the caller (``loadCapabilities``)
+   * can decide whether to retry; ``loadCapabilities`` swallows
+   * the error because a missing runtime snapshot is a soft
+   * degradation, not a fatal outage.
+   */
+  async refreshRuntimeSnapshot(): Promise<void> {
+    const RUNTIME_TIMEOUT_MS = 10_000;
+    type RuntimeResponse = {
+      capabilities?: Partial<RuntimeCapabilitiesSnapshot>;
+    };
+    const response = await apiClient.getClient().get<RuntimeResponse>(
+      '/api/v1/capabilities/',
+      { timeout: RUNTIME_TIMEOUT_MS },
+    );
+    const caps = response.data?.capabilities ?? {};
+    // Defensive coercion: the backend can in theory return any shape;
+    // we narrow to the documented contract here so the rest of the
+    // SPA can rely on the type without runtime checks at every read.
+    this.runtimeSnapshot = {
+      asset_creation: caps.asset_creation === true,
+      asset_creation_blocked_reason:
+        caps.asset_creation_blocked_reason === 'ONBOARDING_INCOMPLETE' ||
+        caps.asset_creation_blocked_reason === 'DISABLED_BY_OPS'
+          ? caps.asset_creation_blocked_reason
+          : null,
+    };
+
+    // Phase 250.6.D / 250.6.A wiring closeout — register the runtime
+    // ``asset_creation`` flag in ``this.capabilities`` so the
+    // existing ``<CapabilityRoute capability="asset_creation">``
+    // gate at /assets/create reads the LIVE per-tenant value
+    // instead of falling through to the ``?? false`` default
+    // (which was the original 250.6.A wiring gap — the OpenAPI
+    // schema doesn't expose ``asset_creation`` as a path-derived
+    // capability, so the key never appeared in the map and every
+    // user got redirected to /unavailable).
+    //
+    // For the ``ONBOARDING_INCOMPLETE`` case we DELIBERATELY
+    // register ``available: true`` so the route stays reachable —
+    // the page itself reads ``getAssetCreationBlockedReason()`` and
+    // renders the onboarding-CTA picker variant. For
+    // ``DISABLED_BY_OPS`` we keep ``available: false`` so the
+    // CapabilityRoute redirect (the existing 250.6.A behavior)
+    // fires and the user lands on the generic disabled page.
+    const reason = this.runtimeSnapshot.asset_creation_blocked_reason;
+    const routeAvailable =
+      this.runtimeSnapshot.asset_creation || reason === 'ONBOARDING_INCOMPLETE';
+    this.capabilities['asset_creation'] = {
+      name: 'Asset Creation',
+      available: routeAvailable,
+      endpoint: '/api/v1/assets/',
+      operationId: 'asset_create',
+    };
+  }
+
+  /**
+   * Phase 250.6.D.2 — read the asset-creation block reason from the
+   * cached runtime snapshot. Returns ``null`` if no snapshot has
+   * been loaded yet OR if the gate is currently open. Callers (e.g.
+   * the AssetTypePickerStep) MUST handle ``null`` as "do not show
+   * the onboarding CTA" — same as "fully unblocked".
+   */
+  getAssetCreationBlockedReason(): AssetCreationBlockedReason {
+    return this.runtimeSnapshot?.asset_creation_blocked_reason ?? null;
+  }
+
+  /**
+   * Phase 250.6.D.2 — read the asset-creation boolean from the
+   * runtime snapshot. Returns ``true`` (open) when no snapshot
+   * has loaded — fail-open is the right default for the kill
+   * switch (the backend gate at ``POST /assets/`` enforces the
+   * real refusal regardless).
+   */
+  isAssetCreationAllowedRuntime(): boolean {
+    return this.runtimeSnapshot?.asset_creation ?? true;
   }
 
   /**

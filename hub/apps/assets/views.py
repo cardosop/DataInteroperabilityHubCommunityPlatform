@@ -3,6 +3,8 @@ Asset Views
 
 REST API views for asset management.
 """
+import logging
+from typing import Optional
 
 from django.core.exceptions import ValidationError as DjangoValidationError
 from django.db import transaction
@@ -35,6 +37,22 @@ from .caching import (
     invalidate_asset_detail_cache,
     invalidate_asset_list_cache,
 )
+from .throttles import (
+    AssetDataFirstTenantThrottle,
+    AssetDataFirstUserThrottle,
+)
+from hub.apps.core.idempotency import (
+    CachedResponse,
+    IdempotencyError,
+    IdempotencyService,
+)
+
+#: Phase 250.1.D review-pass — every endpoint that opts into the
+#: idempotency contract MUST pass a unique scope so two endpoints
+#: cannot collide on the same Idempotency-Key value. The scope is
+#: bound to the URL path so a future re-mount under a different
+#: prefix does not silently change the cache namespace.
+_DATA_FIRST_IDEMPOTENCY_SCOPE: str = "assets.data-first.v1"
 from .models import Asset, AssetSourceType, AssetStatus, DataStrategy, ExternalResourceReference
 from .serializers import (
     AssetCreateSerializer,
@@ -48,6 +66,147 @@ from .serializers import (
     ResourceDownloadResponseSerializer,
 )
 from .services import AssetService
+
+logger = logging.getLogger(__name__)
+
+
+def _check_asset_creation_kill_switch(request):
+    """Phase 250.6.A.3 (D250.17) — per-tenant asset-creation kill switch.
+
+    Returns ``None`` when creation is allowed, OR a ``Response(403)``
+    object when the tenant flag is False. Callers use the convention:
+
+        gate = _check_asset_creation_kill_switch(request)
+        if gate is not None:
+            return gate
+
+    The check fires BEFORE serializer parsing / role check / workflow
+    dispatch — a flipped flag stops ALL downstream work, so the
+    refusal is structurally side-effect-free (no Asset row, no
+    Dataset row, no audit row beyond the gate emission).
+
+    The 403 response carries ``code="ASSET_CREATION_DISABLED"`` so
+    SPA error handlers can branch on the structured code (vs parsing
+    the human-readable message). The companion
+    ``/api/v1/capabilities/`` response also mirrors the flag as
+    ``asset_creation`` so the SPA can render a "disabled capability"
+    page UPSTREAM of any form-submit (preferred UX path).
+
+    Falls open (no-op) when the request has no resolvable tenant —
+    that path is rejected downstream by the existing tenant-required
+    400 / 401 (the kill switch is a per-tenant gate, so no tenant
+    means there's nothing to gate).
+    """
+    try:
+        from hub.apps.tenants.request_tenant import get_request_tenant
+
+        _tid, tenant = get_request_tenant(request)
+    except Exception:  # noqa: BLE001 — gate must NEVER 500 the request
+        tenant = None
+
+    if tenant is None:
+        return None
+    if getattr(tenant, "asset_creation_enabled", True):
+        return None
+
+    return Response(
+        {
+            "error": (
+                "Asset creation is disabled for this tenant. "
+                "Contact your administrator to re-enable creation."
+            ),
+            "code": "ASSET_CREATION_DISABLED",
+            "details": {
+                "tenant_id": str(tenant.id),
+                "capability": "asset_creation",
+            },
+        },
+        status=status.HTTP_403_FORBIDDEN,
+    )
+
+
+def _parse_if_match_version(raw_if_match: Optional[str]) -> Optional[int]:
+    """Parse ``If-Match`` header as an integer asset version."""
+    if raw_if_match is None:
+        return None
+    candidate = raw_if_match.strip()
+    if not candidate:
+        return None
+    if candidate.startswith('"') and candidate.endswith('"') and len(candidate) >= 2:
+        candidate = candidate[1:-1].strip()
+    if not candidate.isdigit():
+        raise ValueError("If-Match must be an integer version")
+    return int(candidate)
+
+
+def _emit_visibility_deprecation_signal(
+    *,
+    request,
+    tenant,
+    attempted_value,
+    call_site: str,
+    asset_id,
+) -> None:
+    """Phase 250.3.B.3 — best-effort deprecation signal for view-layer
+    callers that pass ``visibility`` in the request body.
+
+    The model-side ``Asset.visibility`` setter ALREADY emits a
+    ``DeprecationWarning`` + ``ASSET_VISIBILITY_WRITE_DEPRECATED``
+    audit row when the row is constructed/saved with the legacy
+    column. But by the time the model setter fires:
+
+    * The request context (``actor_user``) has been lost.
+    * The ``call_site`` appears as ``"model.setter"`` instead of the
+      view name, so dashboards can't tell whether a deprecation event
+      came from the data-first endpoint, the standard POST, or a
+      direct ORM caller.
+
+    Emitting the signal at the view boundary captures both. The
+    setter's emission becomes redundant only when the view calls the
+    service WITHOUT a ``visibility=`` kwarg, which is the new
+    canonical path post-250.3.B.4.
+    """
+    import logging
+    import warnings
+
+    warnings.warn(
+        (
+            f"Asset.visibility is a derived @property as of Phase "
+            f"250.3.B (D250.4); the value '{attempted_value}' from "
+            f"the request body is silently ignored. To make an asset "
+            f"public, set status=PUBLIC."
+        ),
+        DeprecationWarning,
+        stacklevel=2,
+    )
+    try:
+        from hub.apps.audit import event_types as _audit_event_types
+        from hub.apps.audit.utils import create_audit_event
+
+        create_audit_event(
+            resource_type=_audit_event_types.ASSET_RESOURCE_TYPE,
+            action=_audit_event_types.ASSET_VISIBILITY_WRITE_DEPRECATED,
+            actor_user=getattr(request, "user", None),
+            tenant=tenant,
+            resource_id=str(asset_id) if asset_id else None,
+            result="WARNING",
+            details={
+                "tenant_id": str(tenant.id) if tenant else None,
+                "asset_id": str(asset_id) if asset_id else None,
+                "attempted_value": str(attempted_value),
+                "call_site": call_site,
+            },
+            request=request,
+        )
+    except Exception as exc:  # noqa: BLE001
+        logging.getLogger(__name__).warning(
+            "asset_visibility_deprecation_audit_emit_failed",
+            extra={
+                "call_site": call_site,
+                "attempted_value": str(attempted_value),
+                "error": str(exc),
+            },
+        )
 
 
 class AssetViewSet(viewsets.ModelViewSet):
@@ -65,6 +224,12 @@ class AssetViewSet(viewsets.ModelViewSet):
     ordering_fields = ["name", "key", "created_at", "updated_at"]
     ordering = ["-created_at"]  # Default ordering
     search_fields = ["name", "key", "description"]
+    # Phase 250.7.G.1 (S-8) — apply the same per-user/per-tenant
+    # creation throttles to ALL asset-creation endpoints.
+    _creation_throttle_classes = [
+        AssetDataFirstUserThrottle,
+        AssetDataFirstTenantThrottle,
+    ]
 
     def get_permissions(self):
         """Add scope check for write operations (Phase 220.3).
@@ -80,6 +245,16 @@ class AssetViewSet(viewsets.ModelViewSet):
                 HasScope("assets:write"),
             ]
         return [permissions.IsAuthenticated()]
+
+    def get_throttles(self):
+        """Apply creation throttles to both ``create`` and ``data_first``.
+
+        The S-8 contract is endpoint-family scoped ("all asset-creation
+        endpoints"), so both POST surfaces share the same buckets.
+        """
+        if getattr(self, "action", None) in {"create", "data_first"}:
+            return [throttle() for throttle in self._creation_throttle_classes]
+        return super().get_throttles()
 
     def get_queryset(self):
         """Filter queryset based on user permissions and query parameters"""
@@ -125,18 +300,40 @@ class AssetViewSet(viewsets.ModelViewSet):
                 # Invalid status - return empty queryset
                 return Asset.objects.none()
 
-        # Apply visibility filter if provided
+        # Apply visibility filter if provided.
+        #
+        # Phase 250.3.B.1 — ``visibility`` is no longer a stored
+        # column; it derives from ``status`` per D250.4. To preserve
+        # phase-1 backwards compat for ``GET /assets/?visibility=PUBLIC``
+        # (and ``=INTERNAL``), the filter is TRANSLATED to a status
+        # filter at this layer:
+        #
+        # * ``visibility=PUBLIC``   → ``status=PUBLIC``
+        # * ``visibility=INTERNAL`` → ``status__in=[DRAFT, ACTIVE,
+        #                                            RETIRED]`` (every
+        #   non-PUBLIC status maps to derived INTERNAL).
+        #
+        # This keeps the existing ``(tenant, status)`` index doing
+        # the work that the now-dropped ``(tenant, visibility)``
+        # index used to cover.
         visibility_filter = self.request.query_params.get("visibility")
         if visibility_filter:
-            # Validate visibility value
             from .models import AssetVisibility
 
             valid_visibilities = [choice[0] for choice in AssetVisibility.choices]
-            if visibility_filter.upper() in valid_visibilities:
-                queryset = queryset.filter(visibility=visibility_filter.upper())
-            else:
-                # Invalid visibility - return empty queryset
+            normalised = visibility_filter.upper()
+            if normalised not in valid_visibilities:
                 return Asset.objects.none()
+            if normalised == AssetVisibility.PUBLIC:
+                queryset = queryset.filter(status=AssetStatus.PUBLIC)
+            else:
+                queryset = queryset.filter(
+                    status__in=[
+                        AssetStatus.DRAFT,
+                        AssetStatus.ACTIVE,
+                        AssetStatus.RETIRED,
+                    ]
+                )
 
         # Note: Tags filtering is not yet implemented as Asset model doesn't have a tags field
         # This will require adding a tags field (ManyToMany or ArrayField) to the Asset model first
@@ -178,6 +375,13 @@ class AssetViewSet(viewsets.ModelViewSet):
         level by ``hub.apps.api.middleware.idempotency.IdempotencyMiddleware``
         for every POST/PUT/PATCH on ``/api/v1/*``; no per-view wiring needed.
         """
+        # Phase 250.6.A.3 — per-tenant kill switch. Fires BEFORE role
+        # check / serializer parse / workflow dispatch so a flipped
+        # flag stops ALL downstream work side-effect-free.
+        kill_switch = _check_asset_creation_kill_switch(request)
+        if kill_switch is not None:
+            return kill_switch
+
         # Enforce role: only DATA_PROVIDER or TENANT_ADMIN can create assets
         user = request.user
         has_write_role = (
@@ -200,7 +404,22 @@ class AssetViewSet(viewsets.ModelViewSet):
         name = serializer.validated_data["name"]
         description = serializer.validated_data.get("description")
         domain = serializer.validated_data.get("domain")
-        visibility = serializer.validated_data.get("visibility", "INTERNAL")
+        # Phase 250.3.B.4 — absorb the legacy ``visibility`` body field.
+        # The serializer still ACCEPTS it (for phase-1 backwards compat
+        # — removing would 400 pre-phase-1 clients), but the value is
+        # NOT passed to ``AssetService.create_asset``. Visibility now
+        # derives from ``status`` per D250.4. The deprecation warning +
+        # audit row fire from the model setter when the service-layer
+        # call lands a row with the legacy column unset.
+        legacy_visibility_in_body = serializer.validated_data.get("visibility")
+        if legacy_visibility_in_body is not None:
+            _emit_visibility_deprecation_signal(
+                request=request,
+                tenant=None,  # tenant not yet resolved at this branch
+                attempted_value=legacy_visibility_in_body,
+                call_site="view.create",
+                asset_id=None,
+            )
 
         # Use central helper for tenant resolution (Phase 10.1.10)
         tenant_id, tenant = get_request_tenant(request)
@@ -222,7 +441,6 @@ class AssetViewSet(viewsets.ModelViewSet):
                 name=name,
                 description=description,
                 domain=domain,
-                visibility=visibility,
                 created_by=request.user,
             )
         except ServiceValidationError as e:
@@ -259,7 +477,20 @@ class AssetViewSet(viewsets.ModelViewSet):
 
         return Response(AssetSerializer(asset).data, status=status.HTTP_201_CREATED)
 
-    @action(detail=False, methods=["post"], url_path="data-first")
+    #: Phase 250.1.A.11 / B-9 — hard cap on the data-first request body
+    #: (100 MB). The workflow downloads the file payload into memory
+    #: TWICE (compliance scan + DQ scan), so a request larger than
+    #: 100 MB would push the worker past 200 MB resident set + JSON
+    #: overhead. The cap is enforced BEFORE auth / serializer parsing
+    #: so an attacker can't exhaust memory from an unauthenticated
+    #: client.
+    DATA_FIRST_MAX_BODY_BYTES: int = 100 * 1024 * 1024
+
+    @action(
+        detail=False,
+        methods=["post"],
+        url_path="data-first",
+    )
     def data_first(self, request):
         """
         Create asset, dataset, and contract from uploaded file (data-first flow).
@@ -268,6 +499,13 @@ class AssetViewSet(viewsets.ModelViewSet):
         time (storage, DQ, compliance HTTP) and manages its own atomic sections. A view-wide
         transaction would hold DB locks until ``statement_timeout``, breaking parallel tests and
         analytics/counters on the same connection.
+
+        Phase 250.1.A — fail-closed-at-intake gates (compliance + DQ)
+        run BEFORE the Asset row is persisted; a FAIL on either gate
+        returns 422 with audit event ``ASSET_FAIL_CLOSED_REJECTED``.
+        A degraded compliance-service (circuit OPEN) returns 503 +
+        ``Retry-After`` per D250.9 unless the tenant has opted into
+        ``allow_intake_on_compliance_degraded``.
 
         POST /api/v1/assets/data-first/
         Body: {
@@ -279,6 +517,85 @@ class AssetViewSet(viewsets.ModelViewSet):
         }
         Returns: { "asset_id": "uuid", "dataset_id": "uuid", "contract_id": "uuid" }
         """
+        # Phase 250.1.A.11 / B-9 — body-size guard runs as the FIRST
+        # step in the action body so we reject before parsing
+        # ``request.data`` (which would buffer the whole payload).
+        # Auth + scope have already run via DRF permissions, but the
+        # serializer + workflow are downstream and would each touch
+        # the full payload twice (compliance + DQ scans), so the cap
+        # is the cheapest defence against memory exhaustion.
+        #
+        # Defence in depth: clients MUST send a numeric
+        # ``Content-Length`` header. Chunked transfer-encoding is
+        # rejected with 411 because we'd otherwise have to call
+        # ``len(request.body)`` which forces the full body into
+        # memory — the very DoS the cap is meant to prevent. (The
+        # gunicorn / nginx config also enforces an upstream cap;
+        # this in-process guard is the last line of defence and
+        # MUST be deterministic without buffering.)
+        content_length_raw = request.META.get("CONTENT_LENGTH")
+        transfer_encoding = (
+            request.META.get("HTTP_TRANSFER_ENCODING", "") or ""
+        ).lower()
+        if "chunked" in transfer_encoding or not content_length_raw:
+            return Response(
+                {
+                    "error": (
+                        "Content-Length header is required on "
+                        "POST /assets/data-first/ (chunked uploads "
+                        "are rejected to prevent memory-exhaustion DoS)."
+                    ),
+                    "code": "LENGTH_REQUIRED",
+                    "details": {
+                        "max_bytes": self.DATA_FIRST_MAX_BODY_BYTES,
+                    },
+                },
+                status=status.HTTP_411_LENGTH_REQUIRED,
+            )
+        try:
+            body_size = int(content_length_raw)
+        except (TypeError, ValueError):
+            return Response(
+                {
+                    "error": "Invalid Content-Length header.",
+                    "code": "BAD_REQUEST",
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        if body_size < 0:
+            return Response(
+                {
+                    "error": "Negative Content-Length is invalid.",
+                    "code": "BAD_REQUEST",
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        if body_size > self.DATA_FIRST_MAX_BODY_BYTES:
+            return Response(
+                {
+                    "error": (
+                        f"Request body too large "
+                        f"({body_size} bytes); max "
+                        f"{self.DATA_FIRST_MAX_BODY_BYTES} bytes."
+                    ),
+                    "code": "PAYLOAD_TOO_LARGE",
+                    "details": {
+                        "max_bytes": self.DATA_FIRST_MAX_BODY_BYTES,
+                        "received_bytes": body_size,
+                    },
+                },
+                status=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+            )
+
+        # Phase 250.6.A.3 — per-tenant kill switch. Fires AFTER the
+        # body-size guard (so an attacker can't exhaust memory before
+        # the gate runs — body-size is the FIRST check) but BEFORE
+        # the role check / tenant resolution / workflow dispatch so a
+        # flipped flag stops downstream work side-effect-free.
+        kill_switch = _check_asset_creation_kill_switch(request)
+        if kill_switch is not None:
+            return kill_switch
+
         user = request.user
         has_write_role = (
             user.has_role("DATA_PROVIDER", "TENANT_ADMIN") if hasattr(user, "has_role") else False
@@ -300,6 +617,200 @@ class AssetViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
+        # ------------------------------------------------------------------
+        # Phase 250.1.D — Idempotency-Key validation + replay short-circuit
+        # ------------------------------------------------------------------
+        # The header is mandatory; format is ``<tenant_uuid>:<sha256(body)>``
+        # per D250.8. We validate the format, the tenant prefix, and the
+        # body hash BEFORE running the workflow (cheap rejections first),
+        # then look up the cache. A hit short-circuits with the original
+        # response — no workflow re-execution, no duplicate Asset row.
+        idem_key_header = request.META.get("HTTP_IDEMPOTENCY_KEY")
+        try:
+            IdempotencyService.assert_body_matches_key(
+                key=idem_key_header,
+                body=request.body,
+                request_tenant_uuid=str(tenant.id),
+            )
+        except IdempotencyError as exc:
+            return Response(
+                {
+                    "error": str(exc),
+                    "code": exc.code,
+                },
+                status=exc.http_status,
+            )
+
+        cached = IdempotencyService.get_cached_response(
+            idem_key_header,
+            scope=_DATA_FIRST_IDEMPOTENCY_SCOPE,
+        )
+        if cached is not None:
+            # Phase 250.1.D review-pass — emit a structured log so ops
+            # dashboards can count replay-vs-fresh ratios without
+            # scraping every successful row in the audit table.
+            import logging as _logging
+            _logging.getLogger(__name__).info(
+                "idempotency_replay_hit",
+                extra={
+                    "tenant_id": str(tenant.id),
+                    "scope": _DATA_FIRST_IDEMPOTENCY_SCOPE,
+                    "cached_status": cached.status_code,
+                },
+            )
+            replay_response = Response(
+                cached.data,
+                status=cached.status_code,
+            )
+            for header_name, header_value in cached.headers.items():
+                replay_response[header_name] = header_value
+            replay_response["Idempotent-Replay"] = "true"
+            return replay_response
+
+        # Phase 250.1.D review-pass — concurrent-request lock.
+        # Without this, two parallel POSTs with the same key both see
+        # cache MISS and both run the workflow, racing to overwrite
+        # each other's cached response (workflow side-effects executed
+        # twice — the very thing idempotency promises to prevent).
+        # We use an atomic ``cache.add()`` (Redis SET NX) to claim
+        # exclusive ownership of the key for the workflow's duration;
+        # the loser of the race gets a 409 with Retry-After so the
+        # client can poll the cache for the winner's response.
+        if not IdempotencyService.acquire_lock(
+            idem_key_header,
+            scope=_DATA_FIRST_IDEMPOTENCY_SCOPE,
+        ):
+            response = Response(
+                {
+                    "error": (
+                        "Another request with this Idempotency-Key is "
+                        "currently in progress. Retry shortly."
+                    ),
+                    "code": "IDEMPOTENCY_REQUEST_IN_PROGRESS",
+                },
+                status=status.HTTP_409_CONFLICT,
+            )
+            response["Retry-After"] = "5"
+            return response
+
+        # Helper closure so every return path through the workflow
+        # caches the response under the same Idempotency-Key. We
+        # cache 2xx + deterministic 4xx (validation / fail-closed)
+        # so legitimate retries get the same answer; transient
+        # 5xx / 429 / 503 are NOT cached so the next attempt can
+        # see fresh state.
+        _CACHED_STATUSES = {
+            status.HTTP_200_OK,
+            status.HTTP_201_CREATED,
+            status.HTTP_202_ACCEPTED,
+            status.HTTP_400_BAD_REQUEST,
+            status.HTTP_403_FORBIDDEN,
+            status.HTTP_404_NOT_FOUND,
+            status.HTTP_409_CONFLICT,
+            status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+            status.HTTP_422_UNPROCESSABLE_ENTITY,
+        }
+        _CACHED_HEADERS = {"Retry-After"}
+
+        # Phase 250.1.D review-pass — make the lock release symmetric
+        # with the acquire across EVERY return path. The closure-based
+        # ``_release_lock_once`` is idempotent (mutates the
+        # single-element list to mark released) so multiple callers
+        # in the early-return chain are safe. The wide try/except
+        # at the bottom of the method catches any unhandled exception
+        # so the lock never leaks past TTL.
+        _lock_released_state = {"value": False}
+
+        def _release_lock_once() -> None:
+            if not _lock_released_state["value"]:
+                _lock_released_state["value"] = True
+                IdempotencyService.release_lock(
+                    idem_key_header,
+                    scope=_DATA_FIRST_IDEMPOTENCY_SCOPE,
+                )
+
+        def _cache_and_return(response: Response) -> Response:
+            """Persist + release-lock + return — cached-status path."""
+            if response.status_code in _CACHED_STATUSES:
+                preserved_headers = {
+                    h: response[h]
+                    for h in _CACHED_HEADERS
+                    if h in response
+                }
+                IdempotencyService.store_response(
+                    idem_key_header,
+                    CachedResponse(
+                        status_code=response.status_code,
+                        data=response.data,
+                        headers=preserved_headers,
+                    ),
+                    scope=_DATA_FIRST_IDEMPOTENCY_SCOPE,
+                )
+            _release_lock_once()
+            return response
+
+        def _just_return(response: Response) -> Response:
+            """Release-lock + return — non-cacheable status path
+            (5xx / 503 / 429 etc; lock MUST still be released)."""
+            _release_lock_once()
+            return response
+
+        try:
+            return self._data_first_workflow(
+                request=request,
+                tenant=tenant,
+                _cache_and_return=_cache_and_return,
+                _just_return=_just_return,
+            )
+        except Exception:
+            # Last-resort lock release for ANY unhandled exception.
+            # The TTL would clean up eventually, but releasing here
+            # frees the slot immediately so retries can proceed.
+            _release_lock_once()
+            raise
+
+    def _data_first_workflow(self, *, request, tenant, _cache_and_return, _just_return):
+        """Inner half of :meth:`data_first` — runs while the idempotency
+        lock is held. Extracted so the lock-acquire / lock-release
+        pairing in the OUTER method stays unmissable on review."""
+        # Phase 250.1.A.9 / D250.9 — fail-fast when the
+        # compliance-service circuit breaker is OPEN unless the
+        # tenant explicitly opted in. Returning 503 + Retry-After up
+        # front saves the workflow from spinning up an instance
+        # that's guaranteed to fail at the gate.
+        from hub.apps.core.resilience.circuit_breaker import CircuitBreakerState
+        from hub.apps.core.resilience.service_breakers import (
+            get_shared_circuit_breaker,
+        )
+
+        compliance_breaker = get_shared_circuit_breaker("compliance-service")
+        if compliance_breaker.get_state() == CircuitBreakerState.OPEN and not getattr(
+            tenant, "allow_intake_on_compliance_degraded", False
+        ):
+            breaker_status = compliance_breaker.get_status()
+            retry_after_seconds = int(
+                breaker_status.get("timeout_seconds", 60) or 60
+            )
+            response = Response(
+                {
+                    "error": (
+                        "Compliance service unavailable; intake refused "
+                        "(fail-closed). Retry after the breaker recovers "
+                        "or set tenant.allow_intake_on_compliance_degraded."
+                    ),
+                    "code": "COMPLIANCE_SERVICE_UNAVAILABLE",
+                    "details": {
+                        "retry_after_seconds": retry_after_seconds,
+                        "circuit_breaker_state": "OPEN",
+                    },
+                },
+                status=status.HTTP_503_SERVICE_UNAVAILABLE,
+            )
+            response["Retry-After"] = str(retry_after_seconds)
+            # 503 is non-cacheable; release the lock here so retries
+            # after breaker recovery aren't gated by a stale lock.
+            return _just_return(response)
+
         serializer = DataFirstAssetCreateSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
 
@@ -308,23 +819,43 @@ class AssetViewSet(viewsets.ModelViewSet):
         name = serializer.validated_data["name"]
         description = serializer.validated_data.get("description")
         domain = serializer.validated_data.get("domain")
-        visibility = serializer.validated_data.get("visibility", "INTERNAL")
+        # Phase 250.3.B.4 — absorb the legacy ``visibility`` body field
+        # on the data-first endpoint too. The value is NOT passed to
+        # the workflow; visibility derives from status. The
+        # deprecation signal fires here so dashboards capture
+        # data-first call sites in addition to the standard POST path.
+        legacy_visibility_in_body = serializer.validated_data.get("visibility")
+        if legacy_visibility_in_body is not None:
+            _emit_visibility_deprecation_signal(
+                request=request,
+                tenant=tenant,
+                attempted_value=legacy_visibility_in_body,
+                call_site="view.data_first",
+                asset_id=None,
+            )
 
         from hub.apps.files.models import File, FileStatus
 
         try:
             file_obj = File.objects.get(id=file_id, tenant_id=tenant.id)
         except File.DoesNotExist:
-            return Response(
+            return _cache_and_return(Response(
                 {"error": "File not found", "code": "NOT_FOUND", "details": {"file_id": str(file_id)}},
                 status=status.HTTP_404_NOT_FOUND,
-            )
+            ))
 
-        if file_obj.status != FileStatus.ACTIVE and file_obj.status != FileStatus.COMPLETED:
-            return Response(
-                {"error": "File must be active or completed to create asset", "code": "INVALID_STATE"},
+        if file_obj.status != FileStatus.COMPLETED:
+            return _cache_and_return(Response(
+                {
+                    "error": "File must be completed to create asset",
+                    "code": "INVALID_STATE",
+                    "details": {
+                        "required_status": FileStatus.COMPLETED,
+                        "current_status": file_obj.status,
+                    },
+                },
                 status=status.HTTP_400_BAD_REQUEST,
-            )
+            ))
 
         file_format = "CSV"
         if file_obj.content_type:
@@ -340,7 +871,10 @@ class AssetViewSet(viewsets.ModelViewSet):
             elif ext == "parquet":
                 file_format = "PARQUET"
 
-        from hub.apps.orchestration.workflows.asset_creation import AssetCreationWorkflow
+        from hub.apps.orchestration.workflows.asset_creation import (
+            AssetCreationWorkflow,
+            FailClosedRejection,
+        )
 
         try:
             result = AssetCreationWorkflow.execute(
@@ -349,44 +883,127 @@ class AssetViewSet(viewsets.ModelViewSet):
                 name=name,
                 description=description or "",
                 domain=domain,
-                visibility=visibility,
                 file_id=str(file_obj.id),
                 file_format=file_format,
                 contract_name=f"Contract for {name}",
                 contract_description=description or "",
-                auto_activate=False,
+                auto_activate=True,  # Phase 250.1.A.3 / D250.2 — default ON
                 send_notifications=False,
                 created_by_id=str(request.user.id),
             )
-        except ValueError as e:
-            return Response(
-                {"error": str(e), "code": "WORKFLOW_FAILED"},
-                status=status.HTTP_400_BAD_REQUEST,
+        except FailClosedRejection as fcr:
+            # Phase 250.1.A.3 — pre-persistence gate refused intake.
+            # Map the typed exception to a 422 so clients can
+            # distinguish gate rejection from generic workflow
+            # failure (which keeps using 400). For the
+            # compliance-degraded sub-case we surface 503 +
+            # Retry-After per the breaker contract.
+            #
+            # The user-facing ``error`` string is built from
+            # structured attributes rather than ``str(fcr)`` so the
+            # internal sentinel payload (used to round-trip the
+            # exception through the workflow engine) doesn't leak
+            # into API responses.
+            human_message = (
+                f"Asset intake refused: {fcr.gate} gate returned "
+                f"{fcr.gate_status} ({fcr.reason})"
             )
+            if fcr.gate_status == "DEGRADED":
+                # 503 is a transient/retryable status — NOT cached
+                # (the next call should see fresh breaker state).
+                response = Response(
+                    {
+                        "error": human_message,
+                        "code": "COMPLIANCE_SERVICE_UNAVAILABLE",
+                        "details": {
+                            "gate": fcr.gate,
+                            "gate_status": fcr.gate_status,
+                            "reason": fcr.reason,
+                        },
+                    },
+                    status=status.HTTP_503_SERVICE_UNAVAILABLE,
+                )
+                response["Retry-After"] = "60"
+                return _just_return(response)
+            return _cache_and_return(Response(
+                {
+                    "error": human_message,
+                    "code": "ASSET_FAIL_CLOSED_REJECTED",
+                    "details": {
+                        "gate": fcr.gate,
+                        "gate_status": fcr.gate_status,
+                        "reason": fcr.reason,
+                        "compliance_run_id": fcr.compliance_run_id,
+                        "dq_run_id": fcr.dq_run_id,
+                    },
+                },
+                status=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            ))
+        except ValueError as e:
+            # Defence in depth: if a future engine change causes the
+            # typed FailClosedRejection to be wrapped before
+            # ``execute`` can re-raise it, fall back to substring
+            # detection so we still emit 422 (not a generic 400).
+            err_msg = str(e)
+            if "fail-closed" in err_msg.lower():
+                return _cache_and_return(Response(
+                    {
+                        "error": "Asset intake refused (fail-closed)",
+                        "code": "ASSET_FAIL_CLOSED_REJECTED",
+                        "details": {"raw_message": err_msg},
+                    },
+                    status=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                ))
+            return _cache_and_return(Response(
+                {"error": err_msg, "code": "WORKFLOW_FAILED"},
+                status=status.HTTP_400_BAD_REQUEST,
+            ))
 
         output = result.get("output_data") or {}
         asset_id = output.get("asset_id")
         dataset_id = output.get("dataset_id")
         contract_id = output.get("contract_id")
+        # Phase 250.2.B.5 — surface the schema-drift result_summary so
+        # the frontend's SchemaDriftBanner can render it inline on the
+        # asset-creation success page WITHOUT a follow-up GET. Reads
+        # from the workflow's output_data first, falls back to
+        # state_data via the WorkflowInstance lookup so the value is
+        # available even when output_data wasn't emitted by the engine.
+        schema_drift = output.get("schema_drift")
+
+        # 250.2.B audit-pass — the WorkflowInstance lookup serves TWO
+        # independent fallbacks: (a) recover ``asset_id`` when the
+        # engine returned without populating ``output_data["asset_id"]``,
+        # and (b) recover ``schema_drift`` from ``state_data`` when
+        # output_data omitted it (the engine's per-step output merge
+        # writes into state_data, then ``state_data.copy()`` is hoisted
+        # to output_data only at completion — a successful workflow
+        # whose final step doesn't re-emit ``schema_drift`` in its own
+        # output dict could land with output_data missing the key while
+        # state_data still carries it). Hoisted out of the
+        # ``if not asset_id`` block so the schema_drift fallback fires
+        # independently of the asset_id fallback.
+        workflow_instance_id = result.get("workflow_instance_id")
+        if workflow_instance_id and (not asset_id or not schema_drift):
+            from hub.apps.orchestration.models import WorkflowInstance
+
+            try:
+                wi = WorkflowInstance.objects.get(id=workflow_instance_id)
+                asset_id = asset_id or wi.state_data.get("asset_id")
+                dataset_id = dataset_id or wi.state_data.get("dataset_id")
+                contract_id = contract_id or wi.state_data.get("contract_id")
+                schema_drift = schema_drift or wi.state_data.get(
+                    "schema_drift"
+                )
+            except WorkflowInstance.DoesNotExist:
+                pass
 
         if not asset_id:
-            workflow_instance_id = result.get("workflow_instance_id")
-            if workflow_instance_id:
-                from hub.apps.orchestration.models import WorkflowInstance
-
-                try:
-                    wi = WorkflowInstance.objects.get(id=workflow_instance_id)
-                    asset_id = wi.state_data.get("asset_id")
-                    dataset_id = dataset_id or wi.state_data.get("dataset_id")
-                    contract_id = contract_id or wi.state_data.get("contract_id")
-                except WorkflowInstance.DoesNotExist:
-                    pass
-
-        if not asset_id:
-            return Response(
+            # 5xx is NOT cached — transient state, retry should re-attempt.
+            return _just_return(Response(
                 {"error": "Workflow completed but asset_id not found", "code": "WORKFLOW_INCOMPLETE"},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            )
+            ))
 
         try:
             invalidate_asset_list_cache(str(tenant.id))
@@ -414,14 +1031,33 @@ class AssetViewSet(viewsets.ModelViewSet):
             request=request,
         )
 
-        return Response(
+        return _cache_and_return(Response(
             {
                 "asset_id": str(asset_id),
                 "dataset_id": str(dataset_id) if dataset_id else None,
                 "contract_id": str(contract_id) if contract_id else None,
+                # Phase 250.6.C audit-pass — surface the workflow
+                # instance id so the frontend can pass it to the
+                # ``<WorkflowProgressWidget>`` on the asset detail
+                # page (via React Router navigation state). Without
+                # this, the widget is dead code — it has nothing to
+                # poll. The id is already computed locally above
+                # (line 954) for the schema_drift fallback; we
+                # surface it eagerly here for the FE wire.
+                "workflow_instance_id": (
+                    str(workflow_instance_id) if workflow_instance_id else None
+                ),
+                # Phase 250.2.B.5 — wire shape consumed by the
+                # frontend's SchemaDriftBanner. Always emitted as a
+                # nested object (or null) under the top-level
+                # ``result_summary`` namespace so future per-step
+                # summaries can join the same envelope.
+                "result_summary": {
+                    "schema_drift": schema_drift,
+                },
             },
             status=status.HTTP_201_CREATED,
-        )
+        ))
 
     @transaction.atomic
     def update(self, request, *args, **kwargs):
@@ -429,12 +1065,71 @@ class AssetViewSet(viewsets.ModelViewSet):
         Update an asset with optimistic locking.
 
         PATCH /assets/{id}
-        Body: {
-            "name": "Updated Name",
-            "version": 1  // Required for optimistic locking
-        }
+        Header: If-Match: <asset.version>
+        Body: {"name": "Updated Name", ...}
+
+        Rollout gate:
+        * ``OPTIMISTIC_LOCK_REQUIRE_IF_MATCH=True``  -> missing header
+          is rejected (428 PRECONDITION_REQUIRED).
+        * ``False`` (default soak window) -> missing header is accepted
+          for backward compatibility and emits a deprecation warning.
+
         Views call AssetService only; business rules run in service.
         """
+        # Phase 250.3.C.2 (closes C2-2) — Asset.visibility deprecation
+        # phase 2 rejection. The field is being removed per D250.4;
+        # once ops opens the gate (set
+        # ``ASSET_VISIBILITY_PHASE_2_REJECT_ENABLED=True`` after the
+        # 3-release-cycle phase-1 telemetry soak), every PATCH that
+        # carries ``visibility`` in the body is rejected with
+        # structured ``code="FIELD_REMOVED"``. The rejection fires
+        # at the view boundary BEFORE ``self.get_object()`` (i.e.
+        # BEFORE any DB I/O), BEFORE serializer validation, and
+        # BEFORE the explicit permission check below. Audit-pass
+        # GAP-A reordering: previously the rejection fired AFTER
+        # ``self.get_object()``, which was inconsistent with the
+        # "no partial work" contract — moving it above the fetch
+        # eliminates one DB query for the rejection path AND
+        # ensures consumers get the same structured error
+        # regardless of whether the asset id is valid (the field
+        # removal is the dominant signal; 404 vs 400 ambiguity is
+        # resolved in favour of the deprecation contract).
+        # Atomic semantics: any presence of ``visibility`` in the
+        # body — including ``null`` or explicit empty string —
+        # triggers the rejection; consumers cannot bypass by
+        # bundling the deprecated field with valid fields.
+        from django.conf import settings as _settings
+        if getattr(
+            _settings,
+            "ASSET_VISIBILITY_PHASE_2_REJECT_ENABLED",
+            False,
+        ) and "visibility" in (request.data or {}):
+            return Response(
+                {
+                    "error": (
+                        "The 'visibility' field has been removed in "
+                        "phase 2 of the Asset visibility deprecation."
+                    ),
+                    "code": "FIELD_REMOVED",
+                    "details": {
+                        "field": "visibility",
+                        "phase": "phase_2",
+                        "reason": (
+                            "Asset.visibility was deprecated in phase 1 "
+                            "and is now removed. Visibility is derived "
+                            "from Asset.status (DRAFT/ACTIVE → INTERNAL, "
+                            "PUBLIC → PUBLIC, RETIRED → INTERNAL) per "
+                            "D250.4."
+                        ),
+                        "alternative": "Set Asset.status instead.",
+                        "remediation_url": (
+                            "/docs/api/migrations/visibility-removed.md"
+                        ),
+                    },
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
         asset = self.get_object()
 
         # Check permissions: user must be creator, have DATA_PROVIDER/TENANT_ADMIN role, or be platform admin
@@ -454,6 +1149,60 @@ class AssetViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_403_FORBIDDEN,
             )
 
+        from django.conf import settings as _settings
+        require_if_match = bool(
+            getattr(_settings, "OPTIMISTIC_LOCK_REQUIRE_IF_MATCH", False)
+        )
+        raw_if_match = (
+            request.headers.get("If-Match") or request.META.get("HTTP_IF_MATCH")
+        )
+        try:
+            if_match_version = _parse_if_match_version(raw_if_match)
+        except ValueError:
+            return Response(
+                {
+                    "error": "If-Match must be an integer version value.",
+                    "code": "VALIDATION_ERROR",
+                    "details": {
+                        "header": "If-Match",
+                        "received": raw_if_match,
+                    },
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        if if_match_version is None and require_if_match:
+            return Response(
+                {
+                    "error": "If-Match header is required for optimistic locking.",
+                    "code": "PRECONDITION_REQUIRED",
+                    "details": {
+                        "header": "If-Match",
+                        "hint": "Re-fetch the asset and retry with If-Match: <version>.",
+                    },
+                },
+                status=status.HTTP_428_PRECONDITION_REQUIRED,
+            )
+        if if_match_version is None and not require_if_match:
+            logger.warning(
+                "asset_patch_missing_if_match_deprecated asset_id=%s tenant_id=%s user_id=%s",
+                str(asset.id),
+                str(asset.tenant_id),
+                str(request.user.id),
+            )
+        if if_match_version is not None and if_match_version != asset.version:
+            return Response(
+                {
+                    "error": "Asset has been modified by another user.",
+                    "code": "PRECONDITION_FAILED",
+                    "details": {
+                        "expected_version": asset.version,
+                        "provided_version": if_match_version,
+                        "hint": "Refresh the asset, merge your edits, and retry.",
+                    },
+                },
+                status=status.HTTP_412_PRECONDITION_FAILED,
+            )
+
         serializer = AssetUpdateSerializer(data=request.data, partial=True)
         serializer.is_valid(raise_exception=True)
 
@@ -464,7 +1213,27 @@ class AssetViewSet(viewsets.ModelViewSet):
         asset_service = AssetService(tenant_id=tenant_id_str, user_id=user_id_str)
 
         update_data = dict(serializer.validated_data)
-        version = update_data.pop("version", None)
+        body_version = update_data.pop("version", None)
+        if (
+            if_match_version is not None
+            and body_version is not None
+            and int(body_version) != if_match_version
+        ):
+            return Response(
+                {
+                    "error": (
+                        "Version conflict between If-Match header and "
+                        "request body version."
+                    ),
+                    "code": "VALIDATION_ERROR",
+                    "details": {
+                        "if_match_version": if_match_version,
+                        "body_version": int(body_version),
+                    },
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        version = if_match_version if if_match_version is not None else body_version
         status_value = update_data.pop("status", None)
 
         try:
@@ -482,6 +1251,27 @@ class AssetViewSet(viewsets.ModelViewSet):
                 status=getattr(e, "http_status", status.HTTP_400_BAD_REQUEST),
             )
         except ServiceConflictError as e:
+            if (
+                if_match_version is not None
+                and getattr(e, "code", None) == "ASSET_CONCURRENT_MODIFICATION"
+            ):
+                details = dict(getattr(e, "details", {}) or {})
+                return Response(
+                    {
+                        "error": "Asset has been modified by another user.",
+                        "code": "PRECONDITION_FAILED",
+                        "details": {
+                            "expected_version": details.get(
+                                "current_version", asset.version
+                            ),
+                            "provided_version": details.get(
+                                "expected_version", if_match_version
+                            ),
+                            "hint": "Refresh the asset, merge your edits, and retry.",
+                        },
+                    },
+                    status=status.HTTP_412_PRECONDITION_FAILED,
+                )
             return Response(
                 {"error": e.message, "code": e.code, "details": e.details},
                 status=getattr(e, "http_status", status.HTTP_409_CONFLICT),
@@ -1365,6 +2155,50 @@ class AssetViewSet(viewsets.ModelViewSet):
 
         transaction.on_commit(_invalidate_cache_post_commit)
 
+        # Phase 250.1.G review-pass — fire ``asset.activated``
+        # webhook event on commit. The simple ``POST
+        # /assets/{id}/activate/`` API path bypasses the data-first
+        # workflow (which fires the event from
+        # ``_activate_asset_task``); without this hook, subscribers
+        # would only see workflow-initiated activations and miss the
+        # explicit-API activations entirely. Deferred via
+        # ``transaction.on_commit`` so subscribers that GET the
+        # asset on receipt always see the ACTIVE row.
+        from hub.apps.core.events.publisher import EventPublisher as _EventPublisher
+
+        _activated_publisher = _EventPublisher(
+            service_name="asset_service",
+            tenant_id=tenant_id_str,
+            user_id=str(request.user.id) if request.user else None,
+        )
+        _activated_payload = {
+            "asset_id": _asset_id_str,
+            "activation_reason": "explicit_api_activate",
+            "dq_status": getattr(asset, "dq_status", None),
+            "compliance_status": getattr(asset, "compliance_status", None),
+        }
+
+        def _publish_asset_activated_post_commit():
+            import logging as _logging_pub
+            try:
+                _activated_publisher.publish(
+                    event_type="asset.activated",
+                    data={
+                        k: v for k, v in _activated_payload.items() if v is not None
+                    },
+                )
+            except Exception as _e:
+                _logging_pub.getLogger(__name__).warning(
+                    "asset_webhook_publish_failed",
+                    extra={
+                        "event_type": "asset.activated",
+                        "asset_id": _asset_id_str,
+                        "error": str(_e),
+                    },
+                )
+
+        transaction.on_commit(_publish_asset_activated_post_commit)
+
         # Trigger semantic mapping (async via job queue in production)
         # Skip in test/E2E environment to prevent timeouts (semantic can take 60+ seconds)
         import sys
@@ -1507,6 +2341,125 @@ class AssetViewSet(viewsets.ModelViewSet):
 
         asset.refresh_from_db()
         return Response(AssetSerializer(asset).data, status=status.HTTP_200_OK)
+
+    @action(
+        detail=False,
+        methods=["get"],
+        url_path="workflows/(?P<workflow_instance_id>[^/.]+)/status",
+        url_name="asset-workflow-status",
+    )
+    def get_asset_workflow_status(self, request, workflow_instance_id=None):
+        """Phase 250.6.C — asset-creation workflow status polling endpoint.
+
+        ``GET /api/v1/assets/workflows/{workflow_instance_id}/status/``
+
+        Returns the current state of an asset-creation workflow so the
+        frontend's ``WorkflowProgressWidget`` can render step + progress
+        + ETA without scraping intermediate audit events. Mirrors the
+        existing contracts-side endpoint at
+        ``hub/apps/contracts/views_product.py::get_product_workflow_status``
+        but returns asset-domain shape (``asset_id`` instead of
+        ``odps_contract`` / ``odcs_contract``).
+
+        Tenant-scoped: the workflow MUST belong to the request's tenant
+        OR the request returns 404 (existence-leak protection — same
+        contract as the IDOR gate from Phase 250.5.C).
+
+        Response shape (matching the FE ``AssetWorkflowStatus`` type):
+
+        * ``workflow_instance_id``: str
+        * ``status``: ``"PENDING"`` / ``"RUNNING"`` / ``"COMPLETED"``
+          / ``"FAILED"``
+        * ``progress_percentage``: 0-100 (from ``state_data``)
+        * ``current_step_name``: str | null (from ``state_data``)
+        * ``asset_id``: str | null (set on COMPLETED)
+        * ``message``: str (human-readable status detail)
+        * ``started_at``: ISO-8601 string | null (so the FE can
+          compute "running for X seconds" + apply the F2-4 polling
+          backoff after 30s)
+        """
+        from hub.apps.orchestration.models import (
+            WorkflowInstance,
+            WorkflowStatus,
+        )
+
+        tenant = (
+            request.user.tenant
+            if hasattr(request.user, "tenant") and request.user.tenant
+            else None
+        )
+        if not tenant:
+            return Response(
+                {"error": "User must belong to a tenant", "code": "NO_TENANT"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        try:
+            workflow_instance = WorkflowInstance.objects.get(
+                id=workflow_instance_id, tenant_id=tenant.id
+            )
+        except (WorkflowInstance.DoesNotExist, ValueError, DjangoValidationError):
+            # ValueError catches malformed UUID coercion (e.g.
+            # ``not-a-uuid``); ValidationError catches Django's
+            # UUIDField.to_python validation. Both surface as 404 (NOT
+            # 400) to preserve the existence-leak protection contract:
+            # an attacker probing random UUIDs MUST NOT be able to
+            # distinguish "exists for another tenant" from "malformed".
+            return Response(
+                {
+                    "error": "Workflow instance not found",
+                    "code": "WORKFLOW_NOT_FOUND",
+                },
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        # Map internal status to API status (mirrors the contracts-side
+        # mapping at views_product.py:303-313 so the FE uses the same
+        # state machine across both surfaces).
+        status_map = {
+            WorkflowStatus.DRAFT: "PENDING",
+            WorkflowStatus.RUNNING: "RUNNING",
+            WorkflowStatus.COMPLETED: "COMPLETED",
+            WorkflowStatus.FAILED: "FAILED",
+            WorkflowStatus.CANCELLED: "FAILED",
+            WorkflowStatus.PAUSED: "RUNNING",
+            WorkflowStatus.ROLLING_BACK: "RUNNING",
+            WorkflowStatus.ROLLED_BACK: "FAILED",
+        }
+        api_status = status_map.get(workflow_instance.status, "PENDING")
+        state_data = workflow_instance.state_data or {}
+
+        # ``asset_id`` is present from the moment the workflow's
+        # ``create_asset_record`` step runs — even on a still-RUNNING
+        # workflow. Surface it eagerly so the FE can deep-link to the
+        # asset detail page during the gates phase (DQ / compliance /
+        # contract validation) without waiting for COMPLETED.
+        asset_id = state_data.get("asset_id")
+
+        if api_status == "RUNNING":
+            message = "Workflow is still running"
+        elif api_status == "PENDING":
+            message = "Workflow is pending execution"
+        elif api_status == "COMPLETED":
+            message = "Workflow completed successfully"
+        else:  # FAILED
+            message = state_data.get("error_message") or (
+                "Workflow failed"
+            )
+
+        return Response({
+            "workflow_instance_id": str(workflow_instance.id),
+            "status": api_status,
+            "progress_percentage": state_data.get("progress_percentage", 0),
+            "current_step_name": state_data.get("current_step_name"),
+            "asset_id": str(asset_id) if asset_id else None,
+            "message": message,
+            "started_at": (
+                workflow_instance.created_at.isoformat()
+                if workflow_instance.created_at
+                else None
+            ),
+        })
 
     @action(detail=False, methods=["get"], url_path="recommendations")
     def recommendations(self, request):
@@ -1858,6 +2811,39 @@ class AssetViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_403_FORBIDDEN,
             )
 
+        # Phase 250.5.C.1 — AUDITOR mutate-deny.
+        #
+        # Downloading an external resource creates File + Dataset rows
+        # (write-class side-effects), so the AUDITOR read-only role
+        # MUST NOT be allowed to trigger it. The pre-existing tenant-
+        # membership check above lets ANY tenant member through; this
+        # gate adds the role-class refusal so AUDITOR (and any future
+        # read-only-only role) is denied with 403 BEFORE the download
+        # path begins (no S3 fetch, no File.objects.create, no
+        # Dataset.objects.create — the refusal is structurally side-
+        # effect-free).
+        has_write_role = (
+            user.has_role("DATA_PROVIDER", "TENANT_ADMIN")
+            if hasattr(user, "has_role")
+            else False
+        )
+        is_platform_admin = (
+            hasattr(user, "is_platform_admin") and user.is_platform_admin
+        )
+        if not (has_write_role or is_platform_admin):
+            return Response(
+                {
+                    "error": (
+                        "Permission denied: external-resource downloads "
+                        "require DATA_PROVIDER or TENANT_ADMIN role "
+                        "(read-only roles like AUDITOR may LIST but "
+                        "cannot DOWNLOAD)."
+                    ),
+                    "code": "PERMISSION_DENIED",
+                },
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
         # Resolve resource before quota: cheap indexed lookup; avoids quota/TenantConfig
         # work on definite 404s and reduces lock contention under parallel tests.
         try:
@@ -2160,6 +3146,33 @@ class AssetViewSet(viewsets.ModelViewSet):
                 return Response(
                     {
                         "error": "Permission denied: user must belong to asset tenant",
+                        "code": "PERMISSION_DENIED",
+                    },
+                    status=status.HTTP_403_FORBIDDEN,
+                )
+
+            # Phase 250.5.C.1 — AUDITOR mutate-deny on batch download.
+            # Same rationale as the single-download endpoint: batch
+            # download creates File + Dataset rows, so the read-only
+            # AUDITOR role MUST be refused with 403 BEFORE the
+            # download path begins.
+            has_write_role = (
+                user.has_role("DATA_PROVIDER", "TENANT_ADMIN")
+                if hasattr(user, "has_role")
+                else False
+            )
+            is_platform_admin = (
+                hasattr(user, "is_platform_admin") and user.is_platform_admin
+            )
+            if not (has_write_role or is_platform_admin):
+                return Response(
+                    {
+                        "error": (
+                            "Permission denied: external-resource batch "
+                            "downloads require DATA_PROVIDER or "
+                            "TENANT_ADMIN role (read-only roles like "
+                            "AUDITOR may LIST but cannot DOWNLOAD)."
+                        ),
                         "code": "PERMISSION_DENIED",
                     },
                     status=status.HTTP_403_FORBIDDEN,

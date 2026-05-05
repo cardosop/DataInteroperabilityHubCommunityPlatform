@@ -1,9 +1,15 @@
 """
 Asset operations for DataHub SDK.
 """
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Union
+from uuid import UUID
 
 from .client import DataHubClient
+from .idempotency import (
+    IDEMPOTENCY_HEADER,
+    canonical_body_bytes,
+    compose_idempotency_key,
+)
 
 
 class AssetsAPI:
@@ -77,3 +83,78 @@ class AssetsAPI:
         classification: Dict[str, Any],
     ) -> Dict[str, Any]:
         return await self.client.post(f"assets/{asset_id}/classify/", data=classification)
+
+    async def create_data_first(
+        self,
+        *,
+        tenant_uuid: Union[str, UUID],
+        file_id: str,
+        key: str,
+        name: str,
+        description: Optional[str] = None,
+        domain: Optional[str] = None,
+        visibility: str = "INTERNAL",
+        idempotency_key: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """POST /assets/data-first/ with an Idempotency-Key auto-composed.
+
+        Phase 250.1.D.5 — wraps the data-first endpoint with the
+        D250.8 idempotency contract. ``Idempotency-Key`` is composed
+        deterministically from ``tenant_uuid`` + the canonical body
+        bytes; a duplicate retry within 24 h returns the original
+        response without re-running the workflow.
+
+        Args:
+            tenant_uuid: The tenant UUID this request belongs to.
+                Used as the prefix in the composed key. The server
+                rejects keys whose tenant prefix doesn't match the
+                authenticated request tenant.
+            file_id, key, name, description, domain, visibility:
+                Standard data-first request fields. ``key`` is the
+                tenant-scoped asset key (NOT the idempotency key).
+            idempotency_key: Optional override. When set, used
+                verbatim — useful for SDK consumers that already
+                have a deterministic key from an outer system.
+                When ``None`` (default) the SDK composes one from
+                ``tenant_uuid`` + the request body.
+
+        Returns:
+            Dict with ``asset_id`` / ``dataset_id`` / ``contract_id``
+            on success, or the server's error response on failure.
+
+        Raises:
+            ValueError: ``tenant_uuid`` is not a valid UUID.
+        """
+        body: Dict[str, Any] = {
+            "file_id": file_id,
+            "key": key,
+            "name": name,
+            "visibility": visibility,
+        }
+        if description is not None:
+            body["description"] = description
+        if domain is not None:
+            body["domain"] = domain
+
+        # The server validates the body hash against the key suffix
+        # using ``canonical_body_bytes`` — we MUST send the SAME bytes
+        # the SDK hashed, otherwise the server returns 409
+        # IDEMPOTENCY_KEY_MISMATCH. The httpx default JSON encoding
+        # may differ in whitespace / key order, so we serialise
+        # explicitly here and pass as ``content`` rather than
+        # ``json``.
+        canonical_bytes = canonical_body_bytes(body)
+        effective_key = idempotency_key or compose_idempotency_key(
+            tenant_uuid, canonical_bytes
+        )
+
+        response = await self.client.request(
+            "POST",
+            "assets/data-first/",
+            content=canonical_bytes,
+            headers={
+                IDEMPOTENCY_HEADER: effective_key,
+                "Content-Type": "application/json",
+            },
+        )
+        return response.json()

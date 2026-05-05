@@ -139,6 +139,15 @@
 
   --color-accent: var(--color-accent-500);
   --color-accent-light: var(--color-accent-50);
+  /* Phase 250.6.F.3 — accent-hover + on-accent semantic tokens.
+   * The Asset type-picker's onboarding-incomplete CTA + future
+   * accent-coloured buttons need a darker shade for hover and a
+   * guaranteed-readable text colour to layer over the accent
+   * background. Light-mode hover steps to accent-700 (#0E7A9A)
+   * which keeps a 4.5:1 contrast vs the page; on-accent is white
+   * because the accent palette is dark enough. */
+  --color-accent-hover: var(--color-accent-700);
+  --color-on-accent: #ffffff;
 
   --color-success: var(--color-success-500);
   --color-success-dark: var(--color-success-700);
@@ -285,6 +294,14 @@
   --color-secondary-light: var(--color-secondary-900);
   --color-accent: var(--color-accent-400);
   --color-accent-light: var(--color-accent-900);
+  /* Phase 250.6.F.3 — dark-mode variant of the accent-hover +
+   * on-accent tokens. In dark mode the accent itself shifts to
+   * the lighter accent-400 (#33D6E7), so hover steps DOWN to
+   * accent-300 (#66E0ED) for visual lift, and on-accent stays
+   * the dark-page background colour so the contrast direction
+   * stays consistent (dark text on a bright button). */
+  --color-accent-hover: var(--color-accent-300);
+  --color-on-accent: #0b1120;
   --color-success: #4ade80;
   --color-success-light: #052e17;
   --color-warning: #facc15;

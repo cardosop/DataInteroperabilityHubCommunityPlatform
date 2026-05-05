@@ -34,6 +34,14 @@ _db_exists() {
   _psql -d postgres -tAc "SELECT 1 FROM pg_database WHERE datname='$1'" 2>/dev/null | grep -q 1
 }
 
+# PostgreSQL marks partially created databases as invalid with datconnlimit = -2.
+# Those databases cannot be connected to and must be dropped before reuse.
+_db_is_invalid() {
+  _psql -d postgres -tAc \
+    "SELECT CASE WHEN datconnlimit = -2 THEN 1 ELSE 0 END FROM pg_database WHERE datname='$1'" \
+    2>/dev/null | grep -q 1
+}
+
 # Check whether a table exists in a given database.
 _table_exists() {
   local db="$1" table="$2"
@@ -134,6 +142,22 @@ drain_connections() {
   return 0
 }
 
+# Force-drop a database and wait until catalog entry disappears.
+# Uses statement_timeout=0 to avoid local 120s session timeout.
+drop_db_force() {
+  local db="$1"
+  for i in 1 2 3 4 5; do
+    PGOPTIONS='-c statement_timeout=0' \
+      _psql -d postgres -v ON_ERROR_STOP=1 -c "DROP DATABASE IF EXISTS $db WITH (FORCE)" \
+      >/dev/null 2>&1 || true
+    if ! _db_exists "$db"; then
+      return 0
+    fi
+    sleep $((i * 2))
+  done
+  return 1
+}
+
 # ── create template DB helper ─────────────────────────────────────────────────
 # Creates a DB from hub_test as TEMPLATE.  Falls back to empty DB + migrate on failure.
 create_from_template() {
@@ -141,13 +165,10 @@ create_from_template() {
   echo "== Creating $db from hub_test template..."
 
   drain_connections "$db"
-  _psql -d postgres -c "DROP DATABASE IF EXISTS $db WITH (FORCE)" 2>/dev/null || true
-
-  # Wait for drop to fully complete before issuing CREATE.
-  for i in $(seq 1 10); do
-    _db_exists "$db" || break
-    sleep 1
-  done
+  if ! drop_db_force "$db"; then
+    echo "ERROR: failed to drop existing database $db before template clone." >&2
+    exit 1
+  fi
 
   # Drain hub_test connections before using it as TEMPLATE.
   drain_connections hub_test
@@ -162,7 +183,25 @@ create_from_template() {
   fi
 
   echo "WARNING: $db CREATE FROM TEMPLATE failed, falling back to migrate..."
-  _psql -d postgres -c "CREATE DATABASE $db ENCODING 'UTF8'" 2>/dev/null || true
+
+  # A failed CREATE ... TEMPLATE can leave an "invalid database" shell behind.
+  # Always force-drop any leftover before creating the fallback DB.
+  if _db_exists "$db"; then
+    if _db_is_invalid "$db"; then
+      echo "   $db is marked invalid (datconnlimit=-2); recreating clean fallback DB."
+    else
+      echo "   $db already exists; recreating clean fallback DB."
+    fi
+    if ! drop_db_force "$db"; then
+      echo "ERROR: failed to drop stale fallback database $db." >&2
+      exit 1
+    fi
+  fi
+
+  if ! _psql -d postgres -c "CREATE DATABASE $db ENCODING 'UTF8'" 2>/dev/null; then
+    echo "ERROR: failed to create fallback database $db." >&2
+    exit 1
+  fi
   for m_attempt in 1 2 3; do
     if POSTGRES_DB=$db python hub/manage.py migrate --noinput 2>&1; then
       break
@@ -174,13 +213,10 @@ create_from_template() {
 # ── hub_test_test_shared ──────────────────────────────────────────────────────
 echo "== Creating hub_test_test_shared from hub_test..."
 drain_connections hub_test_test_shared
-_psql -d postgres -c "DROP DATABASE IF EXISTS hub_test_test_shared WITH (FORCE)" 2>/dev/null || true
-
-# Wait for drop to fully complete.
-for i in $(seq 1 10); do
-  _db_exists hub_test_test_shared || break
-  sleep 1
-done
+if ! drop_db_force hub_test_test_shared; then
+  echo "ERROR: failed to drop hub_test_test_shared before template clone." >&2
+  exit 1
+fi
 
 drain_connections hub_test
 
@@ -193,19 +229,20 @@ for attempt in 1 2 3; do
   echo "CREATE hub_test_test_shared attempt $attempt failed, retrying..."
   drain_connections hub_test_test_shared
   drain_connections hub_test
-  _psql -d postgres -c "DROP DATABASE IF EXISTS hub_test_test_shared WITH (FORCE)" 2>/dev/null || true
-  for i in $(seq 1 10); do
-    _db_exists hub_test_test_shared || break
-    sleep 1
-  done
+  if ! drop_db_force hub_test_test_shared; then
+    echo "ERROR: failed to drop hub_test_test_shared during retry." >&2
+    exit 1
+  fi
 done
 
 if [ "$CREATE_OK" != "true" ]; then
   echo "WARNING: CREATE DATABASE hub_test_test_shared FROM TEMPLATE hub_test failed after 3 attempts."
   echo "Falling back: creating empty DB and running migrate..."
   drain_connections hub_test_test_shared
-  _psql -d postgres -c "DROP DATABASE IF EXISTS hub_test_test_shared WITH (FORCE)" 2>/dev/null || true
-  sleep 1
+  if ! drop_db_force hub_test_test_shared; then
+    echo "ERROR: failed to drop hub_test_test_shared for fallback migrate." >&2
+    exit 1
+  fi
   _psql -d postgres -c "CREATE DATABASE hub_test_test_shared ENCODING 'UTF8'"
   for m_attempt in 1 2 3; do
     if POSTGRES_DB=hub_test_test_shared python hub/manage.py migrate --noinput 2>&1; then

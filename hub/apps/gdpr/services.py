@@ -548,24 +548,96 @@ class ErasureService(BaseService):
                     )
                     deleted_resources.append("api_keys")
 
+                    # Phase 250.5.F.5 (closes G2-2) — extended PII
+                    # key list. Pre-Phase only ``actor_email`` /
+                    # ``user_email`` were scrubbed; events carrying
+                    # un-prefixed ``email`` / ``phone`` /
+                    # ``ip_address`` / ``user_agent`` / ``display_name``
+                    # leaked PII through audit replay after erasure.
+                    # The list below covers every PII key the hub
+                    # emits across audit-event call sites; the scrub
+                    # iterates over keys (not regex) so non-PII keys
+                    # — even ones that happen to contain user-supplied
+                    # text — are preserved untouched.
+                    _PII_KEYS_TO_SCRUB = (
+                        "actor_email",
+                        "user_email",
+                        "email",
+                        "display_name",
+                        "name",
+                        "phone",
+                        "ip_address",
+                        "user_agent",
+                        "remote_addr",
+                        "x_forwarded_for",
+                    )
+                    _PII_SENTINEL = "deleted@deleted.local"
+
                     # Anonymize audit events (per policy - some may be retained)
                     from hub.apps.audit.models import AuditEvent
 
-                    # Keep audit events but anonymize PII in details_json (GDPR erasure).
-                    # Use QuerySet.update to persist; AuditEvent.save() forbids updates.
-                    audit_events = AuditEvent.objects.filter(actor_user=user)
+                    # Keep audit events but anonymize PII in
+                    # details_json (GDPR erasure). Use the
+                    # ``all_objects`` manager so archived events are
+                    # also covered; the standard ``objects`` manager
+                    # filters them out and would leave PII in the
+                    # archive table.
+                    audit_events = AuditEvent.all_objects.filter(actor_user=user)
                     for event in audit_events:
                         details = event.details_json
                         if details and isinstance(details, dict):
                             anonymized = dict(details)
-                            if "actor_email" in anonymized:
-                                anonymized["actor_email"] = "deleted@deleted.local"
-                            if "user_email" in anonymized:
-                                anonymized["user_email"] = "deleted@deleted.local"
+                            for pii_key in _PII_KEYS_TO_SCRUB:
+                                if pii_key in anonymized:
+                                    anonymized[pii_key] = _PII_SENTINEL
                             if anonymized != details:
-                                AuditEvent.objects.filter(pk=event.pk).update(
+                                AuditEvent.all_objects.filter(pk=event.pk).update(
                                     details_json=anonymized
                                 )
+
+                    # Phase 250.5.F.5 — anonymise (NOT hard-delete)
+                    # assets owned by the user. Hard-delete would
+                    # orphan audit history; anonymisation removes
+                    # PII while keeping the row for audit replay.
+                    # Strategy: replace ``name`` / ``description``
+                    # with a deterministic placeholder so a future
+                    # GET on the row returns "Deleted user's asset"
+                    # rather than the original PII-bearing text.
+                    from hub.apps.assets.models import Asset
+
+                    # Iterate + save() (NOT QuerySet.update()) so the
+                    # Asset post_save signal fires — Phase 250.1.F's
+                    # ``rebuild_asset_search_vector`` rebuilds the
+                    # search_vector tsvector from the new (redacted)
+                    # name + description. ``QuerySet.update()`` is a
+                    # raw SQL UPDATE that bypasses signals; without
+                    # this iteration the user's PII stays embedded in
+                    # the search_vector and a future search query
+                    # could surface the redacted asset by the
+                    # original (PII-bearing) text — defeating the
+                    # erasure invariant.
+                    user_assets = Asset.objects.filter(
+                        created_by=user,
+                    )
+                    redacted_name = f"asset-of-deleted-user-{user.id}"
+                    redacted_description = (
+                        "PII redacted per GDPR Article 17 "
+                        "right-to-erasure (Phase 250.5.F.5)."
+                    )
+                    asset_count = 0
+                    for asset in user_assets.iterator(chunk_size=200):
+                        asset.name = redacted_name
+                        asset.description = redacted_description
+                        # ``update_fields`` keeps the save targeted —
+                        # avoids racing with concurrent updates to
+                        # other fields AND keeps the post_save
+                        # signal payload minimal.
+                        asset.save(
+                            update_fields=["name", "description", "updated_at"],
+                        )
+                        asset_count += 1
+                    if asset_count:
+                        deleted_resources.append("assets")
 
                     # Note: Some data may be retained for legal/compliance reasons
                     # This would be determined by retention policy

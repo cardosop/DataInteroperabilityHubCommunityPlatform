@@ -73,8 +73,12 @@ run_batch() {
     export COMPLIANCE_SERVICE_URL="${COMPLIANCE_SERVICE_URL:-http://localhost:8083}"
     export SEMANTIC_SERVICE_URL="${SEMANTIC_SERVICE_URL:-http://localhost:8082}"
     
-    # Use pytest from venv if available
-    if [ -f "venv/bin/pytest" ]; then
+    # Prefer .venv (Python 3.12 — the supported runtime) over the
+    # legacy venv (which on some hosts was created against
+    # Python 3.14 and breaks on dependency version skew).
+    if [ -f ".venv/bin/pytest" ]; then
+        .venv/bin/pytest tests/e2e/ -m "e2e_batch${batch_num}" -v --tb=short
+    elif [ -f "venv/bin/pytest" ]; then
         venv/bin/pytest tests/e2e/ -m "e2e_batch${batch_num}" -v --tb=short
     elif command -v pytest &> /dev/null; then
         pytest tests/e2e/ -m "e2e_batch${batch_num}" -v --tb=short
@@ -101,8 +105,11 @@ run_all_batches() {
     export COMPLIANCE_SERVICE_URL="${COMPLIANCE_SERVICE_URL:-http://localhost:8083}"
     export SEMANTIC_SERVICE_URL="${SEMANTIC_SERVICE_URL:-http://localhost:8082}"
     
-    # Use pytest from venv if available
-    if [ -f "venv/bin/pytest" ]; then
+    # Prefer .venv (Python 3.12) over the legacy venv (see batch
+    # function above for rationale).
+    if [ -f ".venv/bin/pytest" ]; then
+        .venv/bin/pytest tests/e2e/ -m e2e -v --tb=short
+    elif [ -f "venv/bin/pytest" ]; then
         venv/bin/pytest tests/e2e/ -m e2e -v --tb=short
     elif command -v pytest &> /dev/null; then
         pytest tests/e2e/ -m e2e -v --tb=short

@@ -6,7 +6,7 @@
  */
 
 import { useState } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
+import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import { useAuthStore } from '../../auth/store/authStore';
 import { ErrorDisplay } from '../../../shared/components/ErrorDisplay';
 import { DetailPageSkeleton } from '../../../shared/components/skeletons/DetailPageSkeleton';
@@ -38,6 +38,10 @@ import { AssetSocialSection } from '../../social/components/AssetSocialSection';
 import { ActivityTimeline } from '../../../shared/components/ActivityTimeline';
 import { LineageSubscriptionPanel } from '../../contracts/components/LineageSubscriptionPanel';
 import { OnboardingChecklist } from './OnboardingChecklist';
+// Phase 250.7.A.3 — semantic graceful-degrade banner; renders inline
+// when ``asset.semantic_status === "FAIL"`` to surface "active but
+// not yet discoverable" with a retry CTA.
+import { SemanticDegradedBanner } from './SemanticDegradedBanner';
 import { CanonicalIriCard } from '../../semantic/components/CanonicalIriCard';
 import { ActivationBlockerDialog, extractBlockersFromError } from './ActivationBlockerDialog';
 import './AssetDetailPage.css';
@@ -46,6 +50,17 @@ import { Button } from '../../../shared/components/Button';
 export function AssetDetailPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
+  const location = useLocation();
+  // Phase 250.6.C audit-pass — read the workflow_instance_id passed
+  // from AssetCreatePage via React Router navigation state. When set,
+  // the OnboardingChecklist below renders the
+  // ``<WorkflowProgressWidget>`` polling the workflow status. When
+  // absent (e.g. user navigates directly to /assets/<id> later), the
+  // checklist's ``workflowInstanceId`` prop is null and the widget
+  // short-circuits — zero overhead.
+  const navStateWorkflowInstanceId =
+    (location.state as { workflowInstanceId?: string | null } | null)
+      ?.workflowInstanceId ?? null;
   const { data: asset, isLoading, error, refetch } = useAsset(id || null);
   const activeTenantId = useAuthStore((s) => s.active_tenant_id);
   const userTenantId = useAuthStore((s) => s.user?.tenant_id);
@@ -237,6 +252,20 @@ export function AssetDetailPage() {
     // Phase 226.F1.b — data-testid added so e2e specs can locate the
     // page reliably without depending on the CSS class name.
     <div className="asset-detail-page" data-testid="asset-detail-page">
+      {/*
+       * Phase 250.7.A.3 — semantic-degraded banner. Returns null
+       * for any non-FAIL status (UNKNOWN / PASS / WARN) so it's a
+       * zero-cost render path on the happy path. Rendered ABOVE
+       * the header so the operator sees the degradation
+       * immediately on page load — burying it below the asset
+       * info would defeat the "active but not discoverable"
+       * surfacing the spec calls for. ``onRetry`` is left
+       * undefined for now (the retry mutation lives in a
+       * follow-up phase); the banner renders the CTA disabled
+       * with a "Retry not available" tooltip so the operator
+       * sees the future-action exists.
+       */}
+      <SemanticDegradedBanner semanticStatus={asset.semantic_status} />
       <div className="asset-detail-header">
         <Button onClick={() => navigate('/assets')} variant="ghost">
           &larr; Back to Assets
@@ -410,6 +439,7 @@ export function AssetDetailPage() {
               dqStatus={asset.dq_status}
               complianceStatus={asset.compliance_status}
               assetId={id}
+              workflowInstanceId={navStateWorkflowInstanceId}
               onRunDQ={handleRunDQ}
               onRunCompliance={handleRunCompliance}
               onActivate={handleActivate}

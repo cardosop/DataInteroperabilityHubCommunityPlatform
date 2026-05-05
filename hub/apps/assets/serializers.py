@@ -30,6 +30,19 @@ class AssetSerializer(serializers.ModelSerializer):
     """Serializer for Asset model"""
     contract_id = serializers.SerializerMethodField()
     dataset_id = serializers.SerializerMethodField()
+    # Phase 250.3.B.1 — ``visibility`` is now a derived property on
+    # the Asset model (PUBLIC iff status==PUBLIC, else INTERNAL). It
+    # is no longer a stored CharField, so DRF's ``ModelSerializer``
+    # auto-discovery can't bind it — we expose it explicitly via a
+    # SerializerMethodField that calls the model property.
+    visibility = serializers.SerializerMethodField(
+        help_text=(
+            "DERIVED visibility (Phase 250.3.B / D250.4): PUBLIC iff "
+            "status==PUBLIC, else INTERNAL. The legacy stored column "
+            "is being removed in phase-2 — clients SHOULD read this "
+            "field but treat it as read-only."
+        ),
+    )
     canonical_iri = serializers.SerializerMethodField(
         help_text=(
             "Canonical Linked Data IRI: {SEMANTIC_BASE_IRI}/id/asset/{id}. "
@@ -51,6 +64,10 @@ class AssetSerializer(serializers.ModelSerializer):
             'visibility',
             'dq_status',
             'compliance_status',
+            # Phase 250.7.A.1 — semantic_status surfaces the
+            # post-activation degradation state for the SPA's
+            # SemanticDegradedBanner.
+            'semantic_status',
             'version',
             'created_by',
             'created_at',
@@ -63,8 +80,10 @@ class AssetSerializer(serializers.ModelSerializer):
             'id',
             'tenant',
             'version',
+            'visibility',  # 250.3.B — derived from status; never accept on input
             'dq_status',
             'compliance_status',
+            'semantic_status',  # 250.7.A — workflow-managed; never client-writable
             'created_by',
             'created_at',
             'updated_at',
@@ -72,6 +91,10 @@ class AssetSerializer(serializers.ModelSerializer):
             'dataset_id',
             'canonical_iri',
         ]
+
+    def get_visibility(self, obj) -> str:
+        """Return the derived visibility from the Asset model property."""
+        return obj.visibility
 
     def get_contract_id(self, obj):
         """Get the ID of the active contract for this asset"""
@@ -127,8 +150,28 @@ class AssetUpdateSerializer(serializers.Serializer):
     description = serializers.CharField(required=False, allow_blank=True, allow_null=True)
     domain = serializers.CharField(max_length=100, required=False, allow_blank=True, allow_null=True)
     status = serializers.ChoiceField(choices=AssetStatus.choices, required=False)
-    visibility = serializers.ChoiceField(choices=AssetVisibility.choices, required=False)
-    version = serializers.IntegerField(help_text="Current version for optimistic locking")
+    # Phase 250.3.B.4 — ``visibility`` is still ACCEPTED in the
+    # request body for phase-1 backwards compat, but is silently
+    # ignored on save (and a deprecation warning + audit row fire
+    # via the model setter). Removing the serializer field would
+    # 400 pre-phase-1 clients which is too aggressive for phase 1.
+    # Phase 2 removes this field entirely.
+    visibility = serializers.ChoiceField(
+        choices=AssetVisibility.choices,
+        required=False,
+        help_text=(
+            "DEPRECATED (Phase 250.3.B / D250.4): writes are silently "
+            "ignored. Visibility derives from ``status`` — set "
+            "``status=PUBLIC`` to make an asset public."
+        ),
+    )
+    version = serializers.IntegerField(
+        required=False,
+        help_text=(
+            "Deprecated fallback for optimistic locking. PATCH now uses "
+            "If-Match header and this field is accepted only for backward compatibility."
+        ),
+    )
 
     def save(self, instance=None):
         """
@@ -156,6 +199,14 @@ class AssetUpdateSerializer(serializers.Serializer):
             instance.domain = self.validated_data['domain']
         if 'status' in self.validated_data:
             instance.status = self.validated_data['status']
+        # Phase 250.3.B.4 — assigning to ``instance.visibility`` routes
+        # through the model's deprecation setter (DeprecationWarning +
+        # ASSET_VISIBILITY_WRITE_DEPRECATED audit) and is a no-op for
+        # the persisted state. We still call the setter (instead of
+        # silently discarding) so the deprecation telemetry captures
+        # PATCH-via-API call sites — without this, the dashboards
+        # would only see in-process Python writes and miss the
+        # caller-side adoption signal.
         if 'visibility' in self.validated_data:
             instance.visibility = self.validated_data['visibility']
 

@@ -1103,6 +1103,20 @@ class TenantOnboardingService(BaseService, TenantEventPublisher):
                         status=TenantStatus.ACTIVE,
                         kyc_status=KYCStatus.UNVERIFIED,
                         plan=plan,
+                        # Phase 250.6.D.1 (closes G2-1 / P2-1) — new
+                        # tenants START with the asset-creation gate
+                        # CLOSED. The post_save signal handlers in
+                        # ``tenants.signals`` watch the three onboarding
+                        # signals (TENANT_ADMIN role grant, KYC submission,
+                        # active Subscription) and call
+                        # ``mark_onboarding_complete_if_ready`` which
+                        # atomically sets ``onboarding_completed_at`` AND
+                        # flips this flag back to True. Existing tenants
+                        # are unaffected — the migration's DB-level
+                        # default for the field is True, and the
+                        # backfill stamps existing onboarded tenants
+                        # so they appear "complete" immediately.
+                        asset_creation_enabled=False,
                     )
             except IntegrityError:
                 raise ValidationError(

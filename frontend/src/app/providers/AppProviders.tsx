@@ -3,52 +3,16 @@
  * Wraps app with necessary providers (React Query, etc.)
  */
 
-import { QueryClient, QueryClientProvider, keepPreviousData } from '@tanstack/react-query';
+import { QueryClientProvider } from '@tanstack/react-query';
 import { ReactQueryDevtools } from '@tanstack/react-query-devtools';
 import { useEffect } from 'react';
 import { ToastProvider } from '../../shared/components/Toast';
+import { useToast } from '../../shared/components/Toast/useToast';
 import { useAuthStore } from '../../features/auth/store/authStore';
 import { initWebVitals } from '../../shared/services/performanceMetrics';
 import { apiClient } from '../../shared/api/client';
 import { websocketClient } from '../../shared/services/websocketClient';
-
-/** Extract HTTP status from query error (Axios, ApiError, or generic). */
-function getHttpStatusFromError(error: unknown): number | undefined {
-  if (!error || typeof error !== 'object') return undefined;
-  const o = error as Record<string, unknown>;
-  if (o.response && typeof o.response === 'object' && 'status' in o.response) {
-    return (o.response as { status?: number }).status;
-  }
-  if (o.error && typeof o.error === 'object' && 'http_status' in o.error) {
-    return (o.error as { http_status?: number }).http_status;
-  }
-  return undefined;
-}
-
-// Exported factory so tests can introspect defaults without re-declaring the config.
-// `placeholderData: keepPreviousData` is load-bearing: it keeps previous data visible
-// on query-key changes so `isLoading` does not flip to true. Without it, list pages
-// with `if (isLoading) return <Skeleton />` unmount the search input per keystroke.
-export function createQueryClient(): QueryClient {
-  return new QueryClient({
-    defaultOptions: {
-      queries: {
-        placeholderData: keepPreviousData,
-        retry: (failureCount, error) => {
-          const status = getHttpStatusFromError(error);
-          if (status === 404) return false;
-          return failureCount < 1;
-        },
-        refetchOnWindowFocus: true,
-        staleTime: 5 * 60 * 1000,
-        gcTime: 10 * 60 * 1000,
-      },
-      mutations: {
-        retry: 0,
-      },
-    },
-  });
-}
+import { createQueryClient } from './queryClient';
 
 const queryClient = createQueryClient();
 
@@ -114,9 +78,45 @@ export function AppProviders({ children }: AppProvidersProps) {
   return (
     <QueryClientProvider client={queryClient}>
       <ToastProvider>
+        <DeprecationInterceptorBridge />
         {children}
       </ToastProvider>
       {import.meta.env.DEV && <ReactQueryDevtools initialIsOpen={false} />}
     </QueryClientProvider>
   );
+}
+
+/**
+ * Phase 250.3.B.6 — wires ``deprecationInterceptor`` to the
+ * in-tree toast surface + the auth store's admin flag once both
+ * are mounted. Renders nothing; runs once on mount and rewires
+ * when the auth state changes (so a logout-then-login picks up
+ * the new admin status).
+ */
+function DeprecationInterceptorBridge() {
+  const toast = useToast();
+  const user = useAuthStore((s) => s.user);
+  useEffect(() => {
+    let cancelled = false;
+    void import('../../shared/api/deprecationInterceptor').then((mod) => {
+      if (cancelled) return;
+      mod.configureDeprecationInterceptor({
+        toast: {
+          warning: (m: string) => toast.error(m),
+          error: (m: string) => toast.error(m),
+          info: (m: string) => toast.info(m),
+        },
+        isAdminSession: () => {
+          if (!user) return false;
+          if (user.is_platform_admin) return true;
+          const roles = user.roles || [];
+          return roles.includes('TENANT_ADMIN') || roles.includes('PLATFORM_ADMIN');
+        },
+      });
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [toast, user]);
+  return null;
 }

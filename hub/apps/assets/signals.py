@@ -116,7 +116,66 @@ def rebuild_asset_search_vector(sender, instance, **kwargs):
     Deferring to on_commit avoids enqueue (and synchronous RQ in tests) while
     the request or TestCase outer transaction still holds DB locks — the same
     pattern as datacontract cache invalidation in contracts/signals.py.
+
+    Phase 250.1.F (closes B2-5) — the rebuild is GATED on
+    ``status != DRAFT``. DRAFT assets are not searchable, so building a
+    vector for them wastes a ``job_low`` slot on every ``asset_create``
+    workflow step (Phase 250.1.A). The first enqueue happens on the
+    activation save (DRAFT → ACTIVE) inside the asset-activation saga
+    at ``hub.apps.orchestration.workflows.asset_activation_saga
+    .activate_asset``, sharing the same ``transaction.on_commit`` as
+    the activation itself. Subsequent saves of a non-DRAFT asset
+    (renames / description edits / domain edits / status transitions
+    to PUBLIC or RETIRED) continue to enqueue so the vector tracks
+    the searchable text.
+
+    **Rollback to DRAFT clears the stale vector** (audit-pass GAP-A):
+    ``compensate_activation`` in the asset-activation saga flips a
+    previously-activated asset back to DRAFT via
+    ``asset.save(update_fields=['status', 'updated_at'])``. Without an
+    explicit clear the asset would be DRAFT in the DB but its
+    ``search_vector`` column would still hold the activated-state
+    tsvector — and ``hub/apps/search/views.py:614-632`` filters by
+    ``search_vector__isnull=False``, so the rolled-back asset would
+    keep appearing in search results. We use the prior-status
+    captured by the pre_save handler ``_capture_prior_asset_status``
+    (``_PRIOR_ASSET_STATUS_ATTR``) to detect non-DRAFT → DRAFT
+    transitions and synchronously NULL the column inside the same
+    transaction as the rollback save so the post-commit state is
+    consistent (no window where status=DRAFT but vector populated).
     """
+    from hub.apps.assets.models import Asset, AssetStatus
+
+    new_status = getattr(instance, "status", None)
+    if new_status == AssetStatus.DRAFT:
+        # Suppress the rebuild while in DRAFT. Once activated the
+        # next save (or any later metadata edit) will land here with
+        # a non-DRAFT status and the on_commit enqueue will fire.
+        prior_status = getattr(instance, _PRIOR_ASSET_STATUS_ATTR, None)
+        if (
+            prior_status is not None
+            and prior_status != AssetStatus.DRAFT
+            and instance.pk is not None
+        ):
+            # Rollback path: prior was ACTIVE/PUBLIC/RETIRED; the
+            # row had a populated vector that's now stale. Clear it
+            # synchronously (inside the same transaction as the
+            # status flip) so the searchability invariant holds the
+            # moment the transaction commits. The filter avoids a
+            # write when the column is already NULL.
+            try:
+                Asset.objects.filter(
+                    pk=instance.pk,
+                    search_vector__isnull=False,
+                ).update(search_vector=None)
+            except Exception as exc:  # noqa: BLE001 — boundary
+                logger.warning(
+                    "asset_search_vector_clear_failed "
+                    "asset_id=%s prior_status=%s error=%s",
+                    instance.pk, prior_status, exc,
+                )
+        return
+
     pk = instance.pk
 
     def _enqueue():

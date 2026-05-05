@@ -37,6 +37,11 @@ const BASELINE_PATH = path.join(
   REPO_ROOT, 'frontend', '.bundle-size-baseline.json',
 );
 // Phase 228.F2.30 — 30 KB gzipped delta (absolute).
+// Phase 250.6.F.2 reuses the same gate as the per-phase budget: every
+// PR (each phase typically ships as one or more PRs) is bound to a
+// ≤ 30 KB gzipped delta from the baseline. The baseline gets refreshed
+// post-merge via ``UPDATE_BASELINE=1`` so a 30 KB-per-phase budget
+// effectively compounds as the codebase grows.
 const MAX_DELTA_BYTES = 30 * 1024;
 // Phase 230.13.10 (REQ-SEM-GQL-001) — 5% production-chunk growth cap.
 // Layered on top of the absolute cap above so a small bundle's

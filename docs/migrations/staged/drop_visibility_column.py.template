@@ -1,0 +1,130 @@
+# Phase 250.3.C.1 (closes C2-2) — drop ``Asset.visibility`` column.
+#
+# **STATUS**: STAGED — DO NOT PROMOTE TO ``hub/apps/assets/migrations/``
+# until ALL THREE GATES below have cleared.
+#
+# This file is a TEMPLATE for the column-drop migration. It lives
+# here (under ``docs/migrations/staged/``) rather than in the live
+# Django migrations directory so Django's auto-discovery cannot
+# pick it up and apply it prematurely. Promotion to a live
+# migration is gated on three concurrent telemetry conditions.
+#
+# Phase context (relative to the live codebase as of this audit):
+#
+# * **Phase 1 already shipped** — the live migration
+#   ``hub/apps/assets/migrations/0013_visibility_to_property.py``
+#   has already (a) removed the ``visibility`` field from Django
+#   model state, (b) removed the ``(tenant, visibility)`` index
+#   from state AND from the database, (c) NULLed every row's
+#   ``visibility`` value, (d) dropped the ``NOT NULL`` constraint,
+#   (e) dropped the column-level default. The DB column itself is
+#   **RETAINED** for forensic / rollback safety using
+#   ``SeparateDatabaseAndState`` semantics.
+#
+# * **Phase 2 ships in two steps** — first the
+#   ``FIELD_REMOVED`` rejection (already landed at
+#   ``hub/apps/assets/views.py`` behind feature flag
+#   ``ASSET_VISIBILITY_PHASE_2_REJECT_ENABLED``), then THIS
+#   migration drops the underlying DB column via a database-only
+#   operation (no state operation — Django state already has no
+#   field).
+#
+# ---------------------------------------------------------------------
+# Promotion gates (ALL three must clear)
+# ---------------------------------------------------------------------
+#
+# 1. **Three full release cycles of phase-1 green telemetry**:
+#    zero ``ASSET_VISIBILITY_WRITE_DEPRECATED`` audit events from
+#    non-hub clients in the last cycle. Phase 1 is already
+#    deployed; this gate measures the post-deploy soak window.
+#
+# 2. **Phase-2 rejection telemetry green for at least one cycle**:
+#    after ops flips
+#    ``ASSET_VISIBILITY_PHASE_2_REJECT_ENABLED=True``, observe one
+#    full release cycle with a stable / decreasing rate of
+#    ``FIELD_REMOVED`` rejections. Climbing rejection rate means
+#    consumers are still attempting writes; do NOT drop the column
+#    yet.
+#
+# 3. **Forensic / rollback window expired**: ops has confirmed via
+#    the runbook in ``docs/runbooks/asset-visibility-deprecation.md``
+#    that no rollback to phase-0 is required (the rollback path
+#    requires the ``visibility`` column to still exist; once dropped,
+#    rollback requires re-creating + back-filling the column from
+#    ``status``).
+#
+# ---------------------------------------------------------------------
+# Promotion procedure (operator playbook)
+# ---------------------------------------------------------------------
+#
+#   # 1. Confirm gates 1 + 2 + 3 cleared (see above).
+#   # 2. Determine the next migration number for hub/apps/assets/migrations/:
+#   $ ls hub/apps/assets/migrations/ | grep -oE '^[0-9]+' | sort -n | tail -1
+#   # 3. Confirm phase-1 migration name (already known: 0013_visibility_to_property):
+#   $ ls hub/apps/assets/migrations/ | grep visibility_to_property
+#   # 4. Copy this template to a real migration:
+#   $ cp docs/migrations/staged/drop_visibility_column.py.template \
+#        hub/apps/assets/migrations/<NEXT-NUMBER>_drop_visibility_column.py
+#   # 5. Edit the new file:
+#   #    - Remove this entire header block (gates + procedure).
+#   #    - Confirm dependencies references "0013_visibility_to_property".
+#   #    - Confirm operations uses RunSQL inside a state-empty block.
+#   # 6. Run makemigrations to confirm Django is satisfied (should
+#   #    report "No changes detected" — phase-2 is a pure DB-side
+#   #    operation, no state changes):
+#   $ python manage.py makemigrations --check --dry-run assets
+#   # 7. Apply in a non-prod environment first; verify the column is
+#   #    gone and queries that previously SELECTed visibility now
+#   #    fail cleanly (callers should already be migrated).
+#   # 8. Apply in production via the standard CI/CD migration step.
+#
+# ---------------------------------------------------------------------
+# Migration body
+# ---------------------------------------------------------------------
+from django.db import migrations
+
+
+class Migration(migrations.Migration):
+
+    # Phase-1 migration (0013_visibility_to_property) already removed
+    # the field + index from Django state. Phase-2 is a database-only
+    # column drop — no state operation needed.
+    dependencies = [
+        ("assets", "0013_visibility_to_property"),
+    ]
+
+    operations = [
+        # Phase-2 is purely a database-side column drop. Django state
+        # was already updated in phase-1 via SeparateDatabaseAndState
+        # — there is nothing left for Django to "forget" about. Wrap
+        # the raw SQL in SeparateDatabaseAndState with empty
+        # state_operations to make this contract explicit and
+        # prevent Django from auto-detecting any state change.
+        #
+        # Reverse path re-creates the column with the pre-Phase-1
+        # default + NOT NULL constraint, back-filled from ``status``
+        # (matches phase-1's reverse SQL semantically). Reversing
+        # phase-2 alone leaves the column in the post-phase-1 state;
+        # callers that need to fully revert to phase-0 must also
+        # reverse phase-1.
+        migrations.SeparateDatabaseAndState(
+            state_operations=[],
+            database_operations=[
+                migrations.RunSQL(
+                    sql="ALTER TABLE assets DROP COLUMN IF EXISTS visibility;",
+                    reverse_sql=(
+                        # Recreate the column with the back-fill that
+                        # phase-1's reverse_sql also applies, so a
+                        # double-reverse (phase-2 then phase-1) lands
+                        # on byte-identical pre-Phase-1 state.
+                        "ALTER TABLE assets "
+                        "ADD COLUMN visibility varchar(20) NULL; "
+                        "UPDATE assets SET visibility = CASE "
+                        "  WHEN status = 'PUBLIC' THEN 'PUBLIC' "
+                        "  ELSE 'INTERNAL' "
+                        "END;"
+                    ),
+                ),
+            ],
+        ),
+    ]

@@ -4,7 +4,7 @@
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useMutationWithNotification } from '../../../shared/hooks/useMutationWithNotification';
-import { emptyPaginatedResponse } from '../../../shared/types/api';
+import { emptyPaginatedResponse, isApiError } from '../../../shared/types/api';
 import type {
   Asset,
   AssetCreateRequest,
@@ -57,10 +57,49 @@ export function useUpdateAsset() {
   const queryClient = useQueryClient();
 
   return useMutationWithNotification({
-    mutationFn: ({ id, data }: { id: string; data: AssetUpdateRequest }) =>
-      assetService.update(id, data),
+    mutationFn: async ({ id, data }: { id: string; data: AssetUpdateRequest }) => {
+      const detailKey = ['assets', 'detail', id] as const;
+      const cachedAsset = queryClient.getQueryData<Asset>(detailKey);
+      let ifMatch =
+        typeof cachedAsset?.version === 'number' ? String(cachedAsset.version) : undefined;
+      if (!ifMatch) {
+        const freshAsset = await queryClient.fetchQuery({
+          queryKey: detailKey,
+          queryFn: () => assetService.getById(id),
+        });
+        ifMatch = String(freshAsset.version);
+      }
+
+      try {
+        return await assetService.update(id, data, { ifMatch });
+      } catch (error) {
+        const isPreconditionFailed =
+          isApiError(error) &&
+          error.error.http_status === 412 &&
+          error.error.code === 'PRECONDITION_FAILED';
+        if (!isPreconditionFailed) {
+          throw error;
+        }
+
+        // Refresh latest server state, then replay local patch fields once.
+        const freshAsset = await queryClient.fetchQuery({
+          queryKey: detailKey,
+          queryFn: () => assetService.getById(id),
+        });
+        return assetService.update(id, data, { ifMatch: String(freshAsset.version) });
+      }
+    },
     successMessage: 'Asset updated',
-    errorMessage: 'Failed to update asset',
+    errorMessage: (error) => {
+      if (
+        isApiError(error) &&
+        error.error.http_status === 412 &&
+        error.error.code === 'PRECONDITION_FAILED'
+      ) {
+        return 'Asset changed on the server. We refreshed the latest version; review and retry your update.';
+      }
+      return 'Failed to update asset';
+    },
     onSuccess: (_, variables) => {
       queryClient.invalidateQueries({ queryKey: ['assets'] });
       queryClient.invalidateQueries({ queryKey: ['assets', 'detail', variables.id] });

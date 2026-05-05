@@ -42,3 +42,19 @@ class CoreConfig(AppConfig):
         except Exception:
             # Let it propagate so server fails to start
             raise
+
+        # Phase 250.0.14 / D250.15 — cross-service version-compatibility
+        # check. Hub queries dq-service /version + compliance-service
+        # /version; refuses to start if either is below the configured
+        # minimum (HUB_REQUIRED_DQ_SERVICE_VERSION /
+        # HUB_REQUIRED_COMPLIANCE_SERVICE_VERSION). Fail-closed at startup
+        # so k8s restart-loop surfaces the mismatch as a deploy-time error
+        # rather than a runtime 500.
+        try:
+            from hub.apps.core.cross_service_version_check import (
+                run_cross_service_version_check,
+            )
+            run_cross_service_version_check()
+        except Exception:
+            # Let it propagate so server fails to start.
+            raise

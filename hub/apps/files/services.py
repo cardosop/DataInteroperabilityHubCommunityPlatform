@@ -326,14 +326,17 @@ class FileService(BaseService, FileEventPublisher):
                 updates["status"] = new_status
             if updates:
                 file_obj.save(update_fields=list(updates.keys()) + ["updated_at"])
-            # Publish events when completing upload (status -> ACTIVE).
+            # Publish events when completing upload (terminal status).
             # IMPORTANT: wrapped in its own transaction.atomic() savepoint so that
             # if event publishing does a DB operation that fails (e.g. deduplication
             # store), the failure is contained in this savepoint.  Without this,
             # a caught DB error sets needs_rollback=True which cascades outward
             # via validate_no_broken_transaction(), corrupting the connection for
             # all subsequent queries in the same request cycle.
-            if new_status == FileStatus.ACTIVE and content_sha256:
+            if (
+                new_status in (FileStatus.ACTIVE, FileStatus.COMPLETED)
+                and content_sha256
+            ):
                 try:
                     from django.db import transaction as _tx
                     from django.utils import timezone
@@ -351,11 +354,15 @@ class FileService(BaseService, FileEventPublisher):
                         self.publish_file_updated(
                             file_id=str(file_obj.id),
                             changes={
-                                "status": {"old": previous_status, "new": FileStatus.ACTIVE},
+                                "status": {"old": previous_status, "new": new_status},
                                 "content_sha256": {"old": None, "new": content_sha256},
                             },
                             previous_status=previous_status.value if hasattr(previous_status, "value") else str(previous_status),
-                            new_status=FileStatus.ACTIVE.value if hasattr(FileStatus.ACTIVE, "value") else str(FileStatus.ACTIVE),
+                            new_status=(
+                                new_status.value
+                                if hasattr(new_status, "value")
+                                else str(new_status)
+                            ),
                         )
                 except Exception as e:
                     import structlog

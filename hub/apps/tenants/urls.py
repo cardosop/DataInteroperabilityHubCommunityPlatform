@@ -31,6 +31,24 @@ urlpatterns = [
         TenantConfigViewSet.as_view({"get": "me_config", "patch": "me_config"}),
         name="tenant-me-config",
     ),
+    # Phase 250.6.E.1 — per-tenant feature-flags admin surface.
+    # Manually registered (matches the convention for other
+    # `me/*` routes) so the URL pattern wins over the router's
+    # `<id>/` pattern that would otherwise match `me` as a UUID.
+    path(
+        "me/feature-flags/",
+        TenantConfigViewSet.as_view(
+            {"get": "me_feature_flags", "patch": "me_feature_flags"}
+        ),
+        name="tenant-me-feature-flags",
+    ),
+    path(
+        "me/feature-flag-history/",
+        TenantConfigViewSet.as_view(
+            {"get": "me_feature_flag_history"}
+        ),
+        name="tenant-me-feature-flag-history",
+    ),
     # Phase 226 OQ4 — test-only ephemeral-tenant provisioning. Gated by
     # ENVIRONMENT + E2E_TEST_SECRET; production 404s. Cleanup runs via
     # the staging-prefix-purge cron (slug starts with `e2e-ephemeral-`).

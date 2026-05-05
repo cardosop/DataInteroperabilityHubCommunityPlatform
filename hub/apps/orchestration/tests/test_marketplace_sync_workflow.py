@@ -269,7 +269,12 @@ class MarketplaceSyncWorkflowTaskExecutionTest(TestCase):
         ).delete()
         uid = uuid.uuid4().hex[:8]
         self.tenant = Tenant.objects.create(
-            name=f"Test Tenant {uid}", slug=f"test-tenant-{uid}", status="ACTIVE", kyc_status=KYCStatus.VERIFIED
+            name=f"Test Tenant {uid}",
+            slug=f"test-tenant-{uid}",
+            status="ACTIVE",
+            kyc_status=KYCStatus.VERIFIED,
+            # Phase 250.5.A.2 — opt-in federated import per D250.3.
+            federated_import_enabled=True,
         )
         self.user = User.objects.create_user(
             email=f"test-{uid}@example.com", password="testpass", tenant=self.tenant
@@ -434,7 +439,13 @@ class MarketplaceSyncWorkflowCompensationTest(TestCase):
             name__in=["marketplace_sync_push", "marketplace_sync_pull"]
         ).delete()
         uid = uuid.uuid4().hex[:8]
-        self.tenant = Tenant.objects.create(name=f"Test Tenant {uid}", slug=f"test-tenant-{uid}", status="ACTIVE")
+        self.tenant = Tenant.objects.create(
+            name=f"Test Tenant {uid}",
+            slug=f"test-tenant-{uid}",
+            status="ACTIVE",
+            # Phase 250.5.A.2 — opt-in federated import per D250.3.
+            federated_import_enabled=True,
+        )
         self.user = User.objects.create_user(
             email=f"test-{uid}@example.com", password="testpass", tenant=self.tenant
         )
@@ -591,7 +602,15 @@ class MarketplaceSyncWorkflowIntegrationTest(TestCase):
     def setUp(self):
         uid = uuid.uuid4().hex[:8]
         self.tenant = Tenant.objects.create(
-            name=f"Test Tenant {uid}", slug=f"test-tenant-{uid}", status="ACTIVE", kyc_status=KYCStatus.VERIFIED
+            name=f"Test Tenant {uid}",
+            slug=f"test-tenant-{uid}",
+            status="ACTIVE",
+            kyc_status=KYCStatus.VERIFIED,
+            # Phase 250.5.A.2 — federated import is opt-in per D250.3.
+            # PULL workflows exercise ``create_federated_asset_with_contracts``
+            # via the orchestration engine; without this flag the gate
+            # rejects with FederatedImportRejected("FEDERATED_IMPORT_DISABLED").
+            federated_import_enabled=True,
         )
         self.user = User.objects.create_user(
             email=f"test-{uid}@example.com", password="testpass", tenant=self.tenant
@@ -693,7 +712,15 @@ class MarketplaceSyncWorkflowE2ETest(TestCase):
     def setUp(self):
         uid = uuid.uuid4().hex[:8]
         self.tenant = Tenant.objects.create(
-            name=f"Test Tenant {uid}", slug=f"test-tenant-{uid}", status="ACTIVE", kyc_status=KYCStatus.VERIFIED
+            name=f"Test Tenant {uid}",
+            slug=f"test-tenant-{uid}",
+            status="ACTIVE",
+            kyc_status=KYCStatus.VERIFIED,
+            # Phase 250.5.A.2 — federated import is opt-in per D250.3.
+            # PULL workflows exercise ``create_federated_asset_with_contracts``
+            # via the orchestration engine; without this flag the gate
+            # rejects with FederatedImportRejected("FEDERATED_IMPORT_DISABLED").
+            federated_import_enabled=True,
         )
         self.user = User.objects.create_user(
             email=f"test-{uid}@example.com", password="testpass", tenant=self.tenant

@@ -194,7 +194,7 @@ class FileUploadDownloadTest(FilesAPITestBase):
 
         # Verify file was updated
         file_obj.refresh_from_db()
-        self.assertEqual(file_obj.status, FileStatus.ACTIVE)
+        self.assertEqual(file_obj.status, FileStatus.COMPLETED)
         self.assertEqual(file_obj.content_sha256, sha256_hash)
 
     def test_complete_multipart_upload(self):
@@ -260,7 +260,7 @@ class FileUploadDownloadTest(FilesAPITestBase):
             f"Expected 200: {getattr(response, 'data', '')}",
         )
         file_obj.refresh_from_db()
-        self.assertEqual(file_obj.status, FileStatus.ACTIVE)
+        self.assertEqual(file_obj.status, FileStatus.COMPLETED)
 
         # Clean up multipart upload
         try:

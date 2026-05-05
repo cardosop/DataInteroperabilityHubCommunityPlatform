@@ -577,6 +577,19 @@ class InternalHttpClient implements HttpClient {
       correlationId;
     performanceMetricsService.measureAPICall(url, duration, responseCorrelationId);
 
+    // Phase 250.3.B.6 — RFC-8594 deprecation header interceptor.
+    // Inspect EVERY response (success AND error) so a 4xx on a
+    // deprecated endpoint still surfaces the admin toast. The
+    // interceptor early-returns when not configured, so this is
+    // zero-cost when unused.
+    try {
+      const { inspectResponse } = await import('./deprecationInterceptor');
+      inspectResponse(url, response.headers);
+    } catch {
+      // Interceptor is best-effort: a transient import failure must
+      // never break the underlying request.
+    }
+
     // Success
     if (response.ok) {
       const responseData = await parseResponseBody<T>(response, config?.responseType);

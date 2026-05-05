@@ -7,6 +7,22 @@ project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added — Phase 250: Asset-creation hardening (250.1–250.7)
+
+> Phase 250 hardens data-first asset creation and closes the identified
+> security/operability gaps: fail-closed persistence, workflow versioning,
+> idempotent create semantics, federated-import safety gates, tenant feature
+> controls, semantic graceful-degrade, optimistic-locking enforcement, and
+> rate-limit controls.
+
+**New and updated controls:**
+
+- Workflow WARN audit event support with `ASSET_WORKFLOW_WARN_LOGGED` emission for non-fatal warning paths in asset-creation workflows.
+- Per-user and per-tenant throttling for asset creation surfaces (`create` + `data_first`) to reduce abuse risk while preserving tenant isolation.
+- Hardened test-database bootstrap path in `scripts/migrate-test-dbs.sh` to detect/drop invalid PostgreSQL DB states (`datconnlimit=-2`) before clone fallback.
+- Asset-creation operational artifacts under `docs/` including runbooks, ADR set, risk register, capacity plan, and RACI matrix for cross-functional execution.
+- Prometheus asset-creation alert rules are wired in both development and production Prometheus rule files.
+
 ### Added — Phase 230: Semantic platform expansion (REQ-SEM-* sub-phases)
 
 > Phase 230 ships the semantic capability suite: SPARQL inference, bulk

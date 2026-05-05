@@ -7,6 +7,7 @@ import uuid
 from django.db import models
 from django.contrib.auth import get_user_model
 from django.conf import settings
+from django.core.exceptions import PermissionDenied
 
 User = get_user_model()
 
@@ -69,6 +70,14 @@ class AuditEvent(models.Model):
         default=dict,
         help_text="Additional details as JSON (no PII allowed)"
     )
+    full_details_json = models.JSONField(
+        null=True,
+        blank=True,
+        help_text=(
+            "Restricted original details. Access ONLY via get_full_details(actor) "
+            "with TENANT_ADMIN guard."
+        ),
+    )
     timestamp = models.DateTimeField(
         auto_now_add=True,
         db_index=True,
@@ -115,6 +124,29 @@ class AuditEvent(models.Model):
     def delete(self, *args, **kwargs):
         """Override delete to prevent deletion"""
         raise ValueError("Audit events are immutable and cannot be deleted")
+
+    def get_full_details(self, actor_user) -> dict:
+        """Return full details for authorized actors only."""
+        if actor_user is None:
+            raise PermissionDenied("TENANT_ADMIN role is required")
+        event_tenant = getattr(self, "tenant", None)
+        if event_tenant is None:
+            raise PermissionDenied("TENANT_ADMIN role is required")
+
+        actor_tenant = getattr(actor_user, "tenant", None)
+        actor_tenant_id = getattr(actor_tenant, "id", None)
+        if actor_tenant_id != event_tenant.id:
+            raise PermissionDenied("TENANT_ADMIN role is required")
+
+        has_tenant_admin = bool(
+            actor_user.user_roles.filter(
+                role__tenant=event_tenant,
+                role__name="TENANT_ADMIN",
+            ).exists()
+        )
+        if not has_tenant_admin:
+            raise PermissionDenied("TENANT_ADMIN role is required")
+        return self.full_details_json if self.full_details_json is not None else self.details_json
 
 
 # Phase 228 (REQ-LIN-007, 228.0.19) — canonical lineage audit-action codes.

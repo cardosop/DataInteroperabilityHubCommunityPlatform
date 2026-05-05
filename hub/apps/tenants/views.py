@@ -624,6 +624,291 @@ class TenantConfigViewSet(viewsets.ViewSet):
         config_dict = get_tenant_config(tenant)
         return Response(config_dict, status=status.HTTP_200_OK)
 
+    # ------------------------------------------------------------------
+    # Phase 250.6.E — per-tenant feature-flags admin surface
+    # ------------------------------------------------------------------
+
+    #: Per-tenant capability flags surfaced by the admin settings
+    #: page. Each entry is ``(field_name, description)``. Adding a new
+    #: per-tenant boolean flag to ``Tenant`` should ALSO add an entry
+    #: here so the admin UI surfaces it without code changes elsewhere.
+    #: The list is the single source of truth — the GET endpoint
+    #: reflects it as the response shape, the PATCH endpoint
+    #: validates incoming flag names against it, and the audit-log
+    #: query relies on it to filter the resource_type='TENANT' rows.
+    _TENANT_FEATURE_FLAGS: tuple = (
+        (
+            "asset_creation_enabled",
+            "When True (default), this tenant may create assets via "
+            "POST /assets/ and POST /assets/data-first/. Flip to False "
+            "to FREEZE creation under investigation (compliance breach, "
+            "billing dispute, etc.). Phase 250.6.A / D250.17.",
+        ),
+        (
+            "federated_import_enabled",
+            "When True, this tenant may import federated assets from "
+            "configured marketplace connections. Default False — opt-in "
+            "per D250.3 to prevent accidental activation. Phase 250.5.A.2.",
+        ),
+        (
+            "asset_auto_activate_on_gate_pass",
+            "When True (default), the asset-creation workflow auto-"
+            "activates an Asset (DRAFT → ACTIVE) once all gates pass. "
+            "Flip to False for a per-tenant DRAFT-first review queue. "
+            "Phase 250.2.A.1 / D250.6.",
+        ),
+        (
+            "compliance_fail_closed_enabled",
+            "When True (default), a FAIL on the pre-persistence "
+            "compliance gate refuses asset intake (HTTP 422). When "
+            "False, the asset still lands as DRAFT but with a "
+            "compliance_status=FAIL marker. Phase 250.1.A.8.",
+        ),
+        (
+            "data_quality_enabled",
+            "When True (default), the tenant has access to the Data "
+            "Quality feature suite (DQ runs, alerts, profiles). When "
+            "False, DQ endpoints return 403 + the SPA hides the DQ "
+            "menu. Phase 240.4.B.4 / D240.18.",
+        ),
+        (
+            "data_quality_advanced_enabled",
+            "When True (and ``data_quality_enabled`` is also True), "
+            "the tenant has access to advanced DQ features (anomaly "
+            "detection, trend analysis, scorecards, RCA). Conjunctive "
+            "with the base flag — disabling the base also disables "
+            "this. Phase 240.3.B.",
+        ),
+    )
+
+    def _enforce_tenant_admin(self, request):
+        """Phase 250.6.E.2 — TENANT_ADMIN-only gate. Returns ``None``
+        when the user is allowed, OR a ``Response(403)`` object
+        otherwise. Mirrors the gate-helper pattern from
+        ``hub/apps/assets/views.py::_check_asset_creation_kill_switch``."""
+        user = request.user
+        is_tenant_admin = (
+            user.has_role("TENANT_ADMIN")
+            if hasattr(user, "has_role")
+            else False
+        )
+        is_platform_admin = (
+            hasattr(user, "is_platform_admin") and user.is_platform_admin
+        )
+        if is_tenant_admin or is_platform_admin:
+            return None
+        return Response(
+            {
+                "error": (
+                    "Permission denied: TENANT_ADMIN role required to "
+                    "manage tenant feature flags."
+                ),
+                "code": "PERMISSION_DENIED",
+            },
+            status=status.HTTP_403_FORBIDDEN,
+        )
+
+    @action(
+        detail=False,
+        methods=["get", "patch"],
+        url_path="me/feature-flags",
+        url_name="me-feature-flags",
+    )
+    def me_feature_flags(self, request):
+        """Phase 250.6.E.1 — per-tenant capability-flags admin surface.
+
+        ``GET`` returns the current flag values + descriptions, so the
+        SPA can render a self-describing settings page without a
+        separate "schema" round-trip:
+
+            {
+              "flags": [
+                {"name": "asset_creation_enabled", "value": true,
+                 "description": "When True (default), ..."},
+                ...
+              ]
+            }
+
+        ``PATCH`` accepts a partial dict of ``{flag_name: bool}`` and
+        flips the matching ``Tenant`` columns. Each flipped flag
+        emits a ``TENANT_FEATURE_FLAG_UPDATED`` audit row carrying
+        the before/after values for the audit-log panel below the
+        form. Unknown flag names return HTTP 400 + ``code="UNKNOWN_FLAG"``
+        rather than silently ignoring them — admin actions need
+        loud rejection on typos so the operator knows their change
+        DIDN'T land.
+
+        Both methods require TENANT_ADMIN role (per 250.6.E.2).
+        """
+        gate = self._enforce_tenant_admin(request)
+        if gate is not None:
+            return gate
+
+        tenant_id = get_request_tenant_id(request)
+        if not tenant_id:
+            return Response(
+                {"error": "Tenant context required", "code": "NO_TENANT"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        from hub.apps.tenants.models import Tenant as _Tenant
+
+        tenant = _Tenant.all_objects.get(id=tenant_id)
+
+        if request.method == "GET":
+            flags = [
+                {
+                    "name": name,
+                    "value": bool(getattr(tenant, name, False)),
+                    "description": description,
+                }
+                for name, description in self._TENANT_FEATURE_FLAGS
+            ]
+            return Response({"flags": flags}, status=status.HTTP_200_OK)
+
+        # PATCH
+        body = request.data or {}
+        if not isinstance(body, dict):
+            return Response(
+                {"error": "Request body must be a JSON object",
+                 "code": "INVALID_REQUEST"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        known_flag_names = {n for n, _ in self._TENANT_FEATURE_FLAGS}
+        unknown = [k for k in body.keys() if k not in known_flag_names]
+        if unknown:
+            return Response(
+                {
+                    "error": (
+                        f"Unknown feature flag(s): {sorted(unknown)}. "
+                        f"Known flags: {sorted(known_flag_names)}."
+                    ),
+                    "code": "UNKNOWN_FLAG",
+                    "details": {
+                        "unknown": sorted(unknown),
+                        "known": sorted(known_flag_names),
+                    },
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        # Capture before-values for audit before mutating.
+        before_values = {
+            name: bool(getattr(tenant, name, False)) for name in body.keys()
+        }
+        # Apply each flag.
+        update_fields = []
+        for name, value in body.items():
+            setattr(tenant, name, bool(value))
+            update_fields.append(name)
+        tenant.save(update_fields=update_fields + ["updated_at"])
+
+        # Audit one row per flipped flag for forensic granularity.
+        from hub.apps.audit import event_types as _audit_event_types
+        from hub.apps.audit.utils import create_audit_event
+
+        for name, new_value_raw in body.items():
+            new_value = bool(new_value_raw)
+            try:
+                create_audit_event(
+                    resource_type="TENANT",
+                    action=_audit_event_types.TENANT_FEATURE_FLAG_UPDATED,
+                    actor_user=request.user,
+                    tenant=tenant,
+                    resource_id=str(tenant.id),
+                    result="SUCCESS",
+                    details={
+                        "flag_name": name,
+                        "previous_value": before_values[name],
+                        "new_value": new_value,
+                        "actor_user_id": str(request.user.id),
+                        "tenant_id": str(tenant.id),
+                    },
+                    request=request,
+                )
+            except Exception as exc:  # noqa: BLE001
+                # Best-effort: audit emission failure logs a warning
+                # but doesn't roll back the flag write (the operator
+                # already committed the intent; losing the audit row
+                # is recoverable via DB diff).
+                import logging as _logging
+
+                _logging.getLogger(__name__).warning(
+                    "tenant_feature_flag_audit_emit_failed",
+                    extra={
+                        "flag_name": name,
+                        "tenant_id": str(tenant.id),
+                        "error": str(exc),
+                    },
+                )
+
+        # Return the fresh flag map so the SPA can re-render without
+        # a follow-up GET.
+        flags = [
+            {
+                "name": name,
+                "value": bool(getattr(tenant, name, False)),
+                "description": description,
+            }
+            for name, description in self._TENANT_FEATURE_FLAGS
+        ]
+        return Response({"flags": flags}, status=status.HTTP_200_OK)
+
+    @action(
+        detail=False,
+        methods=["get"],
+        url_path="me/feature-flag-history",
+        url_name="me-feature-flag-history",
+    )
+    def me_feature_flag_history(self, request):
+        """Phase 250.6.E.1 — audit-log query for the settings page.
+
+        ``GET /api/v1/tenants/me/feature-flag-history/`` — returns
+        ``TENANT_FEATURE_FLAG_UPDATED`` rows scoped to the calling
+        tenant. The SPA renders these as "User X changed flag Y
+        from <previous> to <new> at <timestamp>" beneath the flag
+        form so the audit history is co-located with the action.
+
+        TENANT_ADMIN-only (250.6.E.2). Cross-tenant rows are excluded
+        by the ``tenant=tenant`` filter (existence-leak protection).
+        """
+        gate = self._enforce_tenant_admin(request)
+        if gate is not None:
+            return gate
+
+        tenant_id = get_request_tenant_id(request)
+        if not tenant_id:
+            return Response(
+                {"error": "Tenant context required", "code": "NO_TENANT"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        from hub.apps.audit import event_types as _audit_event_types
+        from hub.apps.audit.models import AuditEvent
+
+        events_qs = AuditEvent.objects.filter(
+            tenant_id=tenant_id,
+            action=_audit_event_types.TENANT_FEATURE_FLAG_UPDATED,
+        ).order_by("-created_at")[:100]
+        # Hard-cap at 100 rows so a chatty admin's history doesn't
+        # blow the response payload size; the SPA can paginate if
+        # the limit is hit (follow-up). 100 covers ~3 months of
+        # daily flag flips at expected volumes.
+
+        events = [
+            {
+                "id": str(ev.id),
+                "action": ev.action,
+                "actor_user_id": (
+                    str(ev.actor_user_id) if ev.actor_user_id else None
+                ),
+                "result": ev.result,
+                "created_at": ev.created_at.isoformat(),
+                "details_json": ev.details_json,
+            }
+            for ev in events_qs
+        ]
+        return Response({"events": events}, status=status.HTTP_200_OK)
+
     @extend_schema(
         operation_id="get_me_usage",
         summary="Get current tenant usage",

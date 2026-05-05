@@ -225,7 +225,7 @@ class FileViewSetTest(FilesAPITestBase):
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         pending_file.refresh_from_db()
-        self.assertEqual(pending_file.status, FileStatus.ACTIVE)
+        self.assertEqual(pending_file.status, FileStatus.COMPLETED)
         self.assertEqual(pending_file.content_sha256, content_sha256)
 
     def test_complete_upload_invalid_sha256_format(self):

@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { keepPreviousData } from '@tanstack/react-query';
 
-import { createQueryClient } from './AppProviders';
+import { createQueryClient } from './queryClient';
 
 describe('AppProviders QueryClient defaults', () => {
   it('uses keepPreviousData as the placeholderData default', () => {

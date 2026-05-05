@@ -117,7 +117,84 @@ export const tenantService = {
       .getClient()
       .delete(`${TENANTS_BASE}/${tenantId}/sparql-endpoints/${endpointId}/`);
   },
+
+  // --------------------------------------------------------------------
+  // Phase 250.6.E — per-tenant feature-flags admin surface
+  // --------------------------------------------------------------------
+
+  /**
+   * Get the per-tenant feature-flags (current values + descriptions).
+   * GET /api/v1/tenants/me/feature-flags/
+   * TENANT_ADMIN-only on the backend.
+   */
+  async getMeFeatureFlags(): Promise<TenantFeatureFlagsResponse> {
+    const response = await apiClient
+      .getClient()
+      .get<TenantFeatureFlagsResponse>(`${TENANTS_BASE}/me/feature-flags/`);
+    return response.data;
+  },
+
+  /**
+   * Patch one or more per-tenant feature flags.
+   * PATCH /api/v1/tenants/me/feature-flags/
+   * Each flipped flag emits a TENANT_FEATURE_FLAG_UPDATED audit row.
+   */
+  async patchMeFeatureFlags(
+    payload: Record<string, boolean>,
+  ): Promise<TenantFeatureFlagsResponse> {
+    const response = await apiClient
+      .getClient()
+      .patch<TenantFeatureFlagsResponse>(
+        `${TENANTS_BASE}/me/feature-flags/`,
+        payload,
+      );
+    return response.data;
+  },
+
+  /**
+   * Get the audit-log history of feature-flag changes for the
+   * current tenant.
+   * GET /api/v1/tenants/me/feature-flag-history/
+   */
+  async getMeFeatureFlagHistory(): Promise<TenantFeatureFlagHistoryResponse> {
+    const response = await apiClient
+      .getClient()
+      .get<TenantFeatureFlagHistoryResponse>(
+        `${TENANTS_BASE}/me/feature-flag-history/`,
+      );
+    return response.data;
+  },
 };
+
+export interface TenantFeatureFlag {
+  name: string;
+  value: boolean;
+  description: string;
+}
+
+export interface TenantFeatureFlagsResponse {
+  flags: TenantFeatureFlag[];
+}
+
+export interface TenantFeatureFlagHistoryEvent {
+  id: string;
+  action: string;
+  actor_user_id: string | null;
+  result: string;
+  created_at: string;
+  details_json: {
+    flag_name?: string;
+    previous_value?: boolean;
+    new_value?: boolean;
+    actor_user_id?: string;
+    tenant_id?: string;
+    [key: string]: unknown;
+  };
+}
+
+export interface TenantFeatureFlagHistoryResponse {
+  events: TenantFeatureFlagHistoryEvent[];
+}
 
 export interface SparqlEndpoint {
   id: string;

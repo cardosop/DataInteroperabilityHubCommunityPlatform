@@ -41,12 +41,20 @@ describe('assetService', () => {
     expect(url).toContain('assets');
   });
 
-  it('update calls PUT on correct URL', async () => {
-    vi.mocked(mock.put).mockResolvedValue({ data: { id: 'test-id' } });
+  it('update calls PATCH on correct URL', async () => {
+    vi.mocked(mock.patch).mockResolvedValue({ data: { id: 'test-id' } });
     await assetService.update('test-id', { name: 'updated' } as never);
-    expect(vi.mocked(mock.put)).toHaveBeenCalled();
-    const url = vi.mocked(mock.put).mock.calls[0][0] as string;
+    expect(vi.mocked(mock.patch)).toHaveBeenCalled();
+    const url = vi.mocked(mock.patch).mock.calls[0][0] as string;
     expect(url).toContain('assets');
+  });
+
+  it('update sends If-Match header when provided', async () => {
+    vi.mocked(mock.patch).mockResolvedValue({ data: { id: 'test-id' } });
+    await assetService.update('test-id', { name: 'updated' } as never, { ifMatch: '7' });
+    expect(vi.mocked(mock.patch)).toHaveBeenCalled();
+    const config = vi.mocked(mock.patch).mock.calls[0][2] as { headers?: Record<string, string> };
+    expect(config.headers?.['If-Match']).toBe('7');
   });
 
   it('delete calls DELETE on correct URL', async () => {

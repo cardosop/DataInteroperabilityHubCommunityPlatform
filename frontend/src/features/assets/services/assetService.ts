@@ -13,6 +13,7 @@ import type {
   AssetRecommendation,
   AssetRecommendationsFilters,
   AssetUpdateRequest,
+  AssetWorkflowStatus,
   AttachContractRequest,
   AttachDatasetRequest,
 } from '../../../shared/types/assets';
@@ -64,8 +65,18 @@ export const assetService = {
   /**
    * Update an asset
    */
-  async update(id: string, data: AssetUpdateRequest): Promise<Asset> {
-    const response = await apiClient.getClient().put<Asset>(`${ASSETS_BASE_PATH}/${id}/`, data);
+  async update(
+    id: string,
+    data: AssetUpdateRequest,
+    options?: { ifMatch?: string | null }
+  ): Promise<Asset> {
+    const headers: Record<string, string> = {};
+    if (options?.ifMatch) {
+      headers['If-Match'] = options.ifMatch;
+    }
+    const response = await apiClient
+      .getClient()
+      .patch<Asset>(`${ASSETS_BASE_PATH}/${id}/`, data, { headers });
     return response.data;
   },
 
@@ -128,10 +139,30 @@ export const assetService = {
     name: string;
     description?: string;
     domain?: string;
-  }): Promise<{ asset_id: string; dataset_id: string | null; contract_id: string | null }> {
+  }): Promise<{
+    asset_id: string;
+    dataset_id: string | null;
+    contract_id: string | null;
+    /** Phase 250.6.C — surface the workflow instance id so callers
+     *  (AssetCreatePage) can pass it via React Router navigation state
+     *  to AssetDetailPage where the WorkflowProgressWidget polls it. */
+    workflow_instance_id: string | null;
+    /** Phase 250.2.B.5 — schema drift envelope for the frontend
+     *  SchemaDriftBanner; null when the workflow had no contract to
+     *  compare the dataset against. */
+    result_summary?: {
+      schema_drift?: unknown;
+    };
+  }> {
     const response = await apiClient
       .getClient()
-      .post<{ asset_id: string; dataset_id: string | null; contract_id: string | null }>(
+      .post<{
+        asset_id: string;
+        dataset_id: string | null;
+        contract_id: string | null;
+        workflow_instance_id: string | null;
+        result_summary?: { schema_drift?: unknown };
+      }>(
         `${ASSETS_BASE_PATH}/data-first/`,
         data
       );
@@ -177,6 +208,27 @@ export const assetService = {
       ? `${ASSETS_BASE_PATH}/recommendations/?${qs}`
       : `${ASSETS_BASE_PATH}/recommendations/`;
     const response = await apiClient.getClient().get<AssetRecommendation[]>(url);
+    return response.data;
+  },
+
+  /**
+   * Phase 250.6.C — get current state of an asset-creation workflow.
+   *
+   * GET /api/v1/assets/workflows/{workflow_instance_id}/status/
+   *
+   * Polled by ``useAssetWorkflowStatus`` (with F2-4 backoff) to drive
+   * the ``<WorkflowProgressWidget>`` on the asset detail page during
+   * the RUNNING phase. Returns 404 cross-tenant + on malformed UUID
+   * (existence-leak protection — same posture as the IDOR contract).
+   */
+  async getAssetWorkflowStatus(
+    workflowInstanceId: string
+  ): Promise<AssetWorkflowStatus> {
+    const response = await apiClient
+      .getClient()
+      .get<AssetWorkflowStatus>(
+        `${ASSETS_BASE_PATH}/workflows/${workflowInstanceId}/status/`,
+      );
     return response.data;
   },
 };

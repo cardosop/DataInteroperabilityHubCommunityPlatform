@@ -167,6 +167,40 @@ def redact_string(value: str) -> str:
     return value
 
 
+_FAIL_CLOSED_COLUMN_KEYS = frozenset({"column", "column_name"})
+
+
+def _hash_column_name(value: str) -> str:
+    normalized = value.strip().lower().encode("utf-8")
+    return f"sha256:{hashlib.sha256(normalized).hexdigest()}"
+
+
+def _redact_fail_closed_payload(value: Any) -> Any:
+    from hub.apps.dq.log_helpers import _REDACTED_KEYS
+
+    if isinstance(value, dict):
+        redacted = {}
+        for key, item in value.items():
+            if key in _REDACTED_KEYS:
+                continue
+            if key in _FAIL_CLOSED_COLUMN_KEYS and isinstance(item, str):
+                redacted[key] = _hash_column_name(item)
+                continue
+            redacted[key] = _redact_fail_closed_payload(item)
+        return redacted
+    if isinstance(value, list):
+        return [_redact_fail_closed_payload(item) for item in value]
+    if isinstance(value, tuple):
+        return tuple(_redact_fail_closed_payload(item) for item in value)
+    return value
+
+
+def redact_fail_closed_audit_payload(payload: Dict[str, Any]) -> Dict[str, Any]:
+    """Return a fail-closed payload with sensitive keys/column names redacted."""
+    redacted = _redact_fail_closed_payload(payload)
+    return redacted if isinstance(redacted, dict) else {}
+
+
 def create_audit_event(
     resource_type: str,
     action: str,
@@ -175,6 +209,7 @@ def create_audit_event(
     resource_id: Optional[str] = None,
     result: str = "SUCCESS",
     details: Optional[Dict[str, Any]] = None,
+    full_details: Optional[Dict[str, Any]] = None,
     request: Optional[HttpRequest] = None,
 ) -> AuditEvent:
     """
@@ -188,6 +223,7 @@ def create_audit_event(
         resource_id: ID of the resource (optional)
         result: Result of the action ("SUCCESS", "FAILURE", "WARNING")
         details: Additional details as dictionary (will be redacted)
+        full_details: Restricted unredacted details, stored for admin access only
         request: HTTP request object (optional, for extracting IP address, user agent)
 
     Returns:
@@ -199,6 +235,7 @@ def create_audit_event(
 
     # Prepare details with request metadata
     details_dict = details.copy() if details else {}
+    full_details_dict = full_details.copy() if full_details else None
 
     if request:
         # Extract IP address
@@ -210,16 +247,22 @@ def create_audit_event(
 
         if ip_address:
             details_dict["ip_address"] = ip_address
+            if full_details_dict is not None:
+                full_details_dict["ip_address"] = ip_address
 
         # Extract user agent
         user_agent = request.META.get("HTTP_USER_AGENT")
         if user_agent:
             details_dict["user_agent"] = user_agent
+            if full_details_dict is not None:
+                full_details_dict["user_agent"] = user_agent
 
         # Extract request ID if available
         request_id = getattr(request, "request_id", None)
         if request_id:
             details_dict["request_id"] = str(request_id)
+            if full_details_dict is not None:
+                full_details_dict["request_id"] = str(request_id)
 
     # Redact PII from details
     redacted_details = redact_pii(details_dict)
@@ -244,6 +287,7 @@ def create_audit_event(
         action=action,
         result=result,
         details_json=redacted_details,
+        full_details_json=full_details_dict,
     )
 
     # Phase 227 Wave 1 (227.L7 audit follow-up) — emit the

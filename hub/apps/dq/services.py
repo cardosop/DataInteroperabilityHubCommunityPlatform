@@ -7,6 +7,7 @@ All create/update/delete paths call DQBusinessRules before mutation.
 import logging
 from typing import Dict, Any, Optional, List
 from django.db import transaction
+from django.utils import timezone
 
 logger = logging.getLogger(__name__)
 
@@ -78,6 +79,256 @@ class DQService(BaseService):
             use_cache=use_cache,
             contract=contract,
         )
+
+    # ------------------------------------------------------------------
+    # Phase 250.1.A.2 — fail-closed-at-intake in-memory DQ scan
+    # ------------------------------------------------------------------
+
+    _FORMAT_BY_CONTENT_TYPE = {
+        "text/csv": "csv",
+        "application/csv": "csv",
+        "application/json": "json",
+        "text/json": "json",
+        "application/x-ndjson": "json",
+        "application/parquet": "parquet",
+        "application/x-parquet": "parquet",
+    }
+    _FORMAT_BY_EXTENSION = {
+        "csv": "csv",
+        "json": "json",
+        "ndjson": "json",
+        "parquet": "parquet",
+    }
+
+    @classmethod
+    def _resolve_file_format(cls, file_obj) -> str:
+        """Pick the file format string the dq-service expects.
+
+        Mirrors :meth:`ComplianceService._resolve_file_format` so the
+        two pre-persistence gates can't disagree on what they're
+        scanning.
+        """
+        ct = (file_obj.content_type or "").lower().strip()
+        if ct in cls._FORMAT_BY_CONTENT_TYPE:
+            return cls._FORMAT_BY_CONTENT_TYPE[ct]
+        if file_obj.name:
+            ext = (file_obj.name.rsplit(".", 1)[-1] or "").lower()
+            if ext in cls._FORMAT_BY_EXTENSION:
+                return cls._FORMAT_BY_EXTENSION[ext]
+        return "csv"
+
+    @staticmethod
+    @transaction.atomic
+    def scan_inmemory(
+        file_id: str,
+        tenant,
+        profile_key: Optional[str] = None,
+        contract: Optional[Any] = None,
+        user=None,
+        correlation_id: Optional[str] = None,
+    ) -> DQRun:
+        """Run a DQ check against ``file_id`` synchronously.
+
+        Phase 250.1.A.2 — companion to
+        :meth:`ComplianceService.scan_inmemory`. The asset-creation
+        workflow re-sequence calls both synchronously BEFORE
+        persisting the ``Asset`` row so a FAIL on either gate refuses
+        intake without leaving an orphan draft.
+
+        ``scan_inmemory``:
+
+        * Persists a ``DQRun`` keyed on ``file`` only — no ``asset`` /
+          ``dataset`` FK — so the row is durable for audit / replay
+          even if the workflow later refuses to persist an Asset.
+        * Downloads the file payload from S3 and calls dq-service via
+          :meth:`run_dq` (the synchronous interface — there is no
+          async ``202`` path on dq-service today).
+        * Returns the populated ``DQRun`` so the caller can inspect
+          ``overall_status`` / ``quality_score``.
+
+        Args:
+            file_id: UUID of the :class:`File` to scan.
+            tenant: Resolved :class:`Tenant`.
+            profile_key: DQ profile key (e.g. ``"intake_basic_gx"``);
+                defaults to the tenant's configured profile.
+            contract: Optional :class:`Contract` instance — when set,
+                custom quality rules + the contract's profile_key
+                override the default per :class:`ContractQualityRulesExtractor`.
+            user: Optional :class:`User` for audit; falls back to
+                ``file.created_by``.
+            correlation_id: Trace-ID forwarded to dq-service; defaults
+                to ``str(file_id)`` so logs stitch together.
+
+        Returns:
+            The persisted :class:`DQRun` in a terminal status.
+
+        Raises:
+            ValidationError: ``file_id`` does not exist or belongs
+                to a different tenant.
+        """
+        from hub.apps.files.models import File
+        from hub.apps.files.storage import S3StorageClient
+        from hub.apps.jobs.models import JobType
+        from hub.apps.jobs.utils import create_job, get_job_timeout
+        from hub.apps.tenants.services import get_tenant_dq_profile
+
+        if not tenant:
+            raise ValidationError(
+                "tenant is required for in-memory DQ scan",
+                code="BUSINESS_RULES_VALIDATION",
+            )
+
+        try:
+            file_obj = File.objects.get(id=file_id, tenant=tenant)
+        except File.DoesNotExist:
+            raise ValidationError(
+                "File not found for in-memory DQ scan",
+                code="BUSINESS_RULES_VALIDATION",
+                details={
+                    "file_id": str(file_id),
+                    "tenant_id": str(tenant.id),
+                },
+            )
+
+        actor = user or file_obj.created_by
+        effective_correlation_id = correlation_id or str(file_obj.id)
+        resolved_profile_key = profile_key or get_tenant_dq_profile(str(tenant.id))
+        engine = resolve_engine_for_profile(resolved_profile_key)
+
+        job = create_job(
+            tenant=tenant,
+            user=actor,
+            job_type=JobType.DQ_RUN,
+            resource_type="DQ_RUN",
+            resource_id=str(file_obj.id),
+            details_json={
+                "profile_key": resolved_profile_key,
+                "engine": engine,
+                "inmemory": True,
+                "correlation_id": effective_correlation_id,
+            },
+            timeout_seconds=get_job_timeout(JobType.DQ_RUN),
+            executed_by_prefect=True,
+        )
+
+        run: DQRun = DQRun.objects.create(
+            tenant=tenant,
+            asset=None,        # Phase 250.1.A.2 — pre-persistence.
+            dataset=None,
+            file=file_obj,
+            job=job,
+            profile_key=resolved_profile_key,
+            engine=engine,
+            status=DQRunStatus.RUNNING,
+            started_at=timezone.now(),
+        )
+        job.resource_id = str(run.id)
+        job.details_json["dq_run_id"] = str(run.id)
+        job.save(update_fields=["resource_id", "details_json"])
+
+        from hub.apps.dq.service_client import DQServiceClient
+
+        try:
+            storage_client = S3StorageClient()
+            file_content = storage_client.get_file_content(file_obj.storage_path)
+            file_format = DQService._resolve_file_format(file_obj)
+
+            client = DQServiceClient()
+            result = client.run_dq(
+                file_content=file_content,
+                file_format=file_format,
+                profile_key=resolved_profile_key,
+                use_cache=True,
+                contract=contract,
+                tenant_id=str(tenant.id),
+            )
+
+            # Successful execution path — persist the result onto the
+            # row. Mirrors the schema written by ``execute_dq_run`` in
+            # ``hub/apps/dq/views.py`` so downstream consumers
+            # (workflow gate, alerting) see the same shape regardless
+            # of which path persisted the row.
+            row_count = (result.get("metadata") or {}).get("total_rows", 0)
+            column_count = (result.get("metadata") or {}).get("total_columns", 0)
+            execution_time = (
+                timezone.now() - run.started_at
+            ).total_seconds() if run.started_at else 0.0
+
+            run.status = DQRunStatus.SUCCEEDED
+            run.overall_status = result.get("overall_status")
+            raw_score = result.get("quality_score")
+            run.quality_score = (
+                max(0.0, min(100.0, float(raw_score)))
+                if raw_score is not None
+                else None
+            )
+            run.checks_json = result.get("checks", [])
+            run.details_json = {
+                "engine_type": result.get("engine_type"),
+                "engine_version": result.get("engine_version"),
+                "profile_key": result.get("profile_key") or resolved_profile_key,
+                "metadata": result.get("metadata") or {},
+                "metering": {
+                    "operation_type": "DQ_RUN",
+                    "rows_inspected": row_count,
+                    "columns_inspected": column_count,
+                    "execution_time_seconds": round(execution_time, 2),
+                    "engine_type": result.get("engine_type"),
+                    "profile_key": result.get("profile_key") or resolved_profile_key,
+                    "quality_score": result.get("quality_score"),
+                    "checks_count": len(result.get("checks") or []),
+                    "inmemory": True,
+                },
+            }
+            run.completed_at = timezone.now()
+            run.save(
+                update_fields=[
+                    "status",
+                    "overall_status",
+                    "quality_score",
+                    "checks_json",
+                    "details_json",
+                    "completed_at",
+                    "updated_at",
+                ]
+            )
+        except Exception as exc:  # noqa: BLE001 — fail-closed on ANY exception
+            logger.warning(
+                "dq_scan_inmemory_failed",
+                extra={
+                    "file_id": str(file_obj.id),
+                    "tenant_id": str(tenant.id),
+                    "correlation_id": effective_correlation_id,
+                    "error": str(exc),
+                },
+                exc_info=True,
+            )
+            run.status = DQRunStatus.FAILED
+            # ``UNKNOWN`` so workflow gate code only needs a single
+            # fail-closed predicate (``status not in PASS|WARN``).
+            run.overall_status = "UNKNOWN"
+            run.quality_score = 0.0
+            run.checks_json = []
+            run.details_json = {
+                "error": str(exc),
+                "error_code": "EXECUTION_ERROR",
+                "inmemory": True,
+            }
+            run.completed_at = timezone.now()
+            run.save(
+                update_fields=[
+                    "status",
+                    "overall_status",
+                    "quality_score",
+                    "checks_json",
+                    "details_json",
+                    "completed_at",
+                    "updated_at",
+                ]
+            )
+
+        run.refresh_from_db()
+        return run
 
     @staticmethod
     def apply_degraded_dq_status_if_circuit_open(

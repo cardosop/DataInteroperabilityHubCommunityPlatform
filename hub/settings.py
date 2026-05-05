@@ -243,6 +243,23 @@ MIDDLEWARE = [
     "hub.apps.tenants.middleware.TenantSuspensionMiddleware",  # Tenant suspension enforcement
     "hub.apps.api.versioning.APIVersionMiddleware",  # API versioning and deprecation warnings
     "hub.apps.api.middleware.idempotency.IdempotencyMiddleware",  # Idempotency key handling
+    # Phase 250.3.B.6 + 250.3.B.8 — Asset.visibility deprecation
+    # window headers (Deprecation/Sunset/Link + 7-day no-cache).
+    #
+    # MUST appear ABOVE ``CacheHeadersMiddleware`` in this list. Django
+    # processes middleware in REVERSE order on the response phase, so
+    # the entry HIGHER in MIDDLEWARE runs LATER on response. To
+    # OVERWRITE the ``Cache-Control`` header that ``CacheHeadersMiddleware``
+    # sets unconditionally for ``/api/v1/assets/`` paths
+    # (``cache_headers.py:391`` — ``response['Cache-Control'] =
+    # cache_control``), our middleware must process the response
+    # AFTER it. That requires being above it here.
+    #
+    # Earlier wiring placed this middleware BELOW ``CacheHeadersMiddleware``
+    # and the no-cache window was silently clobbered by the default
+    # 5-minute max-age on ``/assets/``. The 250.3.B audit-pass moved
+    # it to the correct slot.
+    "hub.apps.assets.middleware.AssetVisibilityDeprecationHeadersMiddleware",
     "hub.apps.api.middleware.cache_headers.CacheHeadersMiddleware",  # HTTP cache headers (ETag, Last-Modified, Cache-Control)
     "hub.apps.rate_limiting.middleware.RateLimitMiddleware",  # Advanced rate limiting (replaces basic middleware)
     "hub.apps.api.analytics.middleware.APIAnalyticsMiddleware",  # API analytics tracking
@@ -1548,6 +1565,12 @@ REST_FRAMEWORK = {
         "dq_quality_trends": "30/minute",
         "dq_quality_scorecards": "30/minute",
         "dq_quality_root_cause": "5/minute",
+        # Phase 250.1.A.10 — fail-closed-at-intake rate limits on
+        # ``POST /assets/data-first/``. Per-user 60/min and per-tenant
+        # 600/min per S-8. The throttle classes live in
+        # :mod:`hub.apps.assets.throttles`.
+        "asset_data_first_user": "60/minute",
+        "asset_data_first_tenant": "600/minute",
     },
 }
 
@@ -1717,6 +1740,69 @@ PERSONAL_TENANT_ON_REGISTRATION = env.bool("PERSONAL_TENANT_ON_REGISTRATION", de
 # GET /auth/me/tenants/, POST /auth/switch-tenant/, and X-Tenant-Id header.
 # Set to False to disable tenant switching (e.g. during migration or rollback).
 FEATURE_TENANT_SWITCH_ENABLED = env.bool("FEATURE_TENANT_SWITCH_ENABLED", default=True)
+
+# Phase 250.3.C.2 (closes C2-2) — Asset.visibility deprecation phase 2
+# rejection gate.
+#
+# The Asset.visibility field is being removed in a multi-phase
+# deprecation per D250.4. The phase-2 rejection contract activates
+# only after THREE FULL RELEASE CYCLES of phase-1 (Phase 250.3.B)
+# green telemetry confirm zero non-hub callers writing the field.
+#
+# Default False so the rejection ships INERT — phase-0 / phase-1
+# behaviour is preserved until ops explicitly opens the gate by
+# flipping this flag (or its env-var override
+# ASSET_VISIBILITY_PHASE_2_REJECT_ENABLED=true) post-soak.
+#
+# When True: PATCH /assets/{id}/ requests carrying ``visibility``
+# in the body are rejected with structured error
+# ``code="FIELD_REMOVED"`` + ``http_status=400`` per C2-2.
+ASSET_VISIBILITY_PHASE_2_REJECT_ENABLED = env.bool(
+    "ASSET_VISIBILITY_PHASE_2_REJECT_ENABLED", default=False,
+)
+
+# Phase 250.7.B.5 — rollout gate for PATCH If-Match enforcement.
+# Default False for the initial rolling-deploy window so old clients
+# continue to work (with deprecation logging) until enforcement is
+# flipped on after the soak period.
+OPTIMISTIC_LOCK_REQUIRE_IF_MATCH = env.bool(
+    "OPTIMISTIC_LOCK_REQUIRE_IF_MATCH", default=False,
+)
+
+# Phase 250.3.B.6 — Asset visibility deprecation Sunset header (RFC
+# 8594). Set to a timezone-aware datetime via env var
+# ``ASSET_VISIBILITY_DEPRECATION_SUNSET_DATE`` in ISO-8601 format
+# (e.g. ``2026-08-04T00:00:00Z``). When unset, the middleware falls
+# back to deploy-time + 90 days which lines up with the
+# 3-release-cycle phase-2 schedule.
+import datetime as _dt_for_visibility_dep  # noqa: E402
+_visibility_sunset_raw = env(
+    "ASSET_VISIBILITY_DEPRECATION_SUNSET_DATE", default=None,
+)
+ASSET_VISIBILITY_DEPRECATION_SUNSET_DATE = (
+    _dt_for_visibility_dep.datetime.fromisoformat(
+        _visibility_sunset_raw.replace("Z", "+00:00")
+    )
+    if _visibility_sunset_raw
+    else None
+)
+
+# Phase 250.3.B.8 / B2-8 — 7-day post-deploy ``Cache-Control:
+# no-cache`` window on /assets/. Set to a timezone-aware datetime
+# (typically ``deploy_ts + timedelta(days=7)``). When unset, the
+# middleware skips the no-cache header entirely (treats the window
+# as already expired). Override via env
+# ``ASSET_VISIBILITY_DEPRECATION_NO_CACHE_UNTIL`` in ISO-8601.
+_visibility_no_cache_raw = env(
+    "ASSET_VISIBILITY_DEPRECATION_NO_CACHE_UNTIL", default=None,
+)
+ASSET_VISIBILITY_DEPRECATION_NO_CACHE_UNTIL = (
+    _dt_for_visibility_dep.datetime.fromisoformat(
+        _visibility_no_cache_raw.replace("Z", "+00:00")
+    )
+    if _visibility_no_cache_raw
+    else None
+)
 
 # Worker API (scheduled ingestion internal): optional env key for Prefect worker
 # When set, worker authenticates with Authorization: ApiKey <HUB_WORKER_API_KEY> and X-Tenant-ID header

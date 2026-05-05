@@ -13,7 +13,12 @@
  * translators can start work without blocking on the runtime
  * integration.
  */
-import { LINEAGE_TIMETRAVEL_EN } from './locales/en';
+import {
+  ASSETS_SCHEMA_DRIFT_EN,
+  ASSETS_TYPE_PICKER_EN,
+  LINEAGE_TIMETRAVEL_EN,
+  MARKETPLACE_PUBLISH_KYC_EN,
+} from './locales/en';
 
 export interface Translator {
   t: (key: string, fallback?: string) => string;
@@ -21,6 +26,9 @@ export interface Translator {
 
 const ALL_LOCALES_EN: Record<string, string> = {
   ...LINEAGE_TIMETRAVEL_EN,
+  ...ASSETS_SCHEMA_DRIFT_EN,
+  ...ASSETS_TYPE_PICKER_EN,
+  ...MARKETPLACE_PUBLISH_KYC_EN,
 };
 
 export function useTranslation(): Translator {

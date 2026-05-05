@@ -262,22 +262,104 @@ def process_file_for_run(
                 pass
         if not asset and scheduled_ingestion.auto_create_asset:
             asset_key = f"scheduled-ingestion-{scheduled_ingestion.id}"
-            asset, created = Asset.objects.get_or_create(
-                tenant=tenant,
-                key=asset_key,
-                defaults={
-                    "name": scheduled_ingestion.name,
-                    "description": (
+            # Phase 250.2.C.2 (closes Gap 4 / B2-9) — replace the
+            # raw ``Asset.objects.get_or_create`` (which bypassed
+            # business rules + plan limit + audit emission +
+            # webhook publication) with the canonical
+            # ``AssetService.create_or_get_idempotent`` so the
+            # worker path runs the same pipeline as the
+            # ``POST /assets/`` API path. RETIRED-key collisions
+            # raise ``ConflictError(code="ASSET_KEY_RETIRED")``;
+            # we mark the file as a permanent failure so the run
+            # surfaces the precise reason to ops + bumps the
+            # alerting counter.
+            from hub.apps.assets.services import AssetService
+            from hub.apps.core.services.base import (
+                ConflictError as _AssetConflictError,
+                ValidationError as _AssetValidationError,
+            )
+            from hub.apps.observability.otel_metrics import (
+                scheduled_ingestion_asset_key_retired_total,
+            )
+
+            asset_service = AssetService(
+                tenant_id=str(tenant.id),
+                user_id=str(created_by.id) if created_by else None,
+            )
+            try:
+                asset = asset_service.create_or_get_idempotent(
+                    tenant_id=str(tenant.id),
+                    user_id=str(created_by.id) if created_by else None,
+                    key=asset_key,
+                    name=scheduled_ingestion.name,
+                    description=(
                         scheduled_ingestion.description
                         or f"Asset from scheduled ingestion {scheduled_ingestion.name}"
                     ),
-                    "status": AssetStatus.DRAFT,
-                    "created_by": created_by,
-                },
-            )
-            if not created:
-                # Asset already exists from a previous run; reuse it
-                pass
+                    created_by=created_by,
+                )
+            except _AssetConflictError as exc:
+                # Audit-pass GAP-A: mark every ConflictError as a
+                # permanent file-failure first. The original
+                # implementation only marked ``ASSET_KEY_RETIRED``,
+                # leaving the rare ``ASSET_KEY_EXISTS`` race-recovery
+                # edge case (when the racer's row vanished between
+                # commit and re-fetch in
+                # ``create_or_get_idempotent``) without a DLQ-sync
+                # record. Now every ConflictError code lands a
+                # permanent-failure entry so the run summary always
+                # reflects the rejection.
+                _mark_permanent_failure(
+                    scheduled_ingestion,
+                    file_path,
+                    exc.message,
+                    exc.code or "ASSET_CONFLICT",
+                )
+                if exc.code == "ASSET_KEY_RETIRED":
+                    logger.warning(
+                        "scheduled_ingestion_asset_key_retired",
+                        extra={
+                            "scheduled_ingestion_id": str(
+                                scheduled_ingestion.id
+                            ),
+                            "tenant_id": str(tenant.id),
+                            "asset_key": asset_key,
+                            "asset_id": exc.details.get("asset_id"),
+                        },
+                    )
+                    scheduled_ingestion_asset_key_retired_total.add(
+                        1,
+                        attributes={
+                            "scheduled_ingestion_id": str(
+                                scheduled_ingestion.id
+                            ),
+                            "tenant_id": str(tenant.id),
+                        },
+                    )
+                # Re-raise as ServiceValidationError so the worker
+                # run-lifecycle treats this the same as any other
+                # business-rules / validation rejection.
+                raise ServiceValidationError(
+                    exc.message,
+                    code=exc.code,
+                    details=exc.details,
+                )
+            except _AssetValidationError as exc:
+                # Phase 250.2.C.4 — worker error shape == HTTP API
+                # error shape; the raise contract here MUST mirror
+                # ``POST /assets/`` so a downstream consumer of
+                # the run failure can handle both paths uniformly.
+                _mark_permanent_failure(
+                    scheduled_ingestion,
+                    file_path,
+                    exc.message,
+                    exc.code or "VALIDATION_ERROR",
+                )
+                raise ServiceValidationError(
+                    exc.message,
+                    code=exc.code or "VALIDATION_ERROR",
+                    details=exc.details,
+                )
             scheduled_ingestion.asset = asset
             scheduled_ingestion.save(update_fields=["asset"])
 

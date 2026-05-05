@@ -573,6 +573,225 @@ class ComplianceService(BaseService):
             legal_basis=legal_basis,
         )
 
+    # ------------------------------------------------------------------
+    # Phase 250.1.A.1 — fail-closed-at-intake in-memory scan
+    # ------------------------------------------------------------------
+
+    #: File-format MIME / extension hints recognised by ``scan_inmemory``.
+    #: Anything unrecognised falls back to "csv" — the compliance
+    #: microservice's default — so a misclassified upload still gets
+    #: scanned rather than 5xx-ing the whole intake.
+    _FORMAT_BY_CONTENT_TYPE: Dict[str, str] = {
+        "text/csv": "csv",
+        "application/csv": "csv",
+        "application/json": "json",
+        "text/json": "json",
+        "application/x-ndjson": "json",
+        "application/parquet": "parquet",
+        "application/x-parquet": "parquet",
+    }
+    _FORMAT_BY_EXTENSION: Dict[str, str] = {
+        "csv": "csv",
+        "json": "json",
+        "ndjson": "json",
+        "parquet": "parquet",
+    }
+
+    @classmethod
+    def _resolve_file_format(cls, file_obj) -> str:
+        """Pick the file format string the compliance microservice expects.
+
+        Order: explicit content_type → filename extension → CSV fallback.
+        """
+        ct = (file_obj.content_type or "").lower().strip()
+        if ct in cls._FORMAT_BY_CONTENT_TYPE:
+            return cls._FORMAT_BY_CONTENT_TYPE[ct]
+        if file_obj.name:
+            ext = (file_obj.name.rsplit(".", 1)[-1] or "").lower()
+            if ext in cls._FORMAT_BY_EXTENSION:
+                return cls._FORMAT_BY_EXTENSION[ext]
+        return "csv"
+
+    @staticmethod
+    @transaction.atomic
+    def scan_inmemory(
+        file_id: str,
+        tenant,
+        legal_basis: Optional[str] = None,
+        applicable_regulations: Optional[List[str]] = None,
+        scan_mode: str = "internal",
+        destination_jurisdiction: Optional[str] = None,
+        user=None,
+        correlation_id: Optional[str] = None,
+    ) -> ComplianceRun:
+        """Run a compliance scan against ``file_id`` synchronously.
+
+        Phase 250.1.A.1 — the asset-creation workflow re-sequence
+        needs to know whether the file's payload PASSes / WARNs / FAILs
+        BEFORE deciding whether to persist the ``Asset`` row. That's
+        impossible with :meth:`create_compliance_run` because it
+        always wires the new run to a pre-existing ``Asset`` (the
+        whole point of the re-sequence is to undo that ordering).
+
+        ``scan_inmemory``:
+
+        * Persists a ``ComplianceRun`` keyed on ``file`` only — no
+          ``asset`` / ``dataset`` FK — so the row is durable for
+          audit / replay even if the workflow later refuses to
+          persist an Asset.
+        * Downloads the file payload from S3 and calls the compliance
+          microservice synchronously via :meth:`scan_file` (the async
+          ``202`` path can't return the gate signal in-band).
+        * Returns the populated ``ComplianceRun`` so the caller can
+          inspect ``allowed_to_store`` / ``overall_status``.
+
+        Args:
+            file_id: UUID of the :class:`File` to scan.
+            tenant: Resolved :class:`Tenant` (the workflow already has
+                this from the request context — we don't re-fetch).
+            legal_basis: GDPR-style legal basis the controller is
+                relying on (forwarded to the microservice for the
+                legal-basis-violation check).
+            applicable_regulations: Optional list of regulations
+                (e.g. ``["GDPR", "LGPD"]``); empty list = service
+                picks the default for the tenant region.
+            scan_mode: ``"internal"`` (Hub-managed) or ``"external"``
+                (read-only scan) — forwarded to the microservice.
+            destination_jurisdiction: ISO region the data is destined
+                for (drives the cross-border check).
+            user: Optional :class:`User` for audit; falls back to
+                ``file.created_by``.
+            correlation_id: Trace-ID to forward to the microservice;
+                defaults to ``str(file_id)`` so logs stitch together.
+
+        Returns:
+            The persisted :class:`ComplianceRun`. Callers should
+            ``refresh_from_db()`` if they need the latest state after
+            an async race; this synchronous path always returns a
+            terminal-status row.
+
+        Raises:
+            ValidationError: ``file_id`` does not exist or belongs
+                to a different tenant.
+        """
+        from hub.apps.files.models import File
+        from hub.apps.files.storage import S3StorageClient
+        from hub.apps.jobs.models import JobType
+        from hub.apps.jobs.utils import create_job, get_job_timeout
+
+        if not tenant:
+            raise ValidationError(
+                "tenant is required for in-memory compliance scan",
+                code="BUSINESS_RULES_VALIDATION",
+            )
+
+        try:
+            file_obj = File.objects.get(id=file_id, tenant=tenant)
+        except File.DoesNotExist:
+            raise ValidationError(
+                "File not found for in-memory compliance scan",
+                code="BUSINESS_RULES_VALIDATION",
+                details={
+                    "file_id": str(file_id),
+                    "tenant_id": str(tenant.id),
+                },
+            )
+
+        actor = user or file_obj.created_by
+        effective_correlation_id = correlation_id or str(file_obj.id)
+
+        # Job tracks the scan for the operations / billing surface.
+        # ``executed_by_prefect=True`` keeps RQ from picking up an
+        # additional poll cycle — the synchronous scan runs inline.
+        job = create_job(
+            tenant=tenant,
+            user=actor,
+            job_type=JobType.COMPLIANCE_RUN,
+            resource_type="COMPLIANCE_RUN",
+            resource_id=str(file_obj.id),
+            details_json={
+                "scan_mode": scan_mode,
+                "applicable_regulations": applicable_regulations or [],
+                "legal_basis": legal_basis,
+                "destination_jurisdiction": destination_jurisdiction,
+                "inmemory": True,
+                "correlation_id": effective_correlation_id,
+            },
+            timeout_seconds=get_job_timeout(JobType.COMPLIANCE_RUN),
+            executed_by_prefect=True,
+        )
+
+        run: ComplianceRun = ComplianceRun.objects.create(
+            tenant=tenant,
+            asset=None,        # Phase 250.1.A.1 — NO asset attached.
+            dataset=None,      # Same — pre-persistence in the workflow.
+            file=file_obj,
+            job=job,
+            regulations=applicable_regulations or [],
+            status=ComplianceRunStatus.RUNNING,
+            started_at=timezone.now(),
+        )
+        # Re-link the job back to the run id so audit replays can
+        # join on either side of the FK.
+        job.resource_id = str(run.id)
+        job.details_json["compliance_run_id"] = str(run.id)
+        job.save(update_fields=["resource_id", "details_json"])
+
+        # Download payload + dispatch the synchronous scan.
+        # File-system / network errors here are converted into a
+        # FAILED row + ``allowed_to_store=False`` so the workflow
+        # caller never has to interpret a partial ``RUNNING`` row
+        # as ambiguous.
+        from hub.apps.compliance.service_client import ComplianceServiceClient
+
+        try:
+            storage_client = S3StorageClient()
+            file_content = storage_client.get_file_content(file_obj.storage_path)
+            file_format = ComplianceService._resolve_file_format(file_obj)
+
+            client = ComplianceServiceClient()
+            result = client.scan_file(
+                file_content=file_content,
+                file_format=file_format,
+                scan_mode=scan_mode,
+                applicable_regulations=applicable_regulations,
+                tenant_id=str(tenant.id),
+                correlation_id=effective_correlation_id,
+                legal_basis=legal_basis,
+            )
+            ComplianceService._persist_result(run, result)
+        except Exception as exc:  # noqa: BLE001 — see fail-closed contract below
+            # Fail-closed: ANY exception leaves a FAILED row with
+            # ``allowed_to_store=False`` so the workflow gate refuses
+            # to persist the Asset. ``_persist_result`` already knows
+            # how to write a FAILED-shaped payload, so we hand it the
+            # right shape rather than re-implementing that branch.
+            import logging
+
+            logging.getLogger(__name__).warning(
+                "compliance_scan_inmemory_failed",
+                extra={
+                    "file_id": str(file_obj.id),
+                    "tenant_id": str(tenant.id),
+                    "correlation_id": effective_correlation_id,
+                    "error": str(exc),
+                },
+                exc_info=True,
+            )
+            ComplianceService._persist_result(
+                run,
+                {
+                    "status": "FAILED",
+                    "error": str(exc),
+                    "overall_status": "UNKNOWN",
+                    "allowed_to_store": False,
+                    "metadata": {},
+                },
+            )
+
+        run.refresh_from_db()
+        return run
+
     @staticmethod
     def apply_degraded_compliance_status_if_circuit_open(
         asset, request=None, actor_user=None

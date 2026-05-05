@@ -10,11 +10,53 @@ import { useAssets } from '../../assets/hooks/useAssets';
 import { LoadingSpinner } from '../../../shared/components/LoadingSpinner';
 import { ErrorDisplay } from '../../../shared/components/ErrorDisplay';
 import { PricingModel } from '../../../shared/types/marketplace';
+import { isApiError } from '../../../shared/types/api';
+import { useTranslation } from '../../../shared/i18n/useTranslation';
 import './ListingPublishPage.css';
 import { Button } from '../../../shared/components/Button';
 
+/**
+ * Phase 250.3.A.3 — KYC remediation banner shown when the publish
+ * endpoint rejects with ``code === "TENANT_KYC_NOT_VERIFIED"``.
+ *
+ * The detection logic walks the structured ApiError shape:
+ * ``error.error.code === "TENANT_KYC_NOT_VERIFIED"``. The
+ * remediation URL is read from ``details.remediation_url`` (the
+ * backend always stamps it as ``/settings/billing/kyc`` per
+ * ``hub/apps/marketplace/business_rules.py:validate_tenant_kyc``)
+ * — we read it from the response rather than hard-coding so a
+ * future backend change to the remediation URL is honoured
+ * automatically.
+ *
+ * Falls back to a default ``/settings/billing/kyc`` link if the
+ * backend forgot to stamp the URL (defensive — should never fire
+ * in practice since the structured-error contract guarantees the
+ * field).
+ */
+function getKycRemediation(error: unknown): {
+  blocked: boolean;
+  remediationUrl: string;
+  kycStatus?: string;
+} {
+  if (!isApiError(error)) {
+    return { blocked: false, remediationUrl: '/settings/billing/kyc' };
+  }
+  if (error.error.code !== 'TENANT_KYC_NOT_VERIFIED') {
+    return { blocked: false, remediationUrl: '/settings/billing/kyc' };
+  }
+  const details = (error.error.details ?? {}) as Record<string, unknown>;
+  const url = typeof details.remediation_url === 'string'
+    ? details.remediation_url
+    : '/settings/billing/kyc';
+  const kycStatus = typeof details.kyc_status === 'string'
+    ? details.kyc_status
+    : undefined;
+  return { blocked: true, remediationUrl: url, kycStatus };
+}
+
 export function ListingPublishPage() {
   const navigate = useNavigate();
+  const { t } = useTranslation();
   const createMutation = useCreateListing();
   // Only ACTIVE assets can be listed (business rule); filter to avoid user selecting DRAFT
   const { data: assetsData } = useAssets({ page_size: 100, ordering: 'name', status: 'ACTIVE' });
@@ -127,13 +169,48 @@ export function ListingPublishPage() {
         <h1>Publish Listing</h1>
       </div>
 
-      {createMutation.isError && (
-        <ErrorDisplay
-          error={createMutation.error}
-          title="Failed to create listing"
-          onRetry={() => createMutation.reset()}
-        />
-      )}
+      {createMutation.isError && (() => {
+        // Phase 250.3.A.3 — when the rejection is the structured
+        // KYC gate, surface the localised remediation banner with
+        // the verification call-to-action. Otherwise fall through
+        // to the generic ErrorDisplay.
+        const kyc = getKycRemediation(createMutation.error);
+        if (kyc.blocked) {
+          return (
+            <div
+              role="alert"
+              aria-label={t('marketplace.publish.kyc_blocked.aria_label')}
+              data-testid="kyc-blocked-banner"
+              className="error-display error-display-kyc"
+            >
+              <h3>{t('marketplace.publish.kyc_blocked.heading')}</h3>
+              <p>{t('marketplace.publish.kyc_blocked.body')}</p>
+              {kyc.kycStatus && (
+                <p>
+                  <strong>
+                    {t('marketplace.publish.kyc_blocked.status_label')}
+                  </strong>{' '}
+                  <code>{kyc.kycStatus}</code>
+                </p>
+              )}
+              <a
+                href={kyc.remediationUrl}
+                className="kyc-remediation-link"
+                data-testid="kyc-remediation-link"
+              >
+                {t('marketplace.publish.kyc_blocked.cta_label')}
+              </a>
+            </div>
+          );
+        }
+        return (
+          <ErrorDisplay
+            error={createMutation.error}
+            title="Failed to create listing"
+            onRetry={() => createMutation.reset()}
+          />
+        );
+      })()}
 
       <form onSubmit={handleSubmit} className="listing-publish-form">
         <div className="form-section">

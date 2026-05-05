@@ -10,6 +10,8 @@
 import { Link, useNavigate } from 'react-router-dom';
 import type { Contract } from '../../../shared/types/contracts';
 import type { Dataset } from '../../../shared/types/datasets';
+import { useAssetWorkflowStatus } from '../hooks/useAssetWorkflowStatus';
+import { WorkflowProgressWidget } from './WorkflowProgressWidget';
 import './OnboardingChecklist.css';
 
 export interface OnboardingChecklistProps {
@@ -19,6 +21,18 @@ export interface OnboardingChecklistProps {
   complianceStatus: string;
   assetId?: string;
   datasetId?: string;
+  /**
+   * Phase 250.6.C — when set, embeds the `<WorkflowProgressWidget>`
+   * at the TOP of the checklist (before the per-step rows) so the
+   * user sees BOTH "what's still RUNNING" and "what's left to do
+   * once it completes". Pass the workflow_instance_id returned by
+   * the data-first endpoint OR by the create-asset mutation.
+   * Polling stops automatically when the workflow reaches a
+   * terminal state (COMPLETED / FAILED), so it's safe to leave the
+   * prop set after the workflow finishes — the widget will surface
+   * the terminal state and the hook stops polling.
+   */
+  workflowInstanceId?: string | null;
   onRunDQ?: () => void;
   onRunCompliance?: () => void;
   /** Called when the user clicks the final "Activate" step. */
@@ -261,12 +275,20 @@ export function OnboardingChecklist({
   dqStatus,
   complianceStatus,
   assetId,
+  workflowInstanceId,
   onRunDQ,
   onRunCompliance,
   onActivate,
   isActivating,
 }: OnboardingChecklistProps) {
   const navigate = useNavigate();
+  // Phase 250.6.C — workflow status polling. The hook is gated on
+  // `workflowInstanceId` being truthy (its `enabled` option), so when
+  // the prop is absent / null the hook is a no-op and no network
+  // traffic fires. Same `gcTime: 60_000` memory-leak guard applies
+  // — the cache entry GC's 60s after last subscriber unmounts.
+  const workflowStatusQuery = useAssetWorkflowStatus(workflowInstanceId);
+
   const steps = getSteps({
     contracts,
     datasets,
@@ -287,6 +309,21 @@ export function OnboardingChecklist({
 
   return (
     <div className="onboarding-checklist" data-testid="onboarding-checklist">
+      {/*
+       * Phase 250.6.C.2 — workflow progress widget rendered ABOVE the
+       * checklist when ``workflowInstanceId`` is set. The widget shows
+       * the live RUNNING status (step + progress + ETA); the checklist
+       * below shows the post-COMPLETED prerequisites the user still
+       * needs to walk through to activate.
+       */}
+      {workflowInstanceId && (
+        <WorkflowProgressWidget
+          data={workflowStatusQuery.data}
+          isLoading={workflowStatusQuery.isLoading}
+          isError={workflowStatusQuery.isError}
+          className="onboarding-checklist__workflow-widget"
+        />
+      )}
       <div className="onboarding-checklist-header">
         <h2>Activation Checklist</h2>
         <span className="onboarding-progress" data-testid="onboarding-progress">

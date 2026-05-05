@@ -15,7 +15,7 @@ This runbook describes the **data-first asset creation flow**: creating an asset
 - Hub API running (e.g. `docker compose up -d` or `docker compose -f docker-compose.test.yml up -d`).
 - MinIO (or S3) storage available for file uploads.
 - Authenticated user with `DATA_PROVIDER` role and active tenant subscription.
-- File uploaded via `POST /api/v1/files/` and in `ACTIVE` status.
+- File uploaded via `POST /api/v1/files/` and in `COMPLETED` status.
 
 ## Flow overview
 
@@ -62,8 +62,8 @@ This runbook describes the **data-first asset creation flow**: creating an asset
 
 ### File not found (404)
 
-- **Cause:** `file_id` invalid, file belongs to another tenant, or file not in `ACTIVE` status.
-- **Check:** `File.objects.filter(id=file_id, tenant_id=user.tenant_id, status=ACTIVE)`.
+- **Cause:** `file_id` invalid, file belongs to another tenant, or file not in `COMPLETED` status.
+- **Check:** `File.objects.filter(id=file_id, tenant_id=user.tenant_id, status=COMPLETED)`.
 - **Fix:** Ensure file was uploaded by the same tenant; verify file status.
 
 ### Workflow failed (400/500)

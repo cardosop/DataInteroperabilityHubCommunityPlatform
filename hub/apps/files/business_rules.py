@@ -857,14 +857,15 @@ class FilesBusinessRules(BusinessRules):
         new_status: Optional[str] = None,
     ) -> ValidationResult:
         """
-        Validate file update (e.g. complete upload): file must be PENDING or UPLOADING
-        for status transition to ACTIVE; user must have write access.
+        Validate file update (e.g. complete upload): file must be PENDING or
+        UPLOADING for transition to a terminal upload status (ACTIVE legacy or
+        COMPLETED canonical); user must have write access.
 
         Args:
             file: File instance to update
             tenant: Tenant instance (must match file.tenant)
             user: User performing the update
-            new_status: Target status (e.g. ACTIVE for complete_upload)
+            new_status: Target status (e.g. COMPLETED for complete_upload)
 
         Returns:
             ValidationResult; invalid if state or permissions fail.
@@ -880,7 +881,7 @@ class FilesBusinessRules(BusinessRules):
         else:
             details['tenant_match'] = True
 
-        if new_status == FileStatus.ACTIVE:
+        if new_status in (FileStatus.ACTIVE, FileStatus.COMPLETED):
             if file.status not in (FileStatus.PENDING, FileStatus.UPLOADING):
                 errors.append(
                     f"File is not in a state that allows completion (current: {file.status}). "

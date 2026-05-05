@@ -75,6 +75,11 @@ class FederatedAssetWorkflowTest(TestCase):
             name=f"Test Tenant {uuid.uuid4().hex[:8]}",
             slug=f"test-tenant-{uuid.uuid4().hex[:8]}",
             kyc_status=KYCStatus.VERIFIED,
+            # Phase 250.5.A.2 — federated import is opt-in per D250.3
+            # (default False). Workflow tests MUST flip the flag at
+            # fixture time or the gate refuses with
+            # FederatedImportRejected("FEDERATED_IMPORT_DISABLED").
+            federated_import_enabled=True,
         )
         self.user = User.objects.create_user(
             email=f"test-{uuid.uuid4().hex[:8]}@example.com",

@@ -468,9 +468,9 @@ class FileViewSet(viewsets.ModelViewSet):
                 user_id=str(request.user.id) if request.user and request.user.id else None,
                 content_sha256=content_sha256,
                 new_status=(
-                    FileStatus.ACTIVE.value
-                    if hasattr(FileStatus.ACTIVE, "value")
-                    else str(FileStatus.ACTIVE)
+                    FileStatus.COMPLETED.value
+                    if hasattr(FileStatus.COMPLETED, "value")
+                    else str(FileStatus.COMPLETED)
                 ),
             )
         except ServiceValidationError as e:

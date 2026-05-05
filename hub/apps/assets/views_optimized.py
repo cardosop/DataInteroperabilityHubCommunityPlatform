@@ -131,7 +131,24 @@ class OptimizedAssetViewSet(viewsets.ModelViewSet):
         name = serializer.validated_data['name']
         description = serializer.validated_data.get('description')
         domain = serializer.validated_data.get('domain')
-        visibility = serializer.validated_data.get('visibility', 'INTERNAL')
+        # Phase 250.3.B.4 (D250.4) — visibility is no longer a stored
+        # column. The serializer still accepts it for phase-1 backwards
+        # compat, but the optimised create path also routes through the
+        # deprecation setter (when present) so dashboards see this view
+        # in the call-site mix. The setter is invoked when ``Asset(...)``
+        # is constructed below — we just don't pass an ``visibility=``
+        # kwarg to the constructor.
+        legacy_visibility_in_body = serializer.validated_data.get('visibility')
+        if legacy_visibility_in_body is not None:
+            from .views import _emit_visibility_deprecation_signal
+
+            _emit_visibility_deprecation_signal(
+                request=request,
+                tenant=None,  # tenant not yet resolved at this branch
+                attempted_value=legacy_visibility_in_body,
+                call_site='view_optimized.create',
+                asset_id=None,
+            )
 
         # Get tenant from user (with caching)
         tenant = None
@@ -164,7 +181,11 @@ class OptimizedAssetViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_400_BAD_REQUEST
             )
 
-        # Create asset
+        # Create asset.
+        # Phase 250.3.B.1 — no ``visibility`` kwarg here; the value is
+        # derived from status server-side. Passing it would trip the
+        # model's deprecation setter a SECOND time (in addition to the
+        # view-layer emission above) and double-count the dashboard.
         asset = Asset.objects.create(
             tenant=tenant,
             key=key,
@@ -172,7 +193,6 @@ class OptimizedAssetViewSet(viewsets.ModelViewSet):
             description=description,
             domain=domain,
             status=AssetStatus.DRAFT,
-            visibility=visibility,
             created_by=request.user
         )
 

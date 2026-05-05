@@ -3,6 +3,12 @@ Phase 80.1 — Asset signal tests.
 
 Tests that the post_save signal on Asset enqueues a search vector rebuild
 and that failures are logged rather than propagated.
+
+Phase 250.1.F update (closes B2-5): the rebuild is GATED on
+``status != DRAFT``. The original Phase 80.1 tests below were rewritten
+to seed assets with ``status=AssetStatus.ACTIVE`` so they continue to
+exercise the enqueue path. The DRAFT-suppression contract has its own
+dedicated suite at ``test_search_vector_signal_timing.py``.
 """
 from unittest.mock import patch, MagicMock
 
@@ -10,7 +16,7 @@ import pytest
 from django.db.models.signals import post_save
 from django.test import TestCase
 
-from hub.apps.assets.models import Asset
+from hub.apps.assets.models import Asset, AssetStatus
 
 
 @pytest.mark.django_db(transaction=True)
@@ -24,6 +30,13 @@ class AssetSignalTest(TestCase):
         )
         return tenant
 
+    def _create_active_asset(self, tenant, name):
+        """Phase 250.1.F gate: only non-DRAFT saves enqueue the
+        rebuild, so signal-fire tests must seed with ACTIVE."""
+        return Asset.objects.create(
+            tenant=tenant, name=name, status=AssetStatus.ACTIVE,
+        )
+
     def test_signal_connected_to_post_save(self):
         """Signal handler is connected to Asset post_save."""
         from hub.apps.assets.signals import rebuild_asset_search_vector
@@ -36,7 +49,7 @@ class AssetSignalTest(TestCase):
         """Asset save enqueues a search vector rebuild task."""
         tenant = self._create_tenant()
         with self.captureOnCommitCallbacks(execute=True):
-            asset = Asset.objects.create(tenant=tenant, name="sig-test-asset")
+            asset = self._create_active_asset(tenant, "sig-test-asset")
         mock_enqueue.assert_called_with(str(asset.pk))
 
     @patch("hub.apps.assets.signals.logger")
@@ -49,7 +62,7 @@ class AssetSignalTest(TestCase):
         tenant = self._create_tenant()
         # Should NOT raise
         with self.captureOnCommitCallbacks(execute=True):
-            Asset.objects.create(tenant=tenant, name="sig-exc-test")
+            self._create_active_asset(tenant, "sig-exc-test")
         mock_logger.warning.assert_called_once()
         assert "asset_search_vector_enqueue_failed" in str(mock_logger.warning.call_args)
 
@@ -58,7 +71,7 @@ class AssetSignalTest(TestCase):
         """Updating an existing asset also triggers the signal."""
         tenant = self._create_tenant()
         with self.captureOnCommitCallbacks(execute=True):
-            asset = Asset.objects.create(tenant=tenant, name="sig-update")
+            asset = self._create_active_asset(tenant, "sig-update")
         mock_enqueue.reset_mock()
         with self.captureOnCommitCallbacks(execute=True):
             asset.name = "sig-update-v2"
@@ -67,10 +80,12 @@ class AssetSignalTest(TestCase):
 
     @patch("hub.apps.search.tasks.enqueue_asset_search_vector_update")
     def test_created_and_updated_both_fire(self, mock_enqueue):
-        """Signal fires on both create and update (no created-only guard)."""
+        """Signal fires on both create and update for non-DRAFT
+        assets (Phase 250.1.F gates DRAFT but does not narrow the
+        non-DRAFT contract)."""
         tenant = self._create_tenant()
         with self.captureOnCommitCallbacks(execute=True):
-            asset = Asset.objects.create(tenant=tenant, name="sig-both")
+            asset = self._create_active_asset(tenant, "sig-both")
         assert mock_enqueue.call_count >= 1
         mock_enqueue.reset_mock()
         with self.captureOnCommitCallbacks(execute=True):

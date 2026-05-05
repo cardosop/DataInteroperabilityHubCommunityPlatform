@@ -31,6 +31,10 @@ import { LoadingSpinner } from '../../shared/components/LoadingSpinner';
 import { ProtectedRoute } from '../../shared/components/ProtectedRoute';
 import { ComingSoonPage } from '../../shared/components/ComingSoonPage';
 import { UnavailablePage } from '../../shared/components/UnavailablePage';
+// Phase 250.6.A.5 — generic disabled-capability landing page,
+// the redirect target for ``<CapabilityRoute capability="...">``.
+// Reusable across capabilities (NOT hardcoded to asset_creation).
+import { DisabledCapabilityPage } from '../../shared/components/DisabledCapabilityPage';
 
 /** Wrap a lazy-loaded page in both Suspense and ErrorBoundary */
 function EB({ fallbackMsg, children }: { fallbackMsg: string; children: ReactNode }) {
@@ -542,6 +546,14 @@ const UserEditPage = lazy(() =>
     default: m.UserEditPage,
   }))
 );
+// Phase 250.6.E.1 — per-tenant feature-flags admin page.
+const TenantFeatureFlagsAdminPage = lazy(() =>
+  import('../../features/admin/components/TenantFeatureFlagsAdminPage').then(
+    (m) => ({
+      default: m.TenantFeatureFlagsAdminPage,
+    }),
+  ),
+);
 const HomePage = lazy(() =>
   import('../pages/HomePage').then((m) => ({
     default: m.HomePage,
@@ -621,7 +633,24 @@ export const appRoutes: Parameters<typeof createBrowserRouter>[0] = [
     element: <AcceptInvitationPage />,
   },
   {
+    // Phase 250.6.A.5 — `/unavailable` is the redirect target for
+    // ``<CapabilityRoute>`` when the required capability is False.
+    // Replaced the legacy ``<UnavailablePage>`` with the new
+    // ``<DisabledCapabilityPage>`` which (a) reads the capability
+    // name from `location.state.capability` (set by CapabilityRoute),
+    // (b) renders capability-specific copy when available, (c)
+    // surfaces the capability key for support tickets, (d) provides
+    // a "back to dashboard" CTA. The legacy ``UnavailablePage`` is
+    // preserved as an import for any direct callers but is no longer
+    // wired into the route table.
     path: '/unavailable',
+    element: <DisabledCapabilityPage />,
+  },
+  {
+    // Legacy alias for direct callers that still navigate to
+    // `/feature-unavailable`. Routes to the same surface so the
+    // redirect path is consistent.
+    path: '/feature-unavailable',
     element: <UnavailablePage />,
   },
   {
@@ -660,10 +689,28 @@ export const appRoutes: Parameters<typeof createBrowserRouter>[0] = [
             ),
           },
           {
+            // Phase 250.6.A.2 (D250.17) — wrap /assets/create in
+            // BOTH route gates so the URL is consistent with the
+            // sidebar nav AND with the per-tenant kill switch:
+            //   * <MvpGatedRoute> — redirects to /coming-soon when
+            //     the deploy is in MVP_MODE and the path is gated
+            //     by mvpNav.ts (matches the sidebar gating).
+            //   * <CapabilityRoute capability="asset_creation"> —
+            //     redirects to /unavailable when the per-tenant
+            //     ``asset_creation`` capability (mirrored from
+            //     ``Tenant.asset_creation_enabled``) is False.
+            // The order is MvpGatedRoute → CapabilityRoute so MVP
+            // gating wins when both apply (the MVP gate is a
+            // platform-wide release control; capability is a
+            // per-tenant runtime control).
             path: 'create',
             element: (
               <EB fallbackMsg="Loading...">
-                <AssetCreatePage />
+                <MvpGatedRoute>
+                  <CapabilityRoute capability="asset_creation">
+                    <AssetCreatePage />
+                  </CapabilityRoute>
+                </MvpGatedRoute>
               </EB>
             ),
           },
@@ -1503,6 +1550,27 @@ export const appRoutes: Parameters<typeof createBrowserRouter>[0] = [
           <ProtectedRoute requiredRole={['TENANT_ADMIN', 'PLATFORM_ADMIN']}>
             <EB fallbackMsg="Loading...">
               <UserEditPage />
+            </EB>
+          </ProtectedRoute>
+        ),
+      },
+      {
+        // Phase 250.6.E.1 — per-tenant feature-flags admin page.
+        // TENANT_ADMIN-only per Phase 250.6.E.2 — the
+        // ``<ProtectedRoute>`` gate matches the convention used by
+        // the other admin/* routes (admin, contract-health,
+        // openlineage). The backend endpoints
+        // ``GET/PATCH /api/v1/tenants/me/feature-flags/`` AND
+        // ``GET /api/v1/tenants/me/feature-flag-history/`` ALSO
+        // enforce the role gate via ``_enforce_tenant_admin`` —
+        // the FE gate is a UX-grade convenience (don't render the
+        // page for non-admins) layered on top of the load-bearing
+        // backend gate (don't accept the request from non-admins).
+        path: 'admin/tenant-settings',
+        element: (
+          <ProtectedRoute requiredRole={['TENANT_ADMIN', 'PLATFORM_ADMIN']}>
+            <EB fallbackMsg="Loading tenant settings...">
+              <TenantFeatureFlagsAdminPage />
             </EB>
           </ProtectedRoute>
         ),

@@ -134,8 +134,8 @@ class File(models.Model):
         return sha256_hash.hexdigest()
     
     def is_active(self) -> bool:
-        """Check if file is active"""
-        return self.status == FileStatus.ACTIVE
+        """Check if file is in a terminal usable state."""
+        return self.status in (FileStatus.ACTIVE, FileStatus.COMPLETED)
     
     def is_uploading(self) -> bool:
         """Check if file is currently being uploaded"""
