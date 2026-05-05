@@ -749,12 +749,11 @@ elif "test" in sys.argv or "pytest" in sys.modules:
     DATABASES["baas"] = dict(DATABASES["default"])
 
 # DATABASE_ROUTERS: BaaS router first (handles BaaSUsageRecord exclusively),
-# then ManagementCommandAdminRouter (command-mode admin alias),
 # then PrimaryReplicaRouter for read-replica routing across read-heavy apps.
 # PrimaryReplicaRouter is a no-op when DATABASE_REPLICA_URL is not configured.
+# (ManagementCommandAdminRouter lands with the Phase 260.B-RLS wave.)
 DATABASE_ROUTERS = [
     "hub.apps.baas.db_router.BaaSDBRouter",
-    "hub.db_router.ManagementCommandAdminRouter",
     "hub.db_router.PrimaryReplicaRouter",
 ]
 
