@@ -1,6 +1,9 @@
 """
 Search API Views
 """
+from typing import Any, cast
+
+from django.http import HttpRequest
 from rest_framework import viewsets, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
@@ -24,6 +27,8 @@ from .serializers import (
 )
 from .indexing import SearchIndexer
 from hub.apps.auth.permissions import HasRole
+from hub.apps.observability.cross_tenant_metrics import cross_tenant_denied
+from hub.apps.tenants.request_tenant import get_request_tenant_id
 
 # Auditor permission - users with AUDITOR role
 class IsAuditor(HasRole):
@@ -396,15 +401,19 @@ class SearchViewSet(viewsets.ViewSet):
             "result_type": "CONTRACT|ASSET|DATASET"
         }
         """
-        analytics_id = request.data.get('analytics_id')
-        result_id = request.data.get('result_id')
-        result_type = request.data.get('result_type')
+        request_data = cast(dict[str, Any], request.data)
+        analytics_id_raw = request_data.get("analytics_id")
+        result_id_raw = request_data.get("result_id")
+        result_type_raw = request_data.get("result_type")
 
-        if not all([analytics_id, result_id, result_type]):
+        if not all([analytics_id_raw, result_id_raw, result_type_raw]):
             return Response(
                 {'error': 'analytics_id, result_id, and result_type are required'},
                 status=status.HTTP_400_BAD_REQUEST
             )
+        analytics_id = str(analytics_id_raw)
+        result_id = str(result_id_raw)
+        result_type = str(result_type_raw)
 
         try:
             SearchEngine.track_click(analytics_id, result_id, result_type)
@@ -526,10 +535,34 @@ class SearchViewSet(viewsets.ViewSet):
 
         Body (optional):
         {
-            "tenant_id": "uuid"  # If not provided, rebuilds for all tenants
+            "tenant_id": "uuid"  # Deprecated: server derives tenant from request context
         }
         """
-        tenant_id = request.data.get('tenant_id')
+        request_data = cast(dict[str, Any], request.data)
+        tenant_id = get_request_tenant_id(cast(HttpRequest, request))
+        body_tenant_id = request_data.get("tenant_id")
+        if body_tenant_id is not None and str(body_tenant_id).strip():
+            if str(body_tenant_id) != str(tenant_id):
+                cross_tenant_denied(
+                    endpoint="search.rebuild_index",
+                    reason="body_tenant_mismatch",
+                    request=cast(HttpRequest, request),
+                    requested_tenant_id=body_tenant_id,
+                    actual_tenant_id=tenant_id,
+                )
+                return Response(
+                    {
+                        "code": "CROSS_TENANT_FORBIDDEN",
+                        "detail": "tenant_id must not be set in request body",
+                    },
+                    status=status.HTTP_403_FORBIDDEN,
+                )
+
+        if not tenant_id:
+            return Response(
+                {"error": "tenant_id is required"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
 
         # Rebuild index using SearchService (which publishes events)
         search_service = SearchService(

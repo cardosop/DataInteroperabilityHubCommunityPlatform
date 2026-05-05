@@ -18,6 +18,7 @@ Actual API paths:
 """
 
 import requests
+from urllib.parse import parse_qs, urlparse
 from tests._persona_provisioning import provision_persona
 from tests.use_cases._api_helpers import api_base_url
 
@@ -64,6 +65,11 @@ def test_sso_initiation_returns_redirect():
         assert "login_url" in body, (
             f"200 response missing login_url: {body}"
         )
+        parsed = urlparse(body["login_url"])
+        query = parse_qs(parsed.query)
+        assert query.get("state"), (
+            f"OIDC login_url missing state query parameter: {body['login_url']}"
+        )
     elif resp.status_code == 400:
         # SSO not configured for this tenant — valid response
         body = resp.json()
@@ -103,11 +109,10 @@ def test_sso_oidc_callback_without_id_token_returns_400():
     return 400 (missing required field).
     """
     base = api_base_url()
-    creds = provision_persona("tenant_admin")
 
     resp = requests.post(
         f"{base}/auth/sso/oidc/callback/",
-        json={"tenant_id": creds.tenant_id},
+        json={"state": "invalid-state"},
         timeout=15,
     )
 
@@ -127,13 +132,12 @@ def test_sso_oidc_callback_with_invalid_token_returns_error():
     return 400 (authentication failed).
     """
     base = api_base_url()
-    creds = provision_persona("tenant_admin")
 
     resp = requests.post(
         f"{base}/auth/sso/oidc/callback/",
         json={
             "id_token": "invalid-token-value",
-            "tenant_id": creds.tenant_id,
+            "state": "invalid-state",
         },
         timeout=15,
     )

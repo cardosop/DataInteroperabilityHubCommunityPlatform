@@ -3,16 +3,23 @@ SSO Views
 
 REST API views for SSO authentication.
 """
-from rest_framework import viewsets, status, permissions
-from rest_framework.decorators import action, api_view, permission_classes
+import ipaddress
+
+from rest_framework import status, viewsets
+from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.exceptions import ValidationError
 from rest_framework.permissions import AllowAny
-from drf_spectacular.utils import extend_schema, OpenApiParameter, OpenApiResponse
+from drf_spectacular.utils import OpenApiParameter, OpenApiResponse, extend_schema
 from drf_spectacular.types import OpenApiTypes
+
+from hub.apps.audit import event_types
+from hub.apps.audit.utils import create_audit_event
+from hub.apps.users.models import UserTenantMembership
 
 from .sso import SSOService
 from .jwt_utils import JWTTokenGenerator
+from . import sso_state
 
 
 class SSOViewSet(viewsets.ViewSet):
@@ -20,6 +27,72 @@ class SSOViewSet(viewsets.ViewSet):
     ViewSet for SSO authentication.
     """
     permission_classes = [AllowAny]  # SSO endpoints are public
+
+    @staticmethod
+    def _ip_class(request) -> str:
+        forwarded = (
+            (request.META.get("HTTP_X_FORWARDED_FOR") or "")
+            .split(",")[0]
+            .strip()
+        )
+        remote_addr = forwarded or (request.META.get("REMOTE_ADDR") or "")
+        try:
+            ip = ipaddress.ip_address(remote_addr)
+        except ValueError:
+            return "unknown"
+        return "private" if ip.is_private else "public"
+
+    @staticmethod
+    def _single_membership_tenant_id(email: str | None) -> str | None:
+        if not email:
+            return None
+        memberships = (
+            UserTenantMembership.objects.filter(user__email=email)
+            .values_list("tenant_id", flat=True)
+            .distinct()
+        )
+        tenant_ids = [str(tid) for tid in memberships]
+        if len(tenant_ids) == 1:
+            return tenant_ids[0]
+        if len(tenant_ids) > 1:
+            raise ValidationError({"error": "SSO_TENANT_AMBIGUOUS"})
+        return None
+
+    def _resolve_callback_tenant_id(
+        self,
+        *,
+        request,
+        state_param: str | None,
+        asserted_email: str | None,
+    ) -> str:
+        request_ip_class = self._ip_class(request)
+        try:
+            state_tenant_id = sso_state.consume_state(state_param, request_ip_class)
+        except sso_state.SSOStateError as exc:
+            if exc.code == "SSO_STATE_MISSING":
+                fallback_tenant_id = self._single_membership_tenant_id(asserted_email)
+                if fallback_tenant_id:
+                    return fallback_tenant_id
+            raise ValidationError({"error": exc.code}) from exc
+
+        body_tenant_id = request.data.get("tenant_id")
+        if body_tenant_id and str(body_tenant_id) != str(state_tenant_id):
+            create_audit_event(
+                resource_type="AUTH",
+                action=event_types.CROSS_TENANT_DENIED,
+                tenant=None,
+                result="FAILURE",
+                details={
+                    "reason": "SSO_STATE_TENANT_MISMATCH",
+                    "state_tenant_id": str(state_tenant_id),
+                    "body_tenant_id": str(body_tenant_id),
+                    "path": request.path,
+                },
+                request=request,
+            )
+            raise ValidationError({"error": "SSO_STATE_TENANT_MISMATCH"})
+
+        return str(state_tenant_id)
 
     def _get_tenant_id(self, request):
         """Get tenant ID from request"""
@@ -79,7 +152,13 @@ class SSOViewSet(viewsets.ViewSet):
         if not redirect_uri:
             raise ValidationError("redirect_uri is required")
 
-        login_url = SSOService.get_sso_login_url(tenant_id, "SAML", redirect_uri)
+        relay_state = sso_state.issue_state(tenant_id, self._ip_class(request))
+        login_url = SSOService.get_sso_login_url(
+            tenant_id,
+            "SAML",
+            redirect_uri,
+            state=relay_state,
+        )
 
         if not login_url:
             return Response(
@@ -114,18 +193,23 @@ class SSOViewSet(viewsets.ViewSet):
 
         POST /api/v1/auth/sso/saml/callback/
         """
-        tenant_id = self._get_tenant_id(request) or request.data.get('tenant_id')
         saml_response = request.data.get('SAMLResponse')
-
-        if not tenant_id:
-            raise ValidationError("tenant_id is required")
 
         if not saml_response:
             raise ValidationError("SAMLResponse is required")
 
+        asserted_identity = SSOService._extract_unverified_saml_identity(
+            saml_response
+        )
+        tenant_id = self._resolve_callback_tenant_id(
+            request=request,
+            state_param=request.data.get("RelayState"),
+            asserted_email=asserted_identity,
+        )
+
         user, attributes = SSOService.authenticate_saml(tenant_id, saml_response)
 
-        if not user:
+        if user is None:
             return Response(
                 {"error": "SAML authentication failed"},
                 status=status.HTTP_400_BAD_REQUEST
@@ -138,8 +222,8 @@ class SSOViewSet(viewsets.ViewSet):
             'access_token': access_token,
             'token_type': 'Bearer',
             'user': {
-                'id': str(user.id),
-                'email': user.email
+                'id': str(getattr(user, "id", "")),
+                'email': getattr(user, "email", ""),
             }
         }, status=status.HTTP_200_OK)
 
@@ -184,7 +268,13 @@ class SSOViewSet(viewsets.ViewSet):
         if not redirect_uri:
             raise ValidationError("redirect_uri is required")
 
-        login_url = SSOService.get_sso_login_url(tenant_id, "OIDC", redirect_uri)
+        state = sso_state.issue_state(tenant_id, self._ip_class(request))
+        login_url = SSOService.get_sso_login_url(
+            tenant_id,
+            "OIDC",
+            redirect_uri,
+            state=state,
+        )
 
         if not login_url:
             return Response(
@@ -203,9 +293,10 @@ class SSOViewSet(viewsets.ViewSet):
                 'properties': {
                     'id_token': {'type': 'string'},
                     'access_token': {'type': 'string'},
-                    'tenant_id': {'type': 'string', 'format': 'uuid'}
+                    'state': {'type': 'string'},
+                    'tenant_id': {'type': 'string', 'format': 'uuid'},
                 },
-                'required': ['id_token', 'tenant_id']
+                'required': ['id_token', 'state']
             }
         },
         responses={
@@ -221,19 +312,26 @@ class SSOViewSet(viewsets.ViewSet):
 
         POST /api/v1/auth/sso/oidc/callback/
         """
-        tenant_id = self._get_tenant_id(request) or request.data.get('tenant_id')
         id_token = request.data.get('id_token')
         access_token = request.data.get('access_token')
-
-        if not tenant_id:
-            raise ValidationError("tenant_id is required")
 
         if not id_token:
             raise ValidationError("id_token is required")
 
+        claims = SSOService._extract_unverified_oidc_claims(id_token)
+        tenant_id = self._resolve_callback_tenant_id(
+            request=request,
+            state_param=request.data.get("state"),
+            asserted_email=(
+                claims.get("email")
+                if isinstance(claims, dict)
+                else None
+            ),
+        )
+
         user, claims = SSOService.authenticate_oidc(tenant_id, id_token, access_token)
 
-        if not user:
+        if user is None:
             return Response(
                 {"error": "OIDC authentication failed"},
                 status=status.HTTP_400_BAD_REQUEST
@@ -243,7 +341,7 @@ class SSOViewSet(viewsets.ViewSet):
         access_token_jwt = JWTTokenGenerator.generate_access_token(user)
 
         # Warm cache for tenant on login (async to avoid blocking login response)
-        if user.tenant_id:
+        if getattr(user, "tenant_id", None):
             try:
                 from hub.apps.core.caching.warming import warm_tenant_cache
                 import threading
@@ -251,13 +349,16 @@ class SSOViewSet(viewsets.ViewSet):
                 # Warm cache in background thread to avoid blocking login
                 def warm_cache_async():
                     try:
-                        tenant_id = str(user.tenant_id)
-                        warm_tenant_cache(tenant_id)
+                        user_tenant_id = str(getattr(user, "tenant_id", ""))
+                        warm_tenant_cache(user_tenant_id)
                     except Exception as e:
                         # Log error but don't fail login
                         import logging
                         logger = logging.getLogger(__name__)
-                        logger.warning(f"Failed to warm cache on SSO login: {e}", exc_info=True)
+                        logger.warning(
+                            f"Failed to warm cache on SSO login: {e}",
+                            exc_info=True,
+                        )
 
                 # Start background thread for cache warming
                 thread = threading.Thread(target=warm_cache_async, daemon=True)
@@ -266,14 +367,16 @@ class SSOViewSet(viewsets.ViewSet):
                 # Log error but don't fail login
                 import logging
                 logger = logging.getLogger(__name__)
-                logger.warning(f"Failed to start cache warming on SSO login: {e}", exc_info=True)
+                logger.warning(
+                    f"Failed to start cache warming on SSO login: {e}",
+                    exc_info=True,
+                )
 
         return Response({
             'access_token': access_token_jwt,
             'token_type': 'Bearer',
             'user': {
-                'id': str(user.id),
-                'email': user.email
+                'id': str(getattr(user, "id", "")),
+                'email': getattr(user, "email", ""),
             }
         }, status=status.HTTP_200_OK)
-

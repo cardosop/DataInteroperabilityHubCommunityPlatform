@@ -5,7 +5,10 @@ SAML and OIDC integration for single sign-on authentication.
 """
 from __future__ import annotations
 
+import base64
+import re
 from typing import Any, Dict, List, Optional, Tuple
+import jwt
 from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.utils import timezone
@@ -181,10 +184,20 @@ class OIDCProvider(SSOProvider):
             return None, {}
     
     def _parse_id_token(self, id_token: str) -> Dict[str, Any]:
-        """Parse OIDC ID token (simplified - use proper library in production)"""
-        # In production, use authlib or pyoidc to parse and validate
-        # This is a placeholder
-        return {}
+        """Parse OIDC ID token (best-effort claim extraction)."""
+        try:
+            claims = jwt.decode(
+                id_token,
+                options={
+                    "verify_signature": False,
+                    "verify_aud": False,
+                    "verify_exp": False,
+                },
+                algorithms=["HS256", "RS256", "ES256"],
+            )
+            return claims if isinstance(claims, dict) else {}
+        except Exception:
+            return {}
     
     def _get_or_create_user(self, identifier: str, claims: Dict[str, Any]) -> Optional[User]:
         """Get or create user from OIDC claims"""
@@ -318,9 +331,55 @@ class SSOService:
             'id_token': id_token,
             'access_token': access_token
         })
+
+    @staticmethod
+    def _extract_unverified_oidc_claims(id_token: str) -> Dict[str, Any]:
+        """Extract claims without signature verification for pre-routing fallback."""
+        try:
+            claims = jwt.decode(
+                id_token,
+                options={
+                    "verify_signature": False,
+                    "verify_aud": False,
+                    "verify_exp": False,
+                },
+                algorithms=["HS256", "RS256", "ES256"],
+            )
+            return claims if isinstance(claims, dict) else {}
+        except Exception:
+            return {}
+
+    @staticmethod
+    def _extract_unverified_saml_identity(saml_response: str | None) -> Optional[str]:
+        """
+        Best-effort extraction of asserted identity from raw SAMLResponse.
+        """
+        if not saml_response:
+            return None
+        try:
+            decoded = base64.b64decode(saml_response).decode("utf-8", errors="ignore")
+        except Exception:
+            decoded = saml_response
+
+        name_id_match = re.search(r"<NameID[^>]*>([^<]+)</NameID>", decoded)
+        if name_id_match:
+            return name_id_match.group(1).strip()
+
+        email_match = re.search(
+            r"[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}",
+            decoded,
+        )
+        if email_match:
+            return email_match.group(0)
+        return None
     
     @staticmethod
-    def get_sso_login_url(tenant_id: str, provider_type: str, redirect_uri: str) -> Optional[str]:
+    def get_sso_login_url(
+        tenant_id: str,
+        provider_type: str,
+        redirect_uri: str,
+        state: Optional[str] = None,
+    ) -> Optional[str]:
         """
         Get SSO login URL for redirect.
         
@@ -343,7 +402,12 @@ class SSOService:
             # In production, use proper SAML library
             sso_url = config.get('sso_url')
             if sso_url:
-                return f"{sso_url}?SAMLRequest=..."
+                from urllib.parse import urlencode
+
+                params = {"SAMLRequest": "..."}
+                if state:
+                    params["RelayState"] = state
+                return f"{sso_url}?{urlencode(params)}"
             return None
         
         elif provider_type.upper() == "OIDC":
@@ -357,7 +421,7 @@ class SSOService:
                     'redirect_uri': redirect_uri,
                     'response_type': 'code',
                     'scope': 'openid email profile',
-                    'state': '...'  # Generate state token
+                    'state': state or '...'
                 }
                 return f"{auth_url}?{urlencode(params)}"
             return None

@@ -10,6 +10,7 @@ provider-specific endpoints:
 """
 import pytest
 import requests
+from urllib.parse import parse_qs, urlparse
 
 from tests._persona_provisioning import provision_persona
 from tests.use_cases._api_helpers import api_base_url
@@ -81,6 +82,11 @@ def test_sso_initiation_returns_redirect():
         )
         assert redirect_url, (
             f"200 response missing redirect/authorization URL: {body}"
+        )
+        parsed = urlparse(redirect_url)
+        query = parse_qs(parsed.query)
+        assert query.get("state"), (
+            f"OIDC login URL missing state query parameter: {redirect_url}"
         )
     else:
         pytest.fail(
