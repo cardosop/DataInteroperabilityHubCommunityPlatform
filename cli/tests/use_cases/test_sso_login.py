@@ -113,9 +113,9 @@ def test_sso_initiation_unknown_provider_returns_error():
     )
 
 
-def test_sso_callback_without_code_returns_400():
-    """POST /auth/sso/oidc/callback/ without a code parameter should
-    return 400 (missing required parameter).
+def test_sso_callback_without_id_token_returns_400():
+    """POST /auth/sso/oidc/callback/ without id_token should
+    return 400 (missing required field).
     """
     base = api_base_url()
     resp = requests.post(
@@ -128,19 +128,19 @@ def test_sso_callback_without_code_returns_400():
         pytest.skip("SSO OIDC callback endpoint not found (404)")
 
     assert resp.status_code in (400, 422), (
-        f"SSO callback without code returned "
+        f"SSO callback without id_token returned "
         f"{resp.status_code}, expected 400: {resp.text[:300]}"
     )
 
 
-def test_sso_callback_with_invalid_code_returns_error():
-    """POST /auth/sso/oidc/callback/ with an invalid code should return
-    400 or 401 since the code cannot be exchanged.
+def test_sso_callback_with_invalid_id_token_returns_error():
+    """POST /auth/sso/oidc/callback/ with an invalid id_token should return
+    400 or 401 (authentication failed).
     """
     base = api_base_url()
     resp = requests.post(
         f"{base}/auth/sso/oidc/callback/",
-        json={"code": "invalid-code", "state": "invalid-state"},
+        json={"id_token": "invalid-token-value", "state": "invalid-state"},
         timeout=15,
     )
 
@@ -148,7 +148,7 @@ def test_sso_callback_with_invalid_code_returns_error():
         pytest.skip("SSO OIDC callback endpoint not found (404)")
 
     assert resp.status_code in (400, 401, 422), (
-        f"SSO callback with invalid code returned "
+        f"SSO callback with invalid id_token returned "
         f"{resp.status_code}, expected 400/401: {resp.text[:300]}"
     )
 

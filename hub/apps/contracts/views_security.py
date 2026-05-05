@@ -15,7 +15,11 @@ from drf_spectacular.utils import (
 )
 from rest_framework import filters, permissions, status, viewsets
 from rest_framework.decorators import action
+from rest_framework.exceptions import PermissionDenied
 from rest_framework.response import Response
+
+from hub.apps.observability.cross_tenant_metrics import cross_tenant_denied
+from hub.apps.tenants.request_tenant import get_request_tenant_id
 
 from .models import SecurityAuditLog, SecurityIncident
 from .pagination import ContractPageNumberPagination
@@ -139,6 +143,8 @@ class SecurityAuditLogViewSet(viewsets.ReadOnlyModelViewSet):
         """Filter queryset based on query parameters."""
         queryset = SecurityAuditLog.objects.all()
 
+        request_tenant_id = get_request_tenant_id(self.request)
+
         # Filter by event_type
         event_type = self.request.query_params.get("event_type")
         if event_type:
@@ -146,8 +152,24 @@ class SecurityAuditLogViewSet(viewsets.ReadOnlyModelViewSet):
 
         # Filter by tenant_id
         tenant_id = self.request.query_params.get("tenant_id")
+        if tenant_id and request_tenant_id and str(tenant_id) != str(request_tenant_id):
+            cross_tenant_denied(
+                endpoint="contracts.security_audit_logs",
+                reason="query_tenant_mismatch",
+                request=self.request,
+                requested_tenant_id=tenant_id,
+                actual_tenant_id=request_tenant_id,
+            )
+            raise PermissionDenied(
+                detail={
+                    "code": "CROSS_TENANT_FORBIDDEN",
+                    "detail": "tenant_id query parameter does not match request tenant",
+                }
+            )
         if tenant_id:
             queryset = queryset.filter(tenant_id=tenant_id)
+        elif request_tenant_id:
+            queryset = queryset.filter(tenant_id=request_tenant_id)
 
         # Filter by user_id
         user_id = self.request.query_params.get("user_id")

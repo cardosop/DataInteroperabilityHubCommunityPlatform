@@ -9,6 +9,7 @@ from hub.apps.audit import event_types
 from hub.apps.audit.models import AuditEvent
 from hub.apps.auth import sso_state
 from hub.apps.auth.jwt_utils import JWTTokenGenerator
+from hub.apps.observability.cross_tenant_metrics import cross_tenant_denied_total
 from hub.apps.users.models import User, UserStatus, UserTenantMembership
 from hub.apps.tenants.models import Tenant, TenantConfig
 
@@ -50,9 +51,41 @@ class SSOStateBindingOIDCTest(TestCase):
             algorithm="HS256",
         )
 
+    @staticmethod
+    def _response_error_text(response) -> str:
+        body = response.json()
+        if isinstance(body.get("error"), dict):
+            err = body["error"]
+            return " ".join(
+                str(part)
+                for part in (
+                    err.get("code"),
+                    err.get("message"),
+                    err.get("detail"),
+                )
+                if part
+            )
+        if body.get("error") is not None:
+            return str(body.get("error"))
+        if body.get("detail") is not None:
+            return str(body.get("detail"))
+        return str(body)
+
+    @staticmethod
+    def _counter_value() -> float:
+        labeled = cross_tenant_denied_total.labels(
+            endpoint="auth.sso_callback",
+            reason="body_tenant_mismatch",
+        )
+        value = getattr(labeled, "_value", None)
+        if value is None or not hasattr(value, "get"):
+            return 0.0
+        return float(value.get())
+
     def test_tampered_body_tenant_id_returns_400_and_audit(self) -> None:
         state = sso_state.issue_state(str(self.tenant.id), "private")
         before = AuditEvent.objects.filter(action=event_types.CROSS_TENANT_DENIED).count()
+        before_counter = self._counter_value()
 
         response = self.client.post(
             "/api/v1/auth/sso/oidc/callback/",
@@ -66,9 +99,47 @@ class SSOStateBindingOIDCTest(TestCase):
         )
 
         self.assertEqual(response.status_code, 400)
-        self.assertEqual(response.json().get("error"), "SSO_STATE_TENANT_MISMATCH")
+        self.assertIn(
+            "SSO_STATE_TENANT_MISMATCH",
+            self._response_error_text(response),
+        )
         after = AuditEvent.objects.filter(action=event_types.CROSS_TENANT_DENIED).count()
         self.assertEqual(after, before + 1)
+        after_counter = self._counter_value()
+        self.assertGreaterEqual(after_counter - before_counter, 1.0)
+
+    def test_saml_tampered_body_tenant_id_returns_400_and_audit(self) -> None:
+        state = sso_state.issue_state(str(self.tenant.id), "private")
+        before = AuditEvent.objects.filter(
+            action=event_types.CROSS_TENANT_DENIED,
+        ).count()
+        before_counter = self._counter_value()
+
+        response = self.client.post(
+            "/api/v1/auth/sso/saml/callback/",
+            {
+                # _extract_unverified_saml_identity supports best-effort
+                # extraction from raw text, so an email marker is enough
+                # for routing fallback logic.
+                "SAMLResponse": "nameid=saml-tamper@example.com",
+                "RelayState": state,
+                "tenant_id": str(self.other_tenant.id),
+            },
+            format="json",
+            REMOTE_ADDR="10.2.3.4",
+        )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertIn(
+            "SSO_STATE_TENANT_MISMATCH",
+            self._response_error_text(response),
+        )
+        after = AuditEvent.objects.filter(
+            action=event_types.CROSS_TENANT_DENIED,
+        ).count()
+        self.assertEqual(after, before + 1)
+        after_counter = self._counter_value()
+        self.assertGreaterEqual(after_counter - before_counter, 1.0)
 
     def test_valid_state_returns_200_and_token_for_state_tenant(self) -> None:
         state = sso_state.issue_state(str(self.tenant.id), "private")
@@ -111,7 +182,7 @@ class SSOStateBindingOIDCTest(TestCase):
             REMOTE_ADDR="10.0.0.2",
         )
         self.assertEqual(second.status_code, 400)
-        self.assertEqual(second.json().get("error"), "SSO_STATE_REUSED")
+        self.assertIn("SSO_STATE_REUSED", self._response_error_text(second))
 
     def test_state_with_different_ip_class_returns_400(self) -> None:
         state = sso_state.issue_state(str(self.tenant.id), "private")
@@ -125,7 +196,7 @@ class SSOStateBindingOIDCTest(TestCase):
             REMOTE_ADDR="8.8.8.8",
         )
         self.assertEqual(response.status_code, 400)
-        self.assertEqual(response.json().get("error"), "SSO_STATE_IP_MISMATCH")
+        self.assertIn("SSO_STATE_IP_MISMATCH", self._response_error_text(response))
 
     def test_oidc_login_url_contains_signed_state_query_param(self) -> None:
         response = self.client.get(
@@ -175,7 +246,7 @@ class SSOStateBindingOIDCTest(TestCase):
             REMOTE_ADDR="10.0.0.4",
         )
         self.assertEqual(response.status_code, 400)
-        self.assertEqual(response.json().get("error"), "SSO_TENANT_AMBIGUOUS")
+        self.assertIn("SSO_TENANT_AMBIGUOUS", self._response_error_text(response))
 
     def test_invalid_state_does_not_fallback_to_membership(self) -> None:
         user = User.objects.create(
@@ -195,7 +266,7 @@ class SSOStateBindingOIDCTest(TestCase):
             REMOTE_ADDR="10.0.0.5",
         )
         self.assertEqual(response.status_code, 400)
-        self.assertEqual(response.json().get("error"), "SSO_STATE_INVALID")
+        self.assertIn("SSO_STATE_INVALID", self._response_error_text(response))
 
     def test_missing_state_with_single_membership_falls_back(self) -> None:
         user = User.objects.create(

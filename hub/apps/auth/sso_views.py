@@ -13,8 +13,7 @@ from rest_framework.permissions import AllowAny
 from drf_spectacular.utils import OpenApiParameter, OpenApiResponse, extend_schema
 from drf_spectacular.types import OpenApiTypes
 
-from hub.apps.audit import event_types
-from hub.apps.audit.utils import create_audit_event
+from hub.apps.observability.cross_tenant_metrics import cross_tenant_denied
 from hub.apps.users.models import UserTenantMembership
 
 from .sso import SSOService
@@ -77,18 +76,12 @@ class SSOViewSet(viewsets.ViewSet):
 
         body_tenant_id = request.data.get("tenant_id")
         if body_tenant_id and str(body_tenant_id) != str(state_tenant_id):
-            create_audit_event(
-                resource_type="AUTH",
-                action=event_types.CROSS_TENANT_DENIED,
-                tenant=None,
-                result="FAILURE",
-                details={
-                    "reason": "SSO_STATE_TENANT_MISMATCH",
-                    "state_tenant_id": str(state_tenant_id),
-                    "body_tenant_id": str(body_tenant_id),
-                    "path": request.path,
-                },
+            cross_tenant_denied(
+                endpoint="auth.sso_callback",
+                reason="body_tenant_mismatch",
                 request=request,
+                requested_tenant_id=body_tenant_id,
+                actual_tenant_id=state_tenant_id,
             )
             raise ValidationError({"error": "SSO_STATE_TENANT_MISMATCH"})
 
@@ -286,7 +279,11 @@ class SSOViewSet(viewsets.ViewSet):
 
     @extend_schema(
         summary="OIDC authentication callback",
-        description="Handle OIDC authentication callback",
+        description=(
+            "Handle OIDC authentication callback. Tenant is resolved from "
+            "signed `state` payload; request-body `tenant_id` is deprecated "
+            "and ignored when matching state (mismatch is rejected)."
+        ),
         request={
             'application/json': {
                 'type': 'object',
@@ -294,7 +291,6 @@ class SSOViewSet(viewsets.ViewSet):
                     'id_token': {'type': 'string'},
                     'access_token': {'type': 'string'},
                     'state': {'type': 'string'},
-                    'tenant_id': {'type': 'string', 'format': 'uuid'},
                 },
                 'required': ['id_token', 'state']
             }

@@ -5,7 +5,7 @@ from typing import Any, cast
 
 import pytest
 from django.contrib.auth import get_user_model
-from django.test import TransactionTestCase
+from django.test import TestCase
 from django.urls import reverse
 from rest_framework.test import APIClient
 
@@ -28,7 +28,6 @@ def _make_tenant(prefix: str) -> Tenant:
         status="ACTIVE",
         kyc_status=KYCStatus.VERIFIED,
     )
-    ensure_tenant_has_active_subscription(tenant)
     return cast(Tenant, tenant)
 
 
@@ -52,10 +51,11 @@ def _make_auditor_user(tenant: Tenant):
     return user
 
 
-class RebuildIndexTenantIsolationTests(TransactionTestCase):
+class RebuildIndexTenantIsolationTests(TestCase):
     def setUp(self) -> None:
         self.tenant_a = _make_tenant("search-a")
         self.tenant_b = _make_tenant("search-b")
+        ensure_tenant_has_active_subscription(self.tenant_a)
         self.user_a = _make_auditor_user(self.tenant_a)
         self.api_client = APIClient()
         self.api_client.force_authenticate(user=self.user_a)
