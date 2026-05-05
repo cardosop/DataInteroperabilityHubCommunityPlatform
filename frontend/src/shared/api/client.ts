@@ -308,17 +308,8 @@ export class ApiClient {
     data: unknown | undefined,
     config: RequestConfig | undefined,
   ): Promise<ApiResponse<T> | null> {
-    // In cookie mode, refresh is always possible (httpOnly cookie sent automatically).
-    // In legacy mode, we need either a refresh token or no access token (cold start).
-    const canRefresh = this._cookieAuthMode || this._refreshToken || !this._accessToken;
-    if (!canRefresh) {
-      // No refresh token available — session is dead, force re-login
-      this.clearTokens();
-      if (typeof window !== 'undefined' && !window.location.pathname.startsWith('/login')) {
-        window.location.href = '/login';
-      }
-      return null;
-    }
+    // Phase 260.B.3.5: refresh-token persistence in localStorage is removed.
+    // Always attempt one cookie-based refresh before forcing re-login.
 
     try {
       const newAccessToken = await this._refreshAccessToken();
@@ -345,16 +336,9 @@ export class ApiClient {
 
     this._refreshPromise = (async () => {
       try {
-        // In cookie mode, refresh_token cookie is sent automatically via
-        // credentials: 'include'; no body payload needed.
-        const body = this._cookieAuthMode
-          ? undefined
-          : JSON.stringify({ refresh_token: this._refreshToken });
-
         const response = await fetch(`${this._baseURL}/auth/refresh/`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body,
           credentials: 'include',
         });
 
@@ -397,22 +381,6 @@ export class ApiClient {
 
   setRefreshToken(token: string | null): void {
     this._refreshToken = token;
-    // Persist to localStorage in non-cookie mode so that rotations performed
-    // silently by the 401-interceptor (_handleRefreshAndRetry → _refreshAccessToken)
-    // survive a page reload. Without this, localStorage keeps the pre-rotation
-    // token; the next reload reads it, presents a revoked token, and the backend
-    // revokes the entire family → user is kicked to /login after any 4xx that
-    // was followed by a reload. Cookie mode stores tokens in httpOnly cookies,
-    // so localStorage must stay empty.
-    if (typeof window !== 'undefined' && !this._cookieAuthMode) {
-      try {
-        if (token === null) {
-          localStorage.removeItem('refresh_token');
-        } else {
-          localStorage.setItem('refresh_token', token);
-        }
-      } catch { /* SSR / disabled storage — memory-only is acceptable fallback */ }
-    }
   }
 
   clearTokens(): void {

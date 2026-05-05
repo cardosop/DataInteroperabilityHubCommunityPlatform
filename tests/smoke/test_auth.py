@@ -11,7 +11,6 @@ Required env vars (set as GitHub secrets in CI):
     SMOKE_ADMIN_EMAIL
     SMOKE_ADMIN_PASSWORD
 """
-import pytest
 import requests
 
 
@@ -65,7 +64,7 @@ class TestLogin:
         admin_credentials: dict,
         timeout: int,
     ) -> None:
-        """Login response must include a 'refresh' JWT for token rotation."""
+        """Login must provide a refresh channel (body token or cookie)."""
         response = api_session.post(
             f"{base_url}/api/v1/auth/login/",
             json=admin_credentials,
@@ -74,7 +73,12 @@ class TestLogin:
         assert response.status_code == 200
         data = response.json()
         refresh = data.get("refresh") or data.get("refresh_token")
-        assert refresh, f"No refresh token in response keys: {list(data.keys())}"
+        if refresh:
+            return
+        set_cookie = response.headers.get("Set-Cookie", "")
+        assert "refresh_token=" in set_cookie or "__Secure-refresh_token=" in set_cookie, (
+            "No refresh token found in response body or Set-Cookie headers"
+        )
 
     def test_login_with_invalid_credentials_returns_401(
         self,
@@ -110,7 +114,7 @@ class TestLogin:
 
 
 class TestTokenRefresh:
-    """POST /api/v1/auth/token/refresh/ — rotate access token via refresh token."""
+    """POST /api/v1/auth/refresh/ — rotate access token via refresh channel."""
 
     def test_refresh_token_returns_new_access_token(
         self,
@@ -119,7 +123,7 @@ class TestTokenRefresh:
         admin_credentials: dict,
         timeout: int,
     ) -> None:
-        """A valid refresh token must yield a new access token."""
+        """A valid refresh channel must yield a new access token."""
         # Step 1: obtain tokens
         login_resp = api_session.post(
             f"{base_url}/api/v1/auth/login/",
@@ -127,14 +131,16 @@ class TestTokenRefresh:
             timeout=timeout,
         )
         assert login_resp.status_code == 200
-        refresh_token = login_resp.json().get("refresh") or login_resp.json().get("refresh_token")
-        if not refresh_token:
-            pytest.skip("Login response does not include a refresh token")
+        refresh_token = (
+            login_resp.json().get("refresh")
+            or login_resp.json().get("refresh_token")
+        )
+        payload = {"refresh_token": refresh_token} if refresh_token else {}
 
-        # Step 2: exchange refresh token
+        # Step 2: exchange refresh token (cookie mode uses cookie-only body)
         refresh_resp = api_session.post(
-            f"{base_url}/api/v1/auth/token/refresh/",
-            json={"refresh": refresh_token},
+            f"{base_url}/api/v1/auth/refresh/",
+            json=payload,
             timeout=timeout,
         )
         assert refresh_resp.status_code == 200, (

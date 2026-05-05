@@ -42,8 +42,10 @@ class JWTAuthentication(BaseAuthentication):
         if not token:
             return None
         
-        # Decode token
-        payload = JWTTokenGenerator.decode_access_token(token)
+        # Decode signature/time claims first; token-version invalidation is
+        # checked against the resolved user below so we can return a specific
+        # TOKEN_INVALIDATED code.
+        payload = JWTTokenGenerator.decode_access_token(token, verify_version=False)
         if not payload:
             raise AuthenticationFailed('Invalid or expired token')
         
@@ -73,7 +75,9 @@ class JWTAuthentication(BaseAuthentication):
         
         # Validate token version
         if not JWTTokenGenerator.validate_token_version(payload, user):
-            raise AuthenticationFailed('Token has been invalidated')
+            exc = AuthenticationFailed("Token has been invalidated")
+            setattr(exc, "code", "TOKEN_INVALIDATED")
+            raise exc
         
         # Store tenant_id in request; do NOT overwrite if already set (e.g. X-Tenant-Id from middleware)
         if not hasattr(request, "tenant_id") or not request.tenant_id:

@@ -33,17 +33,15 @@ export function getInitialUser(): User | null {
 }
 
 /**
- * Returns `true` when BOTH a stored user AND a refresh token exist.
- * Without a refresh token any authenticated API call would 401 anyway,
- * so the session is not resumable.
+ * Returns `true` when a stored user profile exists.
+ *
+ * Cookie-mode default stores refresh/access tokens in httpOnly cookies, so
+ * localStorage no longer carries `refresh_token`.
  */
 export function getInitialIsAuthenticated(): boolean {
   if (typeof window === 'undefined') return false;
   try {
-    return (
-      !!localStorage.getItem('user') &&
-      !!localStorage.getItem('refresh_token')
-    );
+    return !!localStorage.getItem('user');
   } catch {
     return false;
   }
@@ -52,8 +50,8 @@ export function getInitialIsAuthenticated(): boolean {
 /**
  * Phase 213.I.3 — always returns `false`.
  *
- * When the store can hydrate synchronously (user + refresh_token in
- * storage), it is not loading from the user's perspective — role-gate
+ * When the store can hydrate synchronously (user in storage), it is not
+ * loading from the user's perspective — role-gate
  * decisions can be made immediately. When it cannot hydrate, the user
  * is unauthenticated and ProtectedRoute redirects to /login on first
  * render — there is also nothing to wait for.
@@ -227,13 +225,8 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         // to /login. On network/timeout failure, the stored user is
         // kept (fail-open at lines ~162-173).
         //
-        // CRITICAL: initializeAuth() must run before any API call.
-        // It loads the refresh_token from localStorage into apiClient's
-        // in-memory store. Without it, apiClient has null tokens after a
-        // page reload → API calls return 401 → the 401 interceptor tries
-        // to refresh with null refresh_token → permanent auth failure.
-        // (This was the root cause of the AUTH_UNAUTHORIZED cascade in
-        // the e2e suite after the 213.I non-blocking init change.)
+        // CRITICAL: initializeAuth() must run before any API call so cookie
+        // mode is detected consistently on first paint.
         authService.initializeAuth();
         syncTenantIdGetter(get);
 
@@ -241,7 +234,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         // after page reload — Phase 11.1 stores access_token in memory
         // only). This ensures the first API call from a component has a
         // valid token instead of relying on the 401-retry interceptor.
-        if (!authService.getAccessToken() && authService.getRefreshToken()) {
+        if (!authService.getAccessToken()) {
           try {
             await authService.refreshAccessToken();
           } catch {
@@ -260,12 +253,12 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       authService.initializeAuth();
 
       // Phase 11.1: after page reload, access_token is lost (in-memory only).
-      // If we have a refresh_token but no access_token, proactively refresh
-      // to obtain a new access_token BEFORE calling /auth/me/. Retry on
+      // Proactively refresh via httpOnly cookie BEFORE calling /auth/me/.
+      // Retry on
       // transient failures (429 rate-limit, network errors) which are common
       // under E2E parallel load where multiple browser tabs hit /auth/refresh/
       // simultaneously after page reloads.
-      if (!authService.getAccessToken() && authService.getRefreshToken()) {
+      if (!authService.getAccessToken()) {
         let refreshed = false;
         for (let attempt = 0; attempt < 3 && !refreshed; attempt++) {
           try {
@@ -283,6 +276,13 @@ export const useAuthStore = create<AuthState>((set, get) => ({
             return;
           }
         }
+      }
+
+      // Cookie mode can authenticate entirely via cookies even when no token
+      // is visible in JS memory; attempt /auth/me/ unconditionally.
+      const recovered = await tryFetchUser(2);
+      if (recovered) {
+        return;
       }
 
       if (authService.isAuthenticated()) {

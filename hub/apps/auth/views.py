@@ -155,6 +155,15 @@ def _check_email_verification_resend_rate_limit(email: str) -> bool:
     return new_count <= max_per_hour
 
 
+def _account_lockout_cache_key(email: str) -> str:
+    return f"login_lockout_failures:{email.lower().strip()}"
+
+
+def _account_lockout_window_seconds() -> int:
+    window_minutes = getattr(settings, "LOGIN_LOCKOUT_WINDOW_MINUTES", 15)
+    return max(window_minutes * 60, 1)
+
+
 def _check_account_lockout(email: str) -> bool:
     """
     Enforce account-level lockout (11.5).
@@ -162,18 +171,37 @@ def _check_account_lockout(email: str) -> bool:
     Returns True if the account is NOT locked (request allowed),
     False if it IS locked (too many recent failures).
     """
+    normalized_email = email.lower().strip()
+    cache_key = _account_lockout_cache_key(normalized_email)
     max_attempts = getattr(settings, "LOGIN_MAX_ATTEMPTS", 10)
-    window_minutes = getattr(settings, "LOGIN_LOCKOUT_WINDOW_MINUTES", 15)
-    since = timezone.now() - timedelta(minutes=window_minutes)
-    failures = LoginAttempt.objects.filter(
-        email=email, success=False, created_at__gte=since
-    ).count()
+    cached_failures = cache.get(cache_key)
+
+    if cached_failures is None:
+        window_minutes = getattr(settings, "LOGIN_LOCKOUT_WINDOW_MINUTES", 15)
+        since = timezone.now() - timedelta(minutes=window_minutes)
+        failures = LoginAttempt.objects.filter(
+            email=normalized_email, success=False, created_at__gte=since
+        ).count()
+        cache.set(cache_key, failures, _account_lockout_window_seconds())
+    else:
+        failures = int(cached_failures)
     return failures < max_attempts
 
 
 def _record_login_attempt(email: str, ip: str, success: bool) -> None:
     # Truncate email to the field max_length to avoid DataError on oversized inputs
-    LoginAttempt.objects.create(email=email[:254], ip_address=ip, success=success)
+    normalized_email = email.lower().strip()[:254]
+    LoginAttempt.objects.create(email=normalized_email, ip_address=ip, success=success)
+    cache_key = _account_lockout_cache_key(normalized_email)
+    if success:
+        cache.delete(cache_key)
+        return
+    window_seconds = _account_lockout_window_seconds()
+    cache.add(cache_key, 0, window_seconds)
+    try:
+        cache.incr(cache_key)
+    except ValueError:
+        cache.set(cache_key, 1, window_seconds)
 
 
 def _set_refresh_cookie(response: Response, token: str) -> None:
@@ -188,21 +216,42 @@ def _set_refresh_cookie(response: Response, token: str) -> None:
     secure = cookie_name.startswith("__Secure-") or not getattr(
         settings, "DEBUG", False
     )
-    response.set_cookie(
-        cookie_name,
-        token,
-        max_age=max_age,
-        httponly=True,
-        secure=secure,
-        samesite="Strict",
-        path="/",
-    )
+    cookie_domain = getattr(settings, "SESSION_COOKIE_DOMAIN", None) or None
+    cookie_kwargs = {
+        "max_age": max_age,
+        "httponly": True,
+        "secure": secure,
+        "samesite": "Strict",
+        "path": "/",
+    }
+    if cookie_domain is not None:
+        cookie_kwargs["domain"] = cookie_domain
+    response.set_cookie(cookie_name, token, **cookie_kwargs)
+
+
+def _set_access_cookie(response: Response, token: str) -> None:
+    """Attach access token cookie using the same domain policy as refresh cookie."""
+    cookie_domain = getattr(settings, "SESSION_COOKIE_DOMAIN", None) or None
+    cookie_kwargs = {
+        "max_age": settings.JWT_ACCESS_TOKEN_EXPIRY,
+        "httponly": True,
+        "secure": not getattr(settings, "DEBUG", False),
+        "samesite": "Strict",
+        "path": "/",
+    }
+    if cookie_domain is not None:
+        cookie_kwargs["domain"] = cookie_domain
+    response.set_cookie("access_token", token, **cookie_kwargs)
 
 
 def _clear_refresh_cookie(response: Response) -> None:
     """Expire the refresh-token cookie on logout (11.1)."""
     cookie_name = getattr(settings, "REFRESH_COOKIE_NAME", "refresh_token")
-    response.delete_cookie(cookie_name, path="/")
+    cookie_domain = getattr(settings, "SESSION_COOKIE_DOMAIN", None) or None
+    if cookie_domain is None:
+        response.delete_cookie(cookie_name, path="/")
+    else:
+        response.delete_cookie(cookie_name, path="/", domain=cookie_domain)
 
 
 def _clear_auth_cookies(response: Response) -> None:
@@ -212,7 +261,11 @@ def _clear_auth_cookies(response: Response) -> None:
     cookie (Phase 220.4).  Safe to call even when cookies were never set.
     """
     _clear_refresh_cookie(response)
-    response.delete_cookie("access_token", path="/")
+    cookie_domain = getattr(settings, "SESSION_COOKIE_DOMAIN", None) or None
+    if cookie_domain is None:
+        response.delete_cookie("access_token", path="/")
+    else:
+        response.delete_cookie("access_token", path="/", domain=cookie_domain)
 
 
 def _get_refresh_token_str(request) -> str:
@@ -388,16 +441,7 @@ def login(request):
 
     if use_cookie_auth:
         # Phase 220.4: deliver access_token via httpOnly cookie only
-        secure = not getattr(settings, "DEBUG", False)
-        response.set_cookie(
-            "access_token",
-            access_token,
-            max_age=settings.JWT_ACCESS_TOKEN_EXPIRY,
-            httponly=True,
-            secure=secure,
-            samesite="Strict",
-            path="/",
-        )
+        _set_access_cookie(response, access_token)
 
     return response
 
@@ -505,12 +549,7 @@ def refresh_token(request):
             response = Response(body, status=status.HTTP_200_OK)
             _set_refresh_cookie(response, new_token_str)
             if use_cookie_auth:
-                response.set_cookie(
-                    "access_token", access_token,
-                    max_age=settings.JWT_ACCESS_TOKEN_EXPIRY,
-                    httponly=True, secure=not getattr(settings, "DEBUG", False),
-                    samesite="Strict", path="/",
-                )
+                _set_access_cookie(response, access_token)
             return response
 
         # No recent valid sibling — genuine replay attack.
@@ -577,15 +616,7 @@ def refresh_token(request):
     response = Response(body, status=status.HTTP_200_OK)
     _set_refresh_cookie(response, new_token_str)
     if use_cookie_auth:
-        response.set_cookie(
-            "access_token",
-            access_token,
-            max_age=settings.JWT_ACCESS_TOKEN_EXPIRY,
-            httponly=True,
-            secure=not getattr(settings, "DEBUG", False),
-            samesite="Strict",
-            path="/",
-        )
+        _set_access_cookie(response, access_token)
     return response
 
 
@@ -635,6 +666,8 @@ def logout(request):
             user_id=request.user.id, revoked_at__isnull=True
         ).update(revoked_at=timezone.now())
         revoked_count = revoked
+        # Invalidate all existing access JWTs issued before logout-all.
+        request.user.increment_token_version()
 
     log_auth_operation(
         action="LOGOUT",
@@ -999,16 +1032,7 @@ def accept_invitation(request):
     _set_refresh_cookie(response, refresh_token_str)
 
     if use_cookie_auth:
-        secure = not getattr(settings, "DEBUG", False)
-        response.set_cookie(
-            "access_token",
-            access_token,
-            max_age=settings.JWT_ACCESS_TOKEN_EXPIRY,
-            httponly=True,
-            secure=secure,
-            samesite="Strict",
-            path="/",
-        )
+        _set_access_cookie(response, access_token)
 
     return response
 

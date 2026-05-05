@@ -17,7 +17,6 @@ import type {
   PasswordResetConfirmRequest,
   PasswordResetRequest,
   ProfileUpdateRequest,
-  RefreshTokenRequest,
   RefreshTokenResponse,
   RegisterRequest,
   RegisterResponse,
@@ -26,7 +25,6 @@ import type {
 } from '../../../shared/types/auth';
 
 const TOKEN_STORAGE_KEY = 'access_token';
-const REFRESH_TOKEN_STORAGE_KEY = 'refresh_token';
 const USER_STORAGE_KEY = 'user';
 
 class AuthService {
@@ -41,9 +39,6 @@ class AuthService {
     if (response.data.access_token) {
       // Legacy mode: store tokens in memory / localStorage
       this.setAccessToken(response.data.access_token);
-      if (response.data.refresh_token) {
-        this.setRefreshToken(response.data.refresh_token);
-      }
       apiClient._cookieAuthMode = false;
     } else {
       // Cookie mode: tokens are in httpOnly cookies, not in JS-accessible body.
@@ -113,36 +108,25 @@ class AuthService {
   }
 
   async refreshAccessToken(): Promise<string> {
-    // In cookie mode, refresh_token is in httpOnly cookie (sent automatically).
-    // In legacy mode, we need the refresh_token from localStorage.
-    if (!apiClient._cookieAuthMode) {
-      const refreshToken = this.getRefreshToken();
-      if (!refreshToken) {
-        throw new Error('No refresh token available');
-      }
-    }
-
     // Use fetch directly (bypass apiClient interceptors) to avoid the 401 interceptor
     // triggering a recursive refresh or hard redirect to /login during proactive refresh.
     const baseURL = apiClient.getClient().defaults.baseURL || '/api/v1';
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 30000);
     try {
-      // In cookie mode, refresh_token cookie is sent via credentials: 'include'.
-      const body = apiClient._cookieAuthMode
-        ? undefined
-        : JSON.stringify({ refresh_token: this.getRefreshToken() } as RefreshTokenRequest);
-
       const fetchResponse = await fetch(`${baseURL}/auth/refresh/`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body,
         credentials: 'include',
         signal: controller.signal,
       });
 
       if (!fetchResponse.ok) {
-        throw new Error(`Refresh failed with status ${fetchResponse.status}`);
+        const error = new Error(
+          `Refresh failed with status ${fetchResponse.status}`,
+        ) as Error & { response?: { status: number } };
+        error.response = { status: fetchResponse.status };
+        throw error;
       }
 
       const data = (await fetchResponse.json()) as RefreshTokenResponse;
@@ -150,9 +134,6 @@ class AuthService {
       // In cookie mode, tokens are in httpOnly cookies — body may be empty.
       if (data.access_token) {
         this.setAccessToken(data.access_token);
-      }
-      if (data.refresh_token) {
-        this.setRefreshToken(data.refresh_token);
       }
 
       return data.access_token || '';
@@ -235,9 +216,6 @@ class AuthService {
       .post<AcceptInvitationResponse>('/auth/accept-invitation/', payload);
     if (response.data.access_token) {
       this.setAccessToken(response.data.access_token);
-      if (response.data.refresh_token) {
-        this.setRefreshToken(response.data.refresh_token);
-      }
     }
     return response.data;
   }
@@ -247,18 +225,9 @@ class AuthService {
     return apiClient.getAccessToken();
   }
 
-  getRefreshToken(): string | null {
-    return localStorage.getItem(REFRESH_TOKEN_STORAGE_KEY);
-  }
-
   setAccessToken(token: string): void {
     // Phase 11.1: store only in apiClient memory, never in localStorage
     apiClient.setAccessToken(token);
-  }
-
-  setRefreshToken(token: string): void {
-    localStorage.setItem(REFRESH_TOKEN_STORAGE_KEY, token);
-    apiClient.setRefreshToken(token);
   }
 
   // User management
@@ -279,9 +248,10 @@ class AuthService {
 
   // Clear all auth data
   clearAuth(): void {
-    // Remove from localStorage (refresh_token, user, and legacy access_token if present)
+    // Remove from localStorage (user and legacy access_token if present).
+    // Also clear legacy refresh_token key from older clients.
     localStorage.removeItem(TOKEN_STORAGE_KEY);
-    localStorage.removeItem(REFRESH_TOKEN_STORAGE_KEY);
+    localStorage.removeItem('refresh_token');
     localStorage.removeItem(USER_STORAGE_KEY);
     // G4.4 (glittery-herding-graham): also clear active_tenant_id so direct
     // callers of clearAuth() don't leave stale tenant context.
@@ -298,7 +268,7 @@ class AuthService {
     if (apiClient._cookieAuthMode) {
       return !!this.getUser();
     }
-    return (!!this.getAccessToken() || !!this.getRefreshToken()) && !!this.getUser();
+    return !!this.getAccessToken() && !!this.getUser();
   }
 
   // Initialize auth state from storage
@@ -333,17 +303,12 @@ class AuthService {
       apiClient.setAccessToken(storedToken);
     }
 
-    const refreshToken = this.getRefreshToken();
-    if (refreshToken) {
-      apiClient.setRefreshToken(refreshToken);
-    }
-
     // Phase 220.4: detect cookie-based auth mode on page reload.
     // If we have a stored user profile but NO tokens in JS-accessible storage,
     // the session is carried by httpOnly cookies. Set cookie mode so that
     // isAuthenticated() returns true and API calls don't send Bearer headers.
     const hasUser = !!localStorage.getItem(USER_STORAGE_KEY);
-    const hasAnyToken = !!storedToken || !!refreshToken;
+    const hasAnyToken = !!storedToken;
     if (hasUser && !hasAnyToken) {
       apiClient._cookieAuthMode = true;
     }

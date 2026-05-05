@@ -749,10 +749,12 @@ elif "test" in sys.argv or "pytest" in sys.modules:
     DATABASES["baas"] = dict(DATABASES["default"])
 
 # DATABASE_ROUTERS: BaaS router first (handles BaaSUsageRecord exclusively),
+# then ManagementCommandAdminRouter (command-mode admin alias),
 # then PrimaryReplicaRouter for read-replica routing across read-heavy apps.
 # PrimaryReplicaRouter is a no-op when DATABASE_REPLICA_URL is not configured.
 DATABASE_ROUTERS = [
     "hub.apps.baas.db_router.BaaSDBRouter",
+    "hub.db_router.ManagementCommandAdminRouter",
     "hub.db_router.PrimaryReplicaRouter",
 ]
 
@@ -783,6 +785,26 @@ if DATABASE_REPLICA_URL:
         # Enforce TLS for replica in production — same policy as primary DB.
         _replica_db_config["OPTIONS"]["sslmode"] = "require"
     DATABASES["replica"] = _replica_db_config
+
+# ---------------------------------------------------------------------------
+# Admin DB alias for management commands (B-RLS-0.5)
+# ---------------------------------------------------------------------------
+# Management commands/migrations run with BYPASSRLS credentials via this alias.
+# Uses same host/port/name as default DB.
+_admin_user_default = (
+    DATABASES["default"].get("USER", "hub")
+    if ENVIRONMENT == "test"
+    else "meshant_admin"
+)
+_admin_password_default = DATABASES["default"].get("PASSWORD", "hub")
+DATABASES["admin"] = {
+    **DATABASES["default"],
+    "USER": env("POSTGRES_ADMIN_USER", default=_admin_user_default),
+    "PASSWORD": env("POSTGRES_ADMIN_PASSWORD", default=_admin_password_default),
+    "OPTIONS": dict(DATABASES["default"].get("OPTIONS", {})),
+}
+if "TEST" in DATABASES["default"]:
+    DATABASES["admin"]["TEST"] = dict(DATABASES["default"]["TEST"])
 
 # Marketplace: KYC required for orders/entitlements (feat1 2.4). Optional allowlist of tenant IDs
 # (UUID strings) exempt from KYC for orders/entitlements. Default empty. See RUNBOOKS.md.
@@ -1696,10 +1718,12 @@ JWT_REFRESH_TOKEN_EXPIRY = env.int("JWT_REFRESH_TOKEN_EXPIRY", default=86400)  #
 REFRESH_TOKEN_MAX_LIFETIME_DAYS = env.int("REFRESH_TOKEN_MAX_LIFETIME_DAYS", default=30)
 JWT_ISSUER = env("JWT_ISSUER", default="hub")
 
-# Phase 90: When True, access tokens are delivered via httpOnly cookie instead
-# of response body. Frontend must rely on cookie-based auth (no localStorage).
-# Default False for backward compatibility with existing SPA clients.
-USE_HTTPONLY_AUTH_COOKIES = env.bool("USE_HTTPONLY_AUTH_COOKIES", default=False)
+# Phase 260.B.3: cookie mode defaults ON for staging/production. Development
+# keeps legacy default-off unless explicitly enabled via env var.
+USE_HTTPONLY_AUTH_COOKIES = env.bool(
+    "USE_HTTPONLY_AUTH_COOKIES",
+    default=ENVIRONMENT in ("staging", "production"),
+)
 
 # B2 (glittery-herding-graham): grace period (seconds) for concurrent-tab
 # refresh token replay detection. When a revoked token is presented and a
@@ -2252,6 +2276,10 @@ CSRF_COOKIE_HTTPONLY = env.bool(
 CSRF_COOKIE_SAMESITE = env(
     "CSRF_COOKIE_SAMESITE", default="Lax"
 )  # Options: 'Strict', 'Lax', 'None'
+CSRF_COOKIE_DOMAIN = env(
+    "CSRF_COOKIE_DOMAIN",
+    default=".meshant.com" if ENVIRONMENT in ("staging", "production") else None,
+)
 CSRF_TRUSTED_ORIGINS = env.list("CSRF_TRUSTED_ORIGINS", default=[])
 
 # Session Security
@@ -2263,6 +2291,10 @@ SESSION_COOKIE_HTTPONLY = env.bool("SESSION_COOKIE_HTTPONLY", default=True)
 # session cookie from being sent on ANY cross-site request, including
 # top-level navigations — a stronger CSRF mitigation than Lax.
 SESSION_COOKIE_SAMESITE = env("SESSION_COOKIE_SAMESITE", default="Strict")
+SESSION_COOKIE_DOMAIN = env(
+    "SESSION_COOKIE_DOMAIN",
+    default=".meshant.com" if ENVIRONMENT in ("staging", "production") else None,
+)
 SESSION_COOKIE_AGE = env.int("SESSION_COOKIE_AGE", default=1209600)  # 2 weeks default
 
 # GraphQL Settings

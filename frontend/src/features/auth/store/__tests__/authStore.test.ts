@@ -3,7 +3,7 @@
  *
  * Validates that getInitialUser(), getInitialIsAuthenticated(), and
  * getInitialIsLoading() behave correctly across all four combinations
- * of localStorage state (user ± refresh_token).
+ * of localStorage state (user present vs missing).
  *
  * No network: localStorage is stubbed via vi.stubGlobal.
  */
@@ -60,15 +60,9 @@ describe('getInitialIsAuthenticated()', () => {
     localStorage.clear();
   });
 
-  it('returns true when both user AND refresh_token exist', () => {
+  it('returns true when user exists', () => {
     localStorage.setItem('user', FAKE_USER);
-    localStorage.setItem('refresh_token', 'tok123');
     expect(getInitialIsAuthenticated()).toBe(true);
-  });
-
-  it('returns false when only user exists (no refresh_token)', () => {
-    localStorage.setItem('user', FAKE_USER);
-    expect(getInitialIsAuthenticated()).toBe(false);
   });
 
   it('returns false when only refresh_token exists (no user)', () => {
@@ -92,7 +86,7 @@ describe('getInitialIsLoading()', () => {
     localStorage.clear();
   });
 
-  it('returns false even when both user and refresh_token exist', () => {
+  it('returns false even when user and refresh_token exist', () => {
     localStorage.setItem('user', FAKE_USER);
     localStorage.setItem('refresh_token', 'tok123');
     expect(getInitialIsLoading()).toBe(false);
