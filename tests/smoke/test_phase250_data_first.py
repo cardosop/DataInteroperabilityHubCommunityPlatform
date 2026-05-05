@@ -124,8 +124,8 @@ def _upload_smoke_file(
             f"{init_response.text[:300]}"
         )
     init_body = init_response.json()
-    file_id = init_body["file_id"]
-    upload_url = init_body["upload_url"]
+    file_id = str(init_body["file_id"])
+    upload_url = str(init_body["upload_url"])
     fields = init_body.get("fields") or {}
 
     # Presigned PUT uploads encode auth in the URL itself; do NOT forward the
