@@ -124,8 +124,15 @@ INSTALLED_APPS = [
     "hub.apps.jobs",
     "hub.apps.contracts",
     "hub.apps.dq",
-    "hub.apps.compliance",
+    "hub.apps.compliance.apps.ComplianceConfig",
     "hub.apps.governance",
+    "hub.apps.consent",
+    "hub.apps.dsar.apps.DsarConfig",
+    "hub.apps.ropa.apps.RopaConfig",
+    "hub.apps.dpia.apps.DpiaConfig",
+    "hub.apps.breach.apps.BreachConfig",
+    "hub.apps.processor_agreements.apps.ProcessorAgreementsConfig",
+    "hub.apps.regulation_policies.apps.RegulationPoliciesConfig",
     "hub.apps.semantic",
     "hub.apps.marketplace",
     # 'hub.apps.marketplace',
@@ -230,6 +237,7 @@ MIDDLEWARE = [
     # Standard Django middlewares
     "django.contrib.sessions.middleware.SessionMiddleware",
     "django.middleware.common.CommonMiddleware",
+    "hub.apps.assets.middleware.DataFirstBodyCapMiddleware",  # 250.1.A.11 — CL/chunked vs body cap BEFORE auth
     "hub.apps.api.middleware.mvp_mode_gate.MvpModeApiGateMiddleware",
     "hub.apps.api.middleware.csrf_exempt.APIEndpointCSRFExemptMiddleware",  # CSRF exemption for API endpoints
     "django.middleware.csrf.CsrfViewMiddleware",
@@ -237,6 +245,13 @@ MIDDLEWARE = [
     # API validation MUST come after AuthenticationMiddleware so request.user is populated
     "hub.apps.api.standards.validation_middleware.APIValidationMiddleware",
     "hub.apps.auth.middleware.TenantScopingMiddleware",  # Tenant scoping after authentication
+    # Phase 235.4 — tag request.impersonation_session_id when the JWT
+    # carries the impersonation claim. MUST sit AFTER TenantScopingMiddleware
+    # (which already validates the JWT for the auth/tenant path) so we
+    # don't decode the token twice for the common-case non-impersonation
+    # request, AND BEFORE StructlogContextMiddleware so the impersonation
+    # session id is available to bind into the structlog context too.
+    "hub.apps.tenants.impersonation_middleware.ImpersonationMiddleware",
     # Bind tenant_id + user_id into structlog context BEFORE the view runs (13.5).
     # Must sit after TenantScopingMiddleware so request.tenant is already set.
     "hub.apps.api.middleware.StructlogContextMiddleware",
@@ -749,11 +764,13 @@ elif "test" in sys.argv or "pytest" in sys.modules:
     DATABASES["baas"] = dict(DATABASES["default"])
 
 # DATABASE_ROUTERS: BaaS router first (handles BaaSUsageRecord exclusively),
+# then ManagementCommandAdminRouter (B-RLS-0.5: manage.py → admin / BYPASSRLS when
+# HUB_USE_ADMIN_DB_FOR_COMMANDS is set — see hub/manage.py prepare_manage_argv),
 # then PrimaryReplicaRouter for read-replica routing across read-heavy apps.
 # PrimaryReplicaRouter is a no-op when DATABASE_REPLICA_URL is not configured.
-# (ManagementCommandAdminRouter lands with the Phase 260.B-RLS wave.)
 DATABASE_ROUTERS = [
     "hub.apps.baas.db_router.BaaSDBRouter",
+    "hub.db_router.ManagementCommandAdminRouter",
     "hub.db_router.PrimaryReplicaRouter",
 ]
 
@@ -1391,12 +1408,27 @@ else:
         },
     }
 
+# Phase 232.4 — RoPA object storage (optional dedicated bucket; empty → code uses AWS_STORAGE_BUCKET_NAME).
+ROPA_S3_BUCKET = env("ROPA_S3_BUCKET", default="")
+ROPA_S3_KEY_PREFIX = env("ROPA_S3_KEY_PREFIX", default="ropa/")
+# Estimated JSON payload size above this forces async JobType.ROPA_GENERATE (Phase 232.4.4).
+ROPA_LARGE_EXPORT_BYTES_THRESHOLD = env.int(
+    "ROPA_LARGE_EXPORT_BYTES_THRESHOLD", default=10 * 1024 * 1024
+)
+
 # Phase 203 — ClamAV (file malware scanning; hub.apps.files.scanner / tasks)
 CLAMAV_ENABLED = env.bool("CLAMAV_ENABLED", default=True)
 CLAMAV_HOST = env("CLAMAV_HOST", default="clamav")
 CLAMAV_PORT = env.int("CLAMAV_PORT", default=3310)
 CLAMAV_TIMEOUT_SECONDS = env.float("CLAMAV_TIMEOUT_SECONDS", default=120.0)
 CLAMAV_JOB_TIMEOUT_SECONDS = env.int("CLAMAV_JOB_TIMEOUT_SECONDS", default=300)
+# Phase 260.0.17 — production startup probes clamd VERSION (wired from CoreConfig.ready).
+CLAMAV_STARTUP_VERSION_CHECK_ENABLED = env.bool(
+    "CLAMAV_STARTUP_VERSION_CHECK_ENABLED", default=True
+)
+CLAMAV_MINIMUM_ENGINE_VERSION = env(
+    "CLAMAV_MINIMUM_ENGINE_VERSION", default="0.103.0"
+)
 
 # File Upload Configuration
 MAX_BROWSER_UPLOAD_SIZE = env.int("MAX_BROWSER_UPLOAD_SIZE", default=100 * 1024 * 1024)  # 100MB
@@ -1405,6 +1437,9 @@ MAX_FILE_SIZE = env.int("MAX_FILE_SIZE", default=10 * 1024 * 1024 * 1024)  # 10G
 ALLOWED_FILE_TYPES = env.list(
     "ALLOWED_FILE_TYPES", default=["csv", "json", "parquet", "txt", "xlsx", "xls"]
 )
+
+# Phase 260.2.B — declared content-type vs magic-byte sniff on ``complete_upload`` (D260.3).
+MAGIC_BYTE_VALIDATION_ENABLED = env.bool("MAGIC_BYTE_VALIDATION_ENABLED", default=False)
 
 # Async polling deadlines (Phase 69 — fail-closed on timeout)
 COMPLIANCE_POLL_MAX_SECONDS = env.int("COMPLIANCE_POLL_MAX_SECONDS", default=300)
@@ -1458,6 +1493,10 @@ if "pytest" in sys.modules or "unittest" in sys.modules or os.getenv("TESTING"):
     WEBHOOK_ASYNC_DELIVERY = env.bool("WEBHOOK_ASYNC_DELIVERY", default=False)
 else:
     WEBHOOK_ASYNC_DELIVERY = env.bool("WEBHOOK_ASYNC_DELIVERY", default=True)
+
+# Phase 231.4 — Optional public base path for signed compliance webhook report summaries
+# (``GET …/webhooks/completed/report/?token=``). Empty = ``report_presigned_url`` is null.
+COMPLIANCE_WEBHOOK_REPORT_BASE_URL = env("COMPLIANCE_WEBHOOK_REPORT_BASE_URL", default="")
 
 # Email Service Configuration
 # EMAIL_BACKEND: 'sendgrid', 'ses', or 'smtp'
@@ -1592,6 +1631,23 @@ REST_FRAMEWORK = {
         # :mod:`hub.apps.assets.throttles`.
         "asset_data_first_user": "60/minute",
         "asset_data_first_tenant": "600/minute",
+        # Phase 260.2.E (pass-2 S-9) — ``POST /files/init/`` presign / metadata
+        # DoS caps. Classes: :mod:`hub.apps.files.throttles`.
+        "file_init_user": "60/minute",
+        "file_init_tenant": "600/minute",
+        # Phase 260.3.D (pass-2 S2-3) — ``GET /files/{id}/scan-status/`` polling.
+        "file_scan_status_user": "30/minute",
+        "file_scan_status_tenant": "300/minute",
+        # Phase 260.4.E.R1 GAP-B — ``POST /datasets/{id}/refresh/`` abuse caps.
+        # Each refresh downloads the file + runs inference + emits an audit
+        # row, so a stuck-loop bug burning S3 read budget needs to be
+        # bounded. Classes: :mod:`hub.apps.datasets.throttles`.
+        "dataset_refresh_user": "10/minute",
+        "dataset_refresh_tenant": "60/minute",
+        # Phase 231.8 — Compliance run CSV/JSON export (DoS/abuse caps).
+        "compliance_export": "60/minute",
+        # Phase 232.2 — public DSAR submission (anonymous, per IP)
+        "dsar_public": "30/hour",
     },
 }
 
@@ -1758,6 +1814,10 @@ LOGIN_LOCKOUT_WINDOW_MINUTES = env.int("LOGIN_LOCKOUT_WINDOW_MINUTES", default=1
 # without tenant_id get a personal tenant with DATA_PROVIDER and DATA_CONSUMER roles.
 # Set to False to preserve legacy behavior (tenant=None).
 PERSONAL_TENANT_ON_REGISTRATION = env.bool("PERSONAL_TENANT_ON_REGISTRATION", default=True)
+UNVERIFIED_USER_RETENTION_DAYS = env.int(
+    "UNVERIFIED_USER_RETENTION_DAYS",
+    default=30,
+)
 
 # Tenant switch (Phase 29.65): when True (default), users can switch active tenant via
 # GET /auth/me/tenants/, POST /auth/switch-tenant/, and X-Tenant-Id header.
@@ -1791,6 +1851,112 @@ ASSET_VISIBILITY_PHASE_2_REJECT_ENABLED = env.bool(
 OPTIMISTIC_LOCK_REQUIRE_IF_MATCH = env.bool(
     "OPTIMISTIC_LOCK_REQUIRE_IF_MATCH", default=False,
 )
+
+# Phase 260.B-RLS-1.2 — pilot-table kill switch for assets RLS policy.
+# Middleware maps this into transaction-local GUC app.rls_assets_enabled.
+RLS_ASSETS_ENABLED = env.bool("RLS_ASSETS_ENABLED", default=True)
+RLS_DATASETS_ENABLED = env.bool("RLS_DATASETS_ENABLED", default=True)
+RLS_USERS_ENABLED = env.bool("RLS_USERS_ENABLED", default=True)
+RLS_USER_TENANT_MEMBERSHIPS_ENABLED = env.bool(
+    "RLS_USER_TENANT_MEMBERSHIPS_ENABLED",
+    default=True,
+)
+RLS_AUDIT_EVENTS_ENABLED = env.bool("RLS_AUDIT_EVENTS_ENABLED", default=True)
+RLS_CONTRACTS_ENABLED = env.bool("RLS_CONTRACTS_ENABLED", default=True)
+RLS_LISTINGS_ENABLED = env.bool("RLS_LISTINGS_ENABLED", default=True)
+RLS_JOBS_ENABLED = env.bool("RLS_JOBS_ENABLED", default=True)
+RLS_SUBSCRIPTIONS_ENABLED = env.bool("RLS_SUBSCRIPTIONS_ENABLED", default=True)
+RLS_COMPLIANCE_RUNS_ENABLED = env.bool(
+    "RLS_COMPLIANCE_RUNS_ENABLED",
+    default=True,
+)
+RLS_SEARCH_INDEX_ENABLED = env.bool("RLS_SEARCH_INDEX_ENABLED", default=True)
+RLS_SEMANTIC_TENANT_ONTOLOGIES_ENABLED = env.bool(
+    "RLS_SEMANTIC_TENANT_ONTOLOGIES_ENABLED",
+    default=True,
+)
+RLS_DATA_MESH_DOMAINS_ENABLED = env.bool(
+    "RLS_DATA_MESH_DOMAINS_ENABLED",
+    default=True,
+)
+RLS_CONSENT_ENABLED = env.bool("RLS_CONSENT_ENABLED", default=True)
+# Phase 232.2 — DSAR tables tenant isolation policies
+RLS_DSAR_ENABLED = env.bool("RLS_DSAR_ENABLED", default=True)
+# Phase 232.4 — RoPA generation history table
+RLS_ROPA_GENERATIONS_ENABLED = env.bool("RLS_ROPA_GENERATIONS_ENABLED", default=True)
+RLS_DPIA_ENABLED = env.bool("RLS_DPIA_ENABLED", default=True)
+RLS_BREACH_ENABLED = env.bool("RLS_BREACH_ENABLED", default=True)
+# Phase 232.6 — processor registry + agreement inventory tables
+RLS_PROCESSOR_AGREEMENTS_ENABLED = env.bool(
+    "RLS_PROCESSOR_AGREEMENTS_ENABLED",
+    default=True,
+)
+# Phase 271.1.1 — Stripe Connect account table RLS kill-switch.
+# Default True (enforced) per the Phase 260 D-260.4 fail-closed
+# shape; ops sets "off" to disable RLS for forensic inspection.
+RLS_CONNECT_ACCOUNTS_ENABLED = env.bool(
+    "RLS_CONNECT_ACCOUNTS_ENABLED",
+    default=True,
+)
+# Phase 232.6 — destination bucket for processor agreement artefacts (Terraform: meshant-<env>-processor-agreements).
+PROCESSOR_AGREEMENTS_S3_BUCKET = env("PROCESSOR_AGREEMENTS_S3_BUCKET", default="")
+
+# Phase 232.3 — immutable breach delivery proofs (S3 Object Lock when configured).
+BREACH_PROOF_STORAGE_PREFIX = env("BREACH_PROOF_STORAGE_PREFIX", default="breach-proofs/")
+BREACH_PROOF_OBJECT_LOCK_RETENTION_DAYS = env.int(
+    "BREACH_PROOF_OBJECT_LOCK_RETENTION_DAYS",
+    default=0,
+)
+
+# Phase 232.1 — per-tenant HMAC key ring (JSON). Shape:
+# {"<tenant_uuid>": ["<hexCurrent>", "<hexPrev>", ...] } (max 3 keys).
+import json as _consent_keys_json  # noqa: E402
+
+_CONSENT_KEYS_RAW = os.environ.get("CONSENT_SIGNING_KEYS_JSON", "").strip()
+try:
+    CONSENT_SIGNING_KEYS_JSON = (
+        _consent_keys_json.loads(_CONSENT_KEYS_RAW) if _CONSENT_KEYS_RAW else {}
+    )
+except _consent_keys_json.JSONDecodeError as exc:
+    raise ImproperlyConfigured(
+        "CONSENT_SIGNING_KEYS_JSON must be valid JSON when set."
+    ) from exc
+
+# Phase 234.1 — per-tenant HMAC key ring for audit Merkle-root signing.
+# Same shape as CONSENT_SIGNING_KEYS_JSON (rolling 3-key window, index 0 =
+# current, indices 1-2 = previous keys for verification of rows produced
+# before the latest 90-day rotation).
+# Special bucket key ``__platform__`` covers the no-tenant (platform)
+# chain so platform-scoped audit events still produce signed snapshots.
+_AUDIT_CHAIN_KEYS_RAW = os.environ.get("AUDIT_CHAIN_SIGNING_KEYS_JSON", "").strip()
+try:
+    AUDIT_CHAIN_SIGNING_KEYS_JSON = (
+        _consent_keys_json.loads(_AUDIT_CHAIN_KEYS_RAW) if _AUDIT_CHAIN_KEYS_RAW else {}
+    )
+except _consent_keys_json.JSONDecodeError as exc:
+    raise ImproperlyConfigured(
+        "AUDIT_CHAIN_SIGNING_KEYS_JSON must be valid JSON when set."
+    ) from exc
+
+# Phase 234.1.7 — S3 bucket for Merkle proof uploads with Object Lock.
+# Empty value disables the S3 path; the snapshot job falls back to
+# ``default_storage`` so dev / CI runs still produce locally-verifiable
+# proofs.
+AUDIT_MERKLE_S3_BUCKET = env("AUDIT_MERKLE_S3_BUCKET", default="")
+# Days added to AUDIT_RETENTION_YEARS * 365 when computing Object Lock
+# retain-until. Default 365 (= +1 year) per D234.6: the proof MUST
+# outlive the audit-event retention so an auditor can still attest the
+# chain after the events themselves have been archived.
+AUDIT_MERKLE_OBJECT_LOCK_EXTRA_DAYS = env.int(
+    "AUDIT_MERKLE_OBJECT_LOCK_EXTRA_DAYS", default=365
+)
+# Storage prefix when the S3 path falls back to ``default_storage``.
+AUDIT_MERKLE_LOCAL_STORAGE_PREFIX = env(
+    "AUDIT_MERKLE_LOCAL_STORAGE_PREFIX", default="audit-merkle-roots/"
+)
+# Default retention years if not already configured by another phase.
+if "AUDIT_RETENTION_YEARS" not in globals():
+    AUDIT_RETENTION_YEARS = env.int("AUDIT_RETENTION_YEARS", default=3)
 
 # Phase 250.3.B.6 — Asset visibility deprecation Sunset header (RFC
 # 8594). Set to a timezone-aware datetime via env var
@@ -1836,6 +2002,49 @@ STRIPE_SECRET_KEY = env("STRIPE_SECRET_KEY", default=None)
 STRIPE_PUBLISHABLE_KEY = env("STRIPE_PUBLISHABLE_KEY", default=None)
 STRIPE_WEBHOOK_SECRET = env("STRIPE_WEBHOOK_SECRET", default=None)
 STRIPE_MARKETPLACE_WEBHOOK_SECRET = env("STRIPE_MARKETPLACE_WEBHOOK_SECRET", default=None)
+# Phase 271.2 — Stripe Connect webhook signing secret.
+# Separate from STRIPE_WEBHOOK_SECRET so Connect webhooks can be
+# routed through a separate Stripe Dashboard webhook registration
+# (different signing secret, same Hub endpoint URL per D-271.3).
+# Falls back to STRIPE_WEBHOOK_SECRET when unset so a single-secret
+# deployment (e.g. dev/test) still processes Connect events.
+STRIPE_CONNECT_WEBHOOK_SECRET = env("STRIPE_CONNECT_WEBHOOK_SECRET", default=None)
+
+# Phase 270.D — Stripe Tax. When True, every PaymentIntent /
+# Subscription / Invoice creation call adds ``automatic_tax={"enabled":
+# True}`` so Stripe computes tax server-side per the tenant's
+# tax-registration metadata + the customer's billing address.
+# Default False — staging/dev stay tax-free for fixture stability.
+# Helm values.yaml flips this True in prod.
+STRIPE_TAX_ENABLED = env.bool("STRIPE_TAX_ENABLED", default=False)
+
+# Phase 271.1 — Stripe Connect MVP global capability gate.
+# Per D-271.4 two-level rollback, the global env-var is the
+# "emergency rollback" surface: flipping this to False
+# instantly disables NEW onboarding everywhere without a deploy.
+# Existing ConnectAccount rows continue to function (webhooks
+# stay idempotent, payouts continue, refunds continue) — only
+# the onboarding endpoint short-circuits to HTTP 501.
+# Default False — Connect rolls out by env, mirroring the
+# STRIPE_TAX_ENABLED rollout discipline.
+STRIPE_CONNECT_ENABLED = env.bool("STRIPE_CONNECT_ENABLED", default=False)
+
+# Phase 271.3 — Marketplace platform fee basis points.
+# 1000 = 10%. The fee is computed on the listing purchase price
+# as ``floor(listing_price_cents * bps / 10000)``. The resulting
+# amount is passed to Stripe as ``application_fee_amount`` on
+# the PaymentIntent (destination charge), separating the platform
+# earn from the provider earn at Stripe's level. Set to 0 to run
+# a zero-fee marketplace. Finance must sign off on any change
+# above the default — see RACI ``docs/raci/stripe-connect-mvp.md``.
+MARKETPLACE_PLATFORM_FEE_BPS = env.int("MARKETPLACE_PLATFORM_FEE_BPS", default=1000)
+
+# Phase 271.1.3 — frontend base URL used to compute the
+# ``refresh_url`` + ``return_url`` for Stripe AccountLinks.
+# Falls back to ``FRONTEND_URL`` (the long-standing platform
+# setting) so a deploy without the Phase-271 helm override
+# still works.
+FRONTEND_BASE_URL = env("FRONTEND_BASE_URL", default=FRONTEND_URL)
 
 # Structured Logging (structlog)
 LOGGING = {
@@ -2359,6 +2568,19 @@ MVP_MODE = env.bool("MVP_MODE", default=False)
 # unconditionally. Injected from AWS Secrets Manager via ExternalSecrets
 # (see docs/e2e-setup.md).
 E2E_TEST_SECRET = env.str("E2E_TEST_SECRET", default="")
+
+# Phase 232.2 — Public DSAR ingress CAPTCHA (server-side siteverify)
+HCAPTCHA_SECRET_KEY = env.str("HCAPTCHA_SECRET_KEY", default="")
+DSAR_SKIP_HCAPTCHA_VERIFICATION = env.bool(
+    "DSAR_SKIP_HCAPTCHA_VERIFICATION",
+    default=False,
+)
+
+# Phase 232.2.10 — ``Idempotency-Key`` header dedupe window for POST /public/dsar-requests/
+DSAR_PUBLIC_IDEMPOTENCY_WINDOW_HOURS = env.int(
+    "DSAR_PUBLIC_IDEMPOTENCY_WINDOW_HOURS",
+    default=24,
+)
 
 # Workflow Business Rules Validation Feature Flags (Task 5.1.1)
 # Global enable/disable for business rules validation in workflows
