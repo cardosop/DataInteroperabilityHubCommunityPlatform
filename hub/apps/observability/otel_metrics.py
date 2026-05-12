@@ -497,6 +497,18 @@ compliance_runs_total = _CounterWrapper(
     expected_labels=("status", "risk_level", "tenant_id"),
 )
 
+# Phase 231 — compliance intake auto-scan, activation/publish gates, webhook fan-out,
+# and circuit-breaker degradation.  ``event`` is a small fixed vocabulary —
+# see ``hub.apps.compliance.metrics_phase231``.
+compliance_intake_gate_events_total = _CounterWrapper(
+    "compliance_intake_gate_events_total",
+    "Phase 231 compliance intake and gate events (scan enqueue, blocks, overrides, "
+    "webhooks, service-unavailable). Labels: event (SCAN_ENQUEUED, ACTIVATION_GATE_BLOCK, ...), "
+    "tenant_id.",
+    unit="1",
+    expected_labels=("event", "tenant_id"),
+)
+
 # Cache Metrics
 cache_hits_total = _CounterWrapper(
     "cache_hits_total",
@@ -518,6 +530,27 @@ file_uploads_total = _CounterWrapper(
     "Total number of file uploads",
     unit="1",
     expected_labels=("status", "file_type", "tenant_id"),
+)
+
+# Phase 260.7.D — schema-inference S3 retry observability.
+# Incremented at three result-points by ``hub.apps.datasets.storage_fetch``:
+#   * ``result="retry"``   — fired by tenacity's ``before_sleep`` callback
+#                            on each transient-error retry attempt; useful for
+#                            spotting S3 throttling spikes (high retry rate
+#                            → tenant or bucket pressure).
+#   * ``result="success"`` — fired by the safe wrapper when the fetch
+#                            ultimately returned bytes (after 0+ retries).
+#   * ``result="failure"`` — fired by the safe wrapper when the fetch
+#                            gave up: retries exhausted (RetryError) OR the
+#                            object was permanently missing
+#                            (FileMissingInStorageError → 404/NoSuchKey).
+# Property: ``sum(success) + sum(failure) == total schema-inference fetches``.
+dataset_inference_retries_total = _CounterWrapper(
+    "dataset_inference_retries_total",
+    "Phase 260.7.D — counts schema-inference S3 fetch retry attempts and "
+    "outcomes. Label ``result`` ∈ {retry, success, failure}.",
+    unit="1",
+    expected_labels=("result",),
 )
 
 # Contract Metrics
@@ -683,6 +716,50 @@ audit_events_total = _CounterWrapper(
     "WARNING).",
     unit="1",
     expected_labels=("action", "resource_type", "result"),
+)
+
+
+# ---------------------------------------------------------------------------
+# Phase 235.6 — PLATFORM_ADMIN consolidated dashboard metrics.
+# ---------------------------------------------------------------------------
+#
+# These two metrics drive the ``admin-ops`` Grafana dashboard's
+# dashboard-health panels:
+#
+# * ``admin_dashboard_summary_cache_total{outcome}`` — cache hit/miss
+#   counter. Operators graph ``sum(rate(...{outcome="hit"}[5m])) /
+#   sum(rate(...[5m]))`` for the live cache-hit ratio; an alert fires
+#   when the ratio drops below 0.8 sustained for 30+ minutes (likely
+#   means Redis is dropping the cache key, e.g. memory eviction).
+#
+# * ``admin_dashboard_summary_aggregate_duration_seconds`` — histogram
+#   of aggregator runtime on the cache-miss path. Operators alert on
+#   ``histogram_quantile(0.95, ...) > 2`` (P95 should stay under 2s for
+#   the 12 indexed COUNT queries the aggregator runs).
+#
+# Per spec 235.5: the aggregator NEVER runs on cache-hit, so the
+# histogram is NOT recorded on that path — the bucket counts only
+# reflect actual aggregator work.
+#
+# Cardinality: ``outcome`` has 2 values (hit / miss); the histogram
+# has zero labels. Both are bounded and safe.
+
+admin_dashboard_summary_cache_total = _CounterWrapper(
+    "admin_dashboard_summary_cache_total",
+    "Total PLATFORM_ADMIN dashboard-summary requests by cache outcome. "
+    "Labels: outcome (hit, miss).",
+    unit="1",
+    expected_labels=("outcome",),
+)
+
+admin_dashboard_summary_aggregate_duration_seconds = _HistogramWrapper(
+    "admin_dashboard_summary_aggregate_duration_seconds",
+    "PLATFORM_ADMIN dashboard-summary aggregator runtime in seconds "
+    "(cache-miss path only). Buckets chosen for the 12-COUNT aggregator "
+    "expected to complete in ~50-500ms on a healthy cluster.",
+    unit="s",
+    buckets=(0.05, 0.1, 0.25, 0.5, 1.0, 2.0, 5.0, 10.0),
+    expected_labels=(),
 )
 
 # ODPS Metrics (Task 6.2.1)
@@ -1467,6 +1544,67 @@ marketplace_connection_test_failures_total = _CounterWrapper(
     expected_labels=("marketplace_type", "tenant_id", "connection_id", "error_type"),
 )
 
+
+# ============================================================================
+# Phase 275.E.3a — Warehouse Connectivity Metrics
+# ============================================================================
+
+warehouse_query_total = _CounterWrapper(
+    "warehouse_query_total",
+    "Total warehouse queries executed, labelled by warehouse type, tenant, and status",
+    unit="1",
+    expected_labels=("warehouse", "tenant_id", "status"),
+)
+
+warehouse_query_duration_seconds = _HistogramWrapper(
+    "warehouse_query_duration_seconds",
+    "Warehouse query duration histogram",
+    unit="s",
+    buckets=(0.01, 0.05, 0.1, 0.5, 1.0, 2.5, 5.0, 10.0, 30.0, 60.0),
+    expected_labels=("warehouse", "tenant_id"),
+)
+
+warehouse_circuit_open = _UpDownCounterWrapper(
+    "warehouse_circuit_open",
+    "Warehouse circuit breaker state (1=open, 0=closed)",
+    unit="1",
+    expected_labels=("warehouse", "tenant_id", "channel"),
+)
+
+warehouse_cost_units_total = _CounterWrapper(
+    "warehouse_cost_units_total",
+    "Total warehouse cost units consumed, labelled by warehouse and cost unit type",
+    unit="1",
+    expected_labels=("warehouse", "tenant_id", "unit"),
+)
+
+warehouse_credential_age_days = _UpDownCounterWrapper(
+    "warehouse_credential_age_days",
+    "Age of warehouse credentials in days",
+    unit="days",
+    expected_labels=("warehouse", "tenant_id"),
+)
+
+warehouse_export_total = _CounterWrapper(
+    "warehouse_export_total",
+    "Total warehouse export operations, labelled by status",
+    unit="1",
+    expected_labels=("warehouse", "tenant_id", "status"),
+)
+
+warehouse_share_throttled_total = _CounterWrapper(
+    "warehouse_share_throttled_total",
+    "Total Delta Sharing throttled requests",
+    unit="1",
+    expected_labels=("tenant_id",),
+)
+
+warehouse_schema_drift_unreconciled = _UpDownCounterWrapper(
+    "warehouse_schema_drift_unreconciled",
+    "Number of unreconciled schema drift detections",
+    unit="1",
+    expected_labels=("tenant_id", "asset_id"),
+)
 
 # ============================================================================
 # Phase 78 — Business Rule Gap Observability Metrics

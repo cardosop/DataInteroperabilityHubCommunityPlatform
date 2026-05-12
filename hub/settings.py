@@ -162,6 +162,7 @@ INSTALLED_APPS = [
     "hub.apps.baas",  # BaaS Platform (API Gateway, usage tracking, developer portal)
     "hub.apps.transformation",  # Data transformation pipelines (Phase 115A)
     "hub.apps.versioning",  # Versioning API (list/get/compare versions for contracts and datasets)
+    "hub.apps.warehouses",  # Phase 275.A — WarehouseConnection (referenced by assets.Asset.warehouse_connection for LIVE_QUERY)
     "hub.apps.security",   # CSP violation reporting + security metrics
 ]
 
@@ -1648,6 +1649,11 @@ REST_FRAMEWORK = {
         "compliance_export": "60/minute",
         # Phase 232.2 — public DSAR submission (anonymous, per IP)
         "dsar_public": "30/hour",
+        # Phase 275.E.3l — warehouse connectivity throttle scopes.
+        "warehouse-query-records": "60/minute",
+        "warehouse-query-share": "30/minute",
+        "warehouse-export": "10/minute",
+        "warehouse-connection-test": "5/minute",
     },
 }
 

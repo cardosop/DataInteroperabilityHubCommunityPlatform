@@ -30,6 +30,37 @@ project adheres to [Semantic Versioning](https://semver.org/).
   transaction safety and short-circuits on first failure.
 - **BR21 — 28 rule classes conformance-backfilled.** All rule classes
   now carry `description`, `tags`, and `openspec_ref` metadata.
+- **Infrastructure — CI guardrails.** Catalog conformance CI check
+  (`scripts/lint_business_rules_catalog.py`) validates metadata on all
+  `@register_rule` classes. Semgrep rule (`.semgrep/business-rules-
+  direct-instantiation.yml`) flags direct `BusinessRules(...)` calls
+  when a `RuleChain` exists. `/health/business-rules/` endpoint exposes
+  degraded-rule registration for SRE alerting.
+
+### Added — Phase 275: Live Data Connectivity (2026-05-12)
+
+- **WarehouseConnection model.** Per-tenant credential vault with KMS+Fernet
+  encryption. Supports Snowflake (PAT/JWT/keypair), BigQuery (service-account
+  JSON/Workload Identity), Databricks (PAT/OAuth), and Athena (IAM/SigV4).
+  Includes SSRF guard at config-save, cascading deletion protection, and
+  WarehouseConnectionACL for per-connection RBAC.
+- **WarehouseConnector ABC.** 4 connector implementations with parameterised
+  binding (never string-concatenated), circuit-breaker integration,
+  per-tenant cost guard, and PII-safe logging.
+- **Records API.** `GET /api/v1/datasets/{id}/rows/` serves dataset rows as
+  JSON (decimals as strings per RFC 7159) or Apache Arrow IPC stream.
+  Cursor-based pagination. Routes to file-backed or LIVE_QUERY warehouse
+  connector.
+- **Delta Sharing.** `GET /api/v1/datasets/{id}/share/` serves the Delta
+  Sharing 1.0 protocol with Hub auth + audit injection.
+- **dlt WriteAdapter.** Outbound exports to Snowflake/BigQuery/Databricks/
+  Athena tables via dlt (schema management, idempotency, normalisation).
+  4 new DestinationType values on ScheduledExport.
+- **17 audit codes** registered (WAREHOUSE_QUERY_EXECUTED through
+  WAREHOUSE_CACHE_REFRESHED). 8 webhook event types. 4 JobType entries.
+  Per-warehouse type mapping registry with LossyConversionPolicy.
+- **Observability.** 8 Prometheus metrics, 7 alert rules, capacity sizing
+  doc, DR/RTO/RPO runbook, credential rotation guide, threat model.
 
 ### Added — Phase 270: Marketplace, tax, compliance & worker-discipline deltas (270.0–270.F)
 
