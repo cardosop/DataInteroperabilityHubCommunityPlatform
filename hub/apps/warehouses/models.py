@@ -96,6 +96,12 @@ class WarehouseConnection(models.Model):
         self.config = encrypt_json_field(raw_config)
 
     def save(self, *args, **kwargs):
+        # Phase 275.A.1 — SSRF guard at config-save: validate any URL-like
+        # fields in the raw config before encrypting. Reuses the SPARQL
+        # federation validator pattern (is_safe_url + allowlist).
+        if self.config and not isinstance(self.config.get("_encrypted"), str):
+            self._validate_config_urls(self.config)
+
         # Encrypt on first save if raw config provided.
         if self.config and not isinstance(self.config.get("_encrypted"), str):
             raw = self.config
@@ -107,6 +113,44 @@ class WarehouseConnection(models.Model):
             super().save(update_fields=["config"], **kwargs)
             return
         super().save(*args, **kwargs)
+
+    @staticmethod
+    def _validate_config_urls(config: dict) -> None:
+        """Phase 275.A.1 — SSRF guard on URL-like config keys.
+
+        Reuses the existing SSRF validation infrastructure (is_safe_url
+        from hub.apps.security.url_validators) to prevent connections
+        to internal/loopback addresses.
+        """
+        url_keys = {"host", "endpoint", "api_url", "base_url", "private_endpoint_url"}
+        for key in url_keys:
+            value = config.get(key)
+            if value and isinstance(value, str) and value.startswith(("http://", "https://")):
+                from hub.apps.security.url_validators import is_safe_url
+                if not is_safe_url(value):
+                    from django.core.exceptions import ValidationError
+                    raise ValidationError(
+                        f"URL in '{key}' is not safe: {value}. "
+                        f"Internal/loopback addresses are blocked per SSRF policy."
+                    )
+
+    def delete(self, *args, **kwargs):
+        """Phase 275.A.17 — refuse deletion while LIVE_QUERY assets reference
+        this connection. Soft-delete via is_active=False instead."""
+        from hub.apps.assets.models import Asset, DataStrategy
+        live_assets = Asset.objects.filter(
+            warehouse_connection=self,
+            data_strategy=DataStrategy.LIVE_QUERY,
+        )
+        if live_assets.exists():
+            from django.core.exceptions import ValidationError
+            raise ValidationError(
+                f"Cannot delete WarehouseConnection '{self.name}': "
+                f"{live_assets.count()} LIVE_QUERY asset(s) still reference it. "
+                f"Set is_active=False to deactivate without deletion, or reassign "
+                f"the assets first."
+            )
+        super().delete(*args, **kwargs)
 
 
 class WarehouseConnectionACL(models.Model):

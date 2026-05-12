@@ -124,6 +124,17 @@ _DEFAULT_PATHS: tuple[str, ...] = (
     "hub/apps/dq/clients/webhook_client.py",
     "hub/apps/dq/clients/slack_client.py",
     "hub/apps/dq/clients/pagerduty_client.py",
+    # Phase 275.A.5 — warehouse connectivity log helpers.
+    # All connector files emit logger.*(..., extra={...}) with
+    # potentially sensitive credential/config data that must be
+    # redacted via warehouses/log_helpers.redact_extra().
+    "hub/apps/warehouses/connectors.py",
+    "hub/apps/warehouses/connectors/snowflake.py",
+    "hub/apps/warehouses/connectors/bigquery.py",
+    "hub/apps/warehouses/connectors/databricks.py",
+    "hub/apps/warehouses/connectors/athena.py",
+    "hub/apps/warehouses/schema_drift.py",
+    "hub/apps/warehouses/cache.py",
 )
 
 
