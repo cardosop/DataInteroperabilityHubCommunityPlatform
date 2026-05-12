@@ -91,6 +91,8 @@ class ScheduledIngestionRuleExecutionContext(RuleExecutionContext):
     description="Validates scheduled ingestion schedules, runs, sources, and tenant context",
     tags=["scheduled_ingestion", "validation", "ingestion"],
     priority=10,
+
+    openspec_ref="specs/scheduled-ingestion-business-rules/spec.md",
 )
 class ScheduledIngestionBusinessRules(BusinessRules):
     """

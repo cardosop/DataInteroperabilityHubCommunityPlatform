@@ -28,6 +28,7 @@ from hub.apps.core.business_rules.base import (
 )
 from hub.apps.core.business_rules.registry import register_rule
 from hub.apps.datasets.models import Dataset
+from hub.apps.files.models import FileScanStatus, FileStatus
 from hub.apps.users.models import User
 
 if TYPE_CHECKING:
@@ -77,6 +78,8 @@ class DatasetsRuleExecutionContext(RuleExecutionContext):
     description="Validates dataset structure, schema, tenant context, and version management",
     tags=["datasets", "validation"],
     priority=10,
+
+    openspec_ref="specs/datasets-business-rules/spec.md",
 )
 class DatasetsBusinessRules(BusinessRules):
     """
@@ -216,6 +219,24 @@ class DatasetsBusinessRules(BusinessRules):
                 warnings.extend(file_result.warnings)
             details["validation_checks"]["file_relationship"] = file_result.details
 
+        # Phase 260.5.B — REJECT (not warn) dataset creation against
+        # files in PENDING / UPLOADING / DELETING / DELETED / FAILED
+        # state. Distinct from the ``file_relationship`` branch which
+        # only emits a warning — Phase 260.5.B requires a HARD 400
+        # so the upload pipeline can't accidentally create datasets
+        # against files that aren't fully landed in S3 (PENDING /
+        # UPLOADING) or that the platform is tearing down (DELETING /
+        # DELETED). Opt-in via ``validation_type='file_active'`` so
+        # the existing ``all`` callers don't suddenly see new errors
+        # — DatasetService.create_dataset is the only caller wiring
+        # this in (see Phase 260.5.B.2).
+        if validation_type == "file_active":
+            file_active_result = self._validate_file_active(file)
+            if not file_active_result.is_valid:
+                errors.extend(file_active_result.errors)
+                warnings.extend(file_active_result.warnings)
+            details["validation_checks"]["file_active"] = file_active_result.details
+
         return ValidationResult(
             is_valid=len(errors) == 0, errors=errors, warnings=warnings, details=details
         )
@@ -240,6 +261,35 @@ class DatasetsBusinessRules(BusinessRules):
             ValidationResult with schema validation status
         """
         return self._validate_dataset_schema(dataset, previous_dataset=previous_dataset)
+
+    def _validate_dataset_source_file_scan_status(self, src_file: Any) -> ValidationResult:
+        """
+        Phase 260.2.D — block dataset structure when the backing file is unsafe to consume.
+
+        Mirrors ``File.can_download`` / ``DatasetService`` pre-fetch gate.
+        """
+        errors: List[str] = []
+        warnings: List[str] = []
+        details: Dict[str, Any] = {
+            "scan_status": getattr(src_file, "scan_status", None),
+            "file_id": str(src_file.id) if getattr(src_file, "id", None) else None,
+        }
+
+        status_val = getattr(src_file, "scan_status", None)
+        if status_val == FileScanStatus.INFECTED:
+            errors.append(
+                "Cannot create a dataset from a file flagged as infected by malware scanning."
+            )
+            details["blocked_reason"] = "FILE_INFECTED"
+        elif status_val == FileScanStatus.PENDING_SCAN:
+            errors.append(
+                "Cannot create a dataset while the source file is pending malware scan."
+            )
+            details["blocked_reason"] = "FILE_SCAN_PENDING"
+
+        return ValidationResult(
+            is_valid=len(errors) == 0, errors=errors, warnings=warnings, details=details
+        )
 
     def _validate_dataset_structure(self, dataset: Dataset) -> ValidationResult:
         """
@@ -281,6 +331,18 @@ class DatasetsBusinessRules(BusinessRules):
         if not has_file:
             errors.append("Dataset must have a file")
             details["has_file"] = False
+
+        # Phase 260.2.D — malware scan gate (defence in depth vs DatasetService)
+        if has_file:
+            try:
+                src = dataset.file
+            except Exception:
+                src = None
+            if src is not None:
+                scan_gate = self._validate_dataset_source_file_scan_status(src)
+                if not scan_gate.is_valid:
+                    errors.extend(scan_gate.errors)
+                details["source_file_scan"] = scan_gate.details
 
         if not dataset.format:
             errors.append("Dataset must have a format")
@@ -1222,6 +1284,90 @@ class DatasetsBusinessRules(BusinessRules):
 
         return ValidationResult(
             is_valid=len(errors) == 0, errors=errors, warnings=warnings, details=details
+        )
+
+    # Phase 260.5.B — file statuses that allow dataset creation. Pinned
+    # here (instead of inline) so a future status addition (e.g.
+    # ``ARCHIVED``) doesn't silently start admitting datasets — adding
+    # a new admit-status forces a code change at this exact site.
+    # Phase 260.6.A — narrowed to ACTIVE only (legacy ``COMPLETED``
+    # was retired and is forbidden by the DB CHECK constraint
+    # ``file_status_no_completed``).
+    _FILE_STATUSES_ALLOWING_DATASET_CREATION: frozenset = frozenset(
+        {FileStatus.ACTIVE}
+    )
+
+    def _validate_file_active(self, file: Optional[Any]) -> ValidationResult:
+        """Phase 260.5.B — REJECT dataset creation when the backing
+        file is not ready to be ingested.
+
+        Distinct from :meth:`_validate_file_relationship` which only
+        warns: this method returns ``is_valid=False`` for any file
+        whose status is NOT one of ``(ACTIVE, COMPLETED)``. Callers
+        (``DatasetService.create_dataset``) translate that into HTTP
+        400 with code ``FILE_NOT_READY_FOR_DATASET`` so the user
+        sees a clean rejection rather than a 5xx from a downstream
+        S3 fetch that would have failed against a half-uploaded
+        file anyway.
+
+        File states and outcomes:
+
+          * ``ACTIVE`` / ``COMPLETED``  → admit (dataset creation proceeds)
+          * ``PENDING`` / ``UPLOADING`` → reject (file not yet landed in S3)
+          * ``DELETING`` / ``DELETED``  → reject (file being torn down)
+          * ``FAILED``                  → reject (upload errored)
+
+        ``file=None`` is admitted (the field is optional on Dataset);
+        the file_relationship validator handles the dataset-without-
+        file case separately.
+        """
+        details: Dict[str, Any] = {
+            "file_id": str(file.id) if file else None,
+            "file_status": getattr(file, "status", None),
+        }
+
+        if file is None:
+            # File-less datasets are valid in some flows (e.g. retired
+            # rows whose source was hard-deleted). The file_relationship
+            # validator decides whether the missing file is a problem
+            # for THIS dataset's purpose.
+            details["admitted"] = True
+            details["reason"] = "file_not_provided"
+            return ValidationResult(
+                is_valid=True,
+                errors=[],
+                warnings=[],
+                details=details,
+            )
+
+        status_value = getattr(file, "status", None)
+        if status_value in self._FILE_STATUSES_ALLOWING_DATASET_CREATION:
+            details["admitted"] = True
+            return ValidationResult(
+                is_valid=True,
+                errors=[],
+                warnings=[],
+                details=details,
+            )
+
+        # Reject. Error message names the actionable next step
+        # (wait for upload to complete / re-upload the file) rather
+        # than just stating the failure.
+        details["admitted"] = False
+        details["error_code"] = "FILE_NOT_READY_FOR_DATASET"
+        return ValidationResult(
+            is_valid=False,
+            errors=[
+                (
+                    f"File is not ready for dataset creation "
+                    f"(status: {status_value!r}). Wait for the upload to "
+                    f"complete (ACTIVE / COMPLETED) before creating a "
+                    f"dataset, or re-upload the file if it is in a "
+                    f"failed / deleting state."
+                )
+            ],
+            warnings=[],
+            details=details,
         )
 
     def validate_version_number(

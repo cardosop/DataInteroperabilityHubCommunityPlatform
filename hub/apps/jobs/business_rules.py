@@ -65,7 +65,9 @@ class JobsRuleExecutionContext(RuleExecutionContext):
     rule_name="jobs_validation",
     description="Validates job creation, execution, status transitions, tenant context, and resource relationships",
     tags=["jobs", "validation"],
-    priority=10
+    priority=10,
+
+    openspec_ref="specs/jobs-business-rules/spec.md",
 )
 class JobsBusinessRules(BusinessRules):
     """

@@ -76,7 +76,9 @@ class GovernanceRuleExecutionContext(RuleExecutionContext):
     rule_name="governance_validation",
     description="Validates governance policies, access requests, classifications, and access control",
     tags=["governance", "validation"],
-    priority=10
+    priority=10,
+
+    openspec_ref="specs/governance-business-rules/spec.md",
 )
 class GovernanceBusinessRules(BusinessRules):
     """

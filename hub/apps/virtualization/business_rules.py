@@ -59,7 +59,9 @@ class VirtualizationRuleExecutionContext(RuleExecutionContext):
     rule_name="virtualization_dataset_validation",
     description="Validates virtual dataset query syntax, schema alignment, and source compatibility",
     tags=["virtualization", "dataset", "validation"],
-    priority=10
+    priority=10,
+
+    openspec_ref="specs/virtualization-business-rules/spec.md",
 )
 class VirtualizationBusinessRules(BusinessRules):
     """

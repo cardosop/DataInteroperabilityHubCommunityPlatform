@@ -13,10 +13,13 @@ All validation methods follow engineering best practices:
 - Comprehensive error messages with context
 - Follow DRY, SOLID, and clean code principles
 """
+import hashlib
 import json
 import logging
 from typing import Dict, Any, Optional, List, TYPE_CHECKING
 from dataclasses import dataclass
+
+from django.core.cache import cache
 
 from hub.apps.core.business_rules.base import (
     BusinessRules,
@@ -85,7 +88,9 @@ class OrchestrationRuleExecutionContext(RuleExecutionContext):
     rule_name="orchestration_validation",
     description="Validates workflow instances, steps, and tenant context",
     tags=["orchestration", "validation", "workflow", "step"],
-    priority=10
+    priority=10,
+
+    openspec_ref="specs/orchestration-business-rules/spec.md",
 )
 class OrchestrationBusinessRules(BusinessRules):
     """
@@ -1705,6 +1710,51 @@ class OrchestrationBusinessRules(BusinessRules):
 
         return result
 
+    def _workflow_state_cache_key(
+        self,
+        workflow: WorkflowInstance,
+        tenant: Optional[Any],
+        user: Optional[User],
+    ) -> str:
+        """Build a cache key that captures the inputs validation depends on.
+
+        ``validate_workflow_state`` is a pure function of:
+
+        * the workflow row (id, status, current_step_index, state_data,
+          updated_at — the latter is the cheap cache-busting signal),
+        * the tenant id (for tenant-context checks),
+        * the user id (for permission checks).
+
+        Hashing ``updated_at`` into the key means any change to the row
+        (saved by the engine on each step) invalidates the cache without
+        needing manual ``cache.delete`` calls. ``state_data`` is also
+        hashed so in-memory mutations that haven't been saved yet still
+        produce a distinct key — the validator's output depends on
+        ``state_data`` shape, not just the row's ``updated_at``.
+        """
+        try:
+            state_repr = json.dumps(
+                workflow.state_data or {}, sort_keys=True, default=str
+            )
+        except (TypeError, ValueError):
+            # Non-serialisable state_data is an explicit failure mode
+            # the validator surfaces below — never cache that path so we
+            # don't poison the key namespace with a value we can't hash.
+            state_repr = repr(workflow.state_data)
+        state_hash = hashlib.md5(state_repr.encode("utf-8")).hexdigest()[:16]
+        updated_at = (
+            workflow.updated_at.isoformat()
+            if getattr(workflow, "updated_at", None) is not None
+            else "unset"
+        )
+        tenant_id = str(getattr(tenant, "id", "anon"))
+        user_id = str(getattr(user, "id", "anon"))
+        return (
+            f"orch:wf_state:{workflow.id}:{workflow.status}:"
+            f"{workflow.current_step_index}:{updated_at}:{state_hash}:"
+            f"t={tenant_id}:u={user_id}"
+        )
+
     def validate_workflow_state(
         self,
         workflow: WorkflowInstance,
@@ -1720,6 +1770,14 @@ class OrchestrationBusinessRules(BusinessRules):
         - State transitions are valid
         - No conflicting state information
 
+        When ``self.enable_caching`` is True (the default), the result is
+        cached against a key derived from the workflow row + tenant +
+        user. This is the cache layer the public API contract advertises
+        via the constructor's ``enable_caching`` flag — without it, cost
+        of cache-key computation alone would be larger than the
+        validation work for fast paths and ``enable_caching=True`` would
+        be a misleading no-op (per Phase 4.3.2 perf spec).
+
         Args:
             workflow: WorkflowInstance to validate
             tenant: Optional tenant instance for context validation
@@ -1728,6 +1786,13 @@ class OrchestrationBusinessRules(BusinessRules):
         Returns:
             ValidationResult with validation status and details
         """
+        cache_key: Optional[str] = None
+        if self.enable_caching:
+            cache_key = self._workflow_state_cache_key(workflow, tenant, user)
+            cached_result = cache.get(cache_key)
+            if cached_result is not None:
+                return cached_result
+
         result = ValidationResult(is_valid=True)
         result.details['workflow_state_validation'] = 'workflow_state'
 
@@ -1768,6 +1833,12 @@ class OrchestrationBusinessRules(BusinessRules):
         result.details['workflow_id'] = str(workflow.id)
         result.details['workflow_status'] = workflow.status
         result.details['current_step_index'] = workflow.current_step_index
+
+        # Only cache *valid* results: an INVALID outcome is usually
+        # transient (mid-step state, missing dep) — caching it would
+        # paper over recoveries and produce stale failure reports.
+        if cache_key is not None and result.is_valid:
+            cache.set(cache_key, result, self.get_cache_ttl())
 
         return result
 

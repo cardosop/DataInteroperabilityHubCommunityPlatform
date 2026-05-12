@@ -95,6 +95,8 @@ class ScheduledExportRuleExecutionContext(RuleExecutionContext):
     description="Validates scheduled export exports, runs, destinations, and tenant context",
     tags=["scheduled_export", "validation", "export"],
     priority=10,
+
+    openspec_ref="specs/scheduled-export-business-rules/spec.md",
 )
 class ScheduledExportBusinessRules(BusinessRules):
     """

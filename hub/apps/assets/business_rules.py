@@ -69,7 +69,9 @@ class AssetsRuleExecutionContext(RuleExecutionContext):
     rule_name="assets_validation",
     description="Validates asset lifecycle, structure, tenant context, and access permissions",
     tags=["assets", "validation"],
-    priority=10
+    priority=10,
+
+    openspec_ref="specs/asset-business-rules/spec.md",
 )
 class AssetsBusinessRules(BusinessRules):
     """

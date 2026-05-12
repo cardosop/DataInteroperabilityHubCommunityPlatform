@@ -94,6 +94,8 @@ class ODPSRuleExecutionContext(RuleExecutionContext):
     description="Validates ODPS document structure, version compatibility, and ODPS-ODCS linking rules",
     tags=["odps", "contracts", "validation"],
     priority=10,
+
+    openspec_ref="specs/contracts-business-rules/spec.md",
 )
 class ODPSBusinessRules(BusinessRules):
     """
@@ -709,6 +711,8 @@ class ODPSBusinessRules(BusinessRules):
     description="Validates ODPS-ODCS linking rules including link existence, circular references, and referential integrity",
     tags=["odps", "linking", "validation"],
     priority=10,
+
+    openspec_ref="specs/contracts-business-rules/spec.md",
 )
 class ODPSLinkingRules(BusinessRules):
     """
@@ -1039,6 +1043,7 @@ class ODPSLinkingRules(BusinessRules):
     description="Validates ODPS export format, data completeness, and fidelity (round-trip consistency)",
     tags=["odps", "export", "validation"],
     priority=10,
+    openspec_ref="specs/contracts-business-rules/spec.md",
 )
 class ODPSExportRules(BusinessRules):
     """
@@ -1417,6 +1422,8 @@ class ODPSExportRules(BusinessRules):
     description="Validates contract lifecycle operations: creation, update, deletion, and version compatibility validation",
     tags=["contracts", "lifecycle", "validation"],
     priority=10,
+
+    openspec_ref="specs/contracts-business-rules/spec.md",
 )
 class ContractsBusinessRules(BusinessRules):
     """
@@ -2069,6 +2076,7 @@ class ContractsBusinessRules(BusinessRules):
     description="Validates contract normalization eligibility, status, and fidelity (data loss prevention)",
     tags=["odps", "normalization", "validation"],
     priority=10,
+    openspec_ref="specs/contracts-business-rules/spec.md",
 )
 class ODPSNormalizationRules(BusinessRules):
     """

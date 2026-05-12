@@ -61,7 +61,9 @@ class DataMeshRuleExecutionContext(RuleExecutionContext):
     rule_name="data_mesh_domain_validation",
     description="Validates data mesh domain structure, boundaries, ownership transfer, and policy conflicts",
     tags=["mesh", "domain", "validation"],
-    priority=10
+    priority=10,
+
+    openspec_ref="specs/mesh-business-rules/spec.md",
 )
 class DataMeshBusinessRules(BusinessRules):
     """

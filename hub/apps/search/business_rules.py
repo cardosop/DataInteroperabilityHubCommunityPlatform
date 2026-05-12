@@ -79,7 +79,8 @@ class SearchRuleExecutionContext(RuleExecutionContext):
     description="Validates search queries, indexes, and search operations",
     tags=["search", "validation", "query", "index"],
     priority=10,
-    enabled=True
+    enabled=True,
+    openspec_ref="specs/search-business-rules/spec.md",
 )
 class SearchBusinessRules(BusinessRules):
     """

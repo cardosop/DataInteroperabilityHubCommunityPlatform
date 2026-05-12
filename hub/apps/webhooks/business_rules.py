@@ -87,7 +87,9 @@ class WebhookRuleExecutionContext(RuleExecutionContext):
     rule_name="webhooks_validation",
     description="Validates webhook subscriptions, deliveries, and tenant context",
     tags=["webhooks", "validation", "subscription", "delivery"],
-    priority=10
+    priority=10,
+
+    openspec_ref="specs/webhooks-business-rules/spec.md",
 )
 class WebhooksBusinessRules(BusinessRules):
     """

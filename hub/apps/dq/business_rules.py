@@ -70,7 +70,9 @@ class DQRuleExecutionContext(RuleExecutionContext):
     rule_name="dq_validation",
     description="Validates data quality runs, check configurations, tenant context, and dataset relationships",
     tags=["dq", "data_quality", "validation"],
-    priority=10
+    priority=10,
+
+    openspec_ref="specs/dq-business-rules/spec.md",
 )
 class DQBusinessRules(BusinessRules):
     """

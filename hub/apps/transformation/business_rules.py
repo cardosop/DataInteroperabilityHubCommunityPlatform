@@ -67,7 +67,9 @@ class TransformationRuleExecutionContext(RuleExecutionContext):
     rule_name="transformation_pipeline_validation",
     description="Validates transformation pipeline structure, node compatibility, and asset compatibility",
     tags=["transformation", "pipeline", "validation"],
-    priority=10
+    priority=10,
+
+    openspec_ref="specs/transformation-business-rules/spec.md",
 )
 class TransformationBusinessRules(BusinessRules):
     """

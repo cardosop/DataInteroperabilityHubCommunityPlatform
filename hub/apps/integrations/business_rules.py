@@ -75,7 +75,9 @@ class MarketplaceIntegrationRuleExecutionContext(RuleExecutionContext):
     rule_name="marketplace_integration_validation",
     description="Validates marketplace integration operations including connections, sync jobs, mappings, assets, and marketplace listings",
     tags=["marketplace", "integration", "validation"],
-    priority=10
+    priority=10,
+
+    openspec_ref="specs/integrations-business-rules/spec.md",
 )
 class MarketplaceIntegrationBusinessRules(BusinessRules):
     """

@@ -71,7 +71,9 @@ class ComplianceRuleExecutionContext(RuleExecutionContext):
     rule_name="compliance_validation",
     description="Validates compliance runs, risk assessments, tenant context, and resource relationships",
     tags=["compliance", "validation", "risk_assessment"],
-    priority=10
+    priority=10,
+
+    openspec_ref="specs/compliance-business-rules/spec.md",
 )
 class ComplianceBusinessRules(BusinessRules):
     """

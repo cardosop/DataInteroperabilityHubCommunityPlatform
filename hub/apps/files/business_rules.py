@@ -75,7 +75,9 @@ class FilesRuleExecutionContext(RuleExecutionContext):
     rule_name="files_validation",
     description="Validates files, tenant context, and file access permissions",
     tags=["files", "validation", "storage"],
-    priority=10
+    priority=10,
+
+    openspec_ref="specs/files-business-rules/spec.md",
 )
 class FilesBusinessRules(BusinessRules):
     """
@@ -465,6 +467,25 @@ class FilesBusinessRules(BusinessRules):
                 details=details
             )
 
+        # Phase 260.2.A — AUDITOR is read-only; deny WRITE (mirrors Compliance/DQ).
+        if access_type == "WRITE":
+            has_role = getattr(user, "has_role", None)
+            if callable(has_role) and has_role("AUDITOR") and not (
+                has_role("TENANT_ADMIN") or has_role("DATA_PROVIDER")
+            ):
+                details["write_access_allowed"] = False
+                details["read_access_allowed"] = False
+                details["access_allowed"] = False
+                details["auditor_read_only"] = True
+                return ValidationResult(
+                    is_valid=False,
+                    errors=[
+                        "AUDITOR role has read-only access. Cannot mutate files.",
+                    ],
+                    warnings=warnings,
+                    details=details,
+                )
+
         # 1. Validate tenant isolation
         tenant_isolation_result = self._validate_tenant_isolation(file, user)
         if not tenant_isolation_result.is_valid:
@@ -847,7 +868,101 @@ class FilesBusinessRules(BusinessRules):
             file_size=size,
         )
         result = result.combine(quota_result)
+        if not result.is_valid:
+            return result
+        # Phase 260.5.C — friendly early collision check. The partial
+        # unique constraint on ``(tenant, name) WHERE status='ACTIVE'``
+        # is the load-bearing safety net (catches the race where two
+        # PENDING uploads complete to ACTIVE simultaneously); this
+        # check rejects EARLY so the user gets feedback at init-
+        # upload time, before they've spent bandwidth on the bytes.
+        # Returns ``error_code=FILENAME_COLLISION`` so the view can
+        # surface 409 with a stable code.
+        collision_result = self._validate_active_filename_unique(tenant=tenant, name=name)
+        result = result.combine(collision_result)
         return result
+
+    def _validate_active_filename_unique(
+        self, tenant: Any, name: str
+    ) -> ValidationResult:
+        """Phase 260.5.C — reject if an ACTIVE file with the same
+        (tenant, name) already exists.
+
+        Pure read-only check; the partial unique index is the
+        load-bearing safety net (catches the concurrent-complete
+        race the read can't see). A future caller running the
+        rule alone would still NEED the index — this method
+        provides the friendly UX, not the data-integrity guarantee.
+        """
+        existing = (
+            File.objects.filter(
+                tenant_id=tenant.id,
+                name=name,
+                status=FileStatus.ACTIVE,
+            )
+            .values_list("id", flat=True)
+            .first()
+        )
+        if existing is None:
+            return ValidationResult(
+                is_valid=True,
+                errors=[],
+                warnings=[],
+                details={"filename_collision": False, "name": name},
+            )
+        return ValidationResult(
+            is_valid=False,
+            errors=[
+                (
+                    f"A file named {name!r} already exists in this tenant in "
+                    f"ACTIVE state. Delete or rename the existing file before "
+                    f"uploading another with the same name."
+                )
+            ],
+            warnings=[],
+            details={
+                "filename_collision": True,
+                "name": name,
+                "existing_file_id": str(existing),
+                "error_code": "FILENAME_COLLISION",
+            },
+        )
+
+    def validate_file_for_rename(
+        self,
+        file: File,
+        tenant: Any,
+        new_name: str,
+    ) -> ValidationResult:
+        """Phase 260.5.C.R1 — collision check for the rename path.
+
+        ``POST /files/{id}/rename/`` is a SECOND write surface that
+        can produce ``(tenant, name, status=ACTIVE)`` collisions —
+        symmetric to the ``init_upload`` path but missed by the
+        initial 260.5.C wiring. Without this check the rename
+        target collision is caught only by the partial unique
+        index, which surfaces a generic 500 instead of the stable
+        ``FILENAME_COLLISION`` / 409 contract.
+
+        The friendly rule looks for ANY ACTIVE row with the target
+        name in the tenant — including the file being renamed
+        itself. The rename view defends against the trivial
+        rename-to-self case via the ``previous_name == new_name``
+        no-op short-circuit BEFORE calling this rule, so the
+        ``file`` argument is documented for symmetry with
+        ``validate_file_for_update`` but does not alter the query.
+        """
+        if file.tenant_id != tenant.id:
+            return ValidationResult(
+                is_valid=False,
+                errors=[
+                    f"File tenant_id ({file.tenant_id}) does not match "
+                    f"provided tenant ({tenant.id})"
+                ],
+                warnings=[],
+                details={"tenant_match": False},
+            )
+        return self._validate_active_filename_unique(tenant=tenant, name=new_name)
 
     def validate_file_for_update(
         self,
@@ -858,14 +973,18 @@ class FilesBusinessRules(BusinessRules):
     ) -> ValidationResult:
         """
         Validate file update (e.g. complete upload): file must be PENDING or
-        UPLOADING for transition to a terminal upload status (ACTIVE legacy or
-        COMPLETED canonical); user must have write access.
+        UPLOADING for transition to the terminal upload status (ACTIVE).
+        User must have write access.
+
+        Phase 260.6.A — the legacy ``COMPLETED`` value was retired
+        via migration ``0009_drop_completed_file_status``; only
+        ``ACTIVE`` is now the terminal upload state.
 
         Args:
             file: File instance to update
             tenant: Tenant instance (must match file.tenant)
             user: User performing the update
-            new_status: Target status (e.g. COMPLETED for complete_upload)
+            new_status: Target status (e.g. ACTIVE for complete_upload)
 
         Returns:
             ValidationResult; invalid if state or permissions fail.
@@ -881,7 +1000,7 @@ class FilesBusinessRules(BusinessRules):
         else:
             details['tenant_match'] = True
 
-        if new_status in (FileStatus.ACTIVE, FileStatus.COMPLETED):
+        if new_status == FileStatus.ACTIVE:
             if file.status not in (FileStatus.PENDING, FileStatus.UPLOADING):
                 errors.append(
                     f"File is not in a state that allows completion (current: {file.status}). "
@@ -933,6 +1052,14 @@ class FilesBusinessRules(BusinessRules):
             details['tenant_match'] = False
         else:
             details['tenant_match'] = True
+
+        st = file.status
+        status_str = st.value if hasattr(st, "value") else str(st)
+        if status_str in (FileStatus.DELETING.value, FileStatus.DELETED.value):
+            errors.append(
+                "File is already deleted or pending purge (DELETING/DELETED)."
+            )
+            details["already_deleted"] = True
 
         if errors:
             return ValidationResult(
@@ -1303,7 +1430,7 @@ class FilesBusinessRules(BusinessRules):
             from django.db import models
             current_usage_bytes = File.objects.filter(
                 tenant_id=tenant.id,
-                status__in=[FileStatus.ACTIVE, FileStatus.COMPLETED]
+                status=FileStatus.ACTIVE
             ).aggregate(total_size=models.Sum('size'))['total_size'] or 0
 
             details['current_usage_bytes'] = current_usage_bytes
@@ -1430,7 +1557,7 @@ class FilesBusinessRules(BusinessRules):
             # Calculate current file count for tenant
             current_file_count = File.objects.filter(
                 tenant_id=tenant.id,
-                status__in=[FileStatus.ACTIVE, FileStatus.COMPLETED]
+                status=FileStatus.ACTIVE
             ).count()
 
             details['current_file_count'] = current_file_count
@@ -1621,7 +1748,7 @@ class FilesBusinessRules(BusinessRules):
             from django.db import models
             current_usage = File.objects.filter(
                 tenant_id=tenant.id,
-                status__in=[FileStatus.ACTIVE, FileStatus.COMPLETED]
+                status=FileStatus.ACTIVE
             ).aggregate(total_size=models.Sum('size'))['total_size'] or 0
 
             details['current_usage'] = current_usage
@@ -1864,22 +1991,24 @@ class FilesBusinessRules(BusinessRules):
         # Allow: alphanumeric, spaces, dots, hyphens, underscores, parentheses
         safe_pattern = re.compile(r'^[a-zA-Z0-9._\-\s()]+$')
         if not safe_pattern.match(filename_clean):
-            # Check if it's just the extension that's problematic
-            if '.' in filename_clean:
-                name_part = filename_clean.rsplit('.', 1)[0]
-                if safe_pattern.match(name_part):
-                    # Extension might have special chars, but name is OK
-                    details['name_valid'] = True
+            # Phase 260.2.H — locale-aware names use non-ASCII scripts; do not warn.
+            if filename_clean.isascii():
+                # Check if it's just the extension that's problematic
+                if '.' in filename_clean:
+                    name_part = filename_clean.rsplit('.', 1)[0]
+                    if safe_pattern.match(name_part):
+                        # Extension might have special chars, but name is OK
+                        details['name_valid'] = True
+                    else:
+                        warnings.append(
+                            f"File name contains special characters that may cause issues: '{filename_clean}'"
+                        )
+                        details['name_warning'] = True
                 else:
                     warnings.append(
                         f"File name contains special characters that may cause issues: '{filename_clean}'"
                     )
                     details['name_warning'] = True
-            else:
-                warnings.append(
-                    f"File name contains special characters that may cause issues: '{filename_clean}'"
-                )
-                details['name_warning'] = True
 
         # Validate filename doesn't start or end with dot
         if filename_clean.startswith('.') or filename_clean.endswith('.'):

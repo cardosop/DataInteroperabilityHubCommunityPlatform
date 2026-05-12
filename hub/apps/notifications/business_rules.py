@@ -68,7 +68,9 @@ class NotificationsRuleExecutionContext(RuleExecutionContext):
     rule_name="notifications_validation",
     description="Validates notification creation, delivery, templates, recipients, tenant context, and user permissions",
     tags=["notifications", "validation"],
-    priority=10
+    priority=10,
+
+    openspec_ref="specs/notifications-business-rules/spec.md",
 )
 class NotificationsBusinessRules(BusinessRules):
     """
