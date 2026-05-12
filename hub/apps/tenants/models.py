@@ -486,6 +486,28 @@ class Tenant(models.Model):
             "False the endpoint returns 403."
         ),
     )
+    # Phase 274.3 — per-tenant gate for URI dereference + relationship
+    # traversal endpoints. When False, GET /dereference/ and
+    # /relationships/ return 403 SEMANTIC_FEATURE_DISABLED.
+    # Default False — opt-in capability.
+    semantic_capabilities_enabled = models.BooleanField(
+        default=False,
+        help_text=(
+            "Phase 274.3 (BR3) — when True, URI dereference and "
+            "semantic relationship endpoints are accessible. When "
+            "False, both return 403 SEMANTIC_FEATURE_DISABLED."
+        ),
+    )
+    # Phase 274.3 — per-tenant gate for RDF export endpoints.
+    # Default False — opt-in capability.
+    semantic_export_enabled = models.BooleanField(
+        default=False,
+        help_text=(
+            "Phase 274.3 (BR3) — when True, RDF ingest/export "
+            "endpoints are accessible. When False, return 403 "
+            "SEMANTIC_FEATURE_DISABLED."
+        ),
+    )
     # Phase 240.4.B.1 — per-tenant Data Quality kill-switch.
     #
     # ``data_quality_enabled`` is the BASE flag — when False, ALL DQ
@@ -791,6 +813,30 @@ class Tenant(models.Model):
             "Phase 274.12 — when True, compliance regressions on "
             "published listings trigger auto-unpublish."
         ),
+    )
+    # Phase 275.DoD.3 — master warehouse connectivity rollout gate.
+    # Defaults False on all tenants (no surprise enable). Flip per-tenant
+    # after 14 d production stability of 275.A + 275.B.
+    warehouse_connectivity_enabled = models.BooleanField(
+        default=False,
+        help_text="Phase 275 — master gate for all warehouse connectivity features.",
+    )
+    # Phase 275.DoD.3 — per-warehouse sub-flags for canary rollout.
+    warehouse_snowflake_enabled = models.BooleanField(
+        default=False,
+        help_text="Phase 275 — enable Snowflake warehouse connector.",
+    )
+    warehouse_bigquery_enabled = models.BooleanField(
+        default=False,
+        help_text="Phase 275 — enable BigQuery warehouse connector.",
+    )
+    warehouse_databricks_enabled = models.BooleanField(
+        default=False,
+        help_text="Phase 275 — enable Databricks warehouse connector.",
+    )
+    warehouse_athena_enabled = models.BooleanField(
+        default=False,
+        help_text="Phase 275 — enable Athena warehouse connector.",
     )
     # Phase 270.C.4.1 — per-tenant compliance legal-basis strict mode.
     # backward-compat), the scan succeeds with an ERROR-severity

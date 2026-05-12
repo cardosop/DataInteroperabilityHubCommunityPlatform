@@ -1,0 +1,5 @@
+Meshant Data Interoperability Hub
+Copyright (c) 2026 Meshant
+
+This software is proprietary. All rights reserved.
+See NOTICE.md for third-party attributions.

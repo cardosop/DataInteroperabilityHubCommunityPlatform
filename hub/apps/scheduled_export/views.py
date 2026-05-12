@@ -223,6 +223,17 @@ class ScheduledExportViewSet(viewsets.ModelViewSet):
     @transaction.atomic
     def create(self, request, *args, **kwargs):
         """Create scheduled export via service (validates via ScheduledExportBusinessRules)."""
+        # Phase 275.E.3l — Idempotency-Key support for retried writes.
+        idempotency_key = request.META.get("HTTP_IDEMPOTENCY_KEY") or request.headers.get("Idempotency-Key")
+        if idempotency_key:
+            existing = ScheduledExport.objects.filter(
+                tenant=request.user.tenant,
+                metadata_json__idempotency_key=idempotency_key,
+            ).first()
+            if existing:
+                serializer = self.get_serializer(existing)
+                return Response(serializer.data, status=status.HTTP_200_OK)
+
         # Fail-fast: check plan limit BEFORE expensive serializer validation.
         tenant_id, tenant = get_request_tenant(request)
         if tenant:
