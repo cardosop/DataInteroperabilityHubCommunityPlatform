@@ -1,10 +1,14 @@
 """
 Phase 275.B.1 — SnowflakeConnector over snowflake-connector-python.
 
-Implements the WarehouseConnector ABC for Snowflake.
+Auth via PAT/JWT/keypair from the encrypted vault.
+SQL dialect: Snowflake SQL. INFORMATION_SCHEMA reflection.
+Query-tag for cost attribution. Circuit-breaker integration.
 """
 from __future__ import annotations
 
+import logging
+import time
 from typing import Any, Dict, List, Optional
 
 from hub.apps.warehouses.connectors import (
@@ -12,31 +16,41 @@ from hub.apps.warehouses.connectors import (
     SchemaColumn,
     WarehouseConnector,
 )
+from hub.apps.warehouses.log_helpers import redact_extra
+
+logger = logging.getLogger(__name__)
 
 
 class SnowflakeConnector(WarehouseConnector):
     """Phase 275.B.1 — Snowflake warehouse connector.
 
-    Auth via PAT/JWT/keypair from the vault.
+    Auth via PAT/JWT/keypair from the encrypted vault.
     SQL dialect: Snowflake SQL.
     Schema reflection via INFORMATION_SCHEMA.COLUMNS.
-    Query-tag for cost attribution.
+    Query-tag for cost attribution: {tenant_id, asset_id, request_id}.
     """
 
     warehouse_type = "snowflake"
 
-    def __init__(self, connection_config: dict, timeout_ms: int = 30_000):
+    def __init__(
+        self,
+        connection_config: dict,
+        timeout_ms: int = 30_000,
+        tenant_id: str = "",
+        asset_id: str = "",
+        request_id: str = "",
+    ):
         super().__init__(connection_config, timeout_ms)
+        self._tenant_id = tenant_id
+        self._asset_id = asset_id
+        self._request_id = request_id
         self._conn = None
 
     def connect(self) -> None:
-        """Establish connection using snowflake-connector-python."""
         config = self._config
-        import logging
-        logger = logging.getLogger(__name__)
-
         try:
             import snowflake.connector
+
             self._conn = snowflake.connector.connect(
                 account=config.get("account", ""),
                 user=config.get("user", ""),
@@ -47,14 +61,38 @@ class SnowflakeConnector(WarehouseConnector):
                 database=config.get("database"),
                 schema=config.get("schema"),
                 login_timeout=(self._timeout_ms // 1000) or 5,
+                session_parameters={
+                    "QUERY_TAG": self._build_query_tag(),
+                },
             )
             self._connected = True
+
+            logger.info(
+                "snowflake_connected",
+                extra=redact_extra(
+                    tenant_id=self._tenant_id,
+                    account=config.get("account"),
+                    warehouse=config.get("warehouse"),
+                ),
+            )
         except ImportError:
             logger.warning("snowflake-connector-python not installed")
             raise
         except Exception:
-            logger.exception("snowflake_connect_failed")
+            logger.exception(
+                "snowflake_connect_failed",
+            )
             raise
+
+    def _build_query_tag(self) -> str:
+        """Build a JSON query-tag for cost attribution."""
+        import json
+        return json.dumps({
+            "tenant_id": self._tenant_id,
+            "asset_id": self._asset_id,
+            "request_id": self._request_id,
+            "source": "meshant-hub",
+        })
 
     def execute_query(
         self,
@@ -62,18 +100,38 @@ class SnowflakeConnector(WarehouseConnector):
         params: Optional[Dict[str, Any]] = None,
         limit: int = 100,
     ) -> QueryResult:
-        self._check_circuit_breaker("")
+        self._check_circuit_breaker(self._tenant_id)
+
+        started = time.monotonic()
         cursor = self._conn.cursor()
         try:
-            cursor.execute(sql, params or {})
+            # Parameterised binding — NEVER string-concatenate.
+            if params:
+                cursor.execute(sql, params)
+            else:
+                cursor.execute(sql)
+
             rows = cursor.fetchmany(limit) if limit else cursor.fetchall()
             cols = [desc[0] for desc in cursor.description] if cursor.description else []
-            return QueryResult(
+            elapsed = (time.monotonic() - started) * 1000
+
+            result = QueryResult(
                 columns=cols,
                 rows=[list(r) for r in rows],
                 row_count=len(rows),
-                duration_ms=0.0,
+                duration_ms=round(elapsed, 2),
             )
+            self._record_cost(self._tenant_id, 0.0, "snowflake_credits")
+            return result
+        except Exception:
+            logger.exception(
+                "snowflake_query_failed",
+                extra=redact_extra(
+                    tenant_id=self._tenant_id,
+                    sql_preview=sql[:200],
+                ),
+            )
+            raise
         finally:
             cursor.close()
 
@@ -84,7 +142,7 @@ class SnowflakeConnector(WarehouseConnector):
             "WHERE TABLE_NAME = %(table_name)s "
             "ORDER BY ORDINAL_POSITION"
         )
-        result = self.execute_query(sql, {"table_name": table_name})
+        result = self.execute_query(sql, {"table_name": table_name.upper()})
         return [
             SchemaColumn(
                 name=r[0], data_type=r[1],
@@ -95,5 +153,8 @@ class SnowflakeConnector(WarehouseConnector):
 
     def close(self) -> None:
         if self._conn:
-            self._conn.close()
+            try:
+                self._conn.close()
+            except Exception:
+                pass
             self._connected = False
