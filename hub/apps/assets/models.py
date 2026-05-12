@@ -78,6 +78,8 @@ class DataStrategy(models.TextChoices):
     METADATA_ONLY = "METADATA_ONLY", "Metadata Only"
     DOWNLOAD_SELECTIVE = "DOWNLOAD_SELECTIVE", "Selective Download"
     DOWNLOAD_ALL = "DOWNLOAD_ALL", "Download All"
+    # Phase 275.A.3 — live warehouse query (no full table copy).
+    LIVE_QUERY = "LIVE_QUERY", "Live Query"
 
 
 class Asset(models.Model):
@@ -208,11 +210,46 @@ class Asset(models.Model):
         blank=True,
         help_text="Hub-managed metadata (e.g. contract_warnings from invalidation cascade)",
     )
+    # Phase 232.4 — RoPA Article 30-style metadata scaffold (processing inventory).
+    processing_purposes = models.ManyToManyField(
+        "consent.ConsentPurpose",
+        related_name="ropa_assets",
+        blank=True,
+        help_text="Consent / processing purposes applicable to this asset for RoPA exports.",
+    )
+    categories_of_subjects = models.JSONField(
+        default=list,
+        blank=True,
+        help_text="Categories of data subjects (structured labels for supervisory registers).",
+    )
+    recipient_categories = models.JSONField(
+        default=list,
+        blank=True,
+        help_text="Categories of recipients of personal data.",
+    )
+    # Phase 232.6 — processors tied to RoPA / Article 28-style inventory.
+    processors = models.ManyToManyField(
+        "processor_agreements.Processor",
+        through="processor_agreements.AssetProcessorMembership",
+        related_name="assets",
+        blank=True,
+        help_text="Processors (data processing agreements) linked to this asset.",
+    )
     data_strategy = models.CharField(
-        max_length=20,
+        max_length=30,
         choices=DataStrategy.choices,
         default=DataStrategy.METADATA_ONLY,
-        help_text="Data strategy for federated assets: METADATA_ONLY (store references only), DOWNLOAD_SELECTIVE (download specific resources), DOWNLOAD_ALL (download all resources)"
+        help_text="Data strategy: METADATA_ONLY, DOWNLOAD_SELECTIVE, DOWNLOAD_ALL, LIVE_QUERY (Phase 275)"
+    )
+    # Phase 275.A.3 — nullable FK to warehouse connection for LIVE_QUERY assets.
+    warehouse_connection = models.ForeignKey(
+        "warehouses.WarehouseConnection",
+        on_delete=models.SET_NULL,
+        related_name="assets",
+        null=True,
+        blank=True,
+        help_text="Warehouse connection for LIVE_QUERY assets",
+    )
     )
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
@@ -485,6 +522,14 @@ class Asset(models.Model):
                         f"Required: PASS or WARN"
                     )
 
+    def compliance_intake_scan_gate_satisfied(self) -> bool:
+        """True when the latest compliance run clears the Phase 231.1 intake gate."""
+        from hub.apps.compliance.intake_scan import (
+            compliance_intake_gate_satisfied_for_asset,
+        )
+
+        return compliance_intake_gate_satisfied_for_asset(self)
+
     def can_activate(self) -> tuple[bool, list[str]]:
         """
         Check if asset can be activated.
@@ -555,6 +600,25 @@ class Asset(models.Model):
                 blockers.append(
                     f"compliance_status must be PASS or WARN (current: {self.compliance_status})"
                 )
+
+        from hub.apps.compliance.intake_scan import COMPLIANCE_INTAKE_ACTIVATION_BLOCKER
+        from hub.apps.marketplace.compliance_gate import compliance_threshold_activation_blocker
+        from hub.apps.tenants.models import Tenant
+
+        if self.tenant_id:
+            try:
+                tenant_row = Tenant.objects.only("compliance_intake_gate_enabled").get(
+                    pk=self.tenant_id
+                )
+            except Tenant.DoesNotExist:
+                tenant_row = None
+            if tenant_row and tenant_row.compliance_intake_gate_enabled:
+                if not self.compliance_intake_scan_gate_satisfied():
+                    blockers.append(COMPLIANCE_INTAKE_ACTIVATION_BLOCKER)
+
+        thr_block = compliance_threshold_activation_blocker(self)
+        if thr_block:
+            blockers.append(thr_block)
 
         return len(blockers) == 0, blockers
 
