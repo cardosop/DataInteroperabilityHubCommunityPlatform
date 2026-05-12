@@ -14311,3 +14311,27 @@ frontend/src/integration/
 - [TEST_ASSERTION_CONVENTIONS.md](TEST_ASSERTION_CONVENTIONS.md) — Section 6: Frontend real-API integration tests
 - [E2E_ENVIRONMENT_REQUIREMENTS.md](E2E_ENVIRONMENT_REQUIREMENTS.md) — Service availability
 - [TEST_EXECUTION_PLAN.md](TEST_EXECUTION_PLAN.md) — Phase 12A.2.1, 12A.2.2
+
+## Phase 276 — New FE Conventions
+
+### Tenant Identity
+- Use `useActiveTenantId()` from `features/auth/hooks/useActiveTenantId.ts`
+  instead of reading `user.tenant_id` directly. The hook re-decodes the JWT
+  claim on every render and reacts to cross-tab tenant switches.
+
+### Error Handling
+- Use `useRetryAfter()` from `shared/hooks/useRetryAfter.ts` for 429
+  responses. Handles `Retry-After` header + exponential backoff.
+
+### Real-Time Notifications
+- Use `useNotificationStream()` from `features/notifications/hooks/useNotificationStream.ts`
+  to subscribe to SSE events from `/notifications/stream/`.
+
+### Theming
+- Use `useTheme()` from `features/shell/ThemeProvider.tsx` for dark mode.
+  Theme persisted in localStorage. Wrap app with `<ThemeProvider>`.
+
+### E2E Console Capture
+- The Playwright harness now captures browser console errors.
+  Use `ALLOWLIST_PATTERNS` in `e2e/fixtures/consoleCapture.ts` to
+  suppress known noisy third-party messages.

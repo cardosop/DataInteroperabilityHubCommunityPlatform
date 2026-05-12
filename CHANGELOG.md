@@ -589,3 +589,19 @@ editor.
 - 144 functional tests + 3 performance benchmarks added under
   `hub/apps/contracts/tests/test_*.py` and
   `hub/apps/marketplace/tests/test_marketplace_publish_structural_blocker.py`
+
+### Frontend — Phase 276: Audit & Remediation (2026-05-12)
+
+- **Audit**: 9-pass static review of frontend codebase produced 24 findings
+  (8 P0, 10 P1, 6 P2). Capability coverage matrix, persona journey audit,
+  UX heuristics, system design, FE↔BE contracts, infra/security, CI/quality
+  gates, and docs/DX all covered.
+- **AUTH-007 sweep**: `useActiveTenantId()` centralized hook replaces 40+
+  direct `user.tenant_id` reads. Multi-tab session sync via `storage` events.
+- **Browser-console capture**: e2e harness now fails tests on uncaught
+  browser console errors (with configurable allowlist).
+- **New hooks**: `useNotificationStream()` (SSE), `useRetryAfter()` (429
+  exponential backoff), `ThemeProvider` (dark mode toggle).
+- **Infrastructure**: CSP header in nginx config, `.env` pre-commit guard,
+  OpenAPI→FE-types CI drift gate, Storybook scaffold.
+- **XSS audit**: 0 `dangerouslySetInnerHTML` found — project clean.
