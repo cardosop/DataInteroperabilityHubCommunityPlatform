@@ -10,7 +10,7 @@ import logging
 from datetime import timedelta
 from typing import Any, Dict, List, Optional
 
-from django.db import transaction
+from django.db import models, transaction
 from django.utils import timezone
 
 from hub.apps.audit.utils import create_audit_event
@@ -222,6 +222,7 @@ class GovernanceService(BaseService, AccessEventPublisher):
         tenant_id: str,
         approver_id: str,
         comments: Optional[str] = None,
+        force_approve: bool = False,
     ) -> AccessRequest:
         """
         Approve an access request.
@@ -231,6 +232,8 @@ class GovernanceService(BaseService, AccessEventPublisher):
             tenant_id: Tenant ID
             approver_id: User ID approving the request
             comments: Optional approval comments
+            force_approve: If True, bypass the compliance gate
+                (PLATFORM_ADMIN only — caller must enforce this).
 
         Returns:
             Updated AccessRequest instance
@@ -238,7 +241,9 @@ class GovernanceService(BaseService, AccessEventPublisher):
         Raises:
             NotFoundError: If access request not found
             ValidationError: If GovernanceBusinessRules reject approval
+                or compliance gate blocks
         """
+        from hub.apps.governance.models import AccessRequestComment
         from hub.apps.tenants.models import Tenant
         from hub.apps.users.models import User
 
@@ -281,19 +286,57 @@ class GovernanceService(BaseService, AccessEventPublisher):
                     details=result.details,
                 )
 
-            # Update access request
-            access_request.status = AccessRequestStatus.APPROVED
+            # Phase 272.2 — compliance gate on approval.
+            # When enabled, the latest ComplianceRun for the resource must
+            # exist and have allowed_to_store=True. PLATFORM_ADMIN can
+            # override via force_approve.
+            if getattr(tenant_obj, "access_request_compliance_gate_enabled", False):
+                self._check_compliance_gate(
+                    access_request=access_request,
+                    tenant=tenant_obj,
+                    approver=approver_user,
+                    force_approve=force_approve,
+                )
+
+            # Phase 272.3 — ABAC evaluation on approval.
+            # After compliance gate, evaluate ABAC policies for the
+            # approver+resource+action. DENY policy blocks approval;
+            # PERMIT or no-matching-policy proceeds.
+            self._evaluate_abac_for_approval(
+                access_request=access_request,
+                tenant=tenant_obj,
+                approver=approver_user,
+            )
+
+            # Phase 272.1 — persist comment when provided.
+            if comments and comments.strip():
+                AccessRequestComment.objects.create(
+                    tenant=tenant_obj,
+                    access_request=access_request,
+                    author=approver_user,
+                    body=comments.strip(),
+                )
+
+            # Phase 272.4 — multi-step approval state machine.
+            is_final_step = self._advance_approval_workflow(
+                access_request=access_request,
+                tenant=tenant_obj,
+                approver=approver_user,
+            )
+
+            # Update access request.
             access_request.approved_by = approver_user
             access_request.approved_at = timezone.now()
-            # Set expiration if not already set (default 90 days from approval)
-            if not access_request.expires_at:
-                access_request.expires_at = timezone.now() + timedelta(days=90)
+            if is_final_step:
+                access_request.status = AccessRequestStatus.APPROVED
+                if not access_request.expires_at:
+                    access_request.expires_at = timezone.now() + timedelta(days=90)
+            else:
+                access_request.status = AccessRequestStatus.PENDING_NEXT_APPROVER
             access_request.save()
 
-            # Cascade to marketplace: fulfill the linked order + create entitlement.
-            # The order is also locked to prevent the approve() race condition
-            # if both the governance and marketplace paths fire concurrently.
-            if access_request.order_id:
+            # Cascade to marketplace only on final step.
+            if is_final_step and access_request.order_id:
                 from hub.apps.marketplace.entitlement_utils import create_entitlement_for_order
                 from hub.apps.marketplace.models import Order, OrderStatus
                 order = Order.objects.select_for_update().get(
@@ -328,8 +371,265 @@ class GovernanceService(BaseService, AccessEventPublisher):
 
         return access_request
 
+    @staticmethod
+    def _evaluate_abac_for_approval(*, access_request, tenant, approver):
+        """Phase 272.3 — evaluate ABAC before approving.
+
+        Calls ABACEngine.evaluate_access() with the approver as
+        subject and the resource as the target. DENY → 403.
+        PERMIT or no policy → proceeds.
+        """
+        from hub.apps.audit.event_types import ABAC_DECISION_RECORDED
+        from hub.apps.audit.utils import create_audit_event
+        from hub.apps.governance.abac import ABACEngine
+        from hub.apps.governance.metrics import governance_abac_decisions_total
+
+        resource_type = None
+        resource_id = None
+        if access_request.asset_id:
+            resource_type = "ASSET"
+            resource_id = str(access_request.asset_id)
+        elif access_request.dataset_id:
+            resource_type = "DATASET"
+            resource_id = str(access_request.dataset_id)
+        elif access_request.file_id:
+            resource_type = "FILE"
+            resource_id = str(access_request.file_id)
+
+        if not resource_type:
+            return
+
+        result = ABACEngine.evaluate_access(
+            user_id=str(approver.id),
+            tenant_id=str(tenant.id),
+            resource_type=resource_type,
+            resource_id=resource_id,
+            access_type="approve_access_request",
+        )
+
+        try:
+            governance_abac_decisions_total.labels(
+                decision="PERMIT" if result.allowed else "DENY",
+                policy_id=str(result.policy.id) if result.policy else "none",
+            ).inc()
+        except Exception:
+            pass
+
+        create_audit_event(
+            resource_type="ACCESS_REQUEST",
+            action=ABAC_DECISION_RECORDED,
+            actor_user=approver,
+            tenant=tenant,
+            resource_id=str(access_request.id),
+            result="SUCCESS" if result.allowed else "DENIED",
+            details={
+                "decision": "PERMIT" if result.allowed else "DENY",
+                "policy_id": str(result.policy.id) if result.policy else None,
+                "access_request_id": str(access_request.id),
+            },
+        )
+
+        if not result.allowed:
+            raise ValidationError(
+                "ABAC policy denied approval.",
+                code="ABAC_POLICY_DENIED",
+                details={
+                    "policy_id": str(result.policy.id) if result.policy else None,
+                    "access_request_id": str(access_request.id),
+                },
+                http_status=403,
+            )
+
+    @staticmethod
+    def _advance_approval_workflow(*, access_request, tenant, approver):
+        """Phase 272.4 — advance the multi-step approval workflow.
+
+        Returns True if this is the final approval step (entitlement
+        should be created). Returns False if more steps remain.
+
+        On the first approval (null/empty approval_workflow), looks up
+        the AccessPolicy for the resource and snapshots its
+        ``required_approval_chain``. If no chain is found, the request
+        is treated as single-step (always final).
+
+        Emits ACCESS_REQUEST_STEP_TRANSITIONED audit events.
+        """
+        from hub.apps.audit.event_types import ACCESS_REQUEST_STEP_TRANSITIONED
+        from hub.apps.audit.utils import create_audit_event
+        from hub.apps.governance.models import AccessPolicy
+
+        workflow = access_request.approval_workflow or []
+
+        # First approval — snapshot chain from policy if available.
+        if not workflow:
+            resource_q = models.Q()
+            if access_request.asset_id:
+                resource_q &= models.Q(asset_id=access_request.asset_id)
+            if access_request.dataset_id:
+                resource_q &= models.Q(dataset_id=access_request.dataset_id)
+            if access_request.file_id:
+                resource_q &= models.Q(file_id=access_request.file_id)  # no such field, skip
+
+            policy = (
+                AccessPolicy.objects
+                .filter(tenant=tenant, enabled=True)
+                .filter(resource_q if resource_q else models.Q())
+                .order_by("priority")
+                .first()
+            )
+
+            chain = getattr(policy, "required_approval_chain", None) if policy else None
+            if chain and isinstance(chain, list) and len(chain) > 0:
+                workflow = chain
+                access_request.approval_workflow = list(chain)
+                access_request.current_approval_step = 0
+            else:
+                # Single-step — no chain to snapshot.
+                access_request.approval_workflow = []
+                access_request.current_approval_step = 0
+                return True  # final step
+
+        current_step = access_request.current_approval_step
+        total_steps = len(workflow)
+
+        from_step = current_step
+        if current_step >= total_steps - 1:
+            # Final step — all done.
+            to_step = total_steps
+            access_request.current_approval_step = total_steps
+            is_final = True
+        else:
+            # Intermediate step — advance.
+            access_request.current_approval_step = current_step + 1
+            to_step = access_request.current_approval_step
+            is_final = False
+
+        create_audit_event(
+            resource_type="ACCESS_REQUEST",
+            action=ACCESS_REQUEST_STEP_TRANSITIONED,
+            actor_user=approver,
+            tenant=tenant,
+            resource_id=str(access_request.id),
+            result="SUCCESS",
+            details={
+                "from_step": from_step,
+                "to_step": to_step,
+                "approver_id": str(approver.id),
+                "policy_id": None,
+            },
+        )
+
+        return is_final
+
+    @staticmethod
+    def _check_compliance_gate(*, access_request, tenant, approver, force_approve=False):
+        """Phase 272.2 — enforce compliance gate on approval.
+
+        Queries the latest ComplianceRun for the access request's
+        resource. Blocks approval when:
+        - No ComplianceRun exists → 422 ``compliance_run_required``
+        - allowed_to_store is False → 422 ``compliance_not_allowed_to_store``
+
+        PLATFORM_ADMIN can bypass with ``force_approve=True``, which
+        emits ACCESS_REQUEST_COMPLIANCE_GATE_OVERRIDDEN instead of
+        ACCESS_REQUEST_BLOCKED_COMPLIANCE.
+        """
+        from hub.apps.audit.event_types import (
+            ACCESS_REQUEST_BLOCKED_COMPLIANCE,
+            ACCESS_REQUEST_COMPLIANCE_GATE_OVERRIDDEN,
+        )
+        from hub.apps.audit.utils import create_audit_event
+        from hub.apps.compliance.models import ComplianceRun
+
+        # Resolve which resource to check.
+        resource_id = access_request.asset_id or access_request.dataset_id or access_request.file_id
+        if not resource_id:
+            # No resource linked — nothing to compliance-check.
+            return
+
+        latest_run = (
+            ComplianceRun.objects
+            .filter(
+                tenant=tenant,
+                status__in=("SUCCEEDED", "PASS"),
+            )
+            .filter(
+                models.Q(asset_id=resource_id)
+                | models.Q(dataset_id=resource_id)
+                | models.Q(file_id=resource_id)
+            )
+            .order_by("-completed_at")
+            .first()
+        )
+
+        if force_approve:
+            create_audit_event(
+                resource_type="ACCESS_REQUEST",
+                action=ACCESS_REQUEST_COMPLIANCE_GATE_OVERRIDDEN,
+                actor_user=approver,
+                tenant=tenant,
+                resource_id=str(access_request.id),
+                result="SUCCESS",
+                details={
+                    "access_request_id": str(access_request.id),
+                    "compliance_run_id": str(latest_run.id) if latest_run else None,
+                },
+            )
+            return
+
+        if latest_run is None:
+            create_audit_event(
+                resource_type="ACCESS_REQUEST",
+                action=ACCESS_REQUEST_BLOCKED_COMPLIANCE,
+                actor_user=approver,
+                tenant=tenant,
+                resource_id=str(access_request.id),
+                result="BLOCKED",
+                details={
+                    "reason": "compliance_run_required",
+                    "access_request_id": str(access_request.id),
+                },
+            )
+            from hub.apps.governance.metrics import record_compliance_blocked
+            record_compliance_blocked(str(tenant.id), "compliance_run_required")
+            raise ValidationError(
+                "A compliance scan is required before this access request can be approved.",
+                code="COMPLIANCE_RUN_REQUIRED",
+                details={"resource_id": str(resource_id)},
+            )
+
+        if latest_run.allowed_to_store is False:
+            create_audit_event(
+                resource_type="ACCESS_REQUEST",
+                action=ACCESS_REQUEST_BLOCKED_COMPLIANCE,
+                actor_user=approver,
+                tenant=tenant,
+                resource_id=str(access_request.id),
+                result="BLOCKED",
+                details={
+                    "reason": "compliance_not_allowed_to_store",
+                    "access_request_id": str(access_request.id),
+                    "compliance_run_id": str(latest_run.id),
+                },
+            )
+            from hub.apps.governance.metrics import record_compliance_blocked
+            record_compliance_blocked(str(tenant.id), "compliance_not_allowed_to_store")
+            raise ValidationError(
+                "The latest compliance scan determined this data is not allowed to be stored.",
+                code="COMPLIANCE_NOT_ALLOWED_TO_STORE",
+                details={
+                    "resource_id": str(resource_id),
+                    "compliance_run_id": str(latest_run.id),
+                },
+            )
+
     def reject_access_request(
-        self, access_request_id: str, tenant_id: str, approver_id: str, reason: str
+        self,
+        access_request_id: str,
+        tenant_id: str,
+        approver_id: str,
+        reason: str,
+        comments: Optional[str] = None,
     ) -> AccessRequest:
         """
         Reject an access request.
@@ -339,6 +639,7 @@ class GovernanceService(BaseService, AccessEventPublisher):
             tenant_id: Tenant ID
             approver_id: User ID rejecting the request
             reason: Rejection reason
+            comments: Optional rejection comments
 
         Returns:
             Updated AccessRequest instance
@@ -351,6 +652,7 @@ class GovernanceService(BaseService, AccessEventPublisher):
             AccessRequest, access_request_id, tenant_id=tenant_id
         )
 
+        from hub.apps.governance.models import AccessRequestComment
         from hub.apps.tenants.models import Tenant
         from hub.apps.users.models import User
 
@@ -373,6 +675,15 @@ class GovernanceService(BaseService, AccessEventPublisher):
                 "; ".join(result.errors),
                 code="BUSINESS_RULES_VALIDATION",
                 details=result.details,
+            )
+
+        # Phase 272.1 — persist comment when provided.
+        if comments and comments.strip():
+            AccessRequestComment.objects.create(
+                tenant=tenant,
+                access_request=access_request,
+                author=rejector_user,
+                body=comments.strip(),
             )
 
         # Update access request
@@ -404,6 +715,81 @@ class GovernanceService(BaseService, AccessEventPublisher):
             )
         except Exception:
             logger.exception("Failed to deliver rejection notification")
+
+        return access_request
+
+    def revoke_access_request(
+        self,
+        access_request_id: str,
+        tenant_id: str,
+        revoker_id: str,
+        reason: str,
+    ) -> AccessRequest:
+        """
+        Phase 272.6 — revoke an approved access request.
+
+        Moves the revoke logic from the view into the service layer
+        so entitlement revocation and notifications are co-located.
+
+        Args:
+            access_request_id: Access request ID
+            tenant_id: Tenant ID
+            revoker_id: User ID performing the revocation
+            reason: Revocation reason (required)
+
+        Returns:
+            Updated AccessRequest instance
+
+        Raises:
+            ValidationError: If reason is empty or status is not APPROVED
+        """
+        from hub.apps.users.models import User
+
+        if not reason or not reason.strip():
+            raise ValidationError(
+                "revocation_reason is required.",
+                code="REVOCATION_REASON_REQUIRED",
+            )
+
+        access_request = self.get_resource_or_raise(
+            AccessRequest, access_request_id, tenant_id=tenant_id,
+        )
+
+        if access_request.status != AccessRequestStatus.APPROVED:
+            raise ValidationError(
+                f"Only approved requests can be revoked (status: {access_request.status})",
+                code="BUSINESS_RULES_VALIDATION",
+                details={"status": access_request.status},
+            )
+
+        revoker = User.objects.get(id=revoker_id)
+
+        access_request.status = AccessRequestStatus.REVOKED
+        access_request.revocation_reason = reason.strip()
+        access_request.save(update_fields=["status", "revocation_reason", "updated_at"])
+
+        # Cascade to marketplace entitlement.
+        if access_request.order:
+            from hub.apps.marketplace.entitlement_utils import revoke_entitlement_for_order
+            revoke_entitlement_for_order(
+                access_request.order, reason=f"Governance access revoked: {reason.strip()}",
+            )
+
+        # Notify requester.
+        try:
+            from hub.apps.notifications.utils import create_user_notification
+            create_user_notification(
+                user=access_request.requested_by,
+                tenant=access_request.tenant,
+                title="Access request revoked",
+                message=reason.strip(),
+                notification_type="WARNING",
+                category="GOVERNANCE",
+                resource_type="ACCESS_REQUEST",
+                resource_id=access_request.id,
+            )
+        except Exception:
+            logger.exception("Failed to deliver revocation notification")
 
         return access_request
 
@@ -615,6 +1001,7 @@ class GovernanceService(BaseService, AccessEventPublisher):
         legal_hold_reason: Optional[str] = None,
         legal_hold_expires_at: Optional[Any] = None,
         enabled: bool = True,
+        regulation_keys: Optional[list[str]] = None,
     ) -> RetentionPolicy:
         """
         Create a retention policy.
@@ -639,6 +1026,7 @@ class GovernanceService(BaseService, AccessEventPublisher):
             legal_hold_reason: Reason for legal hold
             legal_hold_expires_at: When legal hold expires
             enabled: Whether policy is enabled
+            regulation_keys: Optional regime identifiers (uppercase strings) for automatic horizons
 
         Returns:
             Created RetentionPolicy instance
@@ -700,18 +1088,35 @@ class GovernanceService(BaseService, AccessEventPublisher):
                 )
 
         # Validate policy_type-specific requirements
+        rk_norm: list[str] = list(regulation_keys) if regulation_keys is not None else []
+        if policy_type != RetentionPolicyType.TIME_BASED.value:
+            rk_norm = []
+        resolved_retention_days = retention_period_days
         if policy_type == RetentionPolicyType.TIME_BASED.value:
-            if not retention_period_days:
+            if rk_norm:
+                from hub.apps.regulation_policies.registry import (
+                    data_retention_period_days_for_regime_keys,
+                )
+
+                derived = data_retention_period_days_for_regime_keys(rk_norm)
+                if derived <= 0:
+                    raise ValidationError(
+                        "regulation_keys could not be mapped to retention_period_days > 0",
+                        code="VALIDATION_ERROR",
+                        details={"regulation_keys": rk_norm},
+                    )
+                resolved_retention_days = derived
+            elif not resolved_retention_days:
                 raise ValidationError(
-                    "retention_period_days is required for time-based policies",
+                    "retention_period_days is required unless regulation_keys is supplied",
                     code="VALIDATION_ERROR",
                     details={"policy_type": policy_type},
                 )
-            if retention_period_days is not None and retention_period_days < 0:
+            if resolved_retention_days is not None and resolved_retention_days < 0:
                 raise ValidationError(
                     "retention_period_days must be >= 0",
                     code="VALIDATION_ERROR",
-                    details={"retention_period_days": retention_period_days},
+                    details={"retention_period_days": resolved_retention_days},
                 )
         if grace_period_days is not None and grace_period_days < 0:
             raise ValidationError(
@@ -719,7 +1124,7 @@ class GovernanceService(BaseService, AccessEventPublisher):
                 code="VALIDATION_ERROR",
                 details={"grace_period_days": grace_period_days},
             )
-        elif policy_type == RetentionPolicyType.EVENT_BASED.value:
+        if policy_type == RetentionPolicyType.EVENT_BASED.value:
             if not event_trigger:
                 raise ValidationError(
                     "event_trigger is required for event-based policies",
@@ -737,13 +1142,14 @@ class GovernanceService(BaseService, AccessEventPublisher):
             dataset=dataset,
             file=file_obj,
             policy_type=policy_type,
-            retention_period_days=retention_period_days,
+            retention_period_days=resolved_retention_days,
             event_trigger=event_trigger,
             action=action,
             grace_period_days=grace_period_days,
             legal_hold=legal_hold,
             legal_hold_reason=legal_hold_reason,
             legal_hold_expires_at=legal_hold_expires_at,
+            regulation_keys=rk_norm,
             enabled=enabled,
             created_by=user,
         )
@@ -766,13 +1172,14 @@ class GovernanceService(BaseService, AccessEventPublisher):
             dataset=dataset,
             file=file_obj,
             policy_type=policy_type,
-            retention_period_days=retention_period_days,
+            retention_period_days=resolved_retention_days,
             event_trigger=event_trigger,
             action=action,
             grace_period_days=grace_period_days,
             legal_hold=legal_hold,
             legal_hold_reason=legal_hold_reason,
             legal_hold_expires_at=legal_hold_expires_at,
+            regulation_keys=rk_norm,
             enabled=enabled,
             created_by=user,
         )
@@ -860,6 +1267,8 @@ class GovernanceService(BaseService, AccessEventPublisher):
                 "created_by",
                 "created_at",
                 "updated_at",
+                "tombstoned_at",
+                "hard_delete_scheduled_at",
             ]:
                 setattr(policy, field, value)
 
@@ -884,6 +1293,65 @@ class GovernanceService(BaseService, AccessEventPublisher):
             details={
                 "changes": update_data,
                 "original": original_data,
+            },
+        )
+
+        return policy
+
+    @transaction.atomic
+    def set_retention_policy_legal_hold(
+        self,
+        *,
+        policy_id: str,
+        tenant_id: str,
+        user_id: str,
+        legal_hold: bool,
+        legal_hold_reason: Optional[str],
+        legal_hold_expires_at: Optional[Any],
+    ) -> RetentionPolicy:
+        """
+        Privileged setter (TENANT_ADMIN / LEGAL_ADMIN / platform admins at the view).
+
+        Separate from generic ``update_retention_policy`` for distinct audit wording.
+        """
+        from hub.apps.audit import event_types as audit_event_constants
+        from hub.apps.tenants.models import Tenant
+        from hub.apps.users.models import User
+
+        policy = self.get_resource_or_raise(RetentionPolicy, policy_id, tenant_id=tenant_id)
+        Tenant.objects.get(id=tenant_id)  # fail fast for tenant drift
+        user = User.objects.get(id=user_id)
+
+        before = {
+            "legal_hold": policy.legal_hold,
+            "legal_hold_reason": policy.legal_hold_reason,
+            "legal_hold_expires_at": policy.legal_hold_expires_at,
+        }
+
+        policy.legal_hold = bool(legal_hold)
+        policy.legal_hold_reason = legal_hold_reason or ""
+        policy.legal_hold_expires_at = legal_hold_expires_at
+
+        policy.full_clean()
+        policy.save()
+
+        create_audit_event(
+            resource_type="RETENTION_POLICY",
+            action=audit_event_constants.RETENTION_POLICY_LEGAL_HOLD_UPDATED,
+            actor_user=user,
+            tenant=policy.tenant,
+            resource_id=str(policy.id),
+            details={
+                "before": before,
+                "after": {
+                    "legal_hold": policy.legal_hold,
+                    "legal_hold_reason": policy.legal_hold_reason,
+                    "legal_hold_expires_at": (
+                        policy.legal_hold_expires_at.isoformat()
+                        if policy.legal_hold_expires_at
+                        else None
+                    ),
+                },
             },
         )
 

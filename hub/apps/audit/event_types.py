@@ -1123,6 +1123,42 @@ CONNECT_WEBHOOK_PAYOUT_PAID: str = "CONNECT_WEBHOOK_PAYOUT_PAID"
 #: ``"FAILURE"``.
 CONNECT_WEBHOOK_PAYOUT_FAILED: str = "CONNECT_WEBHOOK_PAYOUT_FAILED"
 
+# ---------------------------------------------------------------------------
+# Phase 272 — Governance ABAC + Multi-Step Approval + Compliance Gate
+# ---------------------------------------------------------------------------
+
+#: Phase 272.2 — fired when access request approval is blocked by the
+#: compliance gate (no ComplianceRun or allowed_to_store=False).
+#: ``details_json`` carries: ``reason``, ``access_request_id``,
+#: ``compliance_run_id`` (nullable).
+ACCESS_REQUEST_BLOCKED_COMPLIANCE: str = "ACCESS_REQUEST_BLOCKED_COMPLIANCE"
+
+#: Phase 272.2 — fired when a PLATFORM_ADMIN overrides the compliance
+#: gate via ``force_approve=true``. ``details_json`` carries:
+#: ``access_request_id``, ``compliance_run_id`` (nullable).
+ACCESS_REQUEST_COMPLIANCE_GATE_OVERRIDDEN: str = (
+    "ACCESS_REQUEST_COMPLIANCE_GATE_OVERRIDDEN"
+)
+
+#: Phase 272.3 — fired every time ABACEngine.evaluate_access() is called
+#: during approval. ``details_json`` carries: ``decision`` (PERMIT/DENY),
+#: ``policy_id``, ``reason`` (DENY only).
+ABAC_DECISION_RECORDED: str = "ABAC_DECISION_RECORDED"
+
+#: Phase 272.4 — fired on each multi-step approval transition.
+#: ``details_json`` carries: ``from_step``, ``to_step``,
+#: ``approver_id``, ``policy_id``.
+ACCESS_REQUEST_STEP_TRANSITIONED: str = "ACCESS_REQUEST_STEP_TRANSITIONED"
+
+#: Phase 272.6 — fired when an approval delegation is created.
+APPROVAL_DELEGATION_CREATED: str = "APPROVAL_DELEGATION_CREATED"
+
+#: Phase 272.6 — fired when a delegate exercises their delegation.
+APPROVAL_DELEGATION_USED: str = "APPROVAL_DELEGATION_USED"
+
+#: Phase 272.6 — fired when an approval delegation window ends.
+APPROVAL_DELEGATION_ENDED: str = "APPROVAL_DELEGATION_ENDED"
+
 
 __all__ = [
     "DQ_ALERT_RESOURCE_TYPE",
@@ -1244,4 +1280,11 @@ __all__ = [
     "CONNECT_WEBHOOK_PAYOUT_CREATED",
     "CONNECT_WEBHOOK_PAYOUT_PAID",
     "CONNECT_WEBHOOK_PAYOUT_FAILED",
+    "ACCESS_REQUEST_BLOCKED_COMPLIANCE",
+    "ACCESS_REQUEST_COMPLIANCE_GATE_OVERRIDDEN",
+    "ABAC_DECISION_RECORDED",
+    "ACCESS_REQUEST_STEP_TRANSITIONED",
+    "APPROVAL_DELEGATION_CREATED",
+    "APPROVAL_DELEGATION_USED",
+    "APPROVAL_DELEGATION_ENDED",
 ]

@@ -153,3 +153,28 @@ export function useRevokeAccessRequest() {
     },
   });
 }
+
+// ── Phase 272.1 — AccessRequestComment hooks ─────────────────
+
+export function useAccessRequestComments(accessRequestId: string | null) {
+  return useQuery({
+    queryKey: ['governance', 'access-requests', 'comments', accessRequestId],
+    queryFn: () => governanceService.listComments(accessRequestId!),
+    enabled: !!accessRequestId,
+  });
+}
+
+export function useCreateAccessRequestComment() {
+  const queryClient = useQueryClient();
+  return useMutationWithNotification({
+    mutationFn: ({ id, body }: { id: string; body: string }) =>
+      governanceService.createComment(id, body),
+    successMessage: 'Comment added',
+    errorMessage: 'Failed to add comment',
+    onSuccess: (_data, variables) => {
+      queryClient.invalidateQueries({
+        queryKey: ['governance', 'access-requests', 'comments', variables.id],
+      });
+    },
+  });
+}

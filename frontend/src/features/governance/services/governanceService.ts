@@ -6,6 +6,7 @@
 import { apiClient } from '../../../shared/api/client';
 import type {
   AccessRequest,
+  AccessRequestComment,
   AccessRequestCreateRequest,
   AccessRequestListFilters,
 } from '../../../shared/types/governance';
@@ -100,7 +101,7 @@ export const governanceService = {
     const response = await apiClient
       .getClient()
       .get<{ count: number }>(`${GOVERNANCE_ACCESS_REQUESTS_PATH}/pending-count/`);
-    return response.data.count;
+    return response.data.count ?? 0;
   },
 
   /** 223.3.3 — bulk approve pending access requests */
@@ -115,6 +116,27 @@ export const governanceService = {
       .post<{ succeeded: string[]; failed: Array<{ id: string; error: string }> }>(
         `${GOVERNANCE_ACCESS_REQUESTS_PATH}/bulk-approve/`,
         body,
+      );
+    return response.data;
+  },
+
+  // ── Phase 272.1 — AccessRequestComment endpoints ─────────────────
+
+  /** List comments for an access request (chronological). */
+  async listComments(id: string): Promise<AccessRequestComment[]> {
+    const response = await apiClient
+      .getClient()
+      .get<AccessRequestComment[]>(`${GOVERNANCE_ACCESS_REQUESTS_PATH}/${id}/comments/`);
+    return response.data;
+  },
+
+  /** Create a standalone comment on an access request. */
+  async createComment(id: string, body: string): Promise<AccessRequestComment> {
+    const response = await apiClient
+      .getClient()
+      .post<AccessRequestComment>(
+        `${GOVERNANCE_ACCESS_REQUESTS_PATH}/${id}/comments/`,
+        { body },
       );
     return response.data;
   },

@@ -1,0 +1,79 @@
+/* Phase 272.4 — MultiStepApprovalIndicator styles */
+.multi-step-indicator {
+  margin-top: var(--spacing-lg, 1.5rem);
+}
+
+.multi-step-indicator h4 {
+  margin: 0 0 var(--spacing-md, 1rem) 0;
+  font-size: var(--font-size-lg, 1.125rem);
+}
+
+.step-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-xs, 0.25rem);
+}
+
+.step-item {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm, 0.5rem);
+  padding: var(--spacing-sm, 0.5rem);
+  border-radius: var(--border-radius-md, 6px);
+  font-size: var(--font-size-sm, 0.8125rem);
+}
+
+.step-completed {
+  background: var(--color-success-50, #f0fdf4);
+  color: var(--color-success-700, #15803d);
+}
+
+.step-current {
+  background: var(--color-primary-50, #eff6ff);
+  color: var(--color-primary-700, #1d4ed8);
+  font-weight: 600;
+}
+
+.step-pending {
+  background: var(--color-bg-tertiary, #f9fafb);
+  color: var(--color-text-tertiary, #9ca3af);
+}
+
+.step-number {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.5rem;
+  height: 1.5rem;
+  border-radius: 50%;
+  font-weight: 700;
+  font-size: var(--font-size-xs, 0.75rem);
+  flex-shrink: 0;
+}
+
+.step-completed .step-number {
+  background: var(--color-success-500, #22c55e);
+  color: white;
+}
+
+.step-current .step-number {
+  background: var(--color-primary-500, #3b82f6);
+  color: white;
+}
+
+.step-pending .step-number {
+  background: var(--color-border, #d1d5db);
+  color: var(--color-text-tertiary, #9ca3af);
+}
+
+.step-label {
+  flex: 1;
+}
+
+.step-role {
+  font-style: italic;
+  opacity: 0.7;
+}

@@ -54,3 +54,14 @@ export interface AccessRequestListFilters {
   asset_id?: string;
   dataset_id?: string;
 }
+
+/** Phase 272.1 — comment on an access request. */
+export interface AccessRequestComment {
+  id: string;
+  access_request: string;
+  author: string | null;
+  author_email: string | null;
+  body: string;
+  created_at: string;
+  updated_at: string;
+}

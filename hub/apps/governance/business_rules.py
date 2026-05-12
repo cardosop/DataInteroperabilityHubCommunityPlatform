@@ -1606,6 +1606,30 @@ class GovernanceBusinessRules(BusinessRules):
 
         details['approver_authorized'] = is_authorized
 
+        # Phase 272.6 — delegation check.
+        # If the approver is not directly authorized, check for an
+        # active ApprovalDelegation from someone who IS authorized.
+        if not is_authorized:
+            from django.utils import timezone
+            from hub.apps.governance.models import ApprovalDelegation
+
+            now = timezone.now()
+            active_delegation = ApprovalDelegation.objects.filter(
+                tenant=access_request.tenant,
+                delegate_id=approver.id,
+                start_at__lte=now,
+                end_at__gte=now,
+            ).first()
+
+            if active_delegation:
+                is_authorized = True
+                details['delegation_used'] = True
+                details['delegator_id'] = str(active_delegation.delegator_id)
+                warnings.append(
+                    f"Approver {approver.email} is acting as delegate for "
+                    f"user {active_delegation.delegator_id}"
+                )
+
         # Check if approver is platform admin (has all permissions)
         if hasattr(approver, 'is_platform_admin') and approver.is_platform_admin:
             details['approver_is_platform_admin'] = True

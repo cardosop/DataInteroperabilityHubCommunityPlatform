@@ -271,6 +271,24 @@ class RetentionPolicy(models.Model):
         blank=True,
         help_text="When legal hold expires (nullable for indefinite hold)"
     )
+    regulation_keys = models.JSONField(
+        default=list,
+        blank=True,
+        help_text=(
+            "Regime keys (uppercase strings) attached to TIME_BASED policies; "
+            "when non-empty they drive retention_period_days automatically."
+        ),
+    )
+    tombstoned_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        help_text="UTC timestamp when the Phase 232.7 auto-sweep first soft-deleted the resource.",
+    )
+    hard_delete_scheduled_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        help_text="UTC deadline after tombstone grace (90 calendar days by default auto-sweep).",
+    )
     enabled = models.BooleanField(
         default=True,
         help_text="Whether policy is enabled"
@@ -301,6 +319,7 @@ class RetentionPolicy(models.Model):
             models.Index(fields=["tenant", "enabled"]),
             models.Index(fields=["tenant", "legal_hold"]),
             models.Index(fields=["legal_hold_expires_at"]),
+            models.Index(fields=["tenant", "tombstoned_at"]),
         ]
     
     def __str__(self):
@@ -317,9 +336,16 @@ class RetentionPolicy(models.Model):
             )
         
         if self.policy_type == RetentionPolicyType.TIME_BASED.value:
+            rk = list(self.regulation_keys or [])
+            if rk:
+                from hub.apps.regulation_policies.registry import data_retention_period_days_for_regime_keys
+
+                derived_days = data_retention_period_days_for_regime_keys(rk)
+                if derived_days > 0:
+                    self.retention_period_days = derived_days
             if not self.retention_period_days:
                 raise ValidationError(
-                    "retention_period_days is required for time-based policies"
+                    "retention_period_days is required for time-based policies (or supply regulation_keys)"
                 )
         elif self.policy_type == RetentionPolicyType.EVENT_BASED.value:
             if not self.event_trigger:
@@ -336,6 +362,7 @@ class RetentionPolicy(models.Model):
 class AccessRequestStatus(models.TextChoices):
     """Access request status"""
     PENDING = "PENDING", "Pending"
+    PENDING_NEXT_APPROVER = "PENDING_NEXT_APPROVER", "Pending Next Approver"
     APPROVED = "APPROVED", "Approved"
     REJECTED = "REJECTED", "Rejected"
     EXPIRED = "EXPIRED", "Expired"
@@ -394,7 +421,7 @@ class AccessRequest(models.Model):
         help_text="Type of access requested (e.g., 'READ', 'WRITE', 'DOWNLOAD')"
     )
     status = models.CharField(
-        max_length=20,
+        max_length=30,
         choices=AccessRequestStatus.choices,
         default=AccessRequestStatus.PENDING,
         help_text="Access request status"
@@ -437,6 +464,11 @@ class AccessRequest(models.Model):
         null=True,
         blank=True,
         help_text="Reason for rejection"
+    )
+    revocation_reason = models.TextField(
+        null=True,
+        blank=True,
+        help_text="Reason for revocation (required at API)",
     )
     rejected_by = models.ForeignKey(
         settings.AUTH_USER_MODEL,
@@ -502,6 +534,104 @@ class AccessRequest(models.Model):
         """Override save to validate before saving"""
         self.full_clean()
         super().save(*args, **kwargs)
+
+
+class AccessRequestComment(models.Model):
+    """
+    Phase 272.1 — threaded comment on an access request.
+
+    Comments can be created standalone (via the dedicated endpoint) or
+    embedded in an approve/reject payload. They are always tied to an
+    access request and an author (nullable on user deletion).
+    """
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    tenant = models.ForeignKey(
+        "tenants.Tenant",
+        on_delete=models.CASCADE,
+        related_name="access_request_comments",
+        help_text="Tenant this comment belongs to",
+    )
+    access_request = models.ForeignKey(
+        AccessRequest,
+        on_delete=models.CASCADE,
+        related_name="comments",
+        help_text="Access request this comment is attached to",
+    )
+    author = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        related_name="access_request_comments",
+        null=True,
+        blank=True,
+        help_text="User who wrote this comment",
+    )
+    body = models.TextField(help_text="Comment body text")
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = "access_request_comments"
+        ordering = ["created_at"]
+
+
+class ApprovalDelegation(models.Model):
+    """
+    Phase 272.6 — temporary delegation of approval authority.
+
+    A user (delegator) can delegate their approval authority to another
+    user (delegate) for a bounded time window. During the active window,
+    the delegate is treated as a valid approver.
+    """
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    tenant = models.ForeignKey(
+        "tenants.Tenant",
+        on_delete=models.CASCADE,
+        related_name="approval_delegations",
+    )
+    delegator = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="delegations_given",
+        help_text="User delegating their approval authority",
+    )
+    delegate = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="delegations_received",
+        help_text="User receiving delegated approval authority",
+    )
+    start_at = models.DateTimeField(help_text="Delegation window start")
+    end_at = models.DateTimeField(help_text="Delegation window end")
+    reason = models.TextField(
+        null=True,
+        blank=True,
+        help_text="Reason for delegation",
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = "approval_delegations"
+        ordering = ["-created_at"]
+        indexes = [
+            models.Index(
+                fields=["delegate", "start_at", "end_at"],
+                name="delegation_active_window_idx",
+            ),
+        ]
+
+    def is_active(self, at=None):
+        at = at or timezone.now()
+        return self.start_at <= at <= self.end_at
+        indexes = [
+            models.Index(
+                fields=["access_request", "created_at"],
+                name="ar_comment_thread_idx",
+            ),
+        ]
+
+    def __str__(self):
+        return f"Comment {self.id} on AR {self.access_request_id}"
 
 
 class ComplianceReport(models.Model):
@@ -642,6 +772,16 @@ class AccessPolicy(models.Model):
     priority = models.IntegerField(
         default=100,
         help_text="Policy priority (lower number = higher priority)"
+    )
+    # Phase 272.4 — ordered list of approval steps.
+    required_approval_chain = models.JSONField(
+        default=list,
+        blank=True,
+        help_text=(
+            "Ordered list of approval steps for multi-step workflows. "
+            "Each step: {step: int, role: str, label: str}. "
+            "Default [] means single-step approval."
+        ),
     )
     created_by = models.ForeignKey(
         settings.AUTH_USER_MODEL,

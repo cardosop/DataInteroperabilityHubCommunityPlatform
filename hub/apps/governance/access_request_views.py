@@ -17,8 +17,8 @@ from hub.apps.core.responses import handle_service_exception
 from hub.apps.core.services.base import NotFoundError
 from hub.apps.core.services.base import ValidationError as ServiceValidationError
 
-from .models import AccessRequest, AccessRequestStatus
-from .serializers import AccessRequestSerializer
+from .models import AccessRequest, AccessRequestComment, AccessRequestStatus
+from .serializers import AccessRequestCommentSerializer, AccessRequestSerializer
 from .services import GovernanceService
 
 logger = structlog.get_logger(__name__)
@@ -174,7 +174,10 @@ class AccessRequestViewSet(viewsets.ModelViewSet):
         """
         access_request = self.get_object()
 
-        if access_request.status != AccessRequestStatus.PENDING:
+        if access_request.status not in (
+            AccessRequestStatus.PENDING,
+            AccessRequestStatus.PENDING_NEXT_APPROVER,
+        ):
             from hub.apps.core.responses import api_error_response
 
             return api_error_response(
@@ -183,6 +186,12 @@ class AccessRequestViewSet(viewsets.ModelViewSet):
                 code="BUSINESS_RULES_VALIDATION",
                 details={"status": access_request.status},
             )
+
+        # Phase 272.2 — PLATFORM_ADMIN force_approve bypass.
+        force_approve = (
+            request.query_params.get("force_approve", "").lower() == "true"
+            and getattr(request.user, "is_platform_admin", False)
+        )
 
         # Approve using service
         service = GovernanceService(tenant_id=str(access_request.tenant.id))
@@ -193,6 +202,7 @@ class AccessRequestViewSet(viewsets.ModelViewSet):
                 tenant_id=str(access_request.tenant.id),
                 approver_id=str(request.user.id),
                 comments=request.data.get("comments"),
+                force_approve=force_approve,
             )
 
             # Log audit event
@@ -233,11 +243,8 @@ class AccessRequestViewSet(viewsets.ModelViewSet):
         """
         access_request = self.get_object()
 
-        if access_request.status != AccessRequestStatus.PENDING:
-            return Response(
-                {"error": f"Access request is not pending (status: {access_request.status})"},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
+        # Also update the approve guard:
+        pass
 
         reason = request.data.get("reason")
         if not reason:
@@ -258,6 +265,7 @@ class AccessRequestViewSet(viewsets.ModelViewSet):
                 tenant_id=str(access_request.tenant.id),
                 approver_id=str(request.user.id),
                 reason=reason,
+                comments=request.data.get("comments"),
             )
 
             # Log audit event
@@ -292,42 +300,83 @@ class AccessRequestViewSet(viewsets.ModelViewSet):
         Revoke an approved access request.
 
         POST /api/v1/governance/access-requests/{id}/revoke/
+        Body: {"reason": "string" (required)}
+        """
+        reason = (request.data.get("reason") or "").strip()
+        if not reason:
+            from hub.apps.core.responses import api_error_response
+            return api_error_response(
+                message="reason is required for revocation",
+                status_code=status.HTTP_400_BAD_REQUEST,
+                code="REVOCATION_REASON_REQUIRED",
+            )
+
+        service = GovernanceService(tenant_id=str(self.get_object().tenant.id))
+
+        try:
+            revoked_request = service.revoke_access_request(
+                access_request_id=str(id),
+                tenant_id=str(self.get_object().tenant.id),
+                revoker_id=str(request.user.id),
+                reason=reason,
+            )
+
+            create_audit_event(
+                resource_type="ACCESS_REQUEST",
+                action="ACCESS_REQUEST_REVOKED",
+                actor_user=request.user,
+                tenant=revoked_request.tenant,
+                resource_id=str(revoked_request.id),
+                details={
+                    "revoked_by": str(request.user.id),
+                    "revocation_reason": reason,
+                },
+                request=request,
+            )
+
+            serializer = AccessRequestSerializer(revoked_request)
+            return Response(serializer.data, status=status.HTTP_200_OK)
+        except (ServiceValidationError, NotFoundError) as e:
+            return handle_service_exception(e)
+
+    # ── Phase 272.1 — AccessRequestComment endpoints ─────────────────
+
+    @action(detail=True, methods=["get", "post"], url_path="comments")
+    def comments(self, request, id=None):
+        """
+        GET  /api/v1/governance/access-requests/{id}/comments/
+        POST /api/v1/governance/access-requests/{id}/comments/
+
+        GET: list comments chronologically.
+        POST: create a standalone comment (body required, no status change).
         """
         access_request = self.get_object()
 
-        if access_request.status != AccessRequestStatus.APPROVED:
+        if request.method == "GET":
+            queryset = AccessRequestComment.objects.filter(
+                access_request=access_request,
+            ).order_by("created_at")
+            serializer = AccessRequestCommentSerializer(queryset, many=True)
+            return Response(serializer.data, status=status.HTTP_200_OK)
+
+        # POST — standalone comment.
+        body = (request.data.get("body") or "").strip()
+        if not body:
             from hub.apps.core.responses import api_error_response
-
             return api_error_response(
-                message=f"Only approved requests can be revoked (status: {access_request.status})",
+                message="body is required and must be non-empty",
                 status_code=status.HTTP_400_BAD_REQUEST,
-                code="BUSINESS_RULES_VALIDATION",
-                details={"status": access_request.status},
+                code="VALIDATION_ERROR",
             )
 
-        access_request.status = AccessRequestStatus.REVOKED
-        access_request.save(update_fields=["status", "updated_at"])
-
-        # Cascade to marketplace entitlement
-        if access_request.order:
-            from hub.apps.marketplace.entitlement_utils import revoke_entitlement_for_order
-
-            revoke_entitlement_for_order(
-                access_request.order, reason="Governance access revoked"
-            )
-
-        create_audit_event(
-            resource_type="ACCESS_REQUEST",
-            action="ACCESS_REQUEST_REVOKED",
-            actor_user=request.user,
+        comment = AccessRequestComment.objects.create(
             tenant=access_request.tenant,
-            resource_id=str(access_request.id),
-            details={"revoked_by": str(request.user.id)},
-            request=request,
+            access_request=access_request,
+            author=request.user,
+            body=body,
         )
-
-        serializer = AccessRequestSerializer(access_request)
-        return Response(serializer.data, status=status.HTTP_200_OK)
+        serializer = AccessRequestCommentSerializer(comment)
+        return Response(serializer.data, status=status.HTTP_201_CREATED)
 
     @action(detail=False, methods=["get"], url_path="pending-count")
     def pending_count(self, request):
@@ -348,7 +397,12 @@ class AccessRequestViewSet(viewsets.ModelViewSet):
                 "Only tenant or platform administrators may view pending counts."
             )
 
-        queryset = AccessRequest.objects.filter(status=AccessRequestStatus.PENDING)
+        queryset = AccessRequest.objects.filter(
+            status__in=(
+                AccessRequestStatus.PENDING,
+                AccessRequestStatus.PENDING_NEXT_APPROVER,
+            )
+        )
         if not is_platform_admin:
             tenant = getattr(user, "tenant", None)
             if tenant is None:
@@ -427,7 +481,10 @@ class AccessRequestViewSet(viewsets.ModelViewSet):
                 })
                 continue
 
-            if access_request.status != AccessRequestStatus.PENDING:
+            if access_request.status not in (
+                AccessRequestStatus.PENDING,
+                AccessRequestStatus.PENDING_NEXT_APPROVER,
+            ):
                 failed.append({
                     "id": request_id,
                     "error": f"access request is not pending (status: {access_request.status})",
@@ -454,6 +511,7 @@ class AccessRequestViewSet(viewsets.ModelViewSet):
                             tenant_id=str(access_request.tenant.id),
                             approver_id=str(request.user.id),
                             reason=reason,
+                            comments=comments,
                         )
                         audit_action = "ACCESS_REQUEST_REJECTED"
                         audit_details = {

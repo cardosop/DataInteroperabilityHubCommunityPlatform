@@ -757,6 +757,18 @@ class Tenant(models.Model):
             "settings.STRIPE_CONNECT_ENABLED."
         ),
     )
+    # Phase 272.2 — compliance gate on access request approval.
+    # When True, approve_access_request queries the latest ComplianceRun
+    # and blocks approval when allowed_to_store is not True.
+    # Default False for existing tenants (one-release notice window).
+    access_request_compliance_gate_enabled = models.BooleanField(
+        default=False,
+        help_text=(
+            "Phase 272.2 — when True, access request approval requires "
+            "a successful ComplianceRun with allowed_to_store=True for "
+            "the referenced resource."
+        ),
+    )
     # Phase 270.C.4.1 — per-tenant compliance legal-basis strict mode.
     # When True, the compliance-service rejects scans missing a valid
     # ``legal_basis`` for GDPR/UK_GDPR/LGPD-applicable data with HTTP

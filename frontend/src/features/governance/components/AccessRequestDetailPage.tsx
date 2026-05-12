@@ -19,6 +19,7 @@ import { UuidWithCopy } from '../../../shared/components/UuidWithCopy';
 import { Breadcrumbs } from '../../../shared/components/Breadcrumbs';
 import { ActivityTimeline } from '../../../shared/components/ActivityTimeline';
 import { InfoHint } from '../../../shared/components/InfoHint';
+import { AccessRequestCommentsThread } from './AccessRequestCommentsThread';
 import './AccessRequestDetailPage.css';
 import { Button } from '../../../shared/components/Button';
 
@@ -37,7 +38,7 @@ export function AccessRequestDetailPage() {
   const revokeMutation = useRevokeAccessRequest();
   const [rejectModalOpen, setRejectModalOpen] = useState(false);
   const [rejectReason, setRejectReason] = useState('');
-  const [activeTab, setActiveTab] = useState<'details' | 'activity'>('details');
+  const [activeTab, setActiveTab] = useState<'details' | 'activity' | 'comments'>('details');
 
   const isAdmin = canApproveOrReject(user?.roles);
   const isPending = accessRequest?.status === AccessRequestStatus.PENDING;
@@ -154,11 +155,28 @@ export function AccessRequestDetailPage() {
           >
             Activity
           </button>
+          {/* Phase 272.1 — Comments tab */}
+          <button
+            type="button"
+            role="tab"
+            aria-selected={activeTab === 'comments'}
+            className={`governance-detail-tab ${activeTab === 'comments' ? 'active' : ''}`}
+            onClick={() => setActiveTab('comments')}
+            data-testid="access-request-tab-comments"
+          >
+            Comments
+          </button>
         </div>
 
         {activeTab === 'activity' && id && (
           <div className="governance-detail-section" data-testid="access-request-activity">
             <ActivityTimeline resourceType="ACCESS_REQUEST" resourceId={id} />
+          </div>
+        )}
+
+        {activeTab === 'comments' && id && (
+          <div className="governance-detail-section" data-testid="access-request-comments">
+            <AccessRequestCommentsThread accessRequestId={id} />
           </div>
         )}
 
