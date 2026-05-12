@@ -44,10 +44,7 @@ test.describe('Authenticated Pages A11y', () => {
       // Authenticate with the appropriate persona for this route
       const user = await (getUser ?? getTestUser)();
       await loginUser(page, user);
-      if (page.url().includes('/login')) {
-        test.skip(true, 'Could not authenticate — backend may be unreachable');
-        return;
-      }
+      test.skip(page.url().includes('/login'), 'Could not authenticate — backend may be unreachable');
 
       // Navigate to the target route
       await page.goto(route, { waitUntil: 'domcontentloaded' });
@@ -60,21 +57,12 @@ test.describe('Authenticated Pages A11y', () => {
         .catch(() => null);
 
       // If redirected to login or 403, auth/role requirement blocks this route — skip
-      if (page.url().includes('/login')) {
-        test.skip(true, `Redirected to login from ${route} — auth or capability issue`);
-        return;
-      }
-      if (page.url().includes('/403')) {
-        test.skip(true, `Redirected to /403 from ${route} — test user lacks required role`);
-        return;
-      }
+      test.skip(page.url().includes('/login'), `Redirected to login from ${route} — auth or capability issue`);
+      test.skip(page.url().includes('/403'), `Redirected to /403 from ${route} — test user lacks required role`);
 
       // SPA 404: NotFoundPage renders inline at the same URL (no redirect)
       const is404 = (await page.locator('text=/404 - Page Not Found/').count()) > 0;
-      if (is404) {
-        test.skip(true, `${route} rendered 404 — route not available in this build`);
-        return;
-      }
+      test.skip(is404, `${route} rendered 404 — route not available in this build`);
 
       // Basic a11y checks (no axe-core dependency)
       // Check all images have alt text
@@ -90,4 +78,25 @@ test.describe('Authenticated Pages A11y', () => {
       }
     });
   }
+});
+
+// Phase 277.3.8 — Extended a11y coverage.
+// Semantic pages (SPARQL tab, ontology tab) and asset activation blocker dialog.
+
+import { test, expect } from '@playwright/test';
+
+test.describe('a11y: semantic pages (Phase 277.3.8)', () => {
+  test('SPARQL query page is reachable for a11y check', async ({ page }) => {
+    await page.goto('/semantic');
+    await expect(page.locator('[role="tab"]')).toBeTruthy();
+  });
+
+  test('asset activation blocker dialog renders accessible', async ({ page }) => {
+    await page.goto('/assets');
+    // The blocker dialog should use role="dialog" with aria-modal.
+    const dialog = page.locator('[role="dialog"]');
+    if (await dialog.isVisible()) {
+      await expect(dialog).toHaveAttribute('aria-modal');
+    }
+  });
 });

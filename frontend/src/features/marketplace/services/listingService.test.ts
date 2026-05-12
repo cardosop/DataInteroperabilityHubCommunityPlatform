@@ -47,3 +47,42 @@ describe('listingService', () => {
   });
 
 });
+
+  // Phase 277.3.1 — compliance threshold error-state tests.
+  describe('compliance error handling', () => {
+    it('handles 422 COMPLIANCE_THRESHOLD_EXCEEDED', async () => {
+      const errorBody = {
+        error: {
+          code: 'COMPLIANCE_THRESHOLD_EXCEEDED',
+          message: 'Risk level HIGH exceeds tenant threshold MEDIUM.',
+          http_status: 422,
+          details: { risk_level: 'HIGH', threshold: 'MEDIUM' },
+        },
+      };
+      vi.mocked(mock.post).mockRejectedValue({
+        status: 422,
+        data: errorBody,
+      });
+      await expect(
+        listingService.publish('listing-1'),
+      ).rejects.toMatchObject({ status: 422 });
+    });
+
+    it('handles 422 COMPLIANCE_RUN_REQUIRED', async () => {
+      const errorBody = {
+        error: {
+          code: 'COMPLIANCE_RUN_REQUIRED',
+          message: 'A compliance scan is required before publishing.',
+          http_status: 422,
+          details: {},
+        },
+      };
+      vi.mocked(mock.post).mockRejectedValue({
+        status: 422,
+        data: errorBody,
+      });
+      await expect(
+        listingService.publish('listing-1'),
+      ).rejects.toMatchObject({ status: 422 });
+    });
+  });

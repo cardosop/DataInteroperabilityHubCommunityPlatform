@@ -71,3 +71,40 @@ describe('assetService', () => {
   });
 
 });
+
+  // Phase 277.3.2 — compliance activation error-state tests.
+  describe('activation compliance errors', () => {
+    it('handles 409 COMPLIANCE_SCAN_PENDING with Retry-After', async () => {
+      const error = {
+        status: 409,
+        data: {
+          error: { code: 'COMPLIANCE_SCAN_PENDING', message: 'Scan pending', http_status: 409 },
+        },
+        headers: new Map([['retry-after', '30']]),
+      };
+      vi.mocked(mock.post).mockRejectedValue(error);
+      await expect(
+        assetService.activate('asset-1', 1),
+      ).rejects.toMatchObject({ status: 409 });
+    });
+
+    it('handles 422 COMPLIANCE_SCAN_FAILED', async () => {
+      vi.mocked(mock.post).mockRejectedValue({
+        status: 422,
+        data: { error: { code: 'COMPLIANCE_SCAN_FAILED', http_status: 422 } },
+      });
+      await expect(
+        assetService.activate('asset-1', 1),
+      ).rejects.toMatchObject({ status: 422 });
+    });
+
+    it('handles 422 COMPLIANCE_NOT_ALLOWED_TO_STORE', async () => {
+      vi.mocked(mock.post).mockRejectedValue({
+        status: 422,
+        data: { error: { code: 'COMPLIANCE_NOT_ALLOWED_TO_STORE', http_status: 422 } },
+      });
+      await expect(
+        assetService.activate('asset-1', 1),
+      ).rejects.toMatchObject({ status: 422 });
+    });
+  });

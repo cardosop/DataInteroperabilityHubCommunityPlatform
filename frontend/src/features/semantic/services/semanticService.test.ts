@@ -31,3 +31,21 @@ describe('semanticService', () => {
   });
 
 });
+
+  // Phase 277.3.4 — semantic feature flag error test.
+  it('handles 403 SEMANTIC_FEATURE_DISABLED', async () => {
+    vi.mocked(mock.post).mockRejectedValue({
+      status: 403,
+      data: {
+        error: {
+          code: 'SEMANTIC_FEATURE_DISABLED',
+          message: "Semantic feature 'sparql' is disabled for this tenant.",
+          http_status: 403,
+          details: { action: 'sparql' },
+        },
+      },
+    });
+    await expect(
+      semanticService.querySPARQL({ query: 'SELECT * { ?s ?p ?o }', format: 'json' }),
+    ).rejects.toMatchObject({ status: 403 });
+  });

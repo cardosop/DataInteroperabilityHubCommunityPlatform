@@ -47,3 +47,39 @@ describe('governanceService', () => {
   });
 
 });
+
+  // Phase 277.3.3 — governance error-state tests.
+  describe('governance error handling', () => {
+    it('handles 403 ABAC_POLICY_DENIED', async () => {
+      vi.mocked(mock.post).mockRejectedValue({
+        status: 403,
+        data: {
+          error: {
+            code: 'ABAC_POLICY_DENIED',
+            message: 'ABAC policy denied approval.',
+            http_status: 403,
+            details: { policy_id: 'policy-uuid' },
+          },
+        },
+      });
+      await expect(
+        governanceService.approve('ar-1'),
+      ).rejects.toMatchObject({ status: 403 });
+    });
+
+    it('handles 422 COMPLIANCE_RUN_REQUIRED', async () => {
+      vi.mocked(mock.post).mockRejectedValue({
+        status: 422,
+        data: {
+          error: {
+            code: 'COMPLIANCE_RUN_REQUIRED',
+            message: 'A compliance scan is required.',
+            http_status: 422,
+          },
+        },
+      });
+      await expect(
+        governanceService.approve('ar-1'),
+      ).rejects.toMatchObject({ status: 422 });
+    });
+  });
