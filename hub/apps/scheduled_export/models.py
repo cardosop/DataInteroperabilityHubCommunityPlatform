@@ -26,6 +26,11 @@ class DestinationType(models.TextChoices):
     S3 = "S3", "Amazon S3"
     GCS = "GCS", "Google Cloud Storage"
     AZURE_BLOB = "AZURE_BLOB", "Azure Blob Storage"
+    # Phase 275.D.2 — warehouse destinations via dlt.
+    SNOWFLAKE_TABLE = "SNOWFLAKE_TABLE", "Snowflake Table"
+    BIGQUERY_TABLE = "BIGQUERY_TABLE", "BigQuery Table"
+    DATABRICKS_TABLE = "DATABRICKS_TABLE", "Databricks Table"
+    ATHENA_TABLE = "ATHENA_TABLE", "Athena Table"
 
 
 class ScheduledExportStatus(models.TextChoices):
