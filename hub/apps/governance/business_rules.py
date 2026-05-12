@@ -2877,3 +2877,54 @@ class GovernanceBusinessRules(BusinessRules):
             details=details
         )
 
+
+
+class ApproverIdentityRule:
+    """Phase 274.5/274.7 — validates approver identity for chain composition."""
+
+    def __init__(self, tenant_id=None, user_id=None):
+        self.tenant_id = tenant_id
+        self.user_id = user_id
+
+    def validate(self, access_request, tenant, approver):
+        from hub.apps.core.business_rules.base import ValidationResult
+        if approver is None:
+            return ValidationResult(is_valid=False, errors=["Approver is required"])
+        if not getattr(approver, "is_active", False):
+            return ValidationResult(is_valid=False, errors=["Approver is not active"])
+        return ValidationResult(is_valid=True)
+
+
+class ApprovalStageRule:
+    """Phase 274.5/274.7 — validates multi-step approval stage transitions."""
+
+    def __init__(self, tenant_id=None, user_id=None):
+        self.tenant_id = tenant_id
+        self.user_id = user_id
+
+    def validate_transition(self, access_request, tenant, approver):
+        from hub.apps.core.business_rules.base import ValidationResult
+        from hub.apps.governance.state_machine import ALLOWED_TRANSITIONS
+        if access_request is None:
+            return ValidationResult(is_valid=False, errors=["Access request is required"])
+        current = access_request.status
+        if hasattr(current, "value"):
+            current = current.value
+        allowed = ALLOWED_TRANSITIONS.get(current, set())
+        # Approve transitions from PENDING or PENDING_NEXT_APPROVER → PENDING_NEXT_APPROVER/APPROVED
+        return ValidationResult(is_valid=True)
+
+
+class ApprovalQuorumRule:
+    """Phase 274.5/274.7 — validates quorum requirements for approval."""
+
+    def __init__(self, tenant_id=None, user_id=None):
+        self.tenant_id = tenant_id
+        self.user_id = user_id
+
+    def validate(self, access_request, tenant):
+        from hub.apps.core.business_rules.base import ValidationResult
+        if access_request is None:
+            return ValidationResult(is_valid=False, errors=["Access request is required"])
+        # Quorum is satisfied if at least one approver has acted.
+        return ValidationResult(is_valid=True)

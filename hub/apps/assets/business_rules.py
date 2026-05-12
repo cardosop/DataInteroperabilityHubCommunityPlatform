@@ -2094,9 +2094,13 @@ class AssetActivationRule:
     - COMPLIANCE_THRESHOLD_EXCEEDED (HTTP 422)
     - No blockers → activation allowed (HTTP 200)
 
-    Designed to be callable from views, service-layer activation
-    paths (bulk-activate, programmatic worker), and CLI/SDK.
+    Supports both @staticmethod (view/model callers) and instance
+    (chain runner) call patterns.
     """
+
+    def __init__(self, tenant_id=None, user_id=None):
+        self.tenant_id = tenant_id
+        self.user_id = user_id
 
     @staticmethod
     def validate_activation(asset) -> "dict":
