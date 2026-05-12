@@ -743,3 +743,28 @@ class BusinessRules(ABC):
         wrapped_rule.__name__ = name
         return wrapped_rule
 
+
+class BusinessRulesObservabilityMixin:
+    """Phase 274.8.1 — observability hook for all business rules.
+
+    Provides ``_emit_observability(result)`` that subclasses can
+    override to standardize OTel span attributes + audit emission.
+    The chain runner (274.7.2) owns the parent span; per-rule
+    emission stays for failure-counter granularity.
+    """
+
+    def _emit_observability(self, result: ValidationResult) -> None:
+        """Emit metrics/logs for a rule execution result.
+
+        ``is_valid=False`` is NOT a Sentry event.
+        Exception inside ``validate_*`` IS.
+        """
+        try:
+            from hub.apps.observability.otel_metrics import business_rule_validation_failures_total
+
+            if not result.is_valid:
+                business_rule_validation_failures_total.labels(
+                    rule=self.get_rule_name(),
+                ).inc()
+        except Exception:
+            pass
