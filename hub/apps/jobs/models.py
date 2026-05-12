@@ -55,6 +55,79 @@ class JobType(models.TextChoices):
     # dead-letter at 5 attempts; the worker layer reads
     # ``details_json["attempt"]`` to compute the next delay.
     LDN_OUTBOUND_DELIVERY = "LDN_OUTBOUND_DELIVERY", "LDN Outbound Delivery"
+    # Phase 232.2 — DSAR statutory SLA sweeper (daily cron / dispatcher)
+    DSAR_STATUTORY_CLOCK_CHECK = "DSAR_STATUTORY_CLOCK_CHECK", "DSAR Statutory Clock Check"
+    # Phase 232.3 — breach supervisory notification statutory sweep
+    BREACH_NOTIFICATION_CLOCK_CHECK = (
+        "BREACH_NOTIFICATION_CLOCK_CHECK",
+        "Breach Notification Clock Check",
+    )
+    # Phase 232.4 — RoPA export; used when rendered artefact exceeds sync size budget.
+    ROPA_GENERATE = "ROPA_GENERATE", "RoPA Generate"
+    # Phase 232.5 — periodic DPIA review sweep (annual re-review / supervisory follow-up ticketing).
+    DPIA_REVIEW_DUE = "DPIA_REVIEW_DUE", "DPIA Review Due"
+    # Phase 232.6 — processor agreement expiry / lifecycle sweep.
+    PROCESSOR_AGREEMENT_EXPIRY_CHECK = (
+        "PROCESSOR_AGREEMENT_EXPIRY_CHECK",
+        "Processor Agreement Expiry Check",
+    )
+    # Phase 232.7 — tombstone + 90-day statutory-style grace + hard-delete sweeper (tenant-flag gated).
+    RETENTION_ENFORCEMENT_SWEEP = (
+        "RETENTION_ENFORCEMENT_SWEEP",
+        "Retention Enforcement Auto-Sweep",
+    )
+    # Phase 234.1.5 — hourly Merkle snapshot of the per-tenant audit
+    # hash chain. The job builds a Merkle tree over the window's
+    # AuditEvent.chain_hash leaves, signs the root with the tenant's
+    # current AUDIT_CHAIN_SIGNING_KEYS_JSON key, persists an
+    # AuditMerkleSnapshot row, and uploads the proof to S3 with Object
+    # Lock retention = AUDIT_RETENTION_YEARS * 365 + 365. The job is
+    # idempotent on (tenant, period_start, period_end).
+    AUDIT_MERKLE_SNAPSHOT = (
+        "AUDIT_MERKLE_SNAPSHOT",
+        "Audit Merkle Snapshot",
+    )
+    # Phase 234.4 — daily sweep that hard-deletes archived AuditEvent
+    # rows past the 90-day grace window (closes the GDPR right-to-
+    # erasure loop on the audit trail itself, while the Phase 234.1.5
+    # Merkle snapshots in S3 Object Lock preserve cryptographic proof
+    # of the chain even after raw rows are gone). Idempotent; emits a
+    # single ``AUDIT_RETENTION_PURGED`` meta-audit row per tenant before
+    # the bulk delete.
+    AUDIT_PERMANENT_DELETE_SWEEP = (
+        "AUDIT_PERMANENT_DELETE_SWEEP",
+        "Audit Permanent Delete Sweep",
+    )
+    # Phase 235.3 — daily sweep that hard-deletes Tenants past the
+    # 90-day grace window opened by the PLATFORM_ADMIN soft-delete
+    # endpoint. Re-checks ``legal_hold`` AND DSAR-restriction at sweep
+    # time so a hold acquired during the grace window pauses the
+    # delete; emits one ``TENANT_HARD_DELETED`` audit row per tenant
+    # BEFORE the cascade (the row survives because
+    # ``AuditEvent.tenant`` uses ``on_delete=SET_NULL``).
+    TENANT_HARD_DELETE_SWEEP = (
+        "TENANT_HARD_DELETE_SWEEP",
+        "Tenant Hard Delete Sweep",
+    )
+    # Phase 235.4 — every-5-minutes sweep that ends ACTIVE
+    # ImpersonationSession rows whose expires_at has elapsed.
+    # End reason is stamped as ``"expired"`` and one
+    # ``IMPERSONATION_ENDED`` audit row is emitted per session.
+    IMPERSONATION_EXPIRE_SWEEP = (
+        "IMPERSONATION_EXPIRE_SWEEP",
+        "Impersonation Expire Sweep",
+    )
+    # Phase 275.E.3k — warehouse connectivity job types.
+    WAREHOUSE_INTAKE = "WAREHOUSE_INTAKE", "Warehouse Intake"
+    WAREHOUSE_EXPORT = "WAREHOUSE_EXPORT", "Warehouse Export"
+    WAREHOUSE_SCHEMA_DRIFT_CHECK = (
+        "WAREHOUSE_SCHEMA_DRIFT_CHECK",
+        "Warehouse Schema Drift Check",
+    )
+    WAREHOUSE_CACHE_REFRESH = (
+        "WAREHOUSE_CACHE_REFRESH",
+        "Warehouse Cache Refresh",
+    )
 
 
 class JobStatus(models.TextChoices):

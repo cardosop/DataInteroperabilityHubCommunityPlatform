@@ -77,6 +77,9 @@ class WebhookEventType(models.TextChoices):
     # Quality events
     QUALITY_CHECK_COMPLETED = "quality.check.completed", "Quality Check Completed"
     COMPLIANCE_CHECK_COMPLETED = "compliance.check.completed", "Compliance Check Completed"
+    # Phase 231.4 — tenant-subscribable completion (scrubbed payload). Distinct from
+    # ``compliance.check.completed`` (internal bus / legacy catalog).
+    COMPLIANCE_COMPLETED = "compliance.completed", "Compliance Run Completed"
 
     # Version events
     VERSION_CREATED = "version.created", "Version Created"
@@ -108,6 +111,40 @@ class WebhookEventType(models.TextChoices):
     VIRTUALIZATION_QUERY_EXECUTION_COMPLETED = "virtualization.query.execution.completed", "Query Execution Completed"
     VIRTUALIZATION_QUERY_EXECUTION_FAILED = "virtualization.query.execution.failed", "Query Execution Failed"
 
+    # File events (Phase 260.7.G — closes pass-3 B3-14)
+    # Phase 0 audit (260.7.G.1) confirmed zero ``fire_webhook`` calls in
+    # ``hub/apps/files/`` pre-260.7.G — file events were emitted to the
+    # internal event bus only (file.created/updated/deleted/uploaded/
+    # downloaded via ``FileEventPublisher``) and never fanned out as
+    # webhooks. ``file.purged`` is the FIRST file event registered for
+    # external webhook subscription. Distinct semantic from ``file.deleted``:
+    #   * ``file.deleted`` (NOT registered for webhooks) — soft-delete:
+    #     status flips to DELETING, file enters grace window, blob still
+    #     in S3, blob fetch still works for the grace duration.
+    #   * ``file.purged`` (THIS event) — hard-delete after grace: S3
+    #     object deleted, DB row gone, ``Dataset.file_id`` SET_NULL,
+    #     linked datasets transitioned to RETIRED via the pre_delete
+    #     signal. External subscribers should run cleanup that wasn't
+    #     safe during the grace window (cascading deletes in CRM /
+    #     downstream warehouses, archive-to-cold-storage triggers).
+    FILE_PURGED = "file.purged", "File Purged"
+
+    # Phase 233.4 — Operator-initiated test event.
+    #
+    # ``webhook.test`` is a SYSTEM event type, NOT a tenant data event.
+    # It is fired exclusively by the ``POST /webhooks/{id}/test/``
+    # endpoint when an operator clicks "Test webhook" in the UI. Every
+    # webhook IMPLICITLY accepts ``webhook.test`` regardless of its
+    # ``event_types`` list — see ``Webhook.subscribes_to_event_type``
+    # for the universal-subscription contract. Operators do not need
+    # to add ``webhook.test`` to a webhook's subscriptions for the
+    # test endpoint to work.
+    #
+    # Replaces the pre-233.4 implementation that mis-emitted
+    # ``asset.created`` from the test endpoint, which silently failed
+    # for any webhook not subscribed to ``asset.created``.
+    WEBHOOK_TEST = "webhook.test", "Webhook Test"
+
     # Billing events (Phase 116A.9)
     BILLING_REPORT_GENERATED = "billing.report.generated", "Billing Report Generated"
     BILLING_REPORT_SENT = "billing.report.sent", "Billing Report Sent"
@@ -130,6 +167,59 @@ class WebhookEventType(models.TextChoices):
     # Transformation events (Phase 115C.2)
     TRANSFORMATION_COMPLETED = "transformation.completed", "Transformation Completed"
     TRANSFORMATION_FAILED = "transformation.failed", "Transformation Failed"
+
+    # Phase 232.1 — consent management webhooks
+    CONSENT_GRANTED = "consent.granted", "Consent Granted"
+    CONSENT_REVOKED = "consent.revoked", "Consent Revoked"
+
+    # Phase 232.2 — DSAR workflow webhooks
+    DSAR_SUBMITTED = "dsar.submitted", "DSAR Submitted"
+    DSAR_STATUS_CHANGED = "dsar.status.changed", "DSAR Status Changed"
+    DSAR_FULFILLED = "dsar.fulfilled", "DSAR Fulfilled"
+    DSAR_REJECTED = "dsar.rejected", "DSAR Rejected"
+    DSAR_SLA_WARNING = "dsar.sla.warning", "DSAR SLA Warning"
+    DSAR_SLA_CRITICAL = "dsar.sla.critical", "DSAR SLA Critical"
+    DSAR_SLA_ESCALATED = "dsar.sla.escalated", "DSAR SLA Escalated"
+    DSAR_SLA_SUSPENDED = "dsar.sla.suspended", "DSAR SLA Suspended (legal hold)"
+
+    # Phase 232.8 — compliance closeout webhooks (tenant-subscribable; wire emitters per subsystem rollout).
+    BREACH_INCIDENT_OPENED = "breach.incident.opened", "Breach Incident Opened"
+    BREACH_NOTIFICATION_SENT = "breach.notification.sent", "Breach Notification Sent"
+    DPIA_CREATED = "dpia.created", "DPIA Created"
+    DPIA_STATUS_CHANGED = "dpia.status.changed", "DPIA Status Changed"
+    DPIA_REVIEW_DECISION = "dpia.review.decision", "DPIA Review Decision"
+    ROPA_GENERATED = "ropa.generated", "RoPA Register Generated"
+    PROCESSOR_AGREEMENT_EXPIRING = "processor_agreement.expiring", "Expiring Processor Agreement Window"
+    PROCESSOR_AGREEMENT_EXPIRED = "processor_agreement.expired", "Processor Agreement Expired"
+    # Phase 275.E.3d — warehouse connectivity webhook events.
+    WAREHOUSE_CONNECTION_CREATED = "warehouse.connection.created", "Warehouse Connection Created"
+    WAREHOUSE_CONNECTION_UPDATED = "warehouse.connection.updated", "Warehouse Connection Updated"
+    WAREHOUSE_CONNECTION_DELETED = "warehouse.connection.deleted", "Warehouse Connection Deleted"
+    WAREHOUSE_EXPORT_COMPLETED = "warehouse.export.completed", "Warehouse Export Completed"
+    WAREHOUSE_EXPORT_FAILED = "warehouse.export.failed", "Warehouse Export Failed"
+    WAREHOUSE_SHARE_ACCESSED = "warehouse.share.accessed", "Warehouse Share Accessed"
+    WAREHOUSE_CONNECTION_TEST_FAILED = "warehouse.connection.test_failed", "Warehouse Connection Test Failed"
+    WAREHOUSE_SCHEMA_DRIFT_DETECTED = "warehouse.schema.drift_detected", "Warehouse Schema Drift Detected"
+
+    @classmethod
+    def get_phase232_subsystem_event_types(cls) -> list[str]:
+        """Stable list for Phase 232 programme docs, SDK, and serializer regression tests."""
+        return [
+            str(cls.CONSENT_GRANTED),
+            str(cls.CONSENT_REVOKED),
+            str(cls.DSAR_SUBMITTED),
+            str(cls.DSAR_STATUS_CHANGED),
+            str(cls.DSAR_FULFILLED),
+            str(cls.BREACH_INCIDENT_OPENED),
+            str(cls.BREACH_NOTIFICATION_SENT),
+            str(cls.DPIA_CREATED),
+            str(cls.DPIA_STATUS_CHANGED),
+            str(cls.DPIA_REVIEW_DECISION),
+            str(cls.ROPA_GENERATED),
+            str(cls.PROCESSOR_AGREEMENT_EXPIRING),
+            str(cls.PROCESSOR_AGREEMENT_EXPIRED),
+            str(cls.COMPLIANCE_COMPLETED),
+        ]
 
     @classmethod
     def get_transformation_event_types(cls) -> list[str]:
@@ -280,11 +370,19 @@ class WebhookEventType(models.TextChoices):
 
 
 class DeliveryStatus(models.TextChoices):
-    """Webhook delivery status"""
+    """Webhook delivery status.
+
+    Phase 233.3 — ``RATE_LIMITED`` (REQ-WH-RL-003): TERMINAL state for a
+    delivery that exceeded the tenant's per-minute outbound budget. The
+    retry scheduler SHALL NOT pick up RATE_LIMITED rows; subsequent event
+    emissions create fresh delivery rows that are gated independently
+    by the rate-limit counter at their own attempt time.
+    """
     PENDING = "PENDING", "Pending"
     SUCCESS = "SUCCESS", "Success"
     FAILED = "FAILED", "Failed"
     DEAD_LETTER = "DEAD_LETTER", "Dead Letter"
+    RATE_LIMITED = "RATE_LIMITED", "Rate Limited"
 
 
 class Webhook(models.Model):
@@ -473,6 +571,16 @@ class Webhook(models.Model):
 
         Returns:
             True if webhook subscribes to the event type, False otherwise
+
+        Phase 233.4 — Universal-subscription contract for ``webhook.test``.
+        ``webhook.test`` is a SYSTEM event type fired by the operator-facing
+        ``POST /webhooks/{id}/test/`` endpoint. Every webhook implicitly
+        accepts ``webhook.test`` regardless of its declared ``event_types``
+        list. This is by design: an operator clicking "Test webhook"
+        expects the delivery to land regardless of which event types the
+        webhook subscribes to. The alternative — requiring the operator to
+        add ``webhook.test`` to the subscription list — would surface as
+        a confusing UX bug ("why does my Test button do nothing?").
         """
         # Extract string value from different input types
         if isinstance(event_type, (tuple, list)) and len(event_type) > 0:
@@ -481,6 +589,11 @@ class Webhook(models.Model):
             event_type_value = getattr(event_type, 'value', str(event_type))
         else:
             event_type_value = str(event_type)
+
+        # Phase 233.4 — universal subscription for the system test event.
+        # See class docstring for ``WEBHOOK_TEST`` for the contract rationale.
+        if event_type_value == WebhookEventType.WEBHOOK_TEST.value:
+            return True
 
         # event_types should be normalized to strings in clean(), but handle both cases
         # Also check if stored values are enums and normalize them
@@ -566,6 +679,17 @@ class WebhookDelivery(models.Model):
         max_length=64,
         help_text="HMAC signature of the payload"
     )
+    #: Phase 233.1 — public key_id of the WebhookSigningKey used to sign this
+    #: delivery. Pinned at trigger-time so the X-Meshant-Signature-Key-Id
+    #: header survives async dispatch even if rotation happens between
+    #: trigger and delivery (REQ-WH-ROT-002). NULL on legacy deliveries
+    #: that pre-date the rolling-key feature; in that case the header is
+    #: omitted and subscribers fall back to legacy single-key verification.
+    signing_key_uuid = models.UUIDField(
+        null=True,
+        blank=True,
+        help_text="Public key_id used to sign (X-Meshant-Signature-Key-Id header)."
+    )
     status = models.CharField(
         max_length=20,
         choices=DeliveryStatus.choices,
@@ -615,4 +739,136 @@ class WebhookDelivery(models.Model):
 
     def __str__(self):
         return f"{self.webhook.name} - {self.event_type} ({self.status})"
+
+
+# ---------------------------------------------------------------------------
+# Phase 233.1 — Rolling-key signature window
+#
+# Pins REQ-WH-ROT-001 (multi-key window invariant), REQ-WH-ROT-002 (key-id
+# header), REQ-WH-ROT-003 (atomic rotation API), REQ-WH-ROT-004 (hourly cron
+# transition), REQ-WH-ROT-005 (idempotent backfill), REQ-WH-ROT-006 (audit).
+# See ``openspec/changes/preprod01/specs/webhook-signing-rotation/spec.md``.
+# ---------------------------------------------------------------------------
+
+
+class WebhookSigningKeyStatus(models.TextChoices):
+    """Lifecycle states for a webhook signing key.
+
+    ACTIVE   — used to sign new outbound deliveries (at most one per webhook).
+    RETIRING — kept for the 24h subscriber overlap window; signs nothing.
+    RETIRED  — terminal; auto-pruned 7 days after ``retired_at``.
+    """
+
+    ACTIVE = "ACTIVE", "Active"
+    RETIRING = "RETIRING", "Retiring"
+    RETIRED = "RETIRED", "Retired"
+
+
+class WebhookSigningKey(models.Model):
+    """One row per (webhook, lifecycle-state) signing-key triple.
+
+    The platform maintains a rolling 3-key window per webhook:
+    one ACTIVE + up to two RETIRING + N RETIRED (auto-pruned after 7d).
+    See ``WebhookSigningKey.objects.active_for(webhook)`` for the canonical
+    helper used by the delivery path; rotation is owned by
+    ``WebhookViewSet.rotate_secret``.
+    """
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+
+    webhook = models.ForeignKey(
+        Webhook,
+        on_delete=models.CASCADE,
+        related_name="signing_keys",
+        help_text="Parent webhook this key signs deliveries for.",
+    )
+
+    #: Subscriber-visible identifier surfaced via the ``X-Meshant-Signature-Key-Id``
+    #: header (REQ-WH-ROT-002). UUID v4; canonical 36-char hyphenated form.
+    key_id = models.UUIDField(
+        default=uuid.uuid4,
+        unique=True,
+        editable=False,
+        help_text="Public key identifier (sent in delivery header).",
+    )
+
+    #: KMS-wrapped HMAC secret. Reuses ``hub.apps.webhooks.encryption`` so the
+    #: rotation feature inherits the same at-rest encryption contract as the
+    #: legacy ``Webhook.secret`` column.
+    secret_encrypted = models.CharField(
+        max_length=4096,
+        help_text="Encrypted HMAC secret (KMS or Fernet wrapper).",
+    )
+
+    status = models.CharField(
+        max_length=10,
+        choices=WebhookSigningKeyStatus.choices,
+        default=WebhookSigningKeyStatus.ACTIVE,
+        help_text="Lifecycle state — see WebhookSigningKeyStatus.",
+    )
+
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    #: Stamped when the key transitions out of ACTIVE. NULL while ACTIVE;
+    #: ``now() + 24h`` when RETIRING; the actual transition timestamp when
+    #: the cron flips RETIRING → RETIRED.
+    retired_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        help_text="When the key transitions out of ACTIVE (24h overlap target).",
+    )
+
+    class Meta:
+        db_table = "webhook_signing_keys"
+        ordering = ["-created_at"]
+        indexes = [
+            models.Index(fields=["webhook", "status"]),
+            models.Index(fields=["status", "retired_at"]),
+        ]
+        constraints = [
+            # REQ-WH-ROT-001 invariant: at most ONE row per webhook with
+            # status='ACTIVE'. Partial unique index — RETIRING / RETIRED
+            # rows never collide regardless of count.
+            models.UniqueConstraint(
+                fields=["webhook"],
+                condition=models.Q(status="ACTIVE"),
+                name="webhook_signing_keys_one_active_per_webhook",
+            ),
+        ]
+
+    def __str__(self) -> str:
+        return f"{self.webhook_id}/{self.key_id} ({self.status})"
+
+    @property
+    def decrypted_secret(self) -> str:
+        """Return the plaintext secret, decrypting on demand."""
+        return decrypt_secret(self.secret_encrypted)
+
+    def generate_signature(self, payload: str) -> str:
+        """HMAC-SHA256 of ``payload`` using this key's decrypted secret.
+
+        Mirrors ``Webhook.generate_signature`` so the delivery-path can
+        switch from ``webhook.generate_signature`` to
+        ``signing_key.generate_signature`` without changing the wire format.
+        """
+        return hmac.new(
+            self.decrypted_secret.encode("utf-8"),
+            payload.encode("utf-8"),
+            hashlib.sha256,
+        ).hexdigest()
+
+    @classmethod
+    def active_for(cls, webhook: "Webhook") -> "WebhookSigningKey | None":
+        """Return the single ACTIVE signing key for ``webhook``, or ``None``.
+
+        The partial unique index guarantees at most one ACTIVE row per
+        webhook (REQ-WH-ROT-001), so ``filter().first()`` is correct
+        here without an ``ORDER BY``. Returning ``None`` lets the
+        delivery path fall back to the legacy ``Webhook.secret`` column
+        for any in-flight webhook that pre-dates migration 0005.
+        """
+        return cls.objects.filter(
+            webhook=webhook,
+            status=WebhookSigningKeyStatus.ACTIVE,
+        ).first()
 
