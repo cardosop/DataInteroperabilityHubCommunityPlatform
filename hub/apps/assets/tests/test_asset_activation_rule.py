@@ -1,7 +1,7 @@
 """
 Phase 274.2 — AssetActivationRule tests.
 
-Covers the three-state taxonomy:
+Covers the three-state taxonomy from validate_activation():
 - COMPLIANCE_SCAN_PENDING (no SUCCEEDED/FAILED run)
 - COMPLIANCE_SCAN_FAILED
 - COMPLIANCE_NOT_ALLOWED_TO_STORE
@@ -15,6 +15,7 @@ import uuid
 import pytest
 from django.test import TestCase
 
+from hub.apps.assets.business_rules import AssetActivationRule
 from hub.apps.assets.models import Asset, AssetStatus
 from hub.apps.compliance.models import ComplianceRun, RiskLevel
 from hub.apps.tenants.models import Tenant
@@ -23,12 +24,12 @@ from hub.apps.users.models import User, UserStatus
 pytestmark = pytest.mark.django_db(transaction=True)
 
 
-def _mk_tenant():
+def _mk_tenant(**kwargs):
     uid = uuid.uuid4().hex[:8]
     return Tenant.objects.create(
         name=f"AAR-{uid}", slug=f"aar-{uid}",
         status="ACTIVE", kyc_status="VERIFIED",
-        compliance_risk_threshold=RiskLevel.MEDIUM.value,
+        compliance_risk_threshold=kwargs.get("threshold", RiskLevel.MEDIUM.value),
     )
 
 
@@ -58,9 +59,10 @@ class TestAssetActivationRule(TestCase):
         self.asset = _mk_asset(self.tenant, self.user)
 
     def test_pending_when_no_compliance_run(self):
-        can, code, details = self.asset.can_activate()
-        # Can't activate without contract + compliance
-        assert not can
+        result = AssetActivationRule.validate_activation(self.asset)
+        assert result["can_activate"] is False
+        assert result["blocker_code"] == "COMPLIANCE_SCAN_PENDING"
+        assert result["details"]["retry_after_seconds"] == 30
 
     def test_failed_when_compliance_run_failed(self):
         ComplianceRun.objects.create(
@@ -68,9 +70,9 @@ class TestAssetActivationRule(TestCase):
             status="FAILED", allowed_to_store=None,
             risk_level=RiskLevel.UNKNOWN.value,
         )
-        can, blockers = self.asset.can_activate()
-        # Should list compliance blockers
-        assert not can
+        result = AssetActivationRule.validate_activation(self.asset)
+        assert result["can_activate"] is False
+        assert result["blocker_code"] == "COMPLIANCE_SCAN_FAILED"
 
     def test_blocked_when_allowed_to_store_false(self):
         ComplianceRun.objects.create(
@@ -78,8 +80,19 @@ class TestAssetActivationRule(TestCase):
             status="SUCCEEDED", allowed_to_store=False,
             risk_level=RiskLevel.LOW.value,
         )
-        can, blockers = self.asset.can_activate()
-        assert not can
+        result = AssetActivationRule.validate_activation(self.asset)
+        assert result["can_activate"] is False
+        assert result["blocker_code"] == "COMPLIANCE_NOT_ALLOWED_TO_STORE"
+
+    def test_blocked_when_risk_exceeds_threshold(self):
+        ComplianceRun.objects.create(
+            tenant=self.tenant, asset=self.asset,
+            status="SUCCEEDED", allowed_to_store=True,
+            risk_level=RiskLevel.HIGH.value,  # exceeds MEDIUM threshold
+        )
+        result = AssetActivationRule.validate_activation(self.asset)
+        assert result["can_activate"] is False
+        assert result["blocker_code"] == "COMPLIANCE_THRESHOLD_EXCEEDED"
 
     def test_allows_when_risk_below_threshold(self):
         ComplianceRun.objects.create(
@@ -87,8 +100,6 @@ class TestAssetActivationRule(TestCase):
             status="SUCCEEDED", allowed_to_store=True,
             risk_level=RiskLevel.LOW.value,
         )
-        # May still be blocked by missing contract, but not by compliance
-        can, blockers = self.asset.can_activate()
-        # Compliance should not be a blocker
-        compliance_blockers = [b for b in blockers if "compliance" in b.lower() or "risk" in b.lower()]
-        assert len(compliance_blockers) == 0, f"Unexpected compliance blockers: {compliance_blockers}"
+        result = AssetActivationRule.validate_activation(self.asset)
+        assert result["can_activate"] is True
+        assert result["blocker_code"] is None

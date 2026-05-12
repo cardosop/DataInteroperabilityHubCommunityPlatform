@@ -250,7 +250,6 @@ class Asset(models.Model):
         blank=True,
         help_text="Warehouse connection for LIVE_QUERY assets",
     )
-    )
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -602,7 +601,6 @@ class Asset(models.Model):
                 )
 
         from hub.apps.compliance.intake_scan import COMPLIANCE_INTAKE_ACTIVATION_BLOCKER
-        from hub.apps.marketplace.compliance_gate import compliance_threshold_activation_blocker
         from hub.apps.tenants.models import Tenant
 
         if self.tenant_id:
@@ -616,9 +614,14 @@ class Asset(models.Model):
                 if not self.compliance_intake_scan_gate_satisfied():
                     blockers.append(COMPLIANCE_INTAKE_ACTIVATION_BLOCKER)
 
-        thr_block = compliance_threshold_activation_blocker(self)
-        if thr_block:
-            blockers.append(thr_block)
+        # Phase 274.2.2 — delegate compliance threshold check to AssetActivationRule.
+        from hub.apps.assets.business_rules import AssetActivationRule
+
+        rule_result = AssetActivationRule.validate_activation(self)
+        if not rule_result["can_activate"]:
+            blockers.append(
+                f"{rule_result['blocker_code']}: {rule_result['details'].get('message', '')}"
+            )
 
         return len(blockers) == 0, blockers
 

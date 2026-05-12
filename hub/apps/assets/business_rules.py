@@ -2082,3 +2082,110 @@ class AssetsBusinessRules(BusinessRules):
 
         return result
 
+
+
+class AssetActivationRule:
+    """Phase 274.2 — compliance-aware asset activation as a business rule.
+
+    Three-state taxonomy per §13.2:
+    - COMPLIANCE_SCAN_PENDING (HTTP 409 + Retry-After: 30)
+    - COMPLIANCE_SCAN_FAILED (HTTP 422)
+    - COMPLIANCE_NOT_ALLOWED_TO_STORE (HTTP 422)
+    - COMPLIANCE_THRESHOLD_EXCEEDED (HTTP 422)
+    - No blockers → activation allowed (HTTP 200)
+
+    Designed to be callable from views, service-layer activation
+    paths (bulk-activate, programmatic worker), and CLI/SDK.
+    """
+
+    @staticmethod
+    def validate_activation(asset) -> "dict":
+        """
+        Returns a structured dict:
+            {"can_activate": bool, "blocker_code": str|None, "details": dict}
+
+        ``blocker_code`` is one of:
+            COMPLIANCE_SCAN_PENDING, COMPLIANCE_SCAN_FAILED,
+            COMPLIANCE_NOT_ALLOWED_TO_STORE, COMPLIANCE_THRESHOLD_EXCEEDED,
+            or None (no compliance blocker).
+        """
+        from hub.apps.compliance.models import ComplianceRun, RiskLevel
+
+        latest = (
+            ComplianceRun.objects
+            .filter(asset=asset, status__in=("SUCCEEDED", "FAILED"))
+            .order_by("-completed_at")
+            .first()
+        )
+
+        # No run → PENDING.
+        if latest is None:
+            return {
+                "can_activate": False,
+                "blocker_code": "COMPLIANCE_SCAN_PENDING",
+                "details": {
+                    "retry_after_seconds": 30,
+                    "asset_id": str(asset.id),
+                    "message": "Compliance scan has not completed yet. Retry after 30 seconds.",
+                },
+            }
+
+        # Failed run → FAILED.
+        if latest.status == "FAILED":
+            return {
+                "can_activate": False,
+                "blocker_code": "COMPLIANCE_SCAN_FAILED",
+                "details": {
+                    "asset_id": str(asset.id),
+                    "compliance_run_id": str(latest.id),
+                    "message": "The compliance scan failed. Please trigger a new scan.",
+                },
+            }
+
+        # Not allowed to store → NOT_ALLOWED.
+        if latest.allowed_to_store is False:
+            return {
+                "can_activate": False,
+                "blocker_code": "COMPLIANCE_NOT_ALLOWED_TO_STORE",
+                "details": {
+                    "asset_id": str(asset.id),
+                    "compliance_run_id": str(latest.id),
+                    "message": "The compliance scan determined this data is not allowed to be stored.",
+                },
+            }
+
+        # Risk exceeds tenant threshold → THRESHOLD_EXCEEDED.
+        if asset.tenant_id:
+            from hub.apps.tenants.models import Tenant
+            try:
+                tenant = Tenant.objects.only("compliance_risk_threshold").get(
+                    pk=asset.tenant_id,
+                )
+                threshold = getattr(tenant, "compliance_risk_threshold", "HIGH") or "HIGH"
+                if latest.risk_level and RiskLevel.exceeds(latest.risk_level, threshold):
+                    return {
+                        "can_activate": False,
+                        "blocker_code": "COMPLIANCE_THRESHOLD_EXCEEDED",
+                        "details": {
+                            "risk_level": latest.risk_level,
+                            "threshold": threshold,
+                            "asset_id": str(asset.id),
+                            "compliance_run_id": str(latest.id),
+                            "message": (
+                                f"Compliance risk level ({latest.risk_level}) exceeds "
+                                f"tenant threshold ({threshold})."
+                            ),
+                        },
+                    }
+            except Tenant.DoesNotExist:
+                pass
+
+        # No compliance blocker.
+        return {
+            "can_activate": True,
+            "blocker_code": None,
+            "details": {
+                "asset_id": str(asset.id),
+                "compliance_run_id": str(latest.id),
+            },
+        }
