@@ -250,6 +250,8 @@ export default defineConfig({
               'http://localhost:8000/api/v1',
             VITE_WS_ENABLED: 'false',
             VITE_E2E_TEST: 'true',
+            // Phase 260.3.A — exercise Compare Versions + DatasetVersionDiffView (default on for Playwright).
+            VITE_DATASET_VERSION_COMPARE_ENABLED: process.env.VITE_DATASET_VERSION_COMPARE_ENABLED ?? 'true',
             // Phase 226.F2 — propagate the cookie-auth flag into Vite so
             // the apiClient pre-seeds `_cookieAuthMode` when the
             // chromium-cookie-auth project runs. No-op when unset.
@@ -261,3 +263,7 @@ export default defineConfig({
         },
       }),
 });
+
+// Phase 276.B.001 — Browser-console capture fixture.
+// Import in test files: import { test } from '../fixtures/consoleCapture';
+// Or add to global fixtures via the `test` export re-export pattern.
