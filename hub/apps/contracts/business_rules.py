@@ -2567,9 +2567,9 @@ class ODPSNormalizationRules(BusinessRules):
 class StructuralFloorRule:
     """Phase 274.4 — structural floor enforcement as a business rule.
 
-    Wraps ``enforce_structural_floor()`` with the standard
-    ``validate_structural_floor()`` shape so it can be composed
-    into ``RuleChain`` (274.7.5) without changing any call sites.
+    Uses the low-level primitives (``is_payload_structureless`` +
+    ``_classify``) directly to avoid circularity between
+    ``collect_structural_floor_errors`` ↔ ``enforce_structural_floor``.
     """
 
     @staticmethod
@@ -2582,20 +2582,27 @@ class StructuralFloorRule:
         tenant_id: str = "",
     ) -> "ValidationResult":
         from hub.apps.contracts.structural_floor import (
-            collect_structural_floor_errors,
+            _classify,
+            _count_models_with_fields,
+            _schema_fields_count,
+            SUBCODE_GENERIC,
+            is_payload_structureless,
         )
         from hub.apps.core.business_rules.base import ValidationResult
 
-        errors = collect_structural_floor_errors(
-            hub_contract,
-            spec_type=spec_type,
-            spec_version=spec_version,
-            contract_id=contract_id,
+        if not is_payload_structureless(hub_contract):
+            return ValidationResult(is_valid=True)
+
+        payload = hub_contract if isinstance(hub_contract, dict) else {}
+        subcode = _classify(payload, spec_type=spec_type)
+        return ValidationResult(
+            is_valid=False,
+            errors=[
+                f"Contract failed structural-floor invariant ({subcode})."
+            ],
+            details={
+                "subcode": subcode,
+                "models_count": _count_models_with_fields(payload),
+                "schema_fields_count": _schema_fields_count(payload),
+            },
         )
-        if errors:
-            return ValidationResult(
-                is_valid=False,
-                errors=[str(e) for e in errors],
-                details={"subcode": errors[0].get("subcode", "") if errors else ""},
-            )
-        return ValidationResult(is_valid=True)

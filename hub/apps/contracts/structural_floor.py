@@ -191,84 +191,45 @@ def enforce_structural_floor(
     """Raise ``ValidationError(code="STRUCTURELESS_CONTRACT")`` if the
     payload violates the structural floor; otherwise return ``None``.
 
-    Parameters
-    ----------
-    hub_contract
-        The normalized HubContract dict (from the engine).
-    spec_type
-        Original ODCS/ODPS spec type for subcode classification.
-    spec_version
-        Original spec version, attached to the error payload.
-    warnings
-        Optional list of normalisation warnings; consulted to detect
-        the cyclic-ports case (Phase 227 L1.7).
-    contract_id
-        Optional UUID for the offending contract — used to build the
-        Schema-editor deep link. Omit on create where no UUID exists yet.
-    tenant_id
-        Optional tenant UUID. Forwarded to the audit-event helper
-        (Phase 227 L7.3). Omit when no tenant context is available
-        (e.g., management-command runs).
-    source
-        Optional label classifying WHERE the floor violation was
-        observed: ``creation``, ``update``, ``migration``, etc.
-        Forwarded to the ``contract_structureless_total`` metric
-        (Phase 227 L7.1) and the audit-event details (Phase 227 L7.3).
-        Defaults to ``unknown`` when omitted.
+    Phase 274.4 (PR-A): This is now a thin shim that delegates to
+    ``StructuralFloorRule.validate_structural_floor()``. Call sites
+    will be migrated to invoke the rule directly in PR-B.
 
-    Raises
-    ------
-    ValidationError
-        With ``code="STRUCTURELESS_CONTRACT"``, ``http_status=400``,
-        and ``details`` carrying ``subcode``, ``models_count``,
-        ``schema_fields_count``, ``spec_type``, ``spec_version``,
-        ``hint``, ``remediation_url``.
-
-    Side effects (Phase 227 L7)
-    ---------------------------
-    On every raise, this function:
-
-    * Increments ``contract_validation_failed_total{code, subcode,
-      spec_type}`` and ``contract_structureless_total{spec_type,
-      source}`` (L7.1).
-    * Emits a structured WARN log via ``structlog`` carrying
-      ``contract_id``, ``spec_type``, ``tenant_id``, ``subcode``
-      (L7.4).
-    * Emits a ``CONTRACT_STRUCTURELESS_REJECTED`` audit event via
-      ``create_audit_event`` (L7.3). Failure to emit the audit event
-      is logged but never blocks the raise — the raise is the
-      load-bearing operation.
+    Observability side effects (metrics, audit, logging) remain in
+    this shim for backward compatibility. PR-B moves them inside the
+    rule's ``validate_structural_floor()`` per §13.1.
     """
-    # ``is_payload_structureless`` handles None / non-dict / empty cases
-    # uniformly; we treat all of those as floor violations.
-    if not is_payload_structureless(hub_contract):
+    # Phase 274.4 — delegate validation to StructuralFloorRule.
+    from hub.apps.contracts.business_rules import StructuralFloorRule
+
+    result = StructuralFloorRule.validate_structural_floor(
+        hub_contract or {},
+        spec_type=spec_type or "",
+        spec_version=spec_version or "",
+        contract_id=contract_id or "",
+        tenant_id=tenant_id or "",
+    )
+
+    if result.is_valid:
         return
 
-    # Build details payload. For the None / non-dict case, counts are 0.
-    payload = hub_contract if isinstance(hub_contract, dict) else {}
-    models_count = _count_models_with_fields(payload)
-    fields_count = _schema_fields_count(payload)
-
-    subcode = _classify(payload, spec_type=spec_type, warnings=warnings)
+    # Build details from the rule result.
+    subcode = result.details.get("subcode", SUBCODE_GENERIC)
     hint = _HINT_BY_SUBCODE.get(subcode, _HINT_BY_SUBCODE[SUBCODE_GENERIC])
     remediation_url = _resolve_remediation_url(contract_id)
 
+    payload = hub_contract if isinstance(hub_contract, dict) else {}
     details: Dict[str, Any] = {
         "subcode": subcode,
-        "models_count": models_count,
-        "schema_fields_count": fields_count,
+        "models_count": _count_models_with_fields(payload),
+        "schema_fields_count": _schema_fields_count(payload),
         "spec_type": spec_type,
         "spec_version": spec_version,
         "hint": hint,
         "remediation_url": remediation_url,
     }
 
-    # ------------------------------------------------------------------
-    # Phase 227 Wave 1 (227.L7.1, L7.3, L7.4) — observability emission.
-    # All side-effects are wrapped in their own try/except so a metric
-    # backend / audit DB outage CAN'T block the floor enforcement —
-    # the raise is the load-bearing operation.
-    # ------------------------------------------------------------------
+    # Phase 227 Wave 1 observability emission.
     _emit_floor_violation_observability(
         code=ERROR_CODE,
         subcode=subcode,
@@ -393,25 +354,20 @@ def collect_structural_floor_errors(
 ) -> List[Dict[str, Any]]:
     """Non-raising sibling — returns a list of error-detail dicts.
 
-    Used by call-sites that need to aggregate multiple validation
-    failures (e.g., ``Asset.can_activate`` returning a list of blockers
-    rather than raising). Returns an empty list when the payload
-    satisfies the floor.
+    Phase 274.4: Delegates to StructuralFloorRule directly (avoids
+    circularity through enforce_structural_floor → rule → this).
     """
-    try:
-        enforce_structural_floor(
-            hub_contract,
-            spec_type=spec_type,
-            spec_version=spec_version,
-            warnings=warnings,
-            contract_id=contract_id,
-        )
+    from hub.apps.contracts.business_rules import StructuralFloorRule
+
+    result = StructuralFloorRule.validate_structural_floor(
+        hub_contract or {},
+        spec_type=spec_type or "",
+        spec_version=spec_version or "",
+        contract_id=contract_id or "",
+    )
+
+    if result.is_valid:
         return []
-    except ValidationError as exc:
-        return [
-            {
-                "code": exc.code,
-                "message": exc.message,
-                **(exc.details or {}),
-            }
-        ]
+
+    subcode = result.details.get("subcode", SUBCODE_GENERIC)
+    return [{"code": ERROR_CODE, "message": result.errors[0] if result.errors else "", "subcode": subcode}]
