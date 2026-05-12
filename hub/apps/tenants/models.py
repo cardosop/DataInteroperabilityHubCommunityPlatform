@@ -769,6 +769,18 @@ class Tenant(models.Model):
             "the referenced resource."
         ),
     )
+    # Phase 274.1 — marketplace publish compliance threshold gate.
+    # When True, listing publication requires a successful ComplianceRun
+    # whose risk_level does not exceed the tenant's compliance_risk_threshold.
+    # Default False for existing tenants (one-release notice window).
+    marketplace_publish_compliance_gate_enabled = models.BooleanField(
+        default=False,
+        help_text=(
+            "Phase 274.1 — when True, listing publication is blocked if "
+            "the latest ComplianceRun risk_level exceeds "
+            "compliance_risk_threshold or allowed_to_store is not True."
+        ),
+    )
     # Phase 270.C.4.1 — per-tenant compliance legal-basis strict mode.
     # When True, the compliance-service rejects scans missing a valid
     # ``legal_basis`` for GDPR/UK_GDPR/LGPD-applicable data with HTTP

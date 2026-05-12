@@ -201,61 +201,11 @@ class BusinessRulesRegistry:
             self._reverse_dependency_graph[dep].add(rule_name)
 
     def register_instance(
-        self,
-        rule_instance: BusinessRules,
-        rule_name: Optional[str] = None,
-        description: Optional[str] = None,
-        tags: Optional[List[str]] = None,
-        depends_on: Optional[List[str]] = None,
-        priority: int = 100,
-        enabled: bool = True
-    ) -> str:
-        """
-        Register a rule instance directly.
-
-        Args:
-            rule_instance: BusinessRules instance to register
-            rule_name: Optional unique name (defaults to class name)
-            description: Optional description
-            tags: Optional tags for categorization
-            depends_on: Optional list of rule names this rule depends on
-            priority: Execution priority (lower = higher priority)
-            enabled: Whether the rule is enabled
-
-        Returns:
-            Registered rule name
-        """
-        name = rule_name or rule_instance.get_rule_name()
-
-        if name in self._rules:
-            existing = self._rules[name]
-            if existing.rule_class != type(rule_instance):
-                raise ValueError(
-                    f"Rule name '{name}' is already registered with a different class"
-                )
-
-        # Create metadata (using instance's class)
-        metadata = RuleMetadata(
-            rule_class=type(rule_instance),
-            rule_name=name,
-            description=description,
-            tags=tags or [],
-            dependencies=depends_on or [],
-            priority=priority,
-            enabled=enabled
+        """Phase 274.6 — removed. Use @register_rule decorator instead."""
+        raise NotImplementedError(
+            "BusinessRulesRegistry.register_instance() was removed in Phase 274.6. "
+            "Use the @register_rule decorator instead."
         )
-
-        self._rules[name] = metadata
-        self._update_dependency_graph(name, metadata.dependencies)
-
-        logger.info(
-            "Business rule instance registered",
-            rule_name=name,
-            rule_class=type(rule_instance).__name__
-        )
-
-        return name
-
     def get_rule(self, rule_name: str) -> Optional[RuleMetadata]:
         """
         Get rule metadata by name.
@@ -539,6 +489,7 @@ class BusinessRulesRegistry:
 
         return result
 
+    # Phase 274.6 — removed. Use individual rule execute() or RuleChain instead.
     def execute_rules(
         self,
         rule_names: Optional[List[str]] = None,
@@ -549,137 +500,20 @@ class BusinessRulesRegistry:
         use_cache: Optional[bool] = None,
         **kwargs
     ) -> Dict[str, ValidationResult]:
-        """
-        Execute multiple rules in dependency order.
-
-        Args:
-            rule_names: Optional list of rule names to execute.
-                       If None, executes all enabled rules.
-            context: Optional rule execution context
-            tenant_id: Optional tenant ID (creates context if not provided)
-            user_id: Optional user ID (creates context if not provided)
-            short_circuit: If True, stop on first error
-            use_cache: Override caching setting
-
-        Returns:
-            Dictionary mapping rule names to ValidationResult
-
-        Raises:
-            ValueError: If circular dependencies detected or rule not found
-        """
-        # Resolve execution order
-        execution_order = self.resolve_execution_order(rule_names)
-
-        # Create context if not provided
-        if context is None:
-            from hub.apps.core.business_rules.base import RuleExecutionContext
-            context = RuleExecutionContext(
-                tenant_id=tenant_id,
-                user_id=user_id
-            )
-
-        results: Dict[str, ValidationResult] = {}
-
-        logger.info(
-            "Executing business rules",
-            rule_count=len(execution_order),
-            rule_names=execution_order,
-            short_circuit=short_circuit
-        )
-
-        for rule_name in execution_order:
-            metadata = self._rules[rule_name]
-
-            if not metadata.enabled:
-                logger.debug(
-                    "Skipping disabled rule",
-                    rule_name=rule_name
-                )
-                continue
-
-            try:
-                # Create rule instance
-                rule_instance = metadata.rule_class(
-                    tenant_id=context.tenant_id,
-                    user_id=context.user_id
-                )
-
-                # Execute rule - pass through any additional kwargs
-                result = rule_instance.execute(
-                    context=context,
-                    use_cache=use_cache,
-                    **kwargs
-                )
-
-                results[rule_name] = result
-
-                logger.debug(
-                    "Rule executed",
-                    rule_name=rule_name,
-                    is_valid=result.is_valid,
-                    error_count=len(result.errors),
-                    warning_count=len(result.warnings)
-                )
-
-                # Short-circuit on error if enabled
-                if short_circuit and not result.is_valid:
-                    logger.info(
-                        "Short-circuiting rule execution due to error",
-                        rule_name=rule_name,
-                        error_count=len(result.errors)
-                    )
-                    break
-
-            except Exception as e:
-                logger.error(
-                    "Rule execution failed",
-                    rule_name=rule_name,
-                    error=str(e),
-                    exc_info=True
-                )
-                # Create error result
-                results[rule_name] = ValidationResult(
-                    is_valid=False,
-                    errors=[f"Rule execution failed: {str(e)}"],
-                    details={'exception_type': type(e).__name__}
-                )
-
-                if short_circuit:
-                    break
-
-        return results
-
-    def get_rule_by_tag(self, tag: str) -> List[str]:
-        """
-        Get rule names by tag.
-
-        Args:
-            tag: Tag to search for
-
-        Returns:
-            List of rule names with the tag
-        """
-        return [
-            name for name, metadata in self._rules.items()
-            if tag in metadata.tags
-        ]
-
+        raise NotImplementedError(
+            "BusinessRulesRegistry.execute_rules() was removed in Phase 274.6. "
     def enable_rule(self, rule_name: str) -> None:
-        """
-        Enable a rule.
-
-        Args:
-            rule_name: Rule name
-
-        Raises:
-            ValueError: If rule not found
-        """
-        if rule_name not in self._rules:
-            raise ValueError(f"Rule '{rule_name}' not found")
-        self._rules[rule_name].enabled = True
-        logger.info("Rule enabled", rule_name=rule_name)
-
+        """Phase 274.6 — removed."""
+        raise NotImplementedError(
+            "BusinessRulesRegistry.enable_rule() was removed in Phase 274.6. "
+            "Use per-tenant feature flags instead."
+        )
     def disable_rule(self, rule_name: str) -> None:
+        """Phase 274.6 — removed."""
+        raise NotImplementedError(
+            "BusinessRulesRegistry.disable_rule() was removed in Phase 274.6. "
+            "Use per-tenant feature flags instead."
+        )
         """
         Disable a rule.
 
