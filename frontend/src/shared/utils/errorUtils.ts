@@ -5,6 +5,13 @@
 
 import type { ApiError } from '../types/api';
 
+// Re-export so consumers that already import error helpers from this
+// module can also pull the `ApiError` type without reaching into
+// `../types/api` directly. Centralising the public error surface in
+// one module keeps consumer imports stable as the underlying type
+// definitions move.
+export type { ApiError };
+
 /* -------------------------------------------------------------------------
  * Phase 227 Wave 1 (227.L5.9) — Known error codes + remediation copy
  * ------------------------------------------------------------------------- */
@@ -32,6 +39,12 @@ export const KnownErrorCode = {
   PERMISSION_DENIED: 'PERMISSION_DENIED',
   /** Tenant exceeded a quota / plan limit. */
   PLAN_LIMIT_EXCEEDED: 'PLAN_LIMIT_EXCEEDED',
+  /** Phase 231.2 — no succeeded compliance scan for listing asset. */
+  COMPLIANCE_RUN_REQUIRED: 'COMPLIANCE_RUN_REQUIRED',
+  /** Phase 231.2 — latest succeeded risk exceeds tenant threshold. */
+  COMPLIANCE_THRESHOLD_EXCEEDED: 'COMPLIANCE_THRESHOLD_EXCEEDED',
+  /** Phase 231.2 — only platform admins may ``force_publish`` past the gate. */
+  COMPLIANCE_FORCE_PUBLISH_DENIED: 'COMPLIANCE_FORCE_PUBLISH_DENIED',
 } as const;
 export type KnownErrorCode = (typeof KnownErrorCode)[keyof typeof KnownErrorCode];
 
@@ -124,6 +137,28 @@ export function getErrorRemediation(
         details:
           'Your tenant has reached its plan quota for this resource. Upgrade your plan or remove unused resources before retrying.',
       };
+    case KnownErrorCode.COMPLIANCE_RUN_REQUIRED:
+      return {
+        title: 'Compliance scan required',
+        details:
+          'Run a succeeded compliance scan for this asset before publishing or activating.',
+        ctaUrl: '/compliance',
+        ctaLabel: 'Open Compliance',
+      };
+    case KnownErrorCode.COMPLIANCE_THRESHOLD_EXCEEDED:
+      return {
+        title: 'Compliance risk exceeds tenant threshold',
+        details:
+          'The latest succeeded scan is above your tenant’s configured risk ceiling. Address the findings or adjust the threshold in Tenant settings before retrying.',
+        ctaUrl: '/settings/tenant',
+        ctaLabel: 'Tenant settings',
+      };
+    case KnownErrorCode.COMPLIANCE_FORCE_PUBLISH_DENIED:
+      return {
+        title: 'Compliance bypass not allowed',
+        details:
+          'Only platform administrators can force-publish past the compliance gate.',
+      };
     default:
       return null;
   }
@@ -136,6 +171,11 @@ export function getErrorRemediation(
  * @returns Normalized ApiError with all required fields
  */
 export function normalizeError(err: unknown): ApiError {
+  // Phase 273.5 — search/semantic endpoints now return the canonical
+  // ``{error: {code, message, http_status, request_id, ...}}`` envelope.
+  // The fallback branches below handle legacy paths that still return
+  // bare strings or Error instances; these can be removed once all
+  // backend views use StandardResponseFormatter.format_error().
   // Already an ApiError (from apiClient)
   if (err && typeof err === 'object' && 'error' in err) {
     const apiError = err as ApiError;
