@@ -781,10 +781,18 @@ class Tenant(models.Model):
             "compliance_risk_threshold or allowed_to_store is not True."
         ),
     )
+    # Phase 274.12.4 — continuous compliance enforcement.
+    # When True, SUCCEEDED ComplianceRun transitions that regress
+    # (risk_level exceeds threshold or allowed_to_store=False) auto-
+    # unpublish affected listings. Default False existing.
+    continuous_compliance_enforcement_enabled = models.BooleanField(
+        default=False,
+        help_text=(
+            "Phase 274.12 — when True, compliance regressions on "
+            "published listings trigger auto-unpublish."
+        ),
+    )
     # Phase 270.C.4.1 — per-tenant compliance legal-basis strict mode.
-    # When True, the compliance-service rejects scans missing a valid
-    # ``legal_basis`` for GDPR/UK_GDPR/LGPD-applicable data with HTTP
-    # 422 ``LEGAL_BASIS_INVALID``; when False (lenient, default for
     # backward-compat), the scan succeeds with an ERROR-severity
     # issue in the report (existing Phase 19.7.1 behaviour). The
     # env-aware default factory ``_default_compliance_legal_basis_strict``
