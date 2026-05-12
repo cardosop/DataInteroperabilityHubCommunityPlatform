@@ -28,6 +28,7 @@ from .serializers import (
 from .indexing import SearchIndexer
 from hub.apps.auth.permissions import HasRole
 from hub.apps.observability.cross_tenant_metrics import cross_tenant_denied
+from hub.apps.search.throttles import SearchUserThrottle, SuggestionsUserThrottle
 from hub.apps.tenants.request_tenant import get_request_tenant_id
 
 # Auditor permission - users with AUDITOR role
@@ -43,6 +44,8 @@ class SearchViewSet(viewsets.ViewSet):
     Use /api/search/ (UnifiedSearchView) instead.
     This viewset returns Deprecation headers and will be removed after 30 days.
     """
+    # Phase 273.2 — rate-limit search/suggestions per tenant.
+    throttle_classes = [SearchUserThrottle]
     permission_classes = [IsAuthenticated]
 
     def finalize_response(self, request, response, *args, **kwargs):
@@ -612,6 +615,8 @@ class UnifiedSearchView(APIView):
     }
     """
 
+    # Phase 273.2 — rate-limit the canonical search endpoint.
+    throttle_classes = [SearchUserThrottle]
     permission_classes = [IsAuthenticated]
 
     @staticmethod
@@ -813,6 +818,28 @@ class UnifiedSearchView(APIView):
             )
         except Exception:
             pass  # analytics must not break search
+
+        # ── Phase 273.3 — audit every search execution ──────────────────
+        try:
+            from hub.apps.audit.event_types import SEARCH_PERFORMED
+            from hub.apps.audit.utils import create_audit_event
+
+            create_audit_event(
+                resource_type="SEARCH_QUERY",
+                action=SEARCH_PERFORMED,
+                actor_user=request.user,
+                tenant=tenant,
+                resource_id=None,
+                result="SUCCESS",
+                details={
+                    "query_truncated": term[:256],
+                    "types": ",".join(sorted(requested_types)) if requested_types else "",
+                    "result_count": len(results),
+                    "tenant_id": str(tenant.id),
+                },
+            )
+        except Exception:
+            pass  # audit-DB outage MUST NOT block search response
 
         # ── paginate ─────────────────────────────────────────────────────
         paginator = StandardPageNumberPagination()

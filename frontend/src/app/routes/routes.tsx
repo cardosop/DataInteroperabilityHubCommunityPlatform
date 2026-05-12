@@ -20,12 +20,20 @@ import { VerifyEmailPage } from '../../features/auth/components/VerifyEmailPage'
 import { PasswordResetConfirmPage } from '../../features/auth/components/PasswordResetConfirmPage';
 import { PasswordResetPage } from '../../features/auth/components/PasswordResetPage';
 import { PublicResourcesPage } from '../../features/auth/components/PublicResourcesPage';
+import {
+  PublicLayout,
+  PublicLegalHomePage,
+  PublicPrivacyNoticePage,
+  PublicSubprocessorsPage,
+  PublicPlatformDpiaSummaryPage,
+} from '../../features/public';
 import { RegisterPage } from '../../features/auth/components/RegisterPage';
 import { RegistrationRoute } from '../../features/auth/components/RegistrationRoute';
 import { RootRoute } from './RootRoute';
 import { CapabilityRoute } from '../../shared/components/CapabilityRoute';
 import { MvpGatedRoute } from '../../shared/components/MvpGatedRoute';
 import { isMvpModeEnabledFromEnv } from '../../features/shell/utils/mvpNav';
+import { COMPLIANCE_SIDEBAR_REQUIRED_ROLES } from '../../features/shell/utils/navItems';
 import { ErrorBoundary } from '../../shared/components/ErrorBoundary';
 import { LoadingSpinner } from '../../shared/components/LoadingSpinner';
 import { ProtectedRoute } from '../../shared/components/ProtectedRoute';
@@ -76,6 +84,12 @@ const AuditEventDetailPage = lazy(() =>
     default: m.AuditEventDetailPage,
   }))
 );
+// Phase 260.4.H — admin audit-log search (TENANT_ADMIN-only)
+const AdminAuditLogPage = lazy(() =>
+  import('../../features/audit/components/AdminAuditLogPage').then((m) => ({
+    default: m.AdminAuditLogPage,
+  }))
+);
 const AuditEventListPage = lazy(() =>
   import('../../features/audit/components/AuditEventListPage').then((m) => ({
     default: m.AuditEventListPage,
@@ -90,6 +104,11 @@ const SubscriptionPage = lazy(() =>
   import('../../features/billing/components/SubscriptionPage').then((m) => ({
     default: m.SubscriptionPage,
   }))
+);
+const ProviderRevenuePage = lazy(() =>
+  import(
+    '../../features/billing/components/ProviderRevenuePage'
+  ).then((m) => ({ default: m.ProviderRevenuePage }))
 );
 const CostPage = lazy(() =>
   import('../../features/cost/components/CostPage').then((m) => ({
@@ -115,6 +134,11 @@ const TenantSettingsPage = lazy(() =>
   import('../../features/tenants/components/TenantSettingsPage').then((m) => ({
     default: m.TenantSettingsPage,
   }))
+);
+const DelegationSettingsPage = lazy(() =>
+  import(
+    '../../features/governance/components/DelegationSettingsPage'
+  ).then((m) => ({ default: m.DelegationSettingsPage }))
 );
 // Phase 228.F3.14 — Lineage subscriptions management page.
 const LineageSubscriptionsPage = lazy(() =>
@@ -228,6 +252,14 @@ const RootCauseAnalysisPage = lazy(() =>
 const FileListPage = lazy(() =>
   import('../../features/files/components/FileListPage').then((m) => ({ default: m.FileListPage }))
 );
+// Phase 260.4.B — dedicated /files/:id detail page (replaces the
+// modal as the primary surface; deep-linkable + room for the audit
+// log section).
+const FileDetailPage = lazy(() =>
+  import('../../features/files/components/FileDetailPage').then((m) => ({
+    default: m.FileDetailPage,
+  })),
+);
 const AccessRequestCreatePage = lazy(() =>
   import('../../features/governance/components/AccessRequestCreatePage').then((m) => ({
     default: m.AccessRequestCreatePage,
@@ -261,6 +293,81 @@ const RetentionPolicyCreatePage = lazy(() =>
 const RetentionPolicyEditPage = lazy(() =>
   import('../../features/governance/components/RetentionPolicyEditPage').then((m) => ({
     default: m.RetentionPolicyEditPage,
+  }))
+);
+const RetentionDashboardPage = lazy(() =>
+  import('../../features/governance/components/RetentionDashboardPage').then((m) => ({
+    default: m.RetentionDashboardPage,
+  }))
+);
+const PurposeManagerPage = lazy(() =>
+  import('../../features/governance/components/PurposeManagerPage').then((m) => ({
+    default: m.PurposeManagerPage,
+  }))
+);
+const ConsentDashboardPage = lazy(() =>
+  import('../../features/governance/components/ConsentDashboardPage').then((m) => ({
+    default: m.ConsentDashboardPage,
+  }))
+);
+const PublicDsarSubmitPage = lazy(() =>
+  import('../../features/dsar/components/PublicDsarSubmitPage').then((m) => ({
+    default: m.PublicDsarSubmitPage,
+  }))
+);
+const PublicDsarStatusPage = lazy(() =>
+  import('../../features/dsar/components/PublicDsarStatusPage').then((m) => ({
+    default: m.PublicDsarStatusPage,
+  }))
+);
+const DsarQueuePage = lazy(() =>
+  import('../../features/dsar/components/DsarQueuePage').then((m) => ({
+    default: m.DsarQueuePage,
+  }))
+);
+const DsarDetailPage = lazy(() =>
+  import('../../features/dsar/components/DsarDetailPage').then((m) => ({
+    default: m.DsarDetailPage,
+  }))
+);
+const BreachDashboardPage = lazy(() =>
+  import('../../features/breach/components/BreachDashboardPage').then((m) => ({
+    default: m.BreachDashboardPage,
+  }))
+);
+const BreachDetailPage = lazy(() =>
+  import('../../features/breach/components/BreachDetailPage').then((m) => ({
+    default: m.BreachDetailPage,
+  }))
+);
+const ReportBreachPage = lazy(() =>
+  import('../../features/breach/components/ReportBreachPage').then((m) => ({
+    default: m.ReportBreachPage,
+  }))
+);
+const BreachTemplateEditorPage = lazy(() =>
+  import('../../features/breach/components/BreachTemplateEditorPage').then((m) => ({
+    default: m.BreachTemplateEditorPage,
+  }))
+);
+const ProcessorAgreementsPage = lazy(() =>
+  import('../../features/processorAgreements/components/ProcessorAgreementsPage').then((m) => ({
+    default: m.ProcessorAgreementsPage,
+  }))
+);
+const DpiaWizardPage = lazy(() =>
+  import('../../features/dpia/components/DpiaWizardPage').then((m) => ({
+    default: m.DpiaWizardPage,
+  }))
+);
+const DpiaReviewQueuePage = lazy(() =>
+  import('../../features/dpia/components/DpiaReviewQueuePage').then((m) => ({
+    default: m.DpiaReviewQueuePage,
+  }))
+);
+const DpiaReviewPage = lazy(() =>
+  import('../../features/dpia/components/DpiaReviewPage').then((m) => ({
+    default: m.DpiaReviewPage,
   }))
 );
 const JobDetailPage = lazy(() =>
@@ -524,6 +631,11 @@ const AdminPage = lazy(() =>
     default: m.AdminPage,
   }))
 );
+const KYBReviewQueuePage = lazy(() =>
+  import(
+    '../../features/admin/components/KYBReviewQueuePage'
+  ).then((m) => ({ default: m.KYBReviewQueuePage }))
+);
 
 // Phase 228 F4 (228.F4.19) — OpenLineage admin route.
 // Two side-by-side panels: ingest-key management + ops status.
@@ -553,6 +665,16 @@ const TenantFeatureFlagsAdminPage = lazy(() =>
       default: m.TenantFeatureFlagsAdminPage,
     }),
   ),
+);
+// Phase 235.1 — PLATFORM_ADMIN cross-tenant feature-flag UI (registry-driven).
+// Distinct from TenantFeatureFlagsAdminPage (which is the TENANT_ADMIN
+// self-service surface): this page targets ANY tenant from a PLATFORM_ADMIN
+// session and routes through the new /api/v1/admin/tenants/{id}/feature-flags/
+// endpoint with the two-person-rule on sensitive flags.
+const FeatureFlagPage = lazy(() =>
+  import('../../features/admin/components/FeatureFlagPage').then((m) => ({
+    default: m.FeatureFlagPage,
+  })),
 );
 const HomePage = lazy(() =>
   import('../pages/HomePage').then((m) => ({
@@ -589,6 +711,32 @@ export const appRoutes: Parameters<typeof createBrowserRouter>[0] = [
   {
     path: '/public',
     element: <PublicResourcesPage />,
+  },
+  {
+    path: '/legal',
+    element: <PublicLayout />,
+    children: [
+      { index: true, element: <PublicLegalHomePage /> },
+      { path: 'privacy', element: <PublicPrivacyNoticePage /> },
+      { path: 'subprocessors', element: <PublicSubprocessorsPage /> },
+      { path: 'dpia', element: <PublicPlatformDpiaSummaryPage /> },
+      {
+        path: 'dsar',
+        element: (
+          <EB fallbackMsg="Loading…">
+            <PublicDsarSubmitPage />
+          </EB>
+        ),
+      },
+      {
+        path: 'dsar/status/:referenceToken',
+        element: (
+          <EB fallbackMsg="Loading…">
+            <PublicDsarStatusPage />
+          </EB>
+        ),
+      },
+    ],
   },
   {
     path: '/register',
@@ -725,7 +873,18 @@ export const appRoutes: Parameters<typeof createBrowserRouter>[0] = [
         ],
       },
       {
+        // Phase 260.3.B.2 — ``MvpGatedRoute`` + ``CapabilityRoute`` (order matches
+        // /assets/create and /dq). Pass-through in MVP when path is not in
+        // NON_MVP_PATHS; tenant kill-switch uses capability keys ``datasets`` /
+        // ``files`` from ``GET /api/v1/capabilities/``.
         path: 'datasets',
+        element: (
+          <MvpGatedRoute>
+            <CapabilityRoute capability="datasets">
+              <Outlet />
+            </CapabilityRoute>
+          </MvpGatedRoute>
+        ),
         children: [
           {
             index: true,
@@ -763,12 +922,28 @@ export const appRoutes: Parameters<typeof createBrowserRouter>[0] = [
       },
       {
         path: 'files',
+        element: (
+          <MvpGatedRoute>
+            <CapabilityRoute capability="files">
+              <Outlet />
+            </CapabilityRoute>
+          </MvpGatedRoute>
+        ),
         children: [
           {
             index: true,
             element: (
               <EB fallbackMsg="Loading files...">
                 <FileListPage />
+              </EB>
+            ),
+          },
+          {
+            // Phase 260.4.B — file detail page; deep-linkable surface.
+            path: ':id',
+            element: (
+              <EB fallbackMsg="Loading file...">
+                <FileDetailPage />
               </EB>
             ),
           },
@@ -1091,6 +1266,11 @@ export const appRoutes: Parameters<typeof createBrowserRouter>[0] = [
       },
       {
         path: 'compliance',
+        element: (
+          <ProtectedRoute requiredRole={[...COMPLIANCE_SIDEBAR_REQUIRED_ROLES]}>
+            <Outlet />
+          </ProtectedRoute>
+        ),
         children: [
           {
             index: true,
@@ -1161,9 +1341,7 @@ export const appRoutes: Parameters<typeof createBrowserRouter>[0] = [
       {
         path: 'search',
         element: (
-          <MvpGatedRoute>
-            <EB fallbackMsg="Loading..."><SearchPage /></EB>
-          </MvpGatedRoute>
+          <EB fallbackMsg="Loading..."><SearchPage /></EB>
         ),
       },
       {
@@ -1396,7 +1574,9 @@ export const appRoutes: Parameters<typeof createBrowserRouter>[0] = [
       {
         path: 'governance',
         element: (
-          <ProtectedRoute requiredRole={['TENANT_ADMIN', 'PLATFORM_ADMIN']}>
+          <ProtectedRoute
+            requiredRole={['TENANT_ADMIN', 'DPO', 'LEGAL_ADMIN', 'SECURITY_ADMIN', 'PLATFORM_ADMIN']}
+          >
             <GovernanceLayout />
           </ProtectedRoute>
         ),
@@ -1404,6 +1584,114 @@ export const appRoutes: Parameters<typeof createBrowserRouter>[0] = [
           { index: true, element: <EB fallbackMsg="Loading..."><AccessRequestListPage /></EB> },
           { path: 'access-requests/create', element: <EB fallbackMsg="Loading..."><AccessRequestCreatePage /></EB> },
           { path: 'access-requests/:id', element: <EB fallbackMsg="Loading..."><AccessRequestDetailPage /></EB> },
+          {
+            path: 'dsar-requests',
+            element: (
+              <EB fallbackMsg="Loading...">
+                <DsarQueuePage />
+              </EB>
+            ),
+          },
+          {
+            path: 'dsar-requests/:id',
+            element: (
+              <EB fallbackMsg="Loading...">
+                <DsarDetailPage />
+              </EB>
+            ),
+          },
+          { path: 'consent/purposes', element: <EB fallbackMsg="Loading..."><PurposeManagerPage /></EB> },
+          { path: 'consent/dashboard', element: <EB fallbackMsg="Loading..."><ConsentDashboardPage /></EB> },
+          {
+            path: 'dpia/review-queue',
+            element: (
+              <CapabilityRoute capability="compliance_dpia">
+                <EB fallbackMsg="Loading...">
+                  <DpiaReviewQueuePage />
+                </EB>
+              </CapabilityRoute>
+            ),
+          },
+          {
+            path: 'dpia/:dpiaId/review',
+            element: (
+              <CapabilityRoute capability="compliance_dpia">
+                <EB fallbackMsg="Loading...">
+                  <DpiaReviewPage />
+                </EB>
+              </CapabilityRoute>
+            ),
+          },
+          {
+            path: 'dpia/:dpiaId',
+            element: (
+              <CapabilityRoute capability="compliance_dpia">
+                <EB fallbackMsg="Loading...">
+                  <DpiaWizardPage />
+                </EB>
+              </CapabilityRoute>
+            ),
+          },
+          {
+            path: 'breach',
+            element: (
+              <CapabilityRoute capability="compliance_breach">
+                <EB fallbackMsg="Loading...">
+                  <BreachDashboardPage />
+                </EB>
+              </CapabilityRoute>
+            ),
+          },
+          {
+            path: 'breach/report',
+            element: (
+              <CapabilityRoute capability="compliance_breach">
+                <EB fallbackMsg="Loading...">
+                  <ReportBreachPage />
+                </EB>
+              </CapabilityRoute>
+            ),
+          },
+          {
+            path: 'breach/templates',
+            element: (
+              <CapabilityRoute capability="compliance_breach">
+                <EB fallbackMsg="Loading...">
+                  <BreachTemplateEditorPage />
+                </EB>
+              </CapabilityRoute>
+            ),
+          },
+          {
+            path: 'breach/:id',
+            element: (
+              <CapabilityRoute capability="compliance_breach">
+                <EB fallbackMsg="Loading...">
+                  <BreachDetailPage />
+                </EB>
+              </CapabilityRoute>
+            ),
+          },
+          {
+            path: 'processor-agreements',
+            element: (
+              <CapabilityRoute capability="compliance_processor_agreements">
+                <EB fallbackMsg="Loading...">
+                  <ProcessorAgreementsPage />
+                </EB>
+              </CapabilityRoute>
+            ),
+          },
+          {
+            path: 'retention/dashboard',
+            element: (
+              <CapabilityRoute capability="compliance_retention_enforcer">
+                <EB fallbackMsg="Loading...">
+                  <RetentionDashboardPage />
+                </EB>
+              </CapabilityRoute>
+            ),
+          },
           { path: 'retention', element: <EB fallbackMsg="Loading..."><RetentionPolicyListPage /></EB> },
           { path: 'retention/new', element: <EB fallbackMsg="Loading..."><RetentionPolicyCreatePage /></EB> },
           { path: 'retention/:id', element: <EB fallbackMsg="Loading..."><RetentionPolicyDetailPage /></EB> },
@@ -1419,10 +1707,19 @@ export const appRoutes: Parameters<typeof createBrowserRouter>[0] = [
         ),
       },
       {
+        // Phase 234.2 — TENANT_ADMIN gains UI access to /audit.
+        // Backend ``AUDIT_READ_ROLES`` (hub/apps/audit/views.py) has
+        // always allowed TENANT_ADMIN through the API. Without the
+        // matching frontend role, the tenant admin had the data via
+        // ``GET /api/v1/audit/audit-events/`` but no UI to view it —
+        // surfaced as a /403 redirect from this guard. Aligning the
+        // two allow-lists closes the gap; ``auditRouteAccess.test.tsx``
+        // pins the contract so a future drift in either direction
+        // fails CI before reaching staging.
         path: 'audit',
         element: (
           <ErrorBoundary>
-            <ProtectedRoute requiredRole={['AUDITOR', 'PLATFORM_ADMIN']}>
+            <ProtectedRoute requiredRole={['TENANT_ADMIN', 'AUDITOR', 'PLATFORM_ADMIN']}>
               <AuditEventListPage />
             </ProtectedRoute>
           </ErrorBoundary>
@@ -1432,7 +1729,7 @@ export const appRoutes: Parameters<typeof createBrowserRouter>[0] = [
         path: 'audit/:id',
         element: (
           <ErrorBoundary>
-            <ProtectedRoute requiredRole={['AUDITOR', 'PLATFORM_ADMIN']}>
+            <ProtectedRoute requiredRole={['TENANT_ADMIN', 'AUDITOR', 'PLATFORM_ADMIN']}>
               <AuditEventDetailPage />
             </ProtectedRoute>
           </ErrorBoundary>
@@ -1441,97 +1738,97 @@ export const appRoutes: Parameters<typeof createBrowserRouter>[0] = [
       {
         path: 'scheduled-ingestions',
         element: (
-          <ErrorBoundary>
-            <MvpGatedRoute>
+          <MvpGatedRoute>
+            <ErrorBoundary>
               <ProtectedRoute requiredRole={['DATA_PROVIDER', 'TENANT_ADMIN', 'PLATFORM_ADMIN']}>
                 <ScheduledIngestionListPage />
               </ProtectedRoute>
-            </MvpGatedRoute>
-          </ErrorBoundary>
+            </ErrorBoundary>
+          </MvpGatedRoute>
         ),
       },
       {
         path: 'scheduled-ingestions/create',
         element: (
-          <ErrorBoundary>
-            <MvpGatedRoute>
+          <MvpGatedRoute>
+            <ErrorBoundary>
               <ProtectedRoute requiredRole={['DATA_PROVIDER', 'TENANT_ADMIN', 'PLATFORM_ADMIN']}>
                 <ScheduledIngestionCreatePage />
               </ProtectedRoute>
-            </MvpGatedRoute>
-          </ErrorBoundary>
+            </ErrorBoundary>
+          </MvpGatedRoute>
         ),
       },
       {
         path: 'scheduled-ingestions/:id',
         element: (
-          <ErrorBoundary>
-            <MvpGatedRoute>
+          <MvpGatedRoute>
+            <ErrorBoundary>
               <ProtectedRoute requiredRole={['DATA_PROVIDER', 'TENANT_ADMIN', 'PLATFORM_ADMIN']}>
                 <ScheduledIngestionDetailPage />
               </ProtectedRoute>
-            </MvpGatedRoute>
-          </ErrorBoundary>
+            </ErrorBoundary>
+          </MvpGatedRoute>
         ),
       },
       {
         path: 'scheduled-ingestions/:id/edit',
         element: (
-          <ErrorBoundary>
-            <MvpGatedRoute>
+          <MvpGatedRoute>
+            <ErrorBoundary>
               <ProtectedRoute requiredRole={['DATA_PROVIDER', 'TENANT_ADMIN', 'PLATFORM_ADMIN']}>
                 <ScheduledIngestionEditPage />
               </ProtectedRoute>
-            </MvpGatedRoute>
-          </ErrorBoundary>
+            </ErrorBoundary>
+          </MvpGatedRoute>
         ),
       },
       {
         path: 'scheduled-exports',
         element: (
-          <ErrorBoundary>
-            <MvpGatedRoute>
+          <MvpGatedRoute>
+            <ErrorBoundary>
               <ProtectedRoute requiredRole={['DATA_PROVIDER', 'TENANT_ADMIN', 'PLATFORM_ADMIN']}>
                 <ScheduledExportListPage />
               </ProtectedRoute>
-            </MvpGatedRoute>
-          </ErrorBoundary>
+            </ErrorBoundary>
+          </MvpGatedRoute>
         ),
       },
       {
         path: 'scheduled-exports/create',
         element: (
-          <ErrorBoundary>
-            <MvpGatedRoute>
+          <MvpGatedRoute>
+            <ErrorBoundary>
               <ProtectedRoute requiredRole={['DATA_PROVIDER', 'TENANT_ADMIN', 'PLATFORM_ADMIN']}>
                 <ScheduledExportCreatePage />
               </ProtectedRoute>
-            </MvpGatedRoute>
-          </ErrorBoundary>
+            </ErrorBoundary>
+          </MvpGatedRoute>
         ),
       },
       {
         path: 'scheduled-exports/:id',
         element: (
-          <ErrorBoundary>
-            <MvpGatedRoute>
+          <MvpGatedRoute>
+            <ErrorBoundary>
               <ProtectedRoute requiredRole={['DATA_PROVIDER', 'TENANT_ADMIN', 'PLATFORM_ADMIN']}>
                 <ScheduledExportDetailPage />
               </ProtectedRoute>
-            </MvpGatedRoute>
-          </ErrorBoundary>
+            </ErrorBoundary>
+          </MvpGatedRoute>
         ),
       },
       {
         path: 'scheduled-exports/:id/edit',
         element: (
-          <ErrorBoundary>
-            <MvpGatedRoute>
+          <MvpGatedRoute>
+            <ErrorBoundary>
               <ProtectedRoute requiredRole={['DATA_PROVIDER', 'TENANT_ADMIN', 'PLATFORM_ADMIN']}>
                 <ScheduledExportEditPage />
               </ProtectedRoute>
-            </MvpGatedRoute>
-          </ErrorBoundary>
+            </ErrorBoundary>
+          </MvpGatedRoute>
         ),
       },
       {
@@ -1576,6 +1873,21 @@ export const appRoutes: Parameters<typeof createBrowserRouter>[0] = [
         ),
       },
       {
+        // Phase 235.1 — PLATFORM_ADMIN cross-tenant feature-flag UI.
+        // Distinct from /admin/tenant-settings (TENANT_ADMIN self-
+        // service): this route targets ANY tenant and routes through
+        // the new admin endpoint with the two-person rule on
+        // sensitive flags.
+        path: 'admin/feature-flags',
+        element: (
+          <ProtectedRoute requiredRole={['PLATFORM_ADMIN']}>
+            <EB fallbackMsg="Loading feature flags...">
+              <FeatureFlagPage />
+            </EB>
+          </ProtectedRoute>
+        ),
+      },
+      {
         // Phase 227 Wave 1 (227.L5.8) — TENANT_ADMIN structureless-
         // contract triage page. Lists contracts whose normalised
         // payload has no resolvable models or schema fields with
@@ -1585,6 +1897,25 @@ export const appRoutes: Parameters<typeof createBrowserRouter>[0] = [
           <ProtectedRoute requiredRole={['TENANT_ADMIN', 'PLATFORM_ADMIN']}>
             <EB fallbackMsg="Loading contract health...">
               <ContractHealthPage />
+            </EB>
+          </ProtectedRoute>
+        ),
+      },
+      {
+        // Phase 260.4.H — TENANT_ADMIN-only audit log search.
+        // Accepts ``?resource_type=...&resource_id=...`` query params
+        // for deep-linking from detail pages (e.g. "View audit
+        // history" CTA on a file detail page would land here with
+        // ``?resource_type=FILE&resource_id={id}``). The backend's
+        // raw audit endpoint already requires TENANT_ADMIN /
+        // AUDITOR / PLATFORM_ADMIN; this route gate is the FE
+        // affordance so a regular user never sees a link to a
+        // page that 403s.
+        path: 'admin/audit-log',
+        element: (
+          <ProtectedRoute requiredRole={['TENANT_ADMIN', 'PLATFORM_ADMIN']}>
+            <EB fallbackMsg="Loading audit log...">
+              <AdminAuditLogPage />
             </EB>
           </ProtectedRoute>
         ),
@@ -1600,6 +1931,19 @@ export const appRoutes: Parameters<typeof createBrowserRouter>[0] = [
           <ProtectedRoute requiredRole={['TENANT_ADMIN', 'PLATFORM_ADMIN']}>
             <EB fallbackMsg="Loading OpenLineage admin...">
               <OpenLineageAdminPage />
+            </EB>
+          </ProtectedRoute>
+        ),
+      },
+      {
+        // Phase 271.5.2 — PLATFORM_ADMIN KYB review queue for
+        // Stripe Connect onboarding. Lists accounts stuck in
+        // details_submitted=True && charges_enabled=False > 24h.
+        path: 'admin/connect',
+        element: (
+          <ProtectedRoute requiredRole={['PLATFORM_ADMIN']}>
+            <EB fallbackMsg="Loading KYB review queue...">
+              <KYBReviewQueuePage />
             </EB>
           </ProtectedRoute>
         ),
@@ -1678,6 +2022,30 @@ export const appRoutes: Parameters<typeof createBrowserRouter>[0] = [
               <ProtectedRoute requiredRole={['TENANT_ADMIN', 'PLATFORM_ADMIN']}>
                 <EB fallbackMsg="Loading cost tracking...">
                   <CostPage />
+                </EB>
+              </ProtectedRoute>
+            ),
+          },
+          {
+            // Phase 272.6.7 — Approval delegation out-of-office coverage.
+            path: 'delegation',
+            element: (
+              <ProtectedRoute requiredRole={['TENANT_ADMIN', 'PLATFORM_ADMIN']}>
+                <EB fallbackMsg="Loading delegation settings...">
+                  <DelegationSettingsPage />
+                </EB>
+              </ProtectedRoute>
+            ),
+          },
+          {
+            // Phase 271.4.3 — Stripe Connect provider revenue dashboard.
+            // Lists payouts + status + arrival dates; surfaces
+            // payout.failed events with a yellow alert banner.
+            path: 'revenue',
+            element: (
+              <ProtectedRoute requiredRole={['TENANT_ADMIN', 'PLATFORM_ADMIN']}>
+                <EB fallbackMsg="Loading revenue...">
+                  <ProviderRevenuePage />
                 </EB>
               </ProtectedRoute>
             ),

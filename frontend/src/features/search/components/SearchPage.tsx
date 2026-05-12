@@ -46,13 +46,12 @@ interface Scope {
   supported: boolean;
 }
 
+// Phase 273.6 — Jobs/Orders removed per D273.11 (UI tabs follow backend index, never lead).
 const SCOPES: Scope[] = [
   { value: 'ALL', label: 'All', supported: true },
   { value: 'ASSET', label: 'Assets', supported: true },
   { value: 'CONTRACT', label: 'Contracts', supported: true },
   { value: 'DATASET', label: 'Datasets', supported: true },
-  { value: 'JOB', label: 'Jobs', supported: false },
-  { value: 'ORDER', label: 'Orders', supported: false },
 ];
 
 const SEARCH_DEBOUNCE_MS = 300;

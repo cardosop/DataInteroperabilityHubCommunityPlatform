@@ -44,7 +44,8 @@ MVP_GATED_RELATIVE_PREFIXES: Final[tuple[str, ...]] = (
     # Phase 5 (current PR): plug backend drift. Both prefixes were mounted in
     # hub/apps/api/urls.py but absent from this list, so they were reachable
     # under MVP_MODE=True despite the frontend hiding them.
-    "search/",
+    # Phase 273.1 — removed "search/" per spec REQ-MVP-001/002; /search is
+    # permanently MVP-in-scope alongside /semantic (project_mvp_scope.md).
     "developer/",
 )
 

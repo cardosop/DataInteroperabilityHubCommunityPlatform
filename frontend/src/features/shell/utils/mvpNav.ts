@@ -25,7 +25,6 @@ export const NON_MVP_PATHS: ReadonlySet<string> = new Set([
   '/scheduled-exports',
   // Added in Track A PR 3 — close frontend leak parity with the backend
   // MVP_GATED_RELATIVE_PREFIXES additions in PR 1.
-  '/search',
   '/developer',
   '/observability',
 ]);

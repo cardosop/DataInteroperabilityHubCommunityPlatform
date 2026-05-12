@@ -2010,6 +2010,14 @@ STRIPE_MARKETPLACE_WEBHOOK_SECRET = env("STRIPE_MARKETPLACE_WEBHOOK_SECRET", def
 # deployment (e.g. dev/test) still processes Connect events.
 STRIPE_CONNECT_WEBHOOK_SECRET = env("STRIPE_CONNECT_WEBHOOK_SECRET", default=None)
 
+# Phase 273.2 — search/SPARQL rate limits (per-min, per-tenant cache-key).
+# Evidence-based defaults from 24h QPS baseline (to be replaced by 273.0.5).
+SEARCH_RATE_LIMIT_PER_MIN = env("SEARCH_RATE_LIMIT_PER_MIN", default="60/min")
+SUGGESTIONS_RATE_LIMIT_PER_MIN = env("SUGGESTIONS_RATE_LIMIT_PER_MIN", default="120/min")
+SPARQL_RATE_LIMIT_PER_MIN = env("SPARQL_RATE_LIMIT_PER_MIN", default="10/min")
+DEREFERENCE_RATE_LIMIT_PER_MIN = env("DEREFERENCE_RATE_LIMIT_PER_MIN", default="300/min")
+RDF_INGEST_RATE_LIMIT_PER_MIN = env("RDF_INGEST_RATE_LIMIT_PER_MIN", default="30/min")
+
 # Phase 270.D — Stripe Tax. When True, every PaymentIntent /
 # Subscription / Invoice creation call adds ``automatic_tax={"enabled":
 # True}`` so Stripe computes tax server-side per the tenant's

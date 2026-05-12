@@ -1159,6 +1159,17 @@ APPROVAL_DELEGATION_USED: str = "APPROVAL_DELEGATION_USED"
 #: Phase 272.6 — fired when an approval delegation window ends.
 APPROVAL_DELEGATION_ENDED: str = "APPROVAL_DELEGATION_ENDED"
 
+# ---------------------------------------------------------------------------
+# Phase 273 — Search / SPARQL audit events
+# ---------------------------------------------------------------------------
+
+SEARCH_PERFORMED: str = "SEARCH_PERFORMED"
+SUGGESTIONS_REQUESTED: str = "SUGGESTIONS_REQUESTED"
+SPARQL_EXECUTED: str = "SPARQL_EXECUTED"
+RDF_INGESTED: str = "RDF_INGESTED"
+SEARCH_RATE_LIMIT_EXCEEDED: str = "SEARCH_RATE_LIMIT_EXCEEDED"
+SPARQL_RATE_LIMIT_EXCEEDED: str = "SPARQL_RATE_LIMIT_EXCEEDED"
+
 
 __all__ = [
     "DQ_ALERT_RESOURCE_TYPE",
@@ -1287,4 +1298,10 @@ __all__ = [
     "APPROVAL_DELEGATION_CREATED",
     "APPROVAL_DELEGATION_USED",
     "APPROVAL_DELEGATION_ENDED",
+    "SEARCH_PERFORMED",
+    "SUGGESTIONS_REQUESTED",
+    "SPARQL_EXECUTED",
+    "RDF_INGESTED",
+    "SEARCH_RATE_LIMIT_EXCEEDED",
+    "SPARQL_RATE_LIMIT_EXCEEDED",
 ]
