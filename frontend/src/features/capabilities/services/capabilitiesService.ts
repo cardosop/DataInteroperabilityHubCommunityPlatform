@@ -111,6 +111,17 @@ class CapabilitiesService {
         endpoint: '/api/v1/auth/password-reset/confirm/',
         operationId: 'auth_password_reset_confirm_create',
       },
+      // Phase 260.3.B — fail-open when OpenAPI fetch fails; backend still enforces kill-switch.
+      datasets: {
+        name: 'Datasets',
+        available: true,
+        endpoint: '/api/v1/datasets/',
+      },
+      files: {
+        name: 'Files',
+        available: true,
+        endpoint: '/api/v1/files/',
+      },
     };
   }
 
@@ -168,15 +179,15 @@ class CapabilitiesService {
       operationId: 'schema_matching',
     };
 
-    // Search (full-text)
+    // Search (full-text) — Phase 273.1 canonical endpoint
     const searchPathAvailable =
-      '/api/v1/search/search/' in paths ||
-      Object.keys(paths).some((p) => p.includes('search/search'));
+      '/api/search/' in paths ||
+      Object.keys(paths).some((p) => p === '/api/search/');
     capabilities['search.full-text'] = {
       name: 'Full-Text Search',
       available: searchPathAvailable,
-      endpoint: '/api/v1/search/search/',
-      operationId: 'search_search',
+      endpoint: '/api/search/',
+      operationId: 'unified_search',
     };
 
     // Semantic capabilities
@@ -361,6 +372,40 @@ class CapabilitiesService {
       endpoint: '/api/v1/integrations/marketplace/connections/',
     };
 
+    const retentionAutosweepEndpoints = Object.keys(paths).some(
+      (p) =>
+        p.includes('/governance/retention-policies') &&
+        (p.includes('/dashboard') || p.includes('dashboard')),
+    );
+    capabilities['compliance_retention_enforcer'] = {
+      name: 'Retention auto-enforcement',
+      available: retentionAutosweepEndpoints,
+      endpoint: '/api/v1/governance/retention-policies/dashboard/',
+    };
+
+    // Phase 260.3.B — Hub datasets/files REST (not virtualization.datasets).
+    // OpenAPI presence ⇒ route reachable; refreshRuntimeSnapshot overlays tenant kill-switch.
+    const hubDatasetsApiAvailable =
+      '/api/v1/datasets/' in paths ||
+      Object.keys(paths).some(
+        (p) =>
+          /\/api\/v1\/datasets\//.test(p) && !p.toLowerCase().includes('/virtualization/'),
+      );
+    capabilities['datasets'] = {
+      name: 'Datasets',
+      available: hubDatasetsApiAvailable,
+      endpoint: '/api/v1/datasets/',
+    };
+
+    const hubFilesApiAvailable =
+      '/api/v1/files/' in paths ||
+      Object.keys(paths).some((p) => /\/api\/v1\/files\//.test(p));
+    capabilities['files'] = {
+      name: 'Files',
+      available: hubFilesApiAvailable,
+      endpoint: '/api/v1/files/',
+    };
+
     return capabilities;
   }
 
@@ -385,8 +430,21 @@ class CapabilitiesService {
     type RuntimeResponse = {
       capabilities?: Partial<RuntimeCapabilitiesSnapshot>;
     };
+    // ``apiClient.baseURL`` is already ``/api/v1`` (see
+    // src/shared/api/client.ts:42) and ``InternalHttpClient._request``
+    // builds ``${baseURL}/${url}`` — passing ``/api/v1/capabilities/``
+    // here produces the path ``/api/v1/api/v1/capabilities/`` which
+    // 404s. The runtime snapshot was therefore failing silently in
+    // every run (the catch in ``loadCapabilities`` swallows the error),
+    // and every ``CapabilityRoute`` that depends on a runtime-overlaid
+    // key — ``asset_creation``, ``data_quality``, ``data_quality_advanced``,
+    // ``datasets``, ``files``, the four compliance flags — fell through
+    // to its default (mostly ``false``), which is exactly the
+    // "feature unavailable" and "asset creation disabled" pages
+    // observed across the entire E2E suite. Drop the ``/api/v1`` prefix
+    // here; the client supplies it.
     const response = await apiClient.getClient().get<RuntimeResponse>(
-      '/api/v1/capabilities/',
+      '/capabilities/',
       { timeout: RUNTIME_TIMEOUT_MS },
     );
     const caps = response.data?.capabilities ?? {};
@@ -400,6 +458,26 @@ class CapabilitiesService {
         caps.asset_creation_blocked_reason === 'DISABLED_BY_OPS'
           ? caps.asset_creation_blocked_reason
           : null,
+      datasets: caps.datasets !== false,
+      files: caps.files !== false,
+      // Phase 240.4.B.1 + B.4 — DQ kill switch + advanced gate. The
+      // backend conjuncts ``data_quality_advanced = data_quality_enabled
+      // AND data_quality_advanced_enabled`` on the wire, so we just
+      // mirror the booleans here. ``data_quality`` is the only runtime
+      // source for the base ``CapabilityRoute capability="data_quality"``
+      // gate (the OpenAPI-derived map doesn't register this key —
+      // adding the runtime read here closes the wiring gap that made
+      // every DQ route resolve to the "feature unavailable" page even
+      // when the tenant flag was True). ``!== false`` semantics: treat
+      // an absent backend field as "available" so older API versions
+      // without the field don't accidentally hide DQ.
+      data_quality: caps.data_quality !== false,
+      data_quality_advanced: caps.data_quality_advanced === true,
+      compliance_consent: caps.compliance_consent === true,
+      compliance_ropa: caps.compliance_ropa === true,
+      compliance_dpia: caps.compliance_dpia === true,
+      compliance_retention_enforcer: caps.compliance_retention_enforcer === true,
+      plan_compliance_pro_pack: caps.plan_compliance_pro_pack === true,
     };
 
     // Phase 250.6.D / 250.6.A wiring closeout — register the runtime
@@ -427,6 +505,61 @@ class CapabilitiesService {
       available: routeAvailable,
       endpoint: '/api/v1/assets/',
       operationId: 'asset_create',
+    };
+
+    this.capabilities['datasets'] = {
+      name: 'Datasets',
+      available: this.runtimeSnapshot.datasets !== false,
+      endpoint: '/api/v1/datasets/',
+    };
+
+    this.capabilities['files'] = {
+      name: 'Files',
+      available: this.runtimeSnapshot.files !== false,
+      endpoint: '/api/v1/files/',
+    };
+
+    // Phase 240.4.B.1 + 240.4.B.4 wiring closeout — register the runtime
+    // DQ flags so the route guards at routes.tsx:1171
+    // (``capability="data_quality"``) and 1195/1203/1211/1219/1227
+    // (``capability="data_quality_advanced"``) read the LIVE per-tenant
+    // value. Without these registrations, the OpenAPI-derived map
+    // never sees these keys and ``isCapabilityAvailable`` returns false
+    // for every tenant — the wire response was correct, the SPA just
+    // didn't read it. Mirrors the ``asset_creation`` wiring above.
+    this.capabilities['data_quality'] = {
+      name: 'Data Quality',
+      available: this.runtimeSnapshot.data_quality !== false,
+      endpoint: '/api/v1/dq/',
+    };
+    this.capabilities['data_quality_advanced'] = {
+      name: 'Data Quality (advanced)',
+      available: this.runtimeSnapshot.data_quality_advanced === true,
+      endpoint: '/api/v1/dq/',
+    };
+
+    this.capabilities['compliance_consent'] = {
+      name: 'Compliance consent',
+      available: this.runtimeSnapshot.compliance_consent === true,
+      endpoint: '/api/v1/governance/consent-records/',
+    };
+
+    this.capabilities['compliance_ropa'] = {
+      name: 'Compliance RoPA',
+      available: this.runtimeSnapshot.compliance_ropa === true,
+      endpoint: '/api/v1/ropa/generations/',
+    };
+
+    this.capabilities['compliance_dpia'] = {
+      name: 'Compliance DPIA',
+      available: this.runtimeSnapshot.compliance_dpia === true,
+      endpoint: '/api/v1/dpia/records/',
+    };
+
+    this.capabilities['compliance_retention_enforcer'] = {
+      name: 'Retention auto-enforcement',
+      available: this.runtimeSnapshot.compliance_retention_enforcer === true,
+      endpoint: '/api/v1/governance/retention-policies/dashboard/',
     };
   }
 

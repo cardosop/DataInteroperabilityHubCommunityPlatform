@@ -95,12 +95,23 @@ When a non-MVP feature ships into the MVP:
 3. Remove the prefix from `MVP_GATED_RELATIVE_PREFIXES`.
 4. The drift tests verify the change is consistent across all layers.
 
+## Now-MVP features (never gated)
+
+| Feature | Path | Decision date | Rationale |
+|---|---|---|---|
+| Semantic | `/semantic` | 2026-04-22 | Permanent MVP scope (`project_mvp_scope.md`) |
+| Search | `/search` | 2026-05-12 | Phase 273.1 — restored per REQ-MVP-001/002 |
+
 ## Permanent exception: `/semantic`
 
 `/semantic` is in MVP scope and should remain visible/reachable
 even though the underlying feature is still under development.
 **Do not** add it to `NON_MVP_PATHS`. Documented user decision
 2026-04-22.
+
+`/search` (Phase 273.1) is likewise permanently MVP-in-scope.
+The three-layer gate was removed on 2026-05-12; search is no
+longer a non-MVP feature. **Do not** add it back.
 
 ## Build-time vs runtime
 
@@ -130,6 +141,11 @@ even though the underlying feature is still under development.
   internal `MVP_EXACT_PATHS`) to include `/search`, `/developer`,
   `/observability` and added `<MvpGatedRoute>` wrappers on every
   affected route.
+- 2026-05-12 — Phase 273.1: **removed** `/search` from all three
+  gating layers (NON_MVP_PATHS, MvpGatedRoute, MVP_GATED_RELATIVE_PREFIXES)
+  per spec REQ-MVP-001/002. Search is now permanently MVP-in-scope
+  alongside `/semantic`. Frontend service swapped to canonical
+  `/api/search/` endpoint.
 - 2026-04-22 — Track A PR 1: tightened `/admin/` and `/api-docs/` to
   disappear on staging (previously gated only on production), since
   staging is publicly reachable.

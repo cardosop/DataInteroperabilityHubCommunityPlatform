@@ -19,7 +19,21 @@ class _AuditableThrottle(UserRateThrottle):
     audit_action: str = "SEARCH_RATE_LIMIT_EXCEEDED"
 
     def throttled(self, request, wait):
-        """Emit audit event on 429, then delegate to parent."""
+        """Emit metric + audit event on 429, then delegate to parent."""
+        # Phase 273.4 — record throttled outcome before audit.
+        try:
+            from hub.apps.search.metrics import record_search
+
+            query = request.GET.get("q", "") or request.data.get("query", "")
+            record_search(
+                kind="fts",
+                outcome="throttled",
+                duration_s=0.0,
+                result_count=0,
+                query_length=len(query.encode("utf-8")) if query else 0,
+            )
+        except Exception:
+            pass
         try:
             from hub.apps.audit.event_types import (
                 SEARCH_RATE_LIMIT_EXCEEDED,

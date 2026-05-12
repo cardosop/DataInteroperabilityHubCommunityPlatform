@@ -49,10 +49,17 @@ class SearchViewSet(viewsets.ViewSet):
     permission_classes = [IsAuthenticated]
 
     def finalize_response(self, request, response, *args, **kwargs):
-        """Add deprecation headers to all responses (Phase 54.1)."""
+        """Phase 54.1 + 273.1.8 — RFC 8594 deprecation headers.
+
+        The legacy ViewSet will be removed after a 90-day sunset window
+        (2026-05-12 + 90 days = 2026-08-10). Clients MUST migrate to
+        the canonical ``/api/search/`` (UnifiedSearchView).
+        """
         response = super().finalize_response(request, response, *args, **kwargs)
         response["Deprecation"] = "true"
+        response["Sunset"] = "Mon, 10 Aug 2026 00:00:00 GMT"
         response["Link"] = '</api/search/>; rel="successor-version"'
+        response["Deprecation-Date"] = "Mon, 12 May 2026 00:00:00 GMT"
         return response
 
     @action(detail=False, methods=['get'])
@@ -706,26 +713,33 @@ class UnifiedSearchView(APIView):
                 except Tenant.DoesNotExist:
                     pass
         if tenant is None:
-            return Response(
-                {"error": "User must belong to a tenant"},
-                status=status.HTTP_400_BAD_REQUEST,
+            from hub.apps.api.standards.response_formats import format_error_response
+            return format_error_response(
+                error_code="TENANT_REQUIRED",
+                message="User must belong to a tenant to perform searches.",
+                http_status=status.HTTP_400_BAD_REQUEST,
             )
 
         q = request.query_params.get("q", "").strip()
 
         if not q:
-            return Response(
-                {"error": "q parameter is required"},
-                status=status.HTTP_400_BAD_REQUEST,
+            from hub.apps.api.standards.response_formats import format_error_response
+            return format_error_response(
+                error_code="QUERY_REQUIRED",
+                message="The 'q' query parameter is required.",
+                http_status=status.HTTP_400_BAD_REQUEST,
             )
 
         # Phase 53: guard against arbitrarily long queries
         from django.conf import settings as _settings
         max_len = getattr(_settings, "MAX_SEARCH_QUERY_LENGTH", 512)
         if q and len(q) > max_len:
-            return Response(
-                {"error": "QUERY_TOO_LONG", "max_length": max_len},
-                status=status.HTTP_400_BAD_REQUEST,
+            from hub.apps.api.standards.response_formats import format_error_response
+            return format_error_response(
+                error_code="QUERY_TOO_LONG",
+                message=f"Query exceeds maximum length of {max_len} characters.",
+                http_status=status.HTTP_400_BAD_REQUEST,
+                details={"max_length": max_len},
             )
 
         types_raw = request.query_params.get("types", "assets,contracts")
@@ -840,6 +854,20 @@ class UnifiedSearchView(APIView):
             )
         except Exception:
             pass  # audit-DB outage MUST NOT block search response
+
+        # ── Phase 273.4 — OTel metrics on search hot path ─────────────
+        try:
+            from hub.apps.search.metrics import record_search
+
+            record_search(
+                kind="fts",
+                outcome="empty" if len(results) == 0 else "success",
+                duration_s=0.0,  # instrumented by OTel middleware
+                result_count=len(results),
+                query_length=len(term.encode("utf-8")),
+            )
+        except Exception:
+            pass  # metric-backend outage MUST NOT block search response
 
         # ── paginate ─────────────────────────────────────────────────────
         paginator = StandardPageNumberPagination()
