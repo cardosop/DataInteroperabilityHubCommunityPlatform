@@ -7,6 +7,247 @@ project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added — Phase 274: Business Rules Hardening (2026-05-12)
+
+- **BR1 — Marketplace compliance threshold gate.** Listing publication now
+  requires a successful ComplianceRun whose risk_level does not exceed the
+  tenant's compliance_risk_threshold. Blocked publishes return HTTP 422
+  with `COMPLIANCE_THRESHOLD_EXCEEDED`. PLATFORM_ADMIN can bypass with
+  `?force_publish=true`. Gated per-tenant behind
+  `marketplace_publish_compliance_gate_enabled` (default false for
+  existing tenants).
+- **BR3 — Semantic tenant flag enforcement.** SPARQL, dereference,
+  inference, and export endpoints now return HTTP 403 with
+  `SEMANTIC_FEATURE_DISABLED` when the required per-tenant feature flag
+  is off. 5 new error codes mapped to tenant action flags.
+- **BR4 — AssetActivationRule.** Three-state compliance-aware activation:
+  `COMPLIANCE_SCAN_PENDING` (HTTP 409 + `Retry-After: 30`),
+  `COMPLIANCE_SCAN_FAILED` (HTTP 422), `COMPLIANCE_NOT_ALLOWED_TO_STORE`
+  (HTTP 422). Frontend auto-polls every 30s during pending state.
+- **BR13 — RuleChain primitive.** 5 named chains registered for contract
+  publish, asset activate, marketplace listing publish, governance
+  approval advance, and semantic query execute. Chain runner enforces
+  transaction safety and short-circuits on first failure.
+- **BR21 — 28 rule classes conformance-backfilled.** All rule classes
+  now carry `description`, `tags`, and `openspec_ref` metadata.
+
+### Added — Phase 270: Marketplace, tax, compliance & worker-discipline deltas (270.0–270.F)
+
+> Phase 270 closes the OpenSpec `preprod01` change for the
+> `marketplace-tax-compliance-deltas` capability — 16 ADDED Requirements
+> covering pre-prod-blocker work that surfaced from the gap analysis on
+> 2026-03-17. Each sub-phase ships behind its own feature flag and the
+> implementation order (`270.0 → 270.A → 270.F → 270.B → 270.C → 270.D →
+> 270.E`) was chosen so worker-discipline (270.F) is in place before any
+> downstream feature is enabled in staging/prod. See
+> `openspec/changes/preprod01/specs/marketplace-tax-compliance-deltas/spec.md`
+> for the requirement-level contracts.
+
+**270.A — Marketplace blockers**
+
+- Refund endpoint (`POST /api/v1/marketplace/orders/{id}/refund/`) with full/partial semantics: full refund revokes entitlement, partial preserves; Stripe `idempotency_key` derived from `(order_id, amount_cents)`; webhook dedup via `StripeWebhookEvent`. Audit: `ENTITLEMENT_REVOKED`, `REFUND_PROCESSED`.
+- Atomic entitlement creation via Postgres unique partial index `unique_active_entitlement_per_listing_buyer` — concurrent buys produce exactly one `ACTIVE` row.
+- Cross-tenant `FREE_AUTO_APPROVE` listing buys create an `AccessRequest` row (status `AUTO_APPROVED`) so the audit trail survives even on the "auto" path.
+- Plan-limit enforcement: `marketplace_orders_this_month` counter on `TenantPlanLimits`; rejects with HTTP 402 `PLAN_LIMIT_EXCEEDED` on overflow.
+
+**270.B — Drift detection + AccessRequest SLA**
+
+- `Listing.contract` FK + drift detection: a `LISTING_CONTRACT_DRIFT_DETECTED` event fires when a published listing's contract is mutated; SPA renders a banner; re-publishing clears the drift flag.
+- `revoke_expired_access` runs as a daily K8s `CronJob` (replaces the prior signal-based path); iterates tenants under `tenant_context()` so RLS is respected; PENDING-too-long entries roll to EXPIRED with the SLA timestamp captured.
+
+**270.C — Compliance authorisation, license & strict-mode**
+
+- **270.C.1** Tenant-scoped async job IDs: `POST /scan-file-async` now returns `<sha256(X-Actor-Id)[:8]>_<uuid>`; cross-tenant polls return HTTP 403 `JOB_TENANT_MISMATCH`. Constant-time prefix comparison via `hmac.compare_digest`. Legacy UUID-only ids accepted with no actor check during the rollout window; they age out of Redis after the 1h/24h TTLs.
+- **270.C.2** Compliance microservice tenant authorisation: every authenticated request is cross-checked at three FastAPI endpoints (`/scan-file`, `/scan-dataframe`, `/scan-file-async`) — body `tenant_id` vs `X-Actor-Id` header. Decision: agree → use; disagree → 400 `TENANT_MISMATCH`; only header → use it; only body in production → 400 `MISSING_X_ACTOR_ID` (warn-only in dev/staging during the migration window); neither → 400 `TENANT_REQUIRED`. `InternalApiKeyMiddleware` normalises and stashes `X-Actor-Id` on `request.state.actor_id`. `ComplianceServiceClient(tenant_id=...)` constructor parameter binds a client to a tenant; the legacy service-level `"hub"` actor identifier is removed — `X-Actor-Id` is now always the tenant UUID. Worker (`poll_compliance_job`) + service-bound (`TrainingDataValidationService`) callers upgraded to pass tenant_id explicitly.
+- **270.C.3** `INTERNAL_API_KEY` 90-day rotation cadence via AWS Secrets Manager rotation Lambda; ExternalSecrets Operator syncs `current` + `previous` into K8s Secrets; `InternalApiKeyMiddleware` accepts both keys during the 24h overlap window. `KeyRotationOverdue` Prometheus alert at 95 days.
+- **270.C.4** Per-tenant compliance legal-basis strict mode: `tenant.compliance_legal_basis_strict` opt-in flag forwards as `X-Compliance-Legal-Basis-Strict: true`; strict mode raises `LegalBasisInvalidError` → HTTP 422; lenient mode preserves the Phase 19.7.1 issue-in-report shape.
+- **270.C.5** Tenant license validation: `tenant.licensed_compliance_regulations` array; unlicensed regulations produce a `LICENSE_WARNING` issue (default) or HTTP 422 in strict mode. License warnings merge with (not overwrite) `compliance_run.metadata_json` so they survive a subsequent async-result persist.
+
+**270.D — Stripe Tax**
+
+- Stripe Tax enabled on `PaymentIntent` / `Subscription` via `automatic_tax={"enabled": True}`. Reverse-charges B2B transactions when the customer has a verified VAT ID. `TaxRegistrationOverdue` alert fires when a tax-registration threshold is breached.
+
+**270.E — `PaymentTransaction.amount_cents`**
+
+- Dual-write `Decimal amount` + integer `amount_cents` columns; reads prefer `amount_cents`. Backfill migration populates pre-existing rows; the `PaymentTransaction.save()` override keeps the two in sync going forward.
+
+**270.F — Cross-cutting worker discipline (P0 prereq)**
+
+- All marketplace + compliance + billing background tasks now wrap their tenant-scoped DB lookups in `_run_with_tenant_context(tenant_id, …)`; enqueue sites forward `tenant_id` as a kwarg. Affected tasks: `send_marketplace_sync_completion_email`, `send_marketplace_sync_failure_email`, `send_marketplace_connection_test_failure_email`, `poll_compliance_job`, `_reenqueue`, `cleanup_old_webhook_events`, `cleanup_old_usage_records`. Regression tests pin the safety net by binding queries against `current_setting('app.current_tenant_id', true)` directly — without `tenant_context`, the GUC is empty and `DoesNotExist` is raised; with it, the row resolves.
+
+**New environment variables** (services-side):
+
+- `ENVIRONMENT` (`production` / `staging` / `development`) — read by the compliance microservice's tenant-authz cross-check to decide whether "only body tenant_id" returns 400 or just warns. Defaults to `development` for local-dev compatibility.
+- `INTERNAL_API_KEY_PREVIOUS` + `INTERNAL_API_KEY_PREVIOUS_EXPIRES_AT` — used by the FastAPI services during the 24h rotation overlap window (Phase 270.C.3).
+
+**New tests** (high-signal, RLS- and behaviour-pinning):
+
+- `services/compliance-service/tests/test_tenant_actor_id_cross_check.py` (270.C.2) — agree / disagree / only-header / only-body-prod-vs-dev / neither across all 3 FastAPI endpoints.
+- `services/compliance-service/tests/test_async_job_tenant_scoping.py` (270.C.1) — job-id-prefix sha256 round-trip + cross-tenant 403.
+- `hub/apps/compliance/tests/test_poll_compliance_job_tenant_context.py` (270.F.2) — `ComplianceRun` safety-net assertion via `current_setting` direct binding.
+- `hub/apps/notifications/tests/test_marketplace_tasks_tenant_context.py` (270.F.1) — `inspect.signature` + source-grep pins for the 3 marketplace notification tasks.
+
+### Added — Phase 235: PLATFORM_ADMIN operations surface (235.0–235.6)
+
+> Phase 235 closes the OpenSpec `preprod01` change for the three
+> admin-* capabilities (per-tenant feature flags, tenant lifecycle,
+> impersonation): one cross-tenant operator-facing surface that
+> covers the customer-success / on-call / compliance flows the
+> Phase 232–234 audit + retention work depends on.
+
+**New endpoints (all PLATFORM_ADMIN-only, mounted under `/api/v1/admin/`):**
+
+- `POST /api/v1/admin/tenants/` (Phase 235.2) — provisions a tenant + TENANT_ADMIN invitation in one atomic transaction. Emits `TENANT_CREATED`; the invited admin receives a 7-day-expiring `send_invitation_email`.
+- `DELETE /api/v1/admin/tenants/{id}/` (Phase 235.3) — soft-deletes a tenant with a 90-day grace window. Stamps `scheduled_for_deletion_at` + `deleted_at`; emits `TENANT_SOFT_DELETED`. Rejects with 422 + `LEGAL_HOLD_ACTIVE` or `DSAR_RESTRICTION_ACTIVE` on the two blocker conditions; 409 + `ALREADY_DELETED` on idempotent re-clicks. Daily `tenant_hard_delete_sweep` cron then hard-deletes after the grace + re-checks the blockers under a row lock; emits `TENANT_HARD_DELETED` before the cascade (the audit row survives via `AuditEvent.tenant on_delete=SET_NULL`).
+- `GET / PUT /api/v1/admin/tenants/{id}/feature-flags/` + `POST /api/v1/admin/feature-flag-approvals/{id}/approve/` (Phase 235.1) — per-tenant feature-flag CRUD with a two-person rule on sensitive flags. Non-sensitive flips land directly (`TENANT_FEATURE_FLAG_CHANGED`); sensitive flips open a `FeatureFlagFlipApproval` row (HTTP 202 + `FEATURE_FLAG_FLIP_APPROVAL_REQUESTED`) that a SECOND PLATFORM_ADMIN must approve (`FEATURE_FLAG_FLIP_APPROVED` + `TENANT_FEATURE_FLAG_CHANGED` in one atomic txn). Self-approval rejected at two layers (model guard + API permission) with `SELF_APPROVAL_FORBIDDEN`. Per-admin rate-limit 60 flips/hour.
+- `POST /api/v1/admin/impersonate/` + `POST /api/v1/admin/impersonate/exit/` (Phase 235.4) — opt-in per-tenant impersonation. Returns a short-lived JWT (capped at 240 min) carrying an `impersonation_session_id` claim. Rejection codes (`IMPERSONATION_NOT_ENABLED` / `TARGET_IS_PLATFORM_ADMIN` / `TARGET_INACTIVE`) emit `IMPERSONATION_REJECTED` for forensics. Happy-path emits `IMPERSONATION_STARTED` in BOTH tenants (auditor-facing + security-team-facing), schedules a courtesy email to the impersonated user, and persists the session via `ImpersonationSession` (RLS-paired). Exit accepts either the operator's regular session OR the impersonation JWT itself (the latter via `IsPlatformAdminOrActiveImpersonator` permission + a defence-in-depth `SESSION_ID_MISMATCH` check). Every-5-minute `expire_impersonation_sessions` cron ends ACTIVE sessions past `expires_at` with `end_reason="expired"`.
+- `GET /api/v1/admin/dashboard/summary/` (Phase 235.5) — consolidated operator dashboard. Six widget blocks (tenants / webhooks / audit / compliance / billing / governance) via a single `aggregate()` query per table — 12 `COUNT(*) FILTER (WHERE ...)` annotations in 7 round-trips. Cached for 5 minutes; `?refresh=true` bypasses for ops mid-incident. Per-widget error isolation: if ONE aggregator throws, the failing widget returns `{"widget_error": true}` and the other five render normally (the SPA renders an inline `role="alert"` fallback). `Cache-Control: private, max-age=60` for browser-level dedup.
+
+**New audit-event constants** (`hub/apps/audit/event_types.py`):
+
+- `TENANT_CREATED` (235.2), `TENANT_SOFT_DELETED` (235.3), `TENANT_HARD_DELETED` (235.3) — tenant lifecycle.
+- `TENANT_FEATURE_FLAG_CHANGED` (235.1), `FEATURE_FLAG_FLIP_APPROVAL_REQUESTED` (235.1), `FEATURE_FLAG_FLIP_APPROVED` (235.1) — feature-flag two-person rule.
+- `IMPERSONATION_STARTED` (235.4), `IMPERSONATION_ENDED` (235.4), `IMPERSONATION_REJECTED` (235.4) — impersonation lifecycle. `IMPERSONATION_REJECTED.details_json.code` is the rejection discriminator (`IMPERSONATION_NOT_ENABLED` / `TARGET_IS_PLATFORM_ADMIN` / `TARGET_INACTIVE`).
+
+**New database migrations:**
+
+- `hub/apps/tenants/migrations/0056_feature_flag_flip_approval.py` + `0057_enable_rls_feature_flag_flip_approval.py` — Phase 235.1 model + paired RLS policy.
+- `hub/apps/tenants/migrations/0058_tenant_scheduled_for_deletion_and_legal_hold.py` — Phase 235.3 `Tenant.scheduled_for_deletion_at` + `Tenant.legal_hold`.
+- `hub/apps/tenants/migrations/0059_phase_235_4_impersonation.py` + `0060_enable_rls_impersonation_session.py` — Phase 235.4 `Tenant.impersonation_allowed` + `Tenant.impersonation_default_max_minutes` + `ImpersonationSession` model + paired RLS policy.
+
+**New Prometheus metrics** (`hub/apps/observability/otel_metrics.py`):
+
+- `admin_dashboard_summary_cache_total{outcome}` (Phase 235.6) — counter labelled by `hit` / `miss`; drives the Grafana cache-hit-ratio panel + the SLO ≥ 0.8 alert.
+- `admin_dashboard_summary_aggregate_duration_seconds` (Phase 235.6) — histogram with buckets `0.05 / 0.1 / 0.25 / 0.5 / 1 / 2 / 5 / 10` seconds; drives the P50/P95/P99 latency panel + the P95 > 2s alert.
+
+The pre-existing `audit_events_total{action, resource_type, result}` counter covers every Phase 235 audit-event type via the `action` label — no per-action counter needed.
+
+**New Grafana dashboard:** `monitoring/grafana/dashboards/admin-ops.json` — 7 panels covering tenant lifecycle rate, impersonation lifecycle rate, feature-flag flip rate, 24h cumulative counts, dashboard cache hit-ratio SLO, dashboard P50/P95/P99 latency, admin audit-failure rate by action.
+
+**New runbooks:**
+
+- `docs/runbooks/admin-impersonation.md` (Phase 235.6.4) — operator guide for impersonation.
+- `docs/runbooks/admin-feature-flag-flip.md` (Phase 235.6.5) — operator guide for feature-flag flips.
+- `docs/runbooks/admin-tenant-deactivation.md` (Phase 235.6.AUDIT.2) — operator guide for the soft-delete + 90-day grace + hard-delete pipeline.
+
+### Added — Phase 234: Audit-trail tamper-evidence + retention + FTS + observability (234.1–234.7)
+
+> Phase 234 closes the OpenSpec `preprod01` change for the audit-events
+> capability: hash-chain tamper-evidence + Merkle-snapshot anchoring,
+> per-event-type retention overrides, permanent-delete after 90-day
+> grace, Postgres FTS over audit details, and the cross-cutting
+> observability stack (metrics, dashboard, alerts, runbook).
+
+**New and updated controls:**
+
+- Append-only per-tenant SHA-256 hash chain on `AuditEvent` (Phase 234.1) — `chain_sequence` + `prev_chain_hash` + `chain_hash` are populated by the model's `save()`; the chain is verifiable end-to-end via `GET /api/v1/audit/integrity/verify`. GDPR-erasure gaps are tolerated (informational `gaps` field) per the 234.1 × 232.2 cross-spec.
+- Hourly Merkle snapshots (Phase 234.1.5) — `audit_merkle_snapshots` table + S3 Object-Lock proof upload signed with the tenant's rolling key ring; defends against full-chain rewrites that would otherwise present as internally-consistent forgeries.
+- Per-event-type retention overrides (Phase 234.5) — new `AuditEventRetentionPolicy` model + RLS-paired migration; `regulation_keys` are resolved via the same Phase 232.7 registry as data-resource retention. CRUD at `/api/v1/audit/event-retention-policies/` (TENANT_ADMIN only) with `AUDIT_EVENT_RETENTION_POLICY_{CREATED,UPDATED,DELETED}` audit emission.
+- 90-day permanent-delete sweep after archival (Phase 234.4) — daily Kubernetes CronJob hard-deletes archived rows past the grace window, skipping legal-hold tenants and open DSAR-RESTRICTION resources. One `AUDIT_RETENTION_PURGED` meta-audit per (tenant, run) emitted BEFORE the bulk delete (atomic in one admin-alias transaction so both commit together or both roll back).
+- Postgres FTS over audit details (Phase 234.6) — `details_json_tsvector` STORED `GENERATED` column composing weighted lexemes from `action` (weight A), `resource_type` (B), and `details_json` (C via `jsonb_to_tsvector`). Concurrent GIN index `audit_events_details_tsv_gin`. `?q=` query param on `/api/v1/audit/audit-events/` accepts `websearch_to_tsquery` syntax (quoted phrases, `-negation`, `or`). ALWAYS ANDed with tenant scope server-side.
+- Cross-cutting observability (Phase 234.7) — four bare-named Prometheus / OTel metrics (`audit_chain_break_total`, `audit_merkle_snapshot_duration_seconds`, `audit_retention_purged_total`, `audit_search_query_duration_seconds`). Three new audit-event constants (`AUDIT_INTEGRITY_VERIFIED`, `AUDIT_INTEGRITY_MISMATCH`, `AUDIT_GDPR_PURGED`). Grafana dashboard `monitoring/grafana/dashboards/audit-health.json` + Prometheus alert rules `monitoring/prometheus/alerts/audit.yml` + on-call runbook `docs/runbooks/audit-tamper-evidence.md` covering the chain-break / merkle-slow / FTS-slow / retention-stalled triage flows.
+
+**New endpoints:**
+
+- `GET /api/v1/audit/audit-events/?q=...` — Postgres FTS path (Phase 234.6).
+- `GET /api/v1/audit/integrity/verify/` — chain integrity verifier (Phase 234.1.8; `?include_snapshots=true` cross-checks the Merkle anchors).
+- `/api/v1/audit/event-retention-policies/` — TENANT_ADMIN CRUD over per-event-type retention overrides (Phase 234.5).
+
+**New event-type constants** (`hub/apps/audit/event_types.py`):
+
+- `AUDIT_RETENTION_PURGED` (234.4) — meta-audit for permanent-delete sweeps.
+- `AUDIT_EVENT_RETENTION_POLICY_{CREATED,UPDATED,DELETED}` (234.5) — CRUD audit for the new retention-override table.
+- `AUDIT_INTEGRITY_VERIFIED` / `AUDIT_INTEGRITY_MISMATCH` (234.7.1) — emitted by the verifier endpoint on every run.
+- `AUDIT_GDPR_PURGED` (234.7.1) — placeholder for the DSAR-erasure path emission (constant pinned now; emission wired by the DSAR fulfilment subsystem).
+
+**New database migrations:**
+
+- `hub/apps/audit/migrations/0006_add_chain_fields.py` — chain_sequence + prev_chain_hash + chain_hash.
+- `hub/apps/audit/migrations/0007_chain_index_concurrent.py` — non-blocking `CREATE INDEX CONCURRENTLY` on (tenant, chain_sequence).
+- `hub/apps/audit/migrations/0008_audit_event_retention_policy.py` + `0009_enable_rls_audit_event_retention_policy.py` — new model + paired RLS policy.
+- `hub/apps/audit/migrations/0010_audit_event_details_tsvector.py` — STORED `GeneratedField` `details_json_tsvector`.
+- `hub/apps/audit/migrations/0011_audit_event_tsvector_index_concurrent.py` — non-blocking GIN index for FTS.
+
+**New runbooks:**
+
+- `docs/runbooks/audit-search-rollout.md` (Phase 234.6.AUDIT.1) — 50M-row threshold + trigger-based contingency.
+- `docs/runbooks/audit-tamper-evidence.md` (Phase 234.7.5) — on-call triage for the 5 audit alerts; includes the production smoke-test scenario for `234.DoD.5` (forge audit row via raw SQL → verifier detects mismatch within 1h).
+
+**New management commands:**
+
+- `python hub/manage.py backfill_audit_chain` (Phase 234.1.9) — populate chain fields on pre-Phase 234 rows.
+- `python hub/manage.py audit_merkle_snapshot_sweep` (Phase 234.1.5) — hourly tenant-window snapshot pipeline; CronJob entry point.
+- `python hub/manage.py audit_permanent_delete_sweep` (Phase 234.4) — daily permanent-delete sweep; `--dry-run` + `--age-days` + `--tenant-id` flags.
+
+**OpenAPI snapshot regeneration:**
+
+```bash
+# Run this BEFORE merge to refresh docs/api/openapi-baseline.json:
+docker compose -f docker-compose.yml run --rm api \
+  python scripts/regenerate-openapi-spec.py
+```
+
+The snapshot must be in sync with the additive endpoint changes (`?q=` parameter on the audit-events list + the new event-retention-policies CRUD + the integrity verifier) per `234.DoD.3` (additive only).
+
+### Added — Phase 260: Datasets & Files hardening + auth defence-in-depth (260.A–260.7.J)
+
+> Phase 260 closes the OpenSpec `preprod01` change for the datasets-files
+> capability and adds a defence-in-depth layer to the auth surface (cookie-mode,
+> DB-backed lockout, logout-all). The phase ships under the
+> `openspec/changes/preprod01/specs/datasets-files/` capability with an
+> extension to `file-virus-scanning`. Production rollout per
+> `260.DoD.3` is staged: staging soak ≥7 days → prod canary 10% → 100%.
+
+**New and updated controls:**
+
+- HTTP-only secure-cookie auth mode (Phase 260.A) — `USE_HTTPONLY_AUTH_COOKIES` defaults to True in prod; cookie carries the access token with `Domain`/`SameSite=Strict`/`Secure`/`HttpOnly` set per the `260-cookie-rollout-production-flip.md` runbook.
+- DB-backed lockout (Phase 260.B.4) — failed-login attempts persist across pod restarts; lockout signals via the audit `AUTH_LOCKOUT` event so the on-call sees lockouts even if Redis is unavailable.
+- Logout-all SLO contract (Phase 260.B.1, 260.DoD.4) — `POST /api/v1/auth/logout/` with no body revokes every refresh token and increments `authz_version`, invalidating outstanding access JWTs within 1s of the logout response.
+- File magic-byte content-type validation (Phase 260.2.B) — `MAGIC_BYTE_VALIDATION_ENABLED` (default True in staging/prod) re-reads the head bytes from S3 at `complete/` and rejects PE-as-CSV / SQL-as-text and other declared/actual MIME mismatches before the file transitions to ACTIVE.
+- File-metadata-viewed audit sampling (Phase 260.2.F) — `FILE_METADATA_VIEWED` audit event fires on detail reads behind a sampled flag to keep audit-log volume bounded.
+- Files REST surface kill-switch (Phase 260.3.B) — `files_enabled` per-tenant feature flag (default ON) with a registry-level kill-switch in `hub/apps/tenants/feature_flag_registry.py`.
+- Lightweight scan-status polling endpoint (Phase 260.3.D) — `GET /api/v1/files/{id}/scan-status/` returns just `scan_status` + `scanned_at` so the FileListPage can poll at 2s without trip­ping the metadata-viewed audit.
+- Dataset retire lifecycle (Phase 260.4.A.1) — `POST /api/v1/datasets/{id}/retire/` flips ACTIVE → RETIRED with `select_for_update` row locking and emits `DATASET_RETIRED`.
+- Tenant file-storage quota meter (Phase 260.4.G) — `GET /api/v1/files/quota/` returns `used_bytes`, `limit_bytes`, `utilization_pct` for the FileListPage meter.
+- Eligible-orphan detection (Phase 260.5) — when the LAST `Dataset` row for `(tenant, file_id)` is deleted from RETIRED/missing/NULL parent contexts, the backing `File` transitions to DELETED inside the same Django transaction; emits `FILE_ORPHAN_DETECTED`.
+- File `purge_deleted_files` cron + GDPR hard-delete webhook + audit (Phase 260.7.G) — `WebhookEventType.FILE_PURGED` emitted from BOTH the grace-period cron and the GDPR right-to-erasure path (`hard_purge_file_for_erasure`); per-call best-effort try/except around the publisher so the cron always commits the actual delete.
+- Multipart abort + resume contract (Phase 260.7.J) — full-chain pytest at the DRF + real-S3 (MinIO) layer plus a Playwright E2E that drives the browser → API → S3 reconciliation seam through `page.request`. Pins the post-complete `/parts/` typed-code contract (`MULTIPART_UPLOAD_NO_LONGER_EXISTS`).
+
+**New endpoints:**
+
+- `GET /api/v1/files/quota/` — tenant file-storage quota meter (Phase 260.4.G).
+- `GET /api/v1/files/{id}/scan-status/` — lightweight scan-status poll (Phase 260.3.D).
+- `GET /api/v1/files/{id}/parts/` — multipart upload reconciliation (Phase 260.7.J).
+- `POST /api/v1/datasets/{id}/retire/` — explicit retire lifecycle (Phase 260.4.A.1).
+- `POST /api/v1/files/{id}/chunks/init/` — per-chunk presigned URL minting for the multipart upload UI (Phase 260.3.E).
+
+**New audit-event codes:**
+
+- `FILE_METADATA_VIEWED` (260.2.F), `FILE_ORPHAN_DETECTED` (260.5), `FILE_PURGED` (260.7.G), `DATASET_RETIRED` (260.4.A.1), `AUTH_LOCKOUT` (260.B.4).
+
+**New webhook events:**
+
+- `WebhookEventType.FILE_PURGED` (Phase 260.7.G) — fires from BOTH the grace-period purge cron AND the GDPR `hard_purge_file_for_erasure` path. Subscribers should run cleanup that wasn't safe during the grace window (cascading deletes in CRM / downstream warehouses, archive-to-cold-storage triggers).
+
+**New runbooks under `docs/runbooks/`:**
+
+- `260-cookie-rollout-production-flip.md` (260.A), `datasets-files-dr.md` (260 ops), `kms-rotation.md` (260.7.H), `openspec-archive-preprod01-phase260.md` (260.DoD.8 archive procedure), `file-virus-scan-incident.md` (260 ops).
+
+**Prometheus alert rules + auto-rollback (260.DoD.4):**
+
+- `monitoring/prometheus/alerts/datasets-files.yml` — error-rate, ClamAV backlog, magic-byte spike, scheduled-ingestion stuck, tenant quota pressure, plus the SLO escalation triplet (`DatasetFilesP95Regressed` 1× SLO warning, `DatasetFilesP95TwoXSLO` 2× page, `DatasetFilesP95ThreeXSLOAutoRollback` 3× critical with `auto_rollback: "true"` label).
+- `.github/workflows/auto-rollback-datasets-files.yml` — Alertmanager `repository_dispatch` consumer that runs `helm rollback` on the previous revision; mirrors `auto-rollback-asset-creation.yml` from Phase 250.DoD.4.
+
+**Production smoke tests (260.DoD.4 + 260.DoD.7):**
+
+- `tests/smoke/test_phase260_dod4_post_deploy.py` — logout-all SLO + legitimate tenant probe.
+- `tests/smoke/test_phase260_cross_tenant_denial.py` — synthetic cross-tenant request denial counter.
+- `tests/smoke/test_phase260_dod7_post_deploy.py` — full datasets-files lifecycle (file upload + virus scan + dataset create/retire + orphan-cleanup), EICAR upload blocks download, magic-byte mismatch rejects PE-as-CSV, quota meter reflects uploaded bytes.
+
+**Stakeholder governance (260.DoD.6):**
+
+- `docs/raci/datasets-files-hardening.md` — RACI matrix across Eng / EM / PM / Sec / Legal / DPO / Support / SRE / DevRel / CS / Pricing for storage lifecycle, ClamAV posture, CORS/Terraform, error-code catalogue, and customer communications.
+
 ### Added — Phase 250: Asset-creation hardening (250.1–250.7)
 
 > Phase 250 hardens data-first asset creation and closes the identified
