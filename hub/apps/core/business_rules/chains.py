@@ -21,6 +21,55 @@ from hub.apps.core.business_rules.base import BusinessRules, RuleExecutionContex
 
 logger = logging.getLogger(__name__)
 
+# Phase 274.8.2 — OTel parent span. Import is optional so the chain runs
+# fine in environments where OpenTelemetry isn't installed (the same
+# pattern :mod:`base` already uses).
+try:
+    from opentelemetry import trace as _otel_trace
+    from hub.apps.observability.otel_config import get_tracer as _otel_get_tracer
+
+    _OTEL_AVAILABLE = True
+except ImportError:
+    _otel_trace = None
+    _otel_get_tracer = None
+    _OTEL_AVAILABLE = False
+
+
+class _NullSpanCtx:
+    """Context manager that no-ops when OpenTelemetry isn't available.
+
+    Returned by :func:`_chain_span` so call-site code stays uniform
+    (``with _chain_span(...) as span: ...``) without an availability
+    branch on every attribute set.
+    """
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc, tb):
+        return False
+
+    def set_attribute(self, *_args, **_kwargs):
+        return None
+
+    def record_exception(self, *_args, **_kwargs):
+        return None
+
+    def is_recording(self):
+        return False
+
+
+def _chain_span(chain_name: str):
+    """Open an OTel span over a chain execution, or a no-op shim."""
+    if not _OTEL_AVAILABLE or _otel_get_tracer is None:
+        return _NullSpanCtx()
+    try:
+        tracer = _otel_get_tracer(__name__)
+        return tracer.start_as_current_span(f"business_rule_chain.{chain_name}")
+    except Exception:
+        # Never let a tracer-init failure break chain execution.
+        return _NullSpanCtx()
+
 
 @dataclass
 class RuleChain:
@@ -61,28 +110,67 @@ class RuleChain:
         results: Dict[str, ValidationResult] = {}
         errors: List[str] = []
 
-        for step in self.steps:
-            step_name = getattr(step, "__name__", str(step))
-            try:
-                result = step(ctx, **kwargs) if callable(step) else ValidationResult(is_valid=True)
-                if isinstance(result, ValidationResult):
-                    results[step_name] = result
-                    if not result.is_valid and self.short_circuit:
-                        errors = result.errors
-                        break
-                else:
-                    results[step_name] = ValidationResult(is_valid=True)
-            except Exception as exc:
-                results[step_name] = ValidationResult(
-                    is_valid=False,
-                    errors=[str(exc)],
-                )
-                errors.append(f"{step_name}: {exc}")
-                if self.short_circuit:
-                    break
+        # Phase 274.8.2 — open the canonical parent span for the entire
+        # chain. Per-step spans opened by individual rules (via
+        # ``BusinessRules.execute``) become children of this one so
+        # dashboards can collapse a full chain into a single root and
+        # drill into each step underneath. Attributes are stamped at
+        # exit (after we know duration + outcome) so a single span
+        # carries the whole chain summary.
+        with _chain_span(self.name) as chain_span:
+            chain_span.set_attribute("business_rule_chain.name", self.name)
+            chain_span.set_attribute("business_rule_chain.tenant_id", str(tenant_id) if tenant_id else "")
+            chain_span.set_attribute("business_rule_chain.user_id", str(user_id) if user_id else "")
+            chain_span.set_attribute("business_rule_chain.short_circuit", bool(self.short_circuit))
+            chain_span.set_attribute("business_rule_chain.steps_planned", len(self.steps))
 
-        duration_ms = (time.monotonic() - started_at) * 1000
-        all_valid = all(r.is_valid for r in results.values())
+            for step in self.steps:
+                step_name = getattr(step, "__name__", str(step))
+                try:
+                    result = step(ctx, **kwargs) if callable(step) else ValidationResult(is_valid=True)
+                    if isinstance(result, ValidationResult):
+                        results[step_name] = result
+                        if not result.is_valid and self.short_circuit:
+                            errors = result.errors
+                            break
+                    else:
+                        results[step_name] = ValidationResult(is_valid=True)
+                except Exception as exc:
+                    results[step_name] = ValidationResult(
+                        is_valid=False,
+                        errors=[str(exc)],
+                    )
+                    errors.append(f"{step_name}: {exc}")
+                    # Record the exception on the chain span so
+                    # Tempo/Jaeger surfaces the failing step without
+                    # forcing operators to cross-reference logs.
+                    try:
+                        chain_span.record_exception(exc)
+                    except Exception:
+                        pass
+                    if self.short_circuit:
+                        break
+
+            duration_ms = (time.monotonic() - started_at) * 1000
+            all_valid = all(r.is_valid for r in results.values())
+
+            # Stamp final outcome on the span before the context manager
+            # exits so the span is closed with the canonical shape:
+            # name, tenant_id, user_id, short_circuit, steps_planned,
+            # steps_executed, outcome, duration_ms, errors_count.
+            try:
+                chain_span.set_attribute("business_rule_chain.steps_executed", len(results))
+                chain_span.set_attribute(
+                    "business_rule_chain.outcome", "PASS" if all_valid else "FAIL"
+                )
+                chain_span.set_attribute(
+                    "business_rule_chain.duration_ms", round(duration_ms, 2)
+                )
+                chain_span.set_attribute(
+                    "business_rule_chain.errors_count", len(errors)
+                )
+            except Exception:
+                pass
 
         # Phase 274.7.2 — single audit event per chain execution.
         try:
@@ -99,6 +187,7 @@ class RuleChain:
                     "steps": list(results.keys()),
                     "outcome": "PASS" if all_valid else "FAIL",
                     "duration_ms": round(duration_ms, 2),
+                    "audit_retention_category": "business_rules",  # Phase 274.16.8 — 30-day window
                     "tenant_id": tenant_id,
                 },
             )
