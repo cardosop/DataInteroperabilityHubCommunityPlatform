@@ -11,7 +11,7 @@
 
 # Security
 
-**Last Updated**: 2026-03-22
+**Last Updated**: 2026-05-13
 
 This document covers production security requirements: secrets, CORS, and related configuration.
 
@@ -259,7 +259,7 @@ Defined in: `InputDocs/Security_Review_and_Pentest_Plan.md`
 
 # Tenant isolation (Phase 16)
 
-**Last Updated**: 2026-03-22
+**Last Updated**: 2026-05-13
 
 This document defines the single "current tenant" contract for multi-tenant list/detail APIs and lists endpoints that MUST use it. See Phase 16 — Governance: Tenant isolation in `openspec/changes/workflows1/tasks.md`.
 
@@ -492,7 +492,8 @@ Cross-tenant resource access is gated by marketplace entitlements. When a user i
 | Endpoint | View | Guard |
 |----------|------|-------|
 | `GET /api/v1/datasets/{id}/` | `DatasetViewSet.retrieve()` | `_get_via_entitlement()` fallback on 404 — fetches dataset without tenant filter, calls `require_entitlement()` |
-| `GET /api/v1/files/{id}/download/` | `FileViewSet.download()` | `_get_file_via_entitlement()` fallback on 404 — resolves asset via `get_asset_id_from_file()`, calls `require_entitlement()` |
+| `GET /api/v1/files/{id}/` | `FileViewSet.retrieve()` | `_resolve_file_via_cross_tenant_entitlement()` after tenant-scoped **404** — resolves asset via `get_asset_id_from_file()`, calls `require_entitlement()`; blocked probes → **404** + `FILE_IDOR_ATTEMPT_BLOCKED` |
+| `GET /api/v1/files/{id}/download/` | `FileViewSet.download()` | Same resolver as retrieve (Phase 260.2.A aligns download with GET detail) |
 | `POST /api/v1/virtualization/datasets/{id}/queries/` | `VirtualDatasetViewSet.execute_query()` | Cross-tenant fallback checks `get_dataset_for_cross_tenant_check()` + `require_entitlement()` |
 | Scheduled ingestion cross-tenant source | N/A | Not yet implemented — ingestion uses external sources (S3/HTTP), not cross-tenant asset references |
 
@@ -533,6 +534,194 @@ require_entitlement(
 
 ---
 
+## 5.7. Marketplace Compliance Threshold Gate (Phase 274.1)
+
+### Overview
+
+Before a marketplace listing can be published, the compliance threshold gate
+(`_check_compliance_threshold()` in `hub/apps/marketplace/business_rules.py`)
+validates that the provider tenant's most recent ComplianceRun meets the
+tenant's configured risk threshold.  This prevents tenants with unresolved
+compliance violations from offering data products in the marketplace.
+
+### Gate Logic
+
+1. Query the latest `ComplianceRun` for the asset with `status='SUCCEEDED'`
+   ordered by `completed_at` descending.
+2. If no run exists → **`COMPLIANCE_RUN_REQUIRED`** (code: 409, listing blocked).
+3. If the run's `allowed_to_store` is not `True` → **`COMPLIANCE_NOT_ALLOWED_TO_STORE`**
+   (listing blocked).
+4. If `RiskLevel.exceeds(latest_run.risk_level, tenant.compliance_risk_threshold)` →
+   **`COMPLIANCE_THRESHOLD_EXCEEDED`** (listing blocked).
+5. PLATFORM_ADMIN can bypass the gate via `?force_publish=true` query param;
+   emits `MARKETPLACE_COMPLIANCE_GATE_OVERRIDDEN` audit event.
+
+### Per-Tenant Enablement
+
+The gate is controlled by `Tenant.marketplace_publish_compliance_gate_enabled`
+(BooleanField, default `False` for existing tenants, `True` for new tenants
+via model callable).  Tenants without the flag enabled skip the gate entirely.
+
+### Files
+
+- `hub/apps/marketplace/business_rules.py` — `_check_compliance_threshold()`
+- `hub/apps/tenants/models.py` — `marketplace_publish_compliance_gate_enabled`
+- `hub/apps/tenants/migrations/0068_phase_274_marketplace_compliance_gate.py`
+
+---
+
+## 5.8. Semantic Tenant Flag Isolation (Phase 274.3)
+
+### Overview
+
+Semantic endpoints (SPARQL query, dereference, inference, export,
+relationships) are gated by per-tenant feature flags.  A tenant whose
+corresponding flag is disabled receives **403** with
+`code='SEMANTIC_FEATURE_DISABLED'`.  This prevents unauthorized tenants
+from consuming compute-intensive semantic services or accessing the
+semantic layer before their plan or compliance posture permits it.
+
+### Action → Flag Mapping
+
+| Action | Tenant flag |
+|---|---|
+| `sparql` / SPARQL query | `semantic_search_enabled` |
+| `dereference` (IRI resolution) | `semantic_capabilities_enabled` (falls back to `semantic_search_enabled`) |
+| `inference_query` | `semantic_inference_enabled` |
+| `export` (RDF serialisation) | `semantic_export_enabled` |
+| `relationships` | `semantic_capabilities_enabled` |
+
+### Enforcement
+
+- `SemanticTenantFlagRule` in `hub/apps/semantic/business_rules.py`
+  validates the flag before any semantic operation.
+- `HasSemanticCapability` DRF permission class in
+  `hub/apps/semantic/permissions.py` rejects unprivileged requests at
+  the view boundary (before query construction).
+
+### Files
+
+- `hub/apps/semantic/business_rules.py` — `SemanticTenantFlagRule`
+- `hub/apps/semantic/permissions.py` — `HasSemanticCapability`
+- `hub/apps/tenants/migrations/0071_phase_274_3_semantic_capability_flags.py`
+
+---
+
+## 5.9. Warehouse Connectivity Security Model (Phase 275)
+
+### Overview
+
+Phase 275 introduced per-tenant warehouse connections (Snowflake, BigQuery,
+Databricks, Athena).  The security model covers credential encryption,
+SSRF prevention, private endpoint enforcement, RLS isolation, and
+connection-level access control.
+
+### Credential Encryption
+
+Warehouse connection credentials are stored in the `config` JSONField of
+`WarehouseConnection` using the same AWS KMS + Fernet encryption chain
+as marketplace connections (`hub/apps/integrations/encryption.py`).
+Credentials are encrypted on first save and decrypted on read via
+`get_config()` / `set_config()`.
+
+| Property | Value |
+|---|---|
+| Encryption chain | AWS KMS (primary) + Fernet fallback (via `ENCRYPTION_KEY`) |
+| Ciphertext format | `{"_encrypted": "<ciphertext>"}` |
+| Fields encrypted | `host`, `password`, `private_key`, `token`, `api_key`, `oauth` |
+| Migration | `0001_initial` — encrypted-at-rest from first write |
+
+### SSRF Guard
+
+On every `WarehouseConnection.save()`, URL-like config keys (`host`,
+`endpoint`, `api_url`, `base_url`, `private_endpoint_url`) are validated
+via `hub.apps.security.url_validators.is_safe_url()` before the config
+is encrypted.  Internal/loopback addresses are rejected with a
+`ValidationError` — preventing SSRF attacks through manipulated
+connection strings.
+
+### Private Endpoint Support
+
+`WarehouseConnection.private_endpoint_url` (max 512 chars) stores an
+optional PrivateLink / PSC endpoint URL.  When set, the connector
+routes traffic through the private endpoint instead of the public
+hostname.  The `region` field is validated against the tenant's
+compliance regime (data residency).
+
+### Row-Level Security
+
+Both `WarehouseConnection` and `WarehouseConnectionACL` ship with
+RLS policies (Phase 277.B.018a):
+
+| Table | RLS policy |
+|---|---|
+| `warehouse_connections` | `tenant_isolation` — soft SELECT (feature-flag gated) + strict INSERT/UPDATE/DELETE |
+| `warehouse_connection_acls` | `tenant_isolation` — same pattern |
+
+### Connection-Level Access Control
+
+`WarehouseConnectionACL` provides finer-grained-than-TENANT_ADMIN
+access control:
+
+- `ADMIN` — full control (CRUD + query)
+- `OPERATOR` — query + read config (no credential view)
+- `VIEWER` — read-only metadata (no query, no config)
+
+Default: TENANT_ADMIN inherits all permissions.  Explicit ACL grants
+narrow access for specific users.  `UniqueConstraint` on
+`(connection, user)` prevents duplicate ACL entries.
+
+### Connection Lifecycle
+
+- **Deactivation**: Set `is_active=False` — soft-deactivate without
+  deleting the encrypted credentials.  LIVE_QUERY assets referencing
+  a deactivated connection fail with `WAREHOUSE_CONNECTION_INACTIVE`.
+- **Deletion**: Refused while LIVE_QUERY assets reference the
+  connection.  Operators must reassign or deactivate assets first.
+
+### Audit Trail
+
+All warehouse operations emit audit events with
+`audit_retention_category='warehouse_queries'` and 90-day retention.
+Query bodies are NEVER logged — only a SHA-256 `query_hash` prefix
+(16 hex chars) is recorded for forensic correlation.
+
+| Audit event | Trigger |
+|---|---|
+| `WAREHOUSE_CONNECTION_CREATED` | Connection created |
+| `WAREHOUSE_CONNECTION_UPDATED` | Connection config/capability changed |
+| `WAREHOUSE_CONNECTION_DELETED` | Connection deleted (after asset check) |
+| `WAREHOUSE_CONNECTION_TEST_FAILED` | Connectivity test failed |
+| `WAREHOUSE_QUERY_EXECUTED` | Query executed (query_hash only, 1:100 sampling) |
+| `WAREHOUSE_SCHEMA_DRIFT` | Schema drift detected between warehouse and contract |
+
+### Prometheus Metrics
+
+- `warehouse_query_duration_seconds` — histogram by warehouse type
+- `warehouse_connection_test_failures_total` — counter by warehouse type + error
+- `warehouse_circuit_breaker_state` — gauge (0=closed, 1=open) per connector
+
+### Alerts
+
+| Alert | Rule | Severity |
+|---|---|---|
+| `WarehouseConnectionTestFailureRate` | >3 failures in 10min | warning |
+| `WarehouseCircuitBreakerOpen` | Circuit open >5min | critical |
+| `WarehouseQueryLatencyHigh` | p95 >30s over 10min | warning |
+| `WarehouseCredentialNearExpiry` | >80 days since last rotation | warning (24h for) |
+| `WarehouseCredentialExpired` | >90 days since last rotation | critical (1h for) |
+
+### Files
+
+- `hub/apps/warehouses/models.py` — `WarehouseConnection`, `WarehouseConnectionACL`
+- `hub/apps/warehouses/connectors/` — Snowflake, BigQuery, Databricks, Athena
+- `hub/apps/security/url_validators.py` — `is_safe_url()` SSRF guard
+- `hub/apps/integrations/encryption.py` — KMS + Fernet encryption chain
+- `monitoring/prometheus/alerts/warehouse.yml` — alert rules
+- `docs/capacity/warehouse-connectivity.md` — capacity + sampling guidance
+
+---
+
 ## 6. References
 
 - **Helper**: `hub.apps.tenants.request_tenant.get_request_tenant_id`, `get_request_tenant`
@@ -547,7 +736,7 @@ require_entitlement(
 
 # GDPR Erasure (Right to be Forgotten)
 
-**Last Updated**: 2026-03-22
+**Last Updated**: 2026-05-13
 
 This document describes the data erasure feature (GDPR Article 17 - Right to be Forgotten).
 
@@ -800,7 +989,7 @@ Completed erasure requests include:
 
 # Data Portability
 
-**Last Updated**: 2026-03-22
+**Last Updated**: 2026-05-13
 
 This document describes the data portability feature (GDPR Article 20 - Right to Data Portability).
 
@@ -994,7 +1183,7 @@ If download URL expires, request a new export:
 
 # Data Residency
 
-**Last Updated**: 2026-03-22
+**Last Updated**: 2026-05-13
 
 This document describes the current data residency behavior and roadmap for multi-region support.
 
@@ -1192,7 +1381,7 @@ For compliance-specific requirements (e.g. right to erasure, maximum retention, 
 
 # Audit Policy
 
-**Last Updated**: 2026-03-22
+**Last Updated**: 2026-05-13
 
 This document defines which operations MUST emit an audit event and lists all public (AllowAny) endpoints for review. It supports Phase 15 — Governance: Audit policy and AllowAny review.
 
@@ -1484,6 +1673,12 @@ Then revert migrations (requires custom reverse migration).
 ## Runbook
 
 See [docs/runbooks/TENANT_SWITCH.md](runbooks/TENANT_SWITCH.md) for operational procedures and troubleshooting. Index: [RUNBOOKS.md](RUNBOOKS.md).
+
+## i18n & Localization Posture
+
+**Status**: English-only (Phase 277.A.19 + 277.B.027). No `hub/locale/` translation catalog exists. Frontend has single English locale file.
+
+**gettext wrappers added (277.B.027)**: Top 8 user-facing error messages in `auth/views.py`, `users/services.py`, and `users/business_rules.py` now use `gettext_lazy`. Full i18n catalog generation (`django-admin makemessages`) deferred to post-MVP.
 
 ## References
 
