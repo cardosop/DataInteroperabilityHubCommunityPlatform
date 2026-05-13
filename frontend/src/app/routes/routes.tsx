@@ -130,6 +130,11 @@ const PrivacyPage = lazy(() =>
     default: m.PrivacyPage,
   }))
 );
+const RopaListPage = lazy(() =>
+  import('../../features/ropa/components/RopaListPage').then((m) => ({
+    default: m.RopaListPage,
+  }))
+);
 const TenantSettingsPage = lazy(() =>
   import('../../features/tenants/components/TenantSettingsPage').then((m) => ({
     default: m.TenantSettingsPage,
@@ -1964,6 +1969,14 @@ export const appRoutes: Parameters<typeof createBrowserRouter>[0] = [
             element: (
               <EB fallbackMsg="Loading sessions...">
                 <SessionListPage />
+              </EB>
+            ),
+          },
+          {
+            path: 'ropa',
+            element: (
+              <EB fallbackMsg="Loading RoPA...">
+                <RopaListPage />
               </EB>
             ),
           },
