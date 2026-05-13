@@ -10,18 +10,45 @@ import { Button } from '../../../shared/components/Button';
 import { ErrorDisplay } from '../../../shared/components/ErrorDisplay';
 import { LoadingSpinner } from '../../../shared/components/LoadingSpinner';
 import type { ApiError } from '../../../shared/types/api';
-import type { TenantConfig, TenantConfigUpdate, TenantUsage } from '../../../shared/types/tenants';
+import {
+  COMPLIANCE_RISK_THRESHOLDS,
+  isComplianceRiskThreshold,
+} from '../../../shared/types/tenants';
+import type {
+  ComplianceRiskThreshold,
+  TenantConfig,
+  TenantConfigUpdate,
+  TenantUsage,
+} from '../../../shared/types/tenants';
 import { normalizeError } from '../../../shared/utils/errorUtils';
+import {
+  QUOTA_WARN_THRESHOLD_PERCENT,
+  severityForQuota,
+} from '../../files/utils/quotaFormatting';
+import type { QuotaSeverity } from '../../files/utils/quotaFormatting';
 import { tenantService } from '../services/tenantService';
 import { SparqlFederationPanel } from './SparqlFederationPanel';
+import { RopaCompliancePanel } from './RopaCompliancePanel';
+import { DpiaCompliancePanel } from './DpiaCompliancePanel';
+import { AuditRetentionPolicyPanel } from '../../audit/components/AuditRetentionPolicyPanel';
+import {
+  ConnectOnboardingBanner,
+} from '../../marketplace/components/ConnectOnboardingBanner';
+import {
+  ConnectStatusBadge,
+} from '../../marketplace/components/ConnectStatusBadge';
 import './TenantSettingsPage.css';
 
 const VALID_DQ_PROFILES = ['intake_basic_gx', 'intake_basic_soda'];
 const VALID_COMPLIANCE_REGIMES = ['GDPR', 'LGPD', 'CCPA', 'HIPAA', 'SOX'];
+// `COMPLIANCE_RISK_THRESHOLDS` is now imported from
+// `shared/types/tenants` so the same const tuple drives the type union
+// AND the runtime guard AND this `<select>` option list — single source
+// of truth for the backend `RiskLevel` choices.
 const DATA_RETENTION_MIN = 90;
 const DATA_RETENTION_MAX = 3650;
 
-type Tab = 'usage' | 'config' | 'federation';
+type Tab = 'usage' | 'config' | 'compliance' | 'federation' | 'audit' | 'billing';
 
 export function TenantSettingsPage() {
   const [activeTab, setActiveTab] = useState<Tab>('usage');
@@ -42,6 +69,15 @@ export function TenantSettingsPage() {
   const [trustSignalsEnabled, setTrustSignalsEnabled] = useState<boolean>(true);
   const [versioningEnabled, setVersioningEnabled] = useState<boolean>(true);
   const [workflowsEnabled, setWorkflowsEnabled] = useState<boolean>(true);
+  const [complianceRiskThreshold, setComplianceRiskThreshold] =
+    useState<ComplianceRiskThreshold>('HIGH');
+  // Phase 270.C.4 — per-tenant compliance legal-basis strict mode.
+  // Default false so a tenant operator opts-in explicitly; the
+  // env-aware backend default (True in prod, False elsewhere) is
+  // applied at tenant CREATION; this UI surfaces the per-tenant
+  // current value + lets the operator override.
+  const [complianceLegalBasisStrict, setComplianceLegalBasisStrict] =
+    useState<boolean>(false);
   const [validationErrors, setValidationErrors] = useState<Record<string, string>>({});
 
   const loadUsage = async () => {
@@ -77,6 +113,8 @@ export function TenantSettingsPage() {
       setTrustSignalsEnabled(data.trust_signals_enabled ?? true);
       setVersioningEnabled(data.versioning_enabled ?? true);
       setWorkflowsEnabled(data.workflows_enabled ?? true);
+      setComplianceRiskThreshold(data.compliance_risk_threshold ?? 'HIGH');
+      setComplianceLegalBasisStrict(data.compliance_legal_basis_strict ?? false);
     } catch (err) {
       setError(normalizeError(err));
     }
@@ -153,6 +191,8 @@ export function TenantSettingsPage() {
         trust_signals_enabled: trustSignalsEnabled,
         versioning_enabled: versioningEnabled,
         workflows_enabled: workflowsEnabled,
+        compliance_risk_threshold: complianceRiskThreshold,
+        compliance_legal_basis_strict: complianceLegalBasisStrict,
       };
       const updated = await tenantService.patchMeConfig(payload);
       setConfig(updated);
@@ -236,11 +276,36 @@ export function TenantSettingsPage() {
         </button>
         <button
           type="button"
+          className={`tenant-settings-tab ${activeTab === 'compliance' ? 'active' : ''}`}
+          onClick={() => setActiveTab('compliance')}
+          aria-selected={activeTab === 'compliance'}
+        >
+          Compliance
+        </button>
+        <button
+          type="button"
           className={`tenant-settings-tab ${activeTab === 'federation' ? 'active' : ''}`}
           onClick={() => setActiveTab('federation')}
           aria-selected={activeTab === 'federation'}
         >
           SPARQL Federation
+        </button>
+        <button
+          type="button"
+          className={`tenant-settings-tab ${activeTab === 'audit' ? 'active' : ''}`}
+          onClick={() => setActiveTab('audit')}
+          aria-selected={activeTab === 'audit'}
+        >
+          Audit
+        </button>
+        {/* Phase 270.D.6 — Tax & Billing Identity tab. */}
+        <button
+          type="button"
+          className={`tenant-settings-tab ${activeTab === 'billing' ? 'active' : ''}`}
+          onClick={() => setActiveTab('billing')}
+          aria-selected={activeTab === 'billing'}
+        >
+          Tax &amp; Billing
         </button>
       </div>
 
@@ -253,77 +318,79 @@ export function TenantSettingsPage() {
               {usage.plan_tier && ` (${usage.plan_tier})`}
             </p>
           )}
+          {(() => {
+            const anyAtRisk = Object.entries(usage.usage_percentages ?? {}).some(
+              ([, pct]) => typeof pct === 'number' && pct >= QUOTA_WARN_THRESHOLD_PERCENT,
+            );
+            return anyAtRisk ? (
+              <p className="tenant-settings-upgrade-cta" data-testid="usage-upgrade-cta">
+                <a href="/settings/billing">Upgrade plan</a> to increase limits.
+              </p>
+            ) : null;
+          })()}
           <div className="tenant-settings-metrics">
-            <div className="tenant-metric">
-              <span className="tenant-metric-label">Storage</span>
-              <span className="tenant-metric-value">
-                {formatBytes(usage.storage_bytes)} ({usage.storage_gb.toFixed(2)} GB)
-              </span>
-              {usage.plan_limits.max_storage_gb != null && (
-                <div className="tenant-metric-bar">
-                  <div
-                    className="tenant-metric-bar-fill"
-                    style={{
-                      width: `${Math.min(
-                        (usage.usage_percentages?.max_storage_gb ?? 0),
-                        100
-                      )}%`,
-                    }}
-                  />
-                </div>
-              )}
-            </div>
-            <div className="tenant-metric">
-              <span className="tenant-metric-label">API calls (this month)</span>
-              <span className="tenant-metric-value">{usage.api_calls_this_month}</span>
-              {usage.plan_limits.max_api_calls_per_month != null && (
-                <div className="tenant-metric-bar">
-                  <div
-                    className="tenant-metric-bar-fill"
-                    style={{
-                      width: `${Math.min(
-                        usage.usage_percentages?.max_api_calls_per_month ?? 0,
-                        100
-                      )}%`,
-                    }}
-                  />
-                </div>
-              )}
-            </div>
-            <div className="tenant-metric">
-              <span className="tenant-metric-label">Assets</span>
-              <span className="tenant-metric-value">{usage.asset_count}</span>
-              {usage.plan_limits.max_assets != null && (
-                <div className="tenant-metric-bar">
-                  <div
-                    className="tenant-metric-bar-fill"
-                    style={{
-                      width: `${Math.min(
-                        usage.usage_percentages?.max_assets ?? 0,
-                        100
-                      )}%`,
-                    }}
-                  />
-                </div>
-              )}
-            </div>
-            <div className="tenant-metric">
-              <span className="tenant-metric-label">Datasets</span>
-              <span className="tenant-metric-value">{usage.dataset_count}</span>
-              {usage.plan_limits.max_datasets != null && (
-                <div className="tenant-metric-bar">
-                  <div
-                    className="tenant-metric-bar-fill"
-                    style={{
-                      width: `${Math.min(
-                        usage.usage_percentages?.max_datasets ?? 0,
-                        100
-                      )}%`,
-                    }}
-                  />
-                </div>
-              )}
-            </div>
+            {((
+              metrics: Array<{
+                label: string; value: string; max: number | null;
+                pct: number | null;
+              }>,
+            ) =>
+              metrics.map((m) => {
+                const pct = m.pct ?? 0;
+                const severity = severityForQuota(pct);
+                const barClass = `tenant-metric-bar-fill tenant-metric-bar-fill--${severity}`;
+                return (
+                  <div className="tenant-metric" key={m.label}>
+                    <span className="tenant-metric-label">{m.label}</span>
+                    <span className="tenant-metric-value">
+                      {m.value}
+                      {m.max != null && ` / ${m.max}`}
+                    </span>
+                    {m.max != null && (
+                      <div
+                        className="tenant-metric-bar"
+                        role="progressbar"
+                        aria-valuenow={Math.min(pct, 100)}
+                        aria-valuemin={0}
+                        aria-valuemax={100}
+                        aria-label={`${m.label} usage: ${Math.round(pct)}%`}
+                      >
+                        <div
+                          className={barClass}
+                          style={{ width: `${Math.min(pct, 100)}%` }}
+                        />
+                      </div>
+                    )}
+                  </div>
+                );
+              })
+            )([
+              {
+                label: 'Storage',
+                value: `${formatBytes(usage.storage_bytes)} (${usage.storage_gb.toFixed(2)} GB)`,
+                max: usage.plan_limits.max_storage_gb,
+                pct: usage.usage_percentages?.max_storage_gb ?? null,
+              },
+              {
+                label: 'API calls (this month)',
+                value: `${usage.api_calls_this_month}`,
+                max: usage.plan_limits.max_api_calls_per_month,
+                pct: usage.usage_percentages?.max_api_calls_per_month ?? null,
+              },
+              {
+                label: 'Assets',
+                value: `${usage.asset_count}`,
+                max: usage.plan_limits.max_assets,
+                pct: usage.usage_percentages?.max_assets ?? null,
+              },
+              {
+                label: 'Datasets',
+                value: `${usage.dataset_count}`,
+                max: usage.plan_limits.max_datasets,
+                pct: usage.usage_percentages?.max_datasets ?? null,
+              },
+            ])}
+          </div>
             <div className="tenant-metric">
               <span className="tenant-metric-label">Scheduled ingestions</span>
               <span className="tenant-metric-value">{usage.scheduled_ingestion_count}</span>
@@ -410,6 +477,35 @@ export function TenantSettingsPage() {
                   {validationErrors.default_compliance_regimes}
                 </span>
               )}
+            </div>
+
+            <div className="tenant-form-group">
+              <label htmlFor="tenant-compliance_risk_threshold">Compliance risk threshold</label>
+              <p className="tenant-settings-description">
+                Listing publish and asset activation require a succeeded compliance run at or below this
+                risk ceiling.
+              </p>
+              <select
+                id="tenant-compliance_risk_threshold"
+                value={complianceRiskThreshold}
+                onChange={(e) => {
+                  // Defence-in-depth: the <select>'s `<option>` list is
+                  // already constrained to `COMPLIANCE_RISK_THRESHOLDS`,
+                  // but the type guard means a future option-list typo
+                  // (or a programmatic setter from a test) cannot
+                  // smuggle a non-union value into state.
+                  const next = e.target.value;
+                  if (isComplianceRiskThreshold(next)) {
+                    setComplianceRiskThreshold(next);
+                  }
+                }}
+              >
+                {COMPLIANCE_RISK_THRESHOLDS.map((t) => (
+                  <option key={t} value={t}>
+                    {t}
+                  </option>
+                ))}
+              </select>
             </div>
 
             <div className="tenant-form-group">
@@ -501,6 +597,45 @@ export function TenantSettingsPage() {
               </p>
             </div>
 
+            {/* Phase 270.C.4.5 — per-tenant legal-basis strict mode toggle.
+                Surfaces the Tenant.compliance_legal_basis_strict field
+                introduced in Phase 270.C.4.1. Strict mode rejects
+                compliance scans missing a valid GDPR/UK_GDPR/LGPD
+                legal_basis with HTTP 422; lenient mode (the default)
+                preserves the Phase 19.7.1 behaviour. */}
+            <div className="tenant-form-group">
+              <label
+                htmlFor="tenant-compliance_legal_basis_strict"
+                className="tenant-toggle-label"
+              >
+                <input
+                  id="tenant-compliance_legal_basis_strict"
+                  type="checkbox"
+                  checked={complianceLegalBasisStrict}
+                  onChange={(e) =>
+                    setComplianceLegalBasisStrict(e.target.checked)
+                  }
+                  aria-describedby="compliance-legal-basis-strict-hint"
+                />
+                <span>Strict legal-basis enforcement</span>
+              </label>
+              <p
+                id="compliance-legal-basis-strict-hint"
+                className="tenant-field-hint"
+              >
+                <strong>Strict</strong> (recommended for production
+                tenants under GDPR/UK GDPR/LGPD): compliance scans
+                that detect personal data but are missing a valid{' '}
+                <code>legal_basis</code> are <strong>rejected</strong>{' '}
+                with HTTP 422. <strong>Lenient</strong> (default in
+                staging/dev): the scan succeeds and the missing
+                basis appears as an ERROR-severity issue in the
+                report. New production tenants default to strict;
+                pre-existing tenants default to lenient (opt-in
+                here).
+              </p>
+            </div>
+
             <div className="tenant-form-group">
               <label htmlFor="tenant-versioning_enabled" className="tenant-toggle-label">
                 <input
@@ -545,6 +680,17 @@ export function TenantSettingsPage() {
         </section>
       )}
 
+      {activeTab === 'compliance' && (
+        <section className="tenant-settings-compliance" data-testid="tenant-settings-compliance">
+          <h2>Compliance</h2>
+          <p className="tenant-settings-description">
+            Record of processing activities (RoPA) preview, exports, and history.
+          </p>
+          <RopaCompliancePanel />
+          <DpiaCompliancePanel />
+        </section>
+      )}
+
       {activeTab === 'federation' && (
         config && config.tenant_id ? (
           <SparqlFederationPanel tenantId={config.tenant_id} />
@@ -552,6 +698,331 @@ export function TenantSettingsPage() {
           <LoadingSpinner message="Loading tenant context..." />
         )
       )}
+
+      {activeTab === 'audit' && <AuditRetentionPolicyPanel />}
+
+      {/* Phase 270.D.6 — Tax & Billing Identity panel. */}
+      {activeTab === 'billing' && <TaxBillingIdentityPanel />}
+      {/* Phase 271.3 — Stripe Connect onboarding status. */}
+      {activeTab === 'billing' && <ConnectAccountPanel />}
     </div>
+  );
+}
+
+
+// ---------------------------------------------------------------------------
+// Phase 270.D.6 — Tax & Billing Identity panel
+// ---------------------------------------------------------------------------
+
+/**
+ * Surface for ``GET /api/v1/tenants/me/tax-id/`` +
+ * ``POST /api/v1/tenants/me/tax-id/``. Shows the current tax_id
+ * (masked-on-display so non-admin viewers don't see the full
+ * value), the type, the Stripe verification badge, and the
+ * registered address. The submission form re-uses the same
+ * endpoint — POSTing replaces the stored value AND resets
+ * ``tax_id_verified`` to False pending Stripe's verification
+ * webhook.
+ *
+ * Tax-id-type select carries the Stripe-vocabulary values
+ * (``eu_vat``, ``gb_vat``, ``us_ein``, ``br_cnpj``); the full
+ * Stripe list has ~40 entries — surfacing the most-common 8
+ * here, with a free-text fallback for the rest. Tenants with
+ * niche jurisdictions can submit via the API directly while
+ * the UI catches the rest.
+ */
+function TaxBillingIdentityPanel(): JSX.Element {
+  const [taxId, setTaxId] = useState<string>('');
+  const [taxIdType, setTaxIdType] = useState<string>('eu_vat');
+  const [taxAddressCountry, setTaxAddressCountry] = useState<string>('');
+  const [taxAddressPostal, setTaxAddressPostal] = useState<string>('');
+  const [taxAddressLine1, setTaxAddressLine1] = useState<string>('');
+  const [taxIdVerified, setTaxIdVerified] = useState<boolean>(false);
+  const [storedTaxId, setStoredTaxId] = useState<string>('');
+  const [loading, setLoadingState] = useState(true);
+  const [saving, setSavingState] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [success, setSuccess] = useState<string | null>(null);
+
+  // Load existing tax identity.
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      setLoadingState(true);
+      try {
+        const data = await tenantService.getMeTaxId();
+        if (cancelled) return;
+        setStoredTaxId(data.tax_id || '');
+        setTaxId(data.tax_id || '');
+        setTaxIdType(data.tax_id_type || 'eu_vat');
+        setTaxIdVerified(!!data.tax_id_verified);
+        const addr = data.tax_address || {};
+        setTaxAddressCountry(String(addr.country || ''));
+        setTaxAddressPostal(String(addr.postal_code || ''));
+        setTaxAddressLine1(String(addr.line1 || ''));
+      } catch (err) {
+        if (!cancelled) setError(normalizeError(err));
+      } finally {
+        if (!cancelled) setLoadingState(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError(null);
+    setSuccess(null);
+    if (!taxId.trim() || !taxIdType.trim()) {
+      setError('Tax ID and type are required.');
+      return;
+    }
+    setSavingState(true);
+    try {
+      const data = await tenantService.postMeTaxId({
+        tax_id: taxId.trim(),
+        tax_id_type: taxIdType.trim(),
+        tax_address: {
+          country: taxAddressCountry.trim(),
+          postal_code: taxAddressPostal.trim(),
+          line1: taxAddressLine1.trim(),
+        },
+      });
+      setStoredTaxId(data.tax_id);
+      setTaxIdVerified(!!data.tax_id_verified);
+      setSuccess(
+        'Submitted. Stripe is verifying your tax ID — the badge will turn green once verification completes.',
+      );
+    } catch (err) {
+      setError(normalizeError(err));
+    } finally {
+      setSavingState(false);
+    }
+  };
+
+  if (loading) return <LoadingSpinner message="Loading tax identity..." />;
+
+  return (
+    <section
+      className="tenant-settings-tax-billing"
+      data-testid="tenant-settings-tax-billing"
+    >
+      <h2>Tax &amp; Billing Identity</h2>
+      <p className="tenant-field-hint">
+        Configure your tax registration ID. Stripe validates the ID and applies
+        the correct tax handling (B2B reverse-charge for verified EU VAT IDs,
+        local VAT/sales tax otherwise) on every invoice and one-time payment.
+      </p>
+
+      {storedTaxId && (
+        <p className="tenant-field-hint">
+          Current tax ID: <code>{storedTaxId}</code>{' '}
+          <span
+            data-testid="tax-id-verified-badge"
+            style={{
+              padding: '2px 8px',
+              borderRadius: 4,
+              background: taxIdVerified ? '#d1fae5' : '#fef3c7',
+              color: taxIdVerified ? '#065f46' : '#92400e',
+              fontWeight: 600,
+              fontSize: 12,
+              marginLeft: 8,
+            }}
+          >
+            {taxIdVerified ? '✓ Verified' : '⏳ Pending verification'}
+          </span>
+        </p>
+      )}
+
+      {error && (
+        <div className="tenant-form-error" role="alert">
+          {error}
+        </div>
+      )}
+      {success && (
+        <div className="tenant-form-success" role="status">
+          {success}
+        </div>
+      )}
+
+      <form onSubmit={handleSubmit} className="tenant-form">
+        <div className="tenant-form-group">
+          <label htmlFor="tax-id-input">Tax ID</label>
+          <input
+            id="tax-id-input"
+            type="text"
+            value={taxId}
+            onChange={(e) => setTaxId(e.target.value)}
+            placeholder="e.g. GB123456789, BR12345678000199"
+          />
+        </div>
+
+        <div className="tenant-form-group">
+          <label htmlFor="tax-id-type-select">Tax ID type</label>
+          <select
+            id="tax-id-type-select"
+            value={taxIdType}
+            onChange={(e) => setTaxIdType(e.target.value)}
+          >
+            <option value="eu_vat">EU VAT</option>
+            <option value="gb_vat">UK VAT (GB)</option>
+            <option value="us_ein">US EIN</option>
+            <option value="br_cnpj">Brazil CNPJ</option>
+            <option value="in_gst">India GST</option>
+            <option value="au_abn">Australia ABN</option>
+            <option value="ca_bn">Canada BN</option>
+            <option value="sg_uen">Singapore UEN</option>
+          </select>
+        </div>
+
+        <div className="tenant-form-group">
+          <label htmlFor="tax-address-country">Country (ISO code)</label>
+          <input
+            id="tax-address-country"
+            type="text"
+            value={taxAddressCountry}
+            onChange={(e) => setTaxAddressCountry(e.target.value)}
+            placeholder="GB"
+            maxLength={2}
+          />
+        </div>
+
+        <div className="tenant-form-group">
+          <label htmlFor="tax-address-postal">Postal code</label>
+          <input
+            id="tax-address-postal"
+            type="text"
+            value={taxAddressPostal}
+            onChange={(e) => setTaxAddressPostal(e.target.value)}
+          />
+        </div>
+
+        <div className="tenant-form-group">
+          <label htmlFor="tax-address-line1">Address line 1</label>
+          <input
+            id="tax-address-line1"
+            type="text"
+            value={taxAddressLine1}
+            onChange={(e) => setTaxAddressLine1(e.target.value)}
+          />
+        </div>
+
+        <div className="tenant-form-actions">
+          <Button type="submit" variant="primary" loading={saving}>
+            Submit tax ID
+          </Button>
+        </div>
+      </form>
+    </section>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Phase 271.3 — Stripe Connect account status panel
+// ---------------------------------------------------------------------------
+
+/**
+ * Embedded Connect onboarding panel rendered inside the "Billing" tab
+ * of TenantSettingsPage.  Fetches the current ``ConnectAccount`` state
+ * from ``GET /api/v1/billing/connect/status/`` and renders either:
+ *
+ * - An onboarding CTA banner when no ConnectAccount exists yet, OR
+ * - A status badge + a link to the provider revenue dashboard when
+ *   the account exists.
+ */
+function ConnectAccountPanel() {
+  interface AccountStatus {
+    stripe_account_id: string;
+    account_type: string;
+    charges_enabled: boolean;
+    payouts_enabled: boolean;
+    details_submitted: boolean;
+    country: string;
+    default_currency: string;
+  }
+
+  const [status, setStatus] = useState<AccountStatus | null>(null);
+  const [connected, setConnected] = useState<boolean | null>(null);
+  const [loadingStatus, setLoadingStatus] = useState(true);
+  const [statusError, setStatusError] = useState<string | null>(null);
+
+  useEffect(() => {
+    const token = localStorage.getItem('access_token');
+    if (!token) return;
+    fetch('/api/v1/billing/connect/status/', {
+      headers: { Authorization: `Bearer ${token}` },
+    })
+      .then(async (res) => {
+        if (res.status === 404) {
+          setConnected(false);
+          setLoadingStatus(false);
+          return;
+        }
+        if (!res.ok) {
+          const body = await res.json().catch(() => ({}));
+          setStatusError(body.detail || 'Failed to load Connect status');
+          setLoadingStatus(false);
+          return;
+        }
+        const data = await res.json();
+        setStatus(data);
+        setConnected(true);
+        setLoadingStatus(false);
+      })
+      .catch(() => {
+        setStatusError('Network error loading Connect status');
+        setLoadingStatus(false);
+      });
+  }, []);
+
+  if (loadingStatus) {
+    return <LoadingSpinner message="Loading Connect account status..." />;
+  }
+
+  if (statusError) {
+    return <ErrorDisplay message={statusError} />;
+  }
+
+  return (
+    <section className="tenant-settings-tax-billing" data-testid="tenant-settings-connect">
+      <h3>Stripe Connect (Provider Payouts)</h3>
+
+      {!connected && (
+        <ConnectOnboardingBanner
+          reason="Complete Stripe Connect onboarding to publish paid listings and
+receive payouts."
+        />
+      )}
+
+      {connected && status && (
+        <div className="connect-account-summary">
+          <div className="connect-account-summary__row">
+            <span className="connect-account-summary__label">Status</span>
+            <ConnectStatusBadge
+              chargesEnabled={status.charges_enabled}
+              payoutsEnabled={status.payouts_enabled}
+              detailsSubmitted={status.details_submitted}
+            />
+          </div>
+          {status.country && (
+            <div className="connect-account-summary__row">
+              <span className="connect-account-summary__label">Country</span>
+              <span>{status.country}</span>
+            </div>
+          )}
+          {status.default_currency && (
+            <div className="connect-account-summary__row">
+              <span className="connect-account-summary__label">Currency</span>
+              <span>{status.default_currency.toUpperCase()}</span>
+            </div>
+          )}
+          <a href="/settings/revenue" className="connect-account-summary__link">
+            View payout history →
+          </a>
+        </div>
+      )}
+    </section>
   );
 }
