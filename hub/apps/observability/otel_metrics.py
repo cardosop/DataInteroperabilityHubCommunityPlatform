@@ -1182,6 +1182,16 @@ rq_queue_depth = _UpDownCounterWrapper(
     expected_labels=("queue_name", "status"),
 )
 
+# Phase 277.B.088 — breach notification SLA gauge
+breach_hours_since_discovery = _UpDownCounterWrapper(
+    "breach_hours_since_discovery",
+    "Hours elapsed since the oldest unresolved breach was discovered.  "
+    "GDPR Art. 33 requires supervisory notification within 72h; this "
+    "gauge tracks the SLA clock per tenant.",
+    unit="h",
+    expected_labels=("tenant_id", "breach_id"),
+)
+
 # Phase 277.B.075 — per-queue job latency histogram + worker uptime gauge
 job_queue_latency_seconds = _HistogramWrapper(
     "job_queue_latency_seconds",
