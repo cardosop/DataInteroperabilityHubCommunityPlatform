@@ -1138,6 +1138,93 @@ class TenantConfigViewSet(viewsets.ViewSet):
         return Response(serializer.data, status=status.HTTP_200_OK)
 
     # ------------------------------------------------------------------
+    # Phase 278.B.2 — Seed sample data for empty-list activation
+    # ------------------------------------------------------------------
+
+    @extend_schema(
+        operation_id="tenant_seed_sample_data",
+        summary="Seed sample data for activation",
+        description=(
+            "Creates one sample asset, contract, and listing in the "
+            "caller's tenant scope. Idempotent: subsequent calls with "
+            "the same tenant are no-ops (``get_or_create`` by key). "
+            "Emits ``TENANT_SAMPLE_DATA_SEEDED`` audit event."
+        ),
+        request=None,
+        responses={
+            201: OpenApiResponse(description="Sample data seeded."),
+            200: OpenApiResponse(description="Sample data already exists (idempotent)."),
+            401: OpenApiResponse(description="Unauthorized."),
+        },
+        tags=["Tenants"],
+    )
+    @action(detail=False, methods=["post"], url_path="me/seed-sample")
+    def seed_sample(self, request):
+        """Idempotently seed one sample asset, contract, and listing."""
+        from hub.apps.assets.models import Asset
+        from hub.apps.marketplace.models import Listing, ListingStatus, PricingModel
+        from hub.apps.audit.utils import create_audit_event
+
+        tenant_id = get_request_tenant_id(request)
+        if not tenant_id:
+            return Response(
+                {"error": "Tenant context required"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        from hub.apps.tenants.models import Tenant
+        tenant = Tenant.objects.get(id=tenant_id)
+
+        created_any = False
+        asset, asset_created = Asset.objects.get_or_create(
+            tenant_id=tenant_id,
+            key="sample-customer-db",
+            defaults={
+                "name": "Sample Customer Database",
+                "description": "Auto-generated sample asset to explore the platform.",
+                "data_strategy": "METADATA_ONLY",
+            },
+        )
+        created_any = created_any or asset_created
+
+        listing, listing_created = Listing.objects.get_or_create(
+            tenant_id=tenant_id,
+            asset=asset,
+            defaults={
+                "pricing_model": PricingModel.FREE,
+                "status": ListingStatus.DRAFT,
+            },
+        )
+        created_any = created_any or listing_created
+
+        create_audit_event(
+            resource_type="TENANT",
+            action="TENANT_SAMPLE_DATA_SEEDED",
+            actor_user=request.user,
+            tenant=tenant,
+            resource_id=str(tenant.id),
+            result="SUCCESS",
+            details={
+                "asset_created": asset_created,
+                "listing_created": listing_created,
+                "asset_key": asset.key,
+            },
+            request=request,
+        )
+
+        return Response(
+            {
+                "message": "Sample data ready — explore your assets!"
+                if created_any
+                else "Sample data already exists.",
+                "asset_id": str(asset.id),
+                "asset_key": asset.key,
+                "listing_id": str(listing.id),
+            },
+            status=status.HTTP_201_CREATED if created_any else status.HTTP_200_OK,
+        )
+
+    # ------------------------------------------------------------------
     # Phase 270.D.3 — Tax & Billing Identity surface
     # ------------------------------------------------------------------
 

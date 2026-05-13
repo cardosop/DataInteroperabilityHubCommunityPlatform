@@ -60,6 +60,12 @@ urlpatterns = [
         ),
         name="tenant-me-tax-id",
     ),
+    # Phase 278.B.2 — seed sample data for activation
+    path(
+        "me/seed-sample/",
+        TenantConfigViewSet.as_view({"post": "seed_sample"}),
+        name="tenant-me-seed-sample",
+    ),
     # Phase 226 OQ4 — test-only ephemeral-tenant provisioning. Gated by
     # ENVIRONMENT + E2E_TEST_SECRET; production 404s. Cleanup runs via
     # the staging-prefix-purge cron (slug starts with `e2e-ephemeral-`).
