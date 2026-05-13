@@ -244,6 +244,10 @@ MIDDLEWARE = [
     "django.contrib.auth.middleware.AuthenticationMiddleware",
     # API validation MUST come after AuthenticationMiddleware so request.user is populated
     "hub.apps.api.standards.validation_middleware.APIValidationMiddleware",
+    # Phase 277.B.082 — API versioning + deprecation headers (Warning, Sunset, Link).
+    # MUST sit after auth so request.user is available, and before response
+    # rendering so headers are present on all API responses.
+    "hub.apps.api.versioning.APIVersionMiddleware",
     "hub.apps.auth.middleware.TenantScopingMiddleware",  # Tenant scoping after authentication
     # Phase 235.4 — tag request.impersonation_session_id when the JWT
     # carries the impersonation claim. MUST sit AFTER TenantScopingMiddleware
@@ -1825,10 +1829,21 @@ _refresh_cookie_default = (
 )
 REFRESH_COOKIE_NAME = env("REFRESH_COOKIE_NAME", default=_refresh_cookie_default)
 
-# ── Login rate-limiting & account lockout (11.5) ─────────────────────────────
+# ── Login rate-limiting & account lockout (11.5 + 277.B.066) ─────────────────
 LOGIN_IP_RATE_PER_MINUTE = env.int("LOGIN_IP_RATE_PER_MINUTE", default=10)
-LOGIN_MAX_ATTEMPTS = env.int("LOGIN_MAX_ATTEMPTS", default=10)
+LOGIN_MAX_ATTEMPTS = env.int("LOGIN_MAX_ATTEMPTS", default=5)
 LOGIN_LOCKOUT_WINDOW_MINUTES = env.int("LOGIN_LOCKOUT_WINDOW_MINUTES", default=15)
+LOGIN_LOCKOUT_MAX_WINDOW_MINUTES = env.int("LOGIN_LOCKOUT_MAX_WINDOW_MINUTES", default=1440)  # 24h cap
+
+# ── API key rotation reminder (277.B.069) ────────────────────────────────────
+# Comma-separated list of days-before-expiry thresholds at which reminders fire.
+# Example: "30,14,7,1" sends reminders 30, 14, 7, and 1 day(s) before expiry.
+# Set to "" to disable all rotation reminders.
+API_KEY_ROTATION_REMINDER_DAYS = [
+    int(d.strip())
+    for d in env("API_KEY_ROTATION_REMINDER_DAYS", default="30,14,7,1").split(",")
+    if d.strip().isdigit()
+]
 
 # Personal tenant on registration (useronboardfix): when True (default), users who register
 # without tenant_id get a personal tenant with DATA_PROVIDER and DATA_CONSUMER roles.
