@@ -136,6 +136,8 @@ export function getErrorRemediation(
         title: 'Plan limit reached',
         details:
           'Your tenant has reached its plan quota for this resource. Upgrade your plan or remove unused resources before retrying.',
+        ctaUrl: '/settings/billing',
+        ctaLabel: 'Upgrade Plan',
       };
     case KnownErrorCode.COMPLIANCE_RUN_REQUIRED:
       return {
