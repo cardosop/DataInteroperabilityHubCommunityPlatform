@@ -24,6 +24,7 @@ from hub.apps.audit.event_types import (
     DATASET_VERSION_COMPARED,
 )
 from hub.apps.audit.utils import create_audit_event
+from hub.apps.api.standards.pagination import StandardCursorPagination
 from hub.apps.core.responses import api_error_response, handle_service_exception
 from hub.apps.core.services.base import NotFoundError
 from hub.apps.core.services.base import ValidationError as ServiceValidationError
@@ -1545,22 +1546,27 @@ class DatasetViewSet(viewsets.ModelViewSet):
         )
         return Response(status=status.HTTP_204_NO_CONTENT)
 
-    # ── Phase 275.D.1 — Records API ─────────────────────────────────
+    # ── Phase 275.D.1 (migrated 277.B.048) — Records API ────────
 
     @action(detail=True, methods=["get"], url_path="rows")
     def rows(self, request, id=None):
         """
-        Phase 275.D.1 — Records API for dataset rows.
+        Phase 275.D.1 / 277.B.048 — Records API for dataset rows.
 
-        GET /api/v1/datasets/{id}/rows/?limit=100&cursor=abc123
+        GET /api/v1/datasets/{id}/rows/?limit=100&cursor=<encoded>
         Accept: application/json (default) — decimals as strings (RFC 7159)
         Accept: application/vnd.apache.arrow.stream — Arrow IPC stream
 
-        Routes to file-backed OR LIVE_QUERY connector via Asset model.
-        Cursor-based pagination. Per-tenant rate limit.
+        Cursor pagination via StandardCursorPagination (Phase 277.B.048).
+        Old plain-value cursors accepted with Deprecation + Sunset headers
+        during the 90-day migration window.
         """
         dataset = self.get_object()
-        limit = int(request.query_params.get("limit", 100))
+        try:
+            limit = int(request.query_params.get("limit", 100))
+        except (ValueError, TypeError):
+            limit = 100
+        limit = max(1, min(limit, 100))
         cursor = request.query_params.get("cursor")
 
         # Check if LIVE_QUERY asset routes through warehouse connector.
@@ -1568,11 +1574,14 @@ class DatasetViewSet(viewsets.ModelViewSet):
         if asset and getattr(asset, "data_strategy", None) == "LIVE_QUERY":
             return self._rows_from_live_query(request, dataset, asset, limit, cursor)
 
-        # File-backed: serve from existing dataset data.
         return self._rows_from_file(request, dataset, limit, cursor)
 
     def _rows_from_live_query(self, request, dataset, asset, limit, cursor):
-        """Dispatch to warehouse connector for LIVE_QUERY assets."""
+        """Dispatch to warehouse connector for LIVE_QUERY assets.
+
+        Phase 277.B.048 — cursor pagination via StandardCursorPagination
+        with backward-compat for legacy plain-value cursors.
+        """
         conn = getattr(asset, "warehouse_connection", None)
         if conn is None:
             return Response(
@@ -1583,28 +1592,90 @@ class DatasetViewSet(viewsets.ModelViewSet):
         config = conn.get_config()
         connector = self._resolve_connector(conn.warehouse_type, config, str(asset.tenant_id), str(asset.id))
 
+        page_size = limit
+        is_old_cursor = False
+        cursor_value = None
+
+        if cursor:
+            cursor_value = self._resolve_cursor(cursor)
+            if cursor_value is None:
+                # Legacy plain-value cursor
+                is_old_cursor = True
+                cursor_value = cursor
+
         try:
             connector.connect()
-            sql = f"SELECT * FROM {dataset.name or asset.key}"
-            if cursor:
-                sql += f" WHERE id > '{cursor}'"
-            sql += f" ORDER BY id LIMIT {limit}"
+            table_name = dataset.name or asset.key
+            sql = f"SELECT * FROM {table_name}"
+            if cursor_value:
+                sql += f" WHERE id > '{cursor_value}'"
+            sql += f" ORDER BY id LIMIT {page_size + 1}"  # fetch one extra to detect has_next
+
             result = connector.execute_query(sql)
+
+            rows = result.rows if result.rows else []
+            has_next = len(rows) > page_size
+            if has_next:
+                rows = rows[:page_size]
+
+            # Build cursors in StandardCursorPagination format
+            paginator = StandardCursorPagination()
+            next_cursor = None
+            if has_next and rows:
+                last_id = rows[-1][0]
+                next_cursor = paginator.encode_cursor((last_id, last_id))
+            previous_cursor = None
+            if cursor and not is_old_cursor:
+                previous_cursor = cursor
 
             accept = request.META.get("HTTP_ACCEPT", "application/json")
             if "arrow" in accept:
                 return self._arrow_response(result)
-            return Response(
-                {"data": result.rows, "columns": result.columns, "row_count": result.row_count, "cursor": result.rows[-1][0] if result.rows else None},
+
+            resp = Response(
+                {
+                    "results": rows,
+                    "columns": result.columns,
+                    "count": result.row_count,
+                    "next_cursor": next_cursor,
+                    "previous_cursor": previous_cursor,
+                    "page_size": page_size,
+                },
                 status=status.HTTP_200_OK,
             )
+            if is_old_cursor:
+                import datetime as _dt
+                sunset_date = (_dt.datetime.now(_dt.timezone.utc) + _dt.timedelta(days=90)).strftime("%a, %d %b %Y %H:%M:%S GMT")
+                resp.headers["Deprecation"] = "true"
+                resp.headers["Deprecation-Date"] = _dt.datetime.now(_dt.timezone.utc).strftime("%a, %d %b %Y %H:%M:%S GMT")
+                resp.headers["Sunset"] = sunset_date
+                resp.headers["Link"] = '</docs/api/error-codes.md>; rel="deprecation"'
+            return resp
         finally:
             connector.close()
+
+    @staticmethod
+    def _resolve_cursor(cursor):
+        """Decode a StandardCursorPagination cursor; return None if it's a legacy plain-value cursor.
+
+        StandardCursorPagination encodes a JSON list as base64, e.g. ``WyJpZC0wNTAiLCJpZC0wNTAiXQ==``.
+        A legacy plain-value cursor like ``"id-050"`` won't decode to a JSON list.
+        """
+        import base64 as _b64
+        import json as _json
+        try:
+            decoded = _b64.b64decode(cursor.encode("utf-8")).decode("utf-8")
+            position = _json.loads(decoded)
+            if isinstance(position, list) and len(position) >= 1:
+                return position[0]
+        except Exception:
+            pass
+        return None
 
     def _rows_from_file(self, request, dataset, limit, cursor):
         """Serve rows from file-backed dataset."""
         return Response(
-            {"data": [], "columns": [], "row_count": 0, "message": "File-backed datasets served via existing endpoints"},
+            {"results": [], "columns": [], "count": 0, "next_cursor": None, "previous_cursor": None, "page_size": limit, "message": "File-backed datasets served via existing endpoints"},
             status=status.HTTP_200_OK,
         )
 
