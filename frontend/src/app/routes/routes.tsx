@@ -130,6 +130,11 @@ const PrivacyPage = lazy(() =>
     default: m.PrivacyPage,
   }))
 );
+const CpoCostOverviewPage = lazy(() =>
+  import('../../features/billing/components/CpoCostOverviewPage').then((m) => ({
+    default: m.CpoCostOverviewPage,
+  }))
+);
 const RopaListPage = lazy(() =>
   import('../../features/ropa/components/RopaListPage').then((m) => ({
     default: m.RopaListPage,
@@ -1973,10 +1978,22 @@ export const appRoutes: Parameters<typeof createBrowserRouter>[0] = [
             ),
           },
           {
+            path: 'cost-overview',
+            element: (
+              <EB fallbackMsg="Loading cost overview...">
+                <ProtectedRoute requiredRole={['PLATFORM_ADMIN']}>
+                  <CpoCostOverviewPage />
+                </ProtectedRoute>
+              </EB>
+            ),
+          },
+          {
             path: 'ropa',
             element: (
               <EB fallbackMsg="Loading RoPA...">
-                <RopaListPage />
+                <ProtectedRoute requiredRole={['TENANT_ADMIN', 'PLATFORM_ADMIN', 'DPO']}>
+                  <RopaListPage />
+                </ProtectedRoute>
               </EB>
             ),
           },

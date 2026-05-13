@@ -635,6 +635,39 @@ AUDIT_GDPR_PURGED: str = "AUDIT_GDPR_PURGED"
 #: ``result`` is always ``"SUCCESS"`` — failures in the sweep are recorded
 #: on the Job row, not as a per-tenant audit event.
 AUDIT_RETENTION_PURGED: str = "AUDIT_RETENTION_PURGED"
+#: Phase 277.B.013c — emitted when a user requests a GDPR data export
+#: (Article 15 / Article 20 right of access + portability). Carries
+#: ``user_id``, ``tenant_id``, ``job_id`` so the audit trail links
+#: to the DataExportJob row.
+#:
+#: ``result`` is ``"SUCCESS"`` when the job was created; ``"FAILURE"``
+#: when creation was rejected (duplicate/rate-limit).
+DATA_EXPORT_CREATED: str = "DATA_EXPORT_CREATED"
+#: Phase 277.B.013c — emitted when a GDPR data export job completes
+#: (success or failure). Carries ``user_id``, ``tenant_id``,
+#: ``job_id``, ``status`` (COMPLETED/FAILED), ``format_version``,
+#: and ``storage_path`` on success. GDPR Article 15 proof-of-action.
+#:
+#: ``result`` is ``"SUCCESS"`` on COMPLETED, ``"FAILURE"`` on FAILED.
+DATA_EXPORT_COMPLETED: str = "DATA_EXPORT_COMPLETED"
+#: Phase 277.B.030 — emitted when a scheduled export is created.
+#: Carries ``scheduled_export_id``, ``tenant_id``, ``user_id``.
+SCHEDULED_EXPORT_CREATED: str = "SCHEDULED_EXPORT_CREATED"
+#: Phase 277.B.030 — emitted when a scheduled export is updated.
+#: Carries ``scheduled_export_id``, ``tenant_id``, ``user_id``,
+#: ``changed_fields``.
+SCHEDULED_EXPORT_UPDATED: str = "SCHEDULED_EXPORT_UPDATED"
+#: Phase 277.B.030 — emitted when a scheduled export is deleted.
+#: Carries ``scheduled_export_id``, ``tenant_id``, ``user_id``.
+SCHEDULED_EXPORT_DELETED: str = "SCHEDULED_EXPORT_DELETED"
+#: Phase 277.B.030 — emitted when a scheduled export is triggered
+#: for immediate execution. Carries ``scheduled_export_id``,
+#: ``tenant_id``, ``user_id``, ``run_id``.
+SCHEDULED_EXPORT_TRIGGERED: str = "SCHEDULED_EXPORT_TRIGGERED"
+#: Phase 277.B.032 — emitted when a PLATFORM_ADMIN inspects a
+#: tenant's onboarding state via the admin endpoint. Carries
+#: ``tenant_id`` and the full ``onboarding_state`` dict.
+TENANT_ONBOARDING_STATE_VIEWED: str = "TENANT_ONBOARDING_STATE_VIEWED"
 #: Phase 260.1.A — hard purge of a file after soft-delete grace.
 #: ``details_json`` (PII-redacted): original ``name``, ``content_sha256``,
 #: ``size``, ``tenant_id``, ``actor_user_id`` (system purge → NULL),
@@ -1192,6 +1225,12 @@ WAREHOUSE_CONNECTION_DELETED: str = "WAREHOUSE_CONNECTION_DELETED"
 WAREHOUSE_CONNECTION_TEST_FAILED: str = "WAREHOUSE_CONNECTION_TEST_FAILED"
 WAREHOUSE_CACHE_REFRESHED: str = "WAREHOUSE_CACHE_REFRESHED"
 
+# ---------------------------------------------------------------------------
+# Phase 277.B.031 — Billing cost overview
+# ---------------------------------------------------------------------------
+
+COST_OVERVIEW_ACCESSED: str = "COST_OVERVIEW_ACCESSED"
+
 
 __all__ = [
     "DQ_ALERT_RESOURCE_TYPE",
@@ -1265,6 +1304,13 @@ __all__ = [
     "AUDIT_INTEGRITY_VERIFIED",
     "AUDIT_INTEGRITY_MISMATCH",
     "AUDIT_GDPR_PURGED",
+    "DATA_EXPORT_CREATED",
+    "DATA_EXPORT_COMPLETED",
+    "SCHEDULED_EXPORT_CREATED",
+    "SCHEDULED_EXPORT_UPDATED",
+    "SCHEDULED_EXPORT_DELETED",
+    "SCHEDULED_EXPORT_TRIGGERED",
+    "TENANT_ONBOARDING_STATE_VIEWED",
     "TENANT_CREATED",
     "TENANT_SOFT_DELETED",
     "TENANT_HARD_DELETED",
@@ -1343,4 +1389,6 @@ __all__ = [
     "WAREHOUSE_CONNECTION_DELETED",
     "WAREHOUSE_CONNECTION_TEST_FAILED",
     "WAREHOUSE_CACHE_REFRESHED",
+    # Phase 277.B.031 — Billing cost overview
+    "COST_OVERVIEW_ACCESSED",
 ]
