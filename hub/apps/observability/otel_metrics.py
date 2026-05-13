@@ -1192,6 +1192,15 @@ breach_hours_since_discovery = _UpDownCounterWrapper(
     expected_labels=("tenant_id", "breach_id"),
 )
 
+# Phase 277.B.099 — webhook DLQ depth gauge
+webhook_dlq_size = _UpDownCounterWrapper(
+    "webhook_dlq_size",
+    "Number of webhook deliveries in DEAD_LETTER status.  Reported by "
+    "emit_webhook_dlq_metrics().",
+    unit="1",
+    expected_labels=("tenant_id",),
+)
+
 # Phase 277.B.075 — per-queue job latency histogram + worker uptime gauge
 job_queue_latency_seconds = _HistogramWrapper(
     "job_queue_latency_seconds",
