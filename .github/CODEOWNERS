@@ -1,0 +1,133 @@
+# CODEOWNERS — Phase 277.B.109
+#
+# Every subsystem must have >=1 primary owner + >=1 secondary owner.
+# GitHub auto-assigns reviewers from this file on every PR touching
+# the listed paths.  Last-order-wins: a later rule overrides an
+# earlier one for the same path.
+#
+# Teams are GitHub team aliases under the organisation that owns
+# this repository.  Individual usernames are used as fallbacks
+# where teams are not yet configured.
+#
+# Reference: https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-features/customizing-your-repository/about-code-owners
+
+# ── Backend — App layer ──────────────────────────────────────────────
+
+# Assets & data lifecycle
+hub/apps/assets/        @meshant/data-platform-eng @meshant/asset-creation-eng
+hub/apps/datasets/       @meshant/data-platform-eng @meshant/asset-creation-eng
+hub/apps/files/          @meshant/data-platform-eng @meshant/asset-creation-eng
+
+# Contracts & lineage
+hub/apps/contracts/      @meshant/data-platform-eng @meshant/contracts-eng
+hub/apps/lineage/        @meshant/data-platform-eng @meshant/contracts-eng
+
+# Marketplace & billing
+hub/apps/marketplace/    @meshant/data-platform-eng @meshant/billing-eng
+hub/apps/billing/        @meshant/data-platform-eng @meshant/billing-eng
+
+# Governance & compliance
+hub/apps/governance/     @meshant/data-platform-eng @meshant/compliance-eng
+hub/apps/compliance/     @meshant/data-platform-eng @meshant/compliance-eng
+hub/apps/audit/          @meshant/data-platform-eng @meshant/compliance-eng
+hub/apps/gdpr/           @meshant/data-platform-eng @meshant/compliance-eng
+hub/apps/dsar/           @meshant/data-platform-eng @meshant/compliance-eng
+hub/apps/dpia/           @meshant/data-platform-eng @meshant/compliance-eng
+hub/apps/breach/         @meshant/data-platform-eng @meshant/compliance-eng
+hub/apps/ropa/           @meshant/data-platform-eng @meshant/compliance-eng
+hub/apps/consent/        @meshant/data-platform-eng @meshant/compliance-eng
+hub/apps/processor_agreements/  @meshant/data-platform-eng @meshant/compliance-eng
+
+# Semantic layer
+hub/apps/semantic/       @meshant/data-platform-eng @meshant/semantic-eng
+
+# Search
+hub/apps/search/         @meshant/data-platform-eng @meshant/search-eng
+
+# Webhooks & integrations
+hub/apps/webhooks/       @meshant/data-platform-eng @meshant/integrations-eng
+hub/apps/integrations/   @meshant/data-platform-eng @meshant/integrations-eng
+
+# Warehouse connectivity
+hub/apps/warehouses/     @meshant/data-platform-eng @meshant/warehouse-eng
+
+# Auth & users
+hub/apps/auth/           @meshant/data-platform-eng @meshant/auth-eng
+hub/apps/users/          @meshant/data-platform-eng @meshant/auth-eng
+hub/apps/tenants/        @meshant/data-platform-eng @meshant/auth-eng
+
+# Jobs, orchestration & async workers
+hub/apps/jobs/           @meshant/data-platform-eng @meshant/orchestration-eng
+hub/apps/orchestration/  @meshant/data-platform-eng @meshant/orchestration-eng
+hub/apps/rate_limiting/  @meshant/data-platform-eng @meshant/orchestration-eng
+
+# Data quality
+hub/apps/dq/             @meshant/data-platform-eng @meshant/data-quality-eng
+
+# ML
+hub/apps/ml/             @meshant/data-platform-eng @meshant/ml-eng
+
+# Transformation & scheduled ingestion/export
+hub/apps/transformation/        @meshant/data-platform-eng @meshant/data-eng
+hub/apps/scheduled_ingestion/   @meshant/data-platform-eng @meshant/data-eng
+hub/apps/scheduled_export/      @meshant/data-platform-eng @meshant/data-eng
+
+# Virtualization & mesh
+hub/apps/virtualization/ @meshant/data-platform-eng @meshant/data-eng
+hub/apps/mesh/           @meshant/data-platform-eng @meshant/data-eng
+
+# BaaS
+hub/apps/baas/           @meshant/data-platform-eng @meshant/billing-eng
+
+# Observability & health
+hub/apps/observability/  @meshant/data-platform-eng @meshant/orchestration-eng
+hub/apps/health/         @meshant/data-platform-eng @meshant/orchestration-eng
+
+# Notifications
+hub/apps/notifications/  @meshant/data-platform-eng @meshant/integrations-eng
+
+# API infrastructure
+hub/apps/api/            @meshant/data-platform-eng @meshant/auth-eng
+
+# Core resilience, events, distributed lock
+hub/apps/core/           @meshant/data-platform-eng @meshant/orchestration-eng
+
+# ── CLI ──────────────────────────────────────────────────────────────
+cli/                     @meshant/data-platform-eng @meshant/dev-tooling-eng
+
+# ── SDKs ─────────────────────────────────────────────────────────────
+sdk/js/                  @meshant/data-platform-eng @meshant/dev-tooling-eng
+sdk/py/                  @meshant/data-platform-eng @meshant/dev-tooling-eng
+
+# ── Frontend ─────────────────────────────────────────────────────────
+frontend/src/            @meshant/data-platform-eng @meshant/frontend-eng
+frontend/e2e/            @meshant/data-platform-eng @meshant/frontend-eng
+
+# ── Infrastructure ───────────────────────────────────────────────────
+infrastructure/          @meshant/data-platform-eng @meshant/infra-eng
+helm/                    @meshant/data-platform-eng @meshant/infra-eng
+
+# ── CI/CD ────────────────────────────────────────────────────────────
+.github/workflows/       @meshant/data-platform-eng @meshant/infra-eng
+.github/CODEOWNERS       @meshant/data-platform-eng @meshant/infra-eng
+
+# ── Documentation ────────────────────────────────────────────────────
+docs/                    @meshant/data-platform-eng @meshant/dev-tooling-eng
+*.md                     @meshant/data-platform-eng @meshant/dev-tooling-eng
+
+# ── Config & tooling ─────────────────────────────────────────────────
+requirements*.txt        @meshant/data-platform-eng @meshant/infra-eng
+Dockerfile*              @meshant/data-platform-eng @meshant/infra-eng
+docker-compose*.yml      @meshant/data-platform-eng @meshant/infra-eng
+Makefile                 @meshant/data-platform-eng @meshant/infra-eng
+pyproject.toml           @meshant/data-platform-eng @meshant/infra-eng
+
+# ── Monitoring ───────────────────────────────────────────────────────
+monitoring/              @meshant/data-platform-eng @meshant/orchestration-eng
+
+# ── Scripts ──────────────────────────────────────────────────────────
+scripts/                 @meshant/data-platform-eng @meshant/infra-eng
+
+# ── Security ─────────────────────────────────────────────────────────
+SECURITY.md              @meshant/data-platform-eng @meshant/compliance-eng
+INCIDENT_RESPONSE.md     @meshant/data-platform-eng @meshant/compliance-eng
