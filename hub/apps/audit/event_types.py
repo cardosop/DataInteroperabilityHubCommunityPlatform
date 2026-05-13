@@ -1226,6 +1226,12 @@ WAREHOUSE_CONNECTION_TEST_FAILED: str = "WAREHOUSE_CONNECTION_TEST_FAILED"
 WAREHOUSE_CACHE_REFRESHED: str = "WAREHOUSE_CACHE_REFRESHED"
 
 # ---------------------------------------------------------------------------
+# Phase 277.B.080 — Webhook key rotation drill
+# ---------------------------------------------------------------------------
+
+WEBHOOK_KEY_ROTATION_DRILL: str = "WEBHOOK_KEY_ROTATION_DRILL"
+
+# ---------------------------------------------------------------------------
 # Phase 277.B.031 — Billing cost overview
 # ---------------------------------------------------------------------------
 
@@ -1389,6 +1395,8 @@ __all__ = [
     "WAREHOUSE_CONNECTION_DELETED",
     "WAREHOUSE_CONNECTION_TEST_FAILED",
     "WAREHOUSE_CACHE_REFRESHED",
+    # Phase 277.B.080 — Webhook key rotation drill
+    "WEBHOOK_KEY_ROTATION_DRILL",
     # Phase 277.B.031 — Billing cost overview
     "COST_OVERVIEW_ACCESSED",
 ]
