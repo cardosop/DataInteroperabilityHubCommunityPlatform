@@ -316,6 +316,11 @@ class MePatchSerializer(serializers.Serializer):
         required=False,
         help_text="User preferences (theme, language, notifications, etc.)"
     )
+    # Phase 278.E.3 — saved list filters/views
+    saved_views = serializers.JSONField(
+        required=False,
+        help_text="Saved list views [{resource_type, name, filters, sort}]",
+    )
 
     def validate_display_name(self, value):
         if value is not None and len(value.strip()) == 0:

@@ -95,6 +95,14 @@ class User(AbstractBaseUser, PermissionsMixin):
         blank=True,
         help_text="User preferences (theme, language, notifications, etc.)"
     )
+    # Phase 278.E.3 — saved list filters/views per user. Each entry:
+    # {resource_type: string, name: string, filters: dict, sort: string}
+    # URL-shareable via the view's ?saved=<name> query param.
+    saved_views = models.JSONField(
+        default=list,
+        blank=True,
+        help_text="Saved list filters/views (URL-shareable).",
+    )
     status = models.CharField(
         max_length=20,
         choices=UserStatus.choices,
@@ -172,7 +180,36 @@ class User(AbstractBaseUser, PermissionsMixin):
         default=1,
         help_text="Token version, incremented on password reset or role change"
     )
-    
+
+    # Account lockout (277.B.066) — progressive backoff
+    failed_login_count = models.IntegerField(
+        default=0,
+        help_text="Consecutive failed login attempts since last successful login"
+    )
+    locked_until = models.DateTimeField(
+        null=True,
+        blank=True,
+        help_text="Account locked until this time (progressive backoff)"
+    )
+    lockout_level = models.IntegerField(
+        default=0,
+        help_text="Number of consecutive lockout periods triggered; drives progressive window doubling"
+    )
+
+    # CAN-SPAM / GDPR unsubscribe token (277.B.097)
+    unsubscribe_token = models.CharField(
+        max_length=64,
+        null=True,
+        blank=True,
+        db_index=True,
+        help_text="SHA-256 hex hash of the 1-click unsubscribe token",
+    )
+    unsubscribe_token_created_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        help_text="When the current unsubscribe token was issued",
+    )
+
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
     

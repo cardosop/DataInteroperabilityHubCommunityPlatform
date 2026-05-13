@@ -1,0 +1,77 @@
+.kbd-cheatsheet-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.4);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 10000;
+}
+
+.kbd-cheatsheet {
+  background: #fff;
+  border-radius: 12px;
+  padding: 24px 28px;
+  max-width: 380px;
+  width: 92%;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.18);
+  max-height: 80vh;
+  overflow-y: auto;
+}
+
+.kbd-cheatsheet-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 16px;
+}
+
+.kbd-cheatsheet-header h2 {
+  font-size: 1.125rem;
+  font-weight: 600;
+  margin: 0;
+}
+
+.kbd-cheatsheet-close {
+  background: none;
+  border: none;
+  font-size: 1.5rem;
+  cursor: pointer;
+  color: #6b7280;
+  padding: 0 4px;
+}
+
+.kbd-cheatsheet-group {
+  margin-bottom: 14px;
+}
+
+.kbd-cheatsheet-group h3 {
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: #9ca3af;
+  margin: 0 0 6px;
+}
+
+.kbd-cheatsheet-group ul {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.kbd-cheatsheet-group li {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 4px 0;
+  font-size: 0.8125rem;
+}
+
+.kbd-cheatsheet-group kbd {
+  background: #f3f4f6;
+  border: 1px solid #d1d5db;
+  border-radius: 4px;
+  padding: 2px 6px;
+  font-size: 0.75rem;
+  font-family: inherit;
+}

@@ -1786,6 +1786,19 @@ def _build_me_response(user):
         settings, "FEATURE_TENANT_SWITCH_ENABLED", True
     )
 
+    # 277.B.086 — check for stale consent grants (purpose version bumped)
+    needs_reconsent = False
+    stale_purposes: list[dict] = []
+    try:
+        if user.tenant and getattr(user.tenant, "compliance_consent_enabled", False):
+            from hub.apps.consent.services import ConsentService
+            stale_purposes = ConsentService.get_stale_purposes_for_user(
+                user=user, tenant=user.tenant
+            )
+            needs_reconsent = len(stale_purposes) > 0
+    except Exception:
+        pass  # Best-effort: consent DB outage must not block /me
+
     return {
         "id": str(user.id),
         "email": user.email,
@@ -1798,6 +1811,8 @@ def _build_me_response(user):
         "avatar": avatar,
         "preferences": preferences,
         "feature_tenant_switch_enabled": feature_tenant_switch_enabled,
+        "needs_reconsent": needs_reconsent,
+        "stale_consent_purposes": stale_purposes,
     }
 
 
@@ -1847,6 +1862,10 @@ def me(request):
     if "preferences" in serializer.validated_data:
         user.preferences = serializer.validated_data["preferences"]
         update_fields.append("preferences")
+    # Phase 278.E.3 — saved list views
+    if "saved_views" in serializer.validated_data:
+        user.saved_views = serializer.validated_data["saved_views"]
+        update_fields.append("saved_views")
 
     if update_fields:
         user.save(update_fields=update_fields + ["updated_at"])
