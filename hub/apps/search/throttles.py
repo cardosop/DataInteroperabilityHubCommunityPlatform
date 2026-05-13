@@ -14,12 +14,27 @@ from rest_framework.throttling import UserRateThrottle
 
 
 class _AuditableThrottle(UserRateThrottle):
-    """Base class that emits audit events on rate-limit hits."""
+    """Base class that emits audit events and standard rate-limit headers on 429."""
 
     audit_action: str = "SEARCH_RATE_LIMIT_EXCEEDED"
 
     def throttled(self, request, wait):
-        """Emit metric + audit event on 429, then delegate to parent."""
+        """Emit metric + audit event + rate-limit headers on 429."""
+        # Phase 277.B.101 — RateLimit-* headers (RFC draft) so clients
+        # can anticipate limits before hitting 429.
+        try:
+            rate_str = self.get_rate()
+            num_req, period_sec = self.parse_rate(rate_str)
+            # remaining: subtract the current history count from the limit
+            history = self.history or []
+            remaining = max(0, num_req - len(history))
+            reset_after = int(wait)
+            request.META["_ratelimit_limit"] = str(num_req)
+            request.META["_ratelimit_remaining"] = str(remaining)
+            request.META["_ratelimit_reset"] = str(reset_after)
+        except Exception:
+            pass
+
         # Phase 273.4 — record throttled outcome before audit.
         try:
             from hub.apps.search.metrics import record_search
@@ -70,10 +85,14 @@ class SearchUserThrottle(_AuditableThrottle):
     """Throttle for UnifiedSearchView + SearchViewSet search/suggestions."""
 
     audit_action = "SEARCH_RATE_LIMIT_EXCEEDED"
+    # Class-level rate so SimpleRateThrottle.__init__ resolves it before
+    # this subclass's __init__ runs; otherwise get_rate() falls through
+    # to DEFAULT_THROTTLE_RATES['user'] which doesn't exist (500 error).
+    rate = "60/min"
 
     def __init__(self):
         super().__init__()
-        self.rate = getattr(settings, "SEARCH_RATE_LIMIT_PER_MIN", "60/min")
+        self.rate = getattr(settings, "SEARCH_RATE_LIMIT_PER_MIN", self.rate)
 
     def get_cache_key(self, request, view):
         if request.user and request.user.is_authenticated:
@@ -85,10 +104,11 @@ class SuggestionsUserThrottle(_AuditableThrottle):
     """Throttle for autocomplete/suggestions endpoint (higher limit)."""
 
     audit_action = "SEARCH_RATE_LIMIT_EXCEEDED"
+    rate = "120/min"
 
     def __init__(self):
         super().__init__()
-        self.rate = getattr(settings, "SUGGESTIONS_RATE_LIMIT_PER_MIN", "120/min")
+        self.rate = getattr(settings, "SUGGESTIONS_RATE_LIMIT_PER_MIN", self.rate)
 
     def get_cache_key(self, request, view):
         if request.user and request.user.is_authenticated:

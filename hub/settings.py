@@ -281,6 +281,8 @@ MIDDLEWARE = [
     "hub.apps.assets.middleware.AssetVisibilityDeprecationHeadersMiddleware",
     "hub.apps.api.middleware.cache_headers.CacheHeadersMiddleware",  # HTTP cache headers (ETag, Last-Modified, Cache-Control)
     "hub.apps.rate_limiting.middleware.RateLimitMiddleware",  # Advanced rate limiting (replaces basic middleware)
+    # Phase 277.B.101 — inject RateLimit-* headers set by throttle classes via request.META
+    "hub.apps.api.middleware.rate_limit_headers.RateLimitHeadersMiddleware",
     "hub.apps.api.analytics.middleware.APIAnalyticsMiddleware",  # API analytics tracking
     "hub.apps.baas.middleware.BaaSUsageRecordingMiddleware",  # BaaS usage recording (API-key requests)
     "hub.apps.governance.middleware.AccessLoggingMiddleware",  # Access logging for analytics
