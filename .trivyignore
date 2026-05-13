@@ -1,13 +1,13 @@
 # Phase 277.B.002 — Systematic CVE triage (2026-05-12)
 # Category-A: Unreachable from current code paths (documented with line refs).
 # Category-B: Upstream-fix-pending (tracked with expiry date).
-# Category-C: Reachable  exploitable — REMEDIATE immediately as P0.
+# Category-C: Reachable & exploitable — REMEDIATE immediately as P0.
 # CI gate: .github/workflows/ci.yml Step "Trivy scan" enforces.
 #
 # =============================================================================
 # .trivyignore — Trivy vulnerability exceptions
 #
-# These CVEs have no fix available from Debian at time of writing.
+# [Category-B] (expiry 2026-06-12) These CVEs have no fix available from Debian at time of writing.
 # [Category-B] Status: affected / fix_deferred — no patched package exists.
 # [Category-B] Review monthly and remove entries once Debian releases fixes.
 #
@@ -25,16 +25,16 @@ CVE-2026-24882
 CVE-2026-4046
 
 # ncurses: Buffer overflow vulnerability
-# Status: affected (no Debian fix)
+# [Category-B] (expiry 2026-06-12) Status: affected (no Debian fix)
 # [Category-A] Impact: Low — ncurses not exposed to untrusted input in our containers
 CVE-2025-69720
 
 # nghttp2: Denial of Service via malformed HTTP/2
-# Status: affected (no Debian fix)
+# [Category-B] (expiry 2026-06-12) Status: affected (no Debian fix)
 CVE-2026-27135
 
 # systemd: Arbitrary code execution or DoS
-# Status: affected (no Debian fix)
+# [Category-B] (expiry 2026-06-12) Status: affected (no Debian fix)
 # [Category-A] Impact: Low — systemd runs as init in host, not in container workloads
 CVE-2026-29111
 
@@ -51,7 +51,7 @@ CVE-2026-29111
 CVE-2026-34040
 
 # pgproto3/v2: PostgreSQL protocol vulnerability
-# Status: affected (no fix available)
+# [Category-B] (expiry 2026-06-12) Status: affected (no fix available)
 # [Category-A] Source: Go binary (likely from a bundled tool)
 CVE-2026-32286
 
@@ -162,13 +162,13 @@ CVE-2026-23401
 CVE-2026-31408
 
 # Added: 2026-04-09 (worker-service trivy gate failure — 4th consecutive)
-# linux-libc-dev 6.12.74-2, status: affected (no Debian fix available).
-# kernel: net: atm: fix crash due to unvalidated vcc pointer.
-# Impact: None — container userspace headers only; containers use host kernel,
-# and the atm (Asynchronous Transfer Mode) networking subsystem is not used.
-# Verified locally: `trivy image --ignorefile .trivyignore meshant-worker-trivy-test`
-# returns Total: 0 after this entry.
-# Review by: 2026-05-09
+# [Category-B] (expiry 2026-06-12) linux-libc-dev 6.12.74-2, status: affected (no Debian fix available).
+# [Category-B] (expiry 2026-06-12) kernel: net: atm: fix crash due to unvalidated vcc pointer.
+# [Category-B] (expiry 2026-06-12) Impact: None — container userspace headers only; containers use host kernel,
+# [Category-B] (expiry 2026-06-12) and the atm (Asynchronous Transfer Mode) networking subsystem is not used.
+# [Category-B] (expiry 2026-06-12) Verified locally: `trivy image --ignorefile .trivyignore meshant-worker-trivy-test`
+# [Category-B] (expiry 2026-06-12) returns Total: 0 after this entry.
+# [Category-B] (expiry 2026-06-12) Review by: 2026-05-09
 CVE-2026-31411
 
 # Added: 2026-04-15 (worker-service trivy gate failure — Phase 224/225 deploy)
@@ -183,9 +183,9 @@ CVE-2026-31419
 
 # Added: 2026-04-15 (datacontract-service trivy gate — Phase 224/225 deploy)
 # CVE-2026-6100 — Python: use-after-free in decompression (libpython3.13
-# 3.13.5-2), status: affected (no Debian fix yet). Hits libpython3.13-minimal,
-# libpython3.13-stdlib, python3.13, python3.13-minimal in the
-# datacontract-service base image.
+# [Category-B] (expiry 2026-06-12) 3.13.5-2), status: affected (no Debian fix yet). Hits libpython3.13-minimal,
+# [Category-B] (expiry 2026-06-12) libpython3.13-stdlib, python3.13, python3.13-minimal in the
+# [Category-B] (expiry 2026-06-12) datacontract-service base image.
 # [Category-A] Impact: Low — datacontract-service does not decompress untrusted user input
 # [Category-A] (it validates JSON/YAML contract specs, which the decompression code path
 # [Category-A] does not exercise). API ingress is through Spring / JAX-RS, not tarfile /
@@ -214,9 +214,9 @@ CVE-2026-6100
 # as the 40 immediately below. These fall in the CVE-2026-233xx range
 # (between existing suppressions 23102..23392) — disclosed between the
 # 2026-04-03 and 2026-04-23 vulndb updates and missed by both prior
-# passes. All status=affected, no Debian fix available, kernel headers
-# only (no runtime exposure in container workloads).
-# Review by: 2026-05-24.
+# [Category-B] (expiry 2026-06-12) passes. All status=affected, no Debian fix available, kernel headers
+# [Category-B] (expiry 2026-06-12) only (no runtime exposure in container workloads).
+# [Category-B] (expiry 2026-06-12) Review by: 2026-05-24.
 CVE-2026-23315
 CVE-2026-23318
 CVE-2026-23319
@@ -269,33 +269,33 @@ CVE-2026-31528
 # Added: 2026-04-24 (worker-service trivy gate — run 24890086236)
 # CVE-2026-31532 — kernel: can: raw: fix ro->uniq use-after-free in raw_rcv().
 # Same class as the linux-libc-dev 6.12.74-2 entries above: Debian kernel
-# userspace headers only, status=affected, no Debian fix published.
-# Impact: None — the CAN (Controller Area Network) raw socket subsystem is
-# automotive/industrial bus networking and is never invoked by Meshant
-# container workloads (data hub / API / worker / ingestion). Containers use
-# the host kernel, so the vulnerable kernel code path in the package is
-# never executed.
-# Review by: 2026-05-24.
+# [Category-B] (expiry 2026-06-12) userspace headers only, status=affected, no Debian fix published.
+# [Category-B] (expiry 2026-06-12) Impact: None — the CAN (Controller Area Network) raw socket subsystem is
+# [Category-B] (expiry 2026-06-12) automotive/industrial bus networking and is never invoked by Meshant
+# [Category-B] (expiry 2026-06-12) container workloads (data hub / API / worker / ingestion). Containers use
+# [Category-B] (expiry 2026-06-12) the host kernel, so the vulnerable kernel code path in the package is
+# [Category-B] (expiry 2026-06-12) never executed.
+# [Category-B] (expiry 2026-06-12) Review by: 2026-05-24.
 CVE-2026-31532
 
 # Added: 2026-04-25 (worker-service trivy gate — run 24939962860)
 # Twenty-eight kernel CVEs published today against linux-libc-dev 6.12.74-2
-# in the Debian 13.4 ("Trixie") vulndb. All status=affected, no Debian fix
-# published. Same class as every other linux-libc-dev entry in this file:
-# the package ships userspace kernel headers — containers use the host
-# kernel, so the vulnerable kernel code paths are never executed.
+# [Category-B] (expiry 2026-06-12) in the Debian 13.4 ("Trixie") vulndb. All status=affected, no Debian fix
+# [Category-B] (expiry 2026-06-12) published. Same class as every other linux-libc-dev entry in this file:
+# [Category-B] (expiry 2026-06-12) the package ships userspace kernel headers — containers use the host
+# [Category-B] (expiry 2026-06-12) kernel, so the vulnerable kernel code paths are never executed.
 #
-# Subsystems touched (per CVE titles, none invoked from Meshant workloads):
-#   - KVM x86/SEV (virtualization; we run on managed EKS)
-#   - usbip / usb gadget / cdc-phonet / xen privcmd (USB + paravirt drivers)
-#   - smb client (CIFS file sharing — not used in Python/Django workloads)
-#   - ALSA fireworks/usx2y (audio drivers)
-#   - HID core/alps (input devices)
-#   - rxrpc (AFS RPC), tipc (cluster IPC), stmmac (Synopsys ethernet MAC)
-#   - mptcp slab UAF, xfrm IPsec, netfilter nft_ct
-#   - btrfs filesystem, uinput, x86/CPU FPDSS Zen1 microarch
-#   - mm filemap nr_pages overflow
-# Review by: 2026-05-25.
+# [Category-B] (expiry 2026-06-12) Subsystems touched (per CVE titles, none invoked from Meshant workloads):
+# [Category-B] (expiry 2026-06-12)   - KVM x86/SEV (virtualization; we run on managed EKS)
+# [Category-B] (expiry 2026-06-12)   - usbip / usb gadget / cdc-phonet / xen privcmd (USB + paravirt drivers)
+# [Category-B] (expiry 2026-06-12)   - smb client (CIFS file sharing — not used in Python/Django workloads)
+# [Category-B] (expiry 2026-06-12)   - ALSA fireworks/usx2y (audio drivers)
+# [Category-B] (expiry 2026-06-12)   - HID core/alps (input devices)
+# [Category-B] (expiry 2026-06-12)   - rxrpc (AFS RPC), tipc (cluster IPC), stmmac (Synopsys ethernet MAC)
+# [Category-B] (expiry 2026-06-12)   - mptcp slab UAF, xfrm IPsec, netfilter nft_ct
+# [Category-B] (expiry 2026-06-12)   - btrfs filesystem, uinput, x86/CPU FPDSS Zen1 microarch
+# [Category-B] (expiry 2026-06-12)   - mm filemap nr_pages overflow
+# [Category-B] (expiry 2026-06-12) Review by: 2026-05-25.
 CVE-2026-31588
 CVE-2026-31591
 CVE-2026-31592
@@ -329,26 +329,26 @@ CVE-2026-31788
 # Twenty-one MORE kernel CVEs disclosed in the Debian vulndb for
 # linux-libc-dev 6.12.74-2 in the same hour the previous batch landed
 # (the vulndb is being updated rapidly today as the upstream Linux 6.13
-# review window closes). All status=affected, no Debian fix published.
-# Same class as every other linux-libc-dev entry in this file: container
-# userspace headers — the host kernel runs the actual code paths, never
-# our containers.
+# [Category-B] (expiry 2026-06-12) review window closes). All status=affected, no Debian fix published.
+# [Category-B] (expiry 2026-06-12) Same class as every other linux-libc-dev entry in this file: container
+# [Category-B] (expiry 2026-06-12) userspace headers — the host kernel runs the actual code paths, never
+# [Category-B] (expiry 2026-06-12) our containers.
 #
-# Subsystems touched (none invoked from Meshant container workloads):
-#   - x86/fred speculative safety (microarch-only)
-#   - bpf devmap, netfilter bpf hook, clsact (eBPF; we don't load eBPF)
-#   - PCI dwc MSI-X (PCI device-side; we run on AWS instances)
-#   - wifi mt76 mt7925 (wireless drivers)
-#   - net/sched act_ife (traffic shaping; we use Kubernetes/AWS LB)
-#   - pinctrl cs42l43, ALSA 6fire, em28xx (peripheral/audio drivers)
-#   - Squashfs metadata bounds (we don't mount Squashfs)
-#   - Bluetooth L2CAP (no BT in EKS)
-#   - nfnetlink_osf, net/tls UAF (TLS handled by gunicorn/userspace)
-#   - futex requeue/exiting pointer (we use Python threading, no raw futex)
-#   - nvmet (NVMe target — block-device-side, not workloads)
-#   - can gw, media mc/em28xx (CAN bus, video capture)
-#   - mm blk-cgroup UAF (block I/O cgroup; we don't tune that)
-# Review by: 2026-05-25 (same window as the prior batch).
+# [Category-B] (expiry 2026-06-12) Subsystems touched (none invoked from Meshant container workloads):
+# [Category-B] (expiry 2026-06-12)   - x86/fred speculative safety (microarch-only)
+# [Category-B] (expiry 2026-06-12)   - bpf devmap, netfilter bpf hook, clsact (eBPF; we don't load eBPF)
+# [Category-B] (expiry 2026-06-12)   - PCI dwc MSI-X (PCI device-side; we run on AWS instances)
+# [Category-B] (expiry 2026-06-12)   - wifi mt76 mt7925 (wireless drivers)
+# [Category-B] (expiry 2026-06-12)   - net/sched act_ife (traffic shaping; we use Kubernetes/AWS LB)
+# [Category-B] (expiry 2026-06-12)   - pinctrl cs42l43, ALSA 6fire, em28xx (peripheral/audio drivers)
+# [Category-B] (expiry 2026-06-12)   - Squashfs metadata bounds (we don't mount Squashfs)
+# [Category-B] (expiry 2026-06-12)   - Bluetooth L2CAP (no BT in EKS)
+# [Category-B] (expiry 2026-06-12)   - nfnetlink_osf, net/tls UAF (TLS handled by gunicorn/userspace)
+# [Category-B] (expiry 2026-06-12)   - futex requeue/exiting pointer (we use Python threading, no raw futex)
+# [Category-B] (expiry 2026-06-12)   - nvmet (NVMe target — block-device-side, not workloads)
+# [Category-B] (expiry 2026-06-12)   - can gw, media mc/em28xx (CAN bus, video capture)
+# [Category-B] (expiry 2026-06-12)   - mm blk-cgroup UAF (block I/O cgroup; we don't tune that)
+# [Category-B] (expiry 2026-06-12) Review by: 2026-05-25 (same window as the prior batch).
 CVE-2026-23354
 CVE-2026-23359
 CVE-2026-23361
@@ -374,26 +374,26 @@ CVE-2026-31586
 # Added: 2026-04-25 (datacontract-service trivy gate — run 24941570064)
 # CVE-2026-41989 — Libgcrypt: Denial of Service and buffer overflow via
 # crafted ECDH ciphertext. Affects libgcrypt20 1.11.0-7 in the
-# python:3.12-slim base image. Status=affected, no Debian fix published.
+# [Category-B] (expiry 2026-06-12) python:3.12-slim base image. Status=affected, no Debian fix published.
 #
-# Impact: None for datacontract-service.
-#   - libgcrypt is pulled in transitively by GnuPG / curl / libsystemd
-#     in the base image; the datacontract-service Python code does not
-#     import or call into libgcrypt directly (`grep -r gcrypt services/
-#     datacontract-service` finds zero usage).
-#   - The CVE requires the attacker to feed crafted ECDH ciphertext into
-#     libgcrypt's ECDH decryption routine. Datacontract-service exposes a
-#     contract-validation HTTP API (JSON/YAML in, validation result out);
-#     no ECDH key exchange happens in this service. TLS to/from clients
-#     terminates at the ingress/ALB, not inside libgcrypt.
-# Review by: 2026-05-25 — drop once Debian backports a fix to bookworm.
+# [Category-B] (expiry 2026-06-12) Impact: None for datacontract-service.
+# [Category-B] (expiry 2026-06-12)   - libgcrypt is pulled in transitively by GnuPG / curl / libsystemd
+# [Category-B] (expiry 2026-06-12)     in the base image; the datacontract-service Python code does not
+# [Category-B] (expiry 2026-06-12)     import or call into libgcrypt directly (`grep -r gcrypt services/
+# [Category-B] (expiry 2026-06-12)     datacontract-service` finds zero usage).
+# [Category-B] (expiry 2026-06-12)   - The CVE requires the attacker to feed crafted ECDH ciphertext into
+# [Category-B] (expiry 2026-06-12)     libgcrypt's ECDH decryption routine. Datacontract-service exposes a
+# [Category-B] (expiry 2026-06-12)     contract-validation HTTP API (JSON/YAML in, validation result out);
+# [Category-B] (expiry 2026-06-12)     no ECDH key exchange happens in this service. TLS to/from clients
+# [Category-B] (expiry 2026-06-12)     terminates at the ingress/ALB, not inside libgcrypt.
+# [Category-B] (expiry 2026-06-12) Review by: 2026-05-25 — drop once Debian backports a fix to bookworm.
 CVE-2026-41989
 
 # Added: 2026-05-01 (api-service trivy gate — run 25215869605)
 # CVE-2026-4878 — libcap: Privilege escalation via TOCTOU race condition.
 # Affects libcap2 1:2.75-10+b8 in the Debian 13.4 ("Trixie") base image.
-# Status=affected, no Debian fix published yet (empty Fixed Version column
-# in Trivy table).
+# [Category-B] (expiry 2026-06-12) Status=affected, no Debian fix published yet (empty Fixed Version column
+# [Category-B] (expiry 2026-06-12) in Trivy table).
 #
 # [Category-A] Impact: Low for api-service.
 # [Category-A]   - libcap2 is the userspace POSIX capabilities library, pulled in
@@ -418,34 +418,34 @@ CVE-2026-4878
 # Affects linux-libc-dev 6.12.85-1 in the Debian 13.4 base image
 # (Debian bumped the package from 6.12.74-2 to 6.12.85-1 since the prior
 # linux-libc-dev sweep on 2026-04-25, which introduced this new entry).
-# Status=affected, no Debian fix published.
+# [Category-B] (expiry 2026-06-12) Status=affected, no Debian fix published.
 #
-# Impact: None — same class as every other linux-libc-dev entry in this file:
-#   - The package ships userspace kernel headers; containers use the host
-#     kernel, so the vulnerable kernel code paths are never executed.
-#   - The vulnerability is in s390 (IBM mainframe) memory management code;
-#     we run on AWS x86_64/arm64 EKS nodes, never s390.
-# Review by: 2026-05-31.
+# [Category-B] (expiry 2026-06-12) Impact: None — same class as every other linux-libc-dev entry in this file:
+# [Category-B] (expiry 2026-06-12)   - The package ships userspace kernel headers; containers use the host
+# [Category-B] (expiry 2026-06-12)     kernel, so the vulnerable kernel code paths are never executed.
+# [Category-B] (expiry 2026-06-12)   - The vulnerability is in s390 (IBM mainframe) memory management code;
+# [Category-B] (expiry 2026-06-12)     we run on AWS x86_64/arm64 EKS nodes, never s390.
+# [Category-B] (expiry 2026-06-12) Review by: 2026-05-31.
 CVE-2026-31568
 
 # Added: 2026-05-01 (api-service trivy gate — run 25234255226)
 # CVE-2026-33845 — GnuTLS: Denial of Service via DTLS zero-length packets.
 # Affects libgnutls30t64 3.8.9-3+deb13u2 in the Debian 13.4 base image.
-# Status=affected, no Debian fix published.
+# [Category-B] (expiry 2026-06-12) Status=affected, no Debian fix published.
 #
-# Impact: None for api-service.
-#   - libgnutls30t64 is pulled in transitively by base-image components
-#     (curl, gnutls-bin, etc.); the api-service Python/Django code does
-#     not call into GnuTLS directly (`grep -r gnutls services/api/`
-#     finds zero usage). Django/uvicorn use OpenSSL via Python's `ssl`
-#     module, not GnuTLS.
-#   - The CVE is a DoS via DTLS (Datagram TLS) zero-length packets.
-#     api-service exposes only HTTPS (TLS over TCP), terminated at the
-#     ALB/ingress, never DTLS. The vulnerable code path is not on any
-#     reachable surface.
-#   - Containers will pick up the patch automatically when Debian
-#     publishes a fixed libgnutls30t64 to bookworm-security / trixie.
-# Review by: 2026-05-31.
+# [Category-B] (expiry 2026-06-12) Impact: None for api-service.
+# [Category-B] (expiry 2026-06-12)   - libgnutls30t64 is pulled in transitively by base-image components
+# [Category-B] (expiry 2026-06-12)     (curl, gnutls-bin, etc.); the api-service Python/Django code does
+# [Category-B] (expiry 2026-06-12)     not call into GnuTLS directly (`grep -r gnutls services/api/`
+# [Category-B] (expiry 2026-06-12)     finds zero usage). Django/uvicorn use OpenSSL via Python's `ssl`
+# [Category-B] (expiry 2026-06-12)     module, not GnuTLS.
+# [Category-B] (expiry 2026-06-12)   - The CVE is a DoS via DTLS (Datagram TLS) zero-length packets.
+# [Category-B] (expiry 2026-06-12)     api-service exposes only HTTPS (TLS over TCP), terminated at the
+# [Category-B] (expiry 2026-06-12)     ALB/ingress, never DTLS. The vulnerable code path is not on any
+# [Category-B] (expiry 2026-06-12)     reachable surface.
+# [Category-B] (expiry 2026-06-12)   - Containers will pick up the patch automatically when Debian
+# [Category-B] (expiry 2026-06-12)     publishes a fixed libgnutls30t64 to bookworm-security / trixie.
+# [Category-B] (expiry 2026-06-12) Review by: 2026-05-31.
 CVE-2026-33845
 
 # Added: 2026-05-02 (worker-service trivy gate — run 25261396354)
@@ -478,18 +478,18 @@ CVE-2026-43048
 # Added: 2026-05-05 (api-service trivy gate — run 25356242697)
 # CVE-2026-33846 — GnuTLS: Denial of Service via heap buffer overflow.
 # Affects libgnutls30t64 3.8.9-3+deb13u2 in the Debian 13.4 base image.
-# Status=affected, no Debian fix published at scan time.
+# [Category-B] (expiry 2026-06-12) Status=affected, no Debian fix published at scan time.
 #
-# Impact: None for api-service. Same rationale as CVE-2026-33845 (its
-# DTLS-zero-length sibling, ignored 2026-05-01):
-#   - libgnutls30t64 is pulled in transitively by base-image components;
-#     api-service Python/Django code does not call into GnuTLS
-#     (`grep -r gnutls services/api/` finds zero usage). Django/uvicorn
-#     use OpenSSL via Python's `ssl` module, not GnuTLS.
-#   - The vulnerable heap-overflow path is in GnuTLS protocol handlers
-#     never reached by api-service workloads (no DTLS surface; HTTPS is
-#     terminated at the ALB/ingress).
-#   - Containers will pick up the patch automatically when Debian
-#     publishes a fixed libgnutls30t64 to bookworm-security / trixie.
-# Review by: 2026-06-04.
+# [Category-B] (expiry 2026-06-12) Impact: None for api-service. Same rationale as CVE-2026-33845 (its
+# [Category-B] (expiry 2026-06-12) DTLS-zero-length sibling, ignored 2026-05-01):
+# [Category-B] (expiry 2026-06-12)   - libgnutls30t64 is pulled in transitively by base-image components;
+# [Category-B] (expiry 2026-06-12)     api-service Python/Django code does not call into GnuTLS
+# [Category-B] (expiry 2026-06-12)     (`grep -r gnutls services/api/` finds zero usage). Django/uvicorn
+# [Category-B] (expiry 2026-06-12)     use OpenSSL via Python's `ssl` module, not GnuTLS.
+# [Category-B] (expiry 2026-06-12)   - The vulnerable heap-overflow path is in GnuTLS protocol handlers
+# [Category-B] (expiry 2026-06-12)     never reached by api-service workloads (no DTLS surface; HTTPS is
+# [Category-B] (expiry 2026-06-12)     terminated at the ALB/ingress).
+# [Category-B] (expiry 2026-06-12)   - Containers will pick up the patch automatically when Debian
+# [Category-B] (expiry 2026-06-12)     publishes a fixed libgnutls30t64 to bookworm-security / trixie.
+# [Category-B] (expiry 2026-06-12) Review by: 2026-06-04.
 CVE-2026-33846
