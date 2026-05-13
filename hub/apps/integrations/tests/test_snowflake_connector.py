@@ -506,11 +506,11 @@ class TestSnowflakeConnectorDiscoveryOperations(TestCase):
 
         # Test non-integer offset (type checker warning is expected - we're testing error handling)
         with self.assertRaises((ValueError, TypeError)):
-            self.connector.list_listings(offset="invalid")  # type: ignore
+            self.connector.list_listings(offset="invalid")  # type: ignore[misc]  # test: edge-case type exercise
 
         # Test non-integer limit (type checker warning is expected - we're testing error handling)
         with self.assertRaises((ValueError, TypeError)):
-            self.connector.list_listings(limit="invalid")  # type: ignore
+            self.connector.list_listings(limit="invalid")  # type: ignore[misc]  # test: edge-case type exercise
 
     def test_list_resources_invalid_input(self):
         """Test list_resources validates input to prevent SQL injection"""
@@ -520,7 +520,7 @@ class TestSnowflakeConnectorDiscoveryOperations(TestCase):
 
         # Test None (type checker warning is expected - we're testing error handling)
         with self.assertRaises(ValueError):
-            self.connector.list_resources(None)  # type: ignore
+            self.connector.list_resources(None)  # type: ignore[misc]  # test: edge-case type exercise
 
         # Test SQL injection attempt
         with self.assertRaises(ValueError):
@@ -1125,7 +1125,7 @@ class TestSnowflakeConnectorMapping(TestCase):
         try:
             with self.assertRaises(ValueError):
                 # Type checker warning is expected here - we're testing error handling
-                connector.map_to_hub_asset(None)  # type: ignore
+                connector.map_to_hub_asset(None)  # type: ignore[misc]  # test: edge-case type exercise
         finally:
             connector.close()
 
@@ -1235,7 +1235,7 @@ class TestSnowflakeConnectorContextManager(TestCase):
 
             # Should handle None limit gracefully (may use default)
             try:
-                listings = connector.list_listings(limit=None)  # type: ignore[arg-type]
+                listings = connector.list_listings(limit=None)  # type: ignore[arg-type]  # test: edge-case type exercise
                 self.assertIsInstance(listings, list)
             except (ValueError, TypeError):
                 # Expected if validation is strict
@@ -1277,7 +1277,7 @@ class TestSnowflakeConnectorContextManager(TestCase):
             connector.authenticate(credentials)
 
             with self.assertRaises((ValueError, TypeError, NotFoundError)):
-                connector.get_listing(None)  # type: ignore[arg-type]
+                connector.get_listing(None)  # type: ignore[arg-type]  # test: edge-case type exercise
         except Exception as e:
             # May fail if connection unavailable
             self.skipTest(f"Snowflake connection failed: {e}")
@@ -1315,7 +1315,7 @@ class TestSnowflakeConnectorContextManager(TestCase):
             connector.authenticate(credentials)
 
             with self.assertRaises((ValueError, TypeError, NotFoundError)):
-                connector.list_resources(None)  # type: ignore[arg-type]
+                connector.list_resources(None)  # type: ignore[arg-type]  # test: edge-case type exercise
         except Exception as e:
             # May fail if connection unavailable
             self.skipTest(f"Snowflake connection failed: {e}")

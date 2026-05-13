@@ -97,7 +97,7 @@ class TestGCPMarketplaceConnectorIntegration(TestCase):
         """Test connector initialization error handling with None project_id"""
         with self.assertRaises((ValueError, TypeError)):
             connector = GCPMarketplaceConnector(
-                project_id=None, credentials_json=self.credentials_json  # type: ignore[arg-type]
+                project_id=None, credentials_json=self.credentials_json  # type: ignore[arg-type]  # test: edge-case type exercise
             )
 
     def test_connector_initialization_with_invalid_credentials(self):
@@ -131,7 +131,7 @@ class TestGCPMarketplaceConnectorIntegration(TestCase):
     def test_list_listings_with_none_limit(self):
         """Test list_listings() error handling with None limit"""
         try:
-            listings = self.connector.list_listings(limit=None)  # type: ignore[arg-type]
+            listings = self.connector.list_listings(limit=None)  # type: ignore[arg-type]  # test: None limit for unbounded list exercise
             # Should handle None limit gracefully (may use default)
             self.assertIsInstance(listings, list)
         except (ValueError, TypeError):
@@ -158,7 +158,7 @@ class TestGCPMarketplaceConnectorIntegration(TestCase):
         """Test get_listing() error handling with None ID"""
         try:
             with self.assertRaises((ValueError, TypeError, NotFoundError)):
-                self.connector.get_listing(None)  # type: ignore[arg-type]
+                self.connector.get_listing(None)  # type: ignore[arg-type]  # test: edge-case type exercise
         except ImportError:
             self.skipTest("Analytics Hub client library not installed")
         except Exception:
@@ -180,7 +180,7 @@ class TestGCPMarketplaceConnectorIntegration(TestCase):
         """Test list_resources() error handling with None listing ID"""
         try:
             with self.assertRaises((ValueError, TypeError, NotFoundError)):
-                self.connector.list_resources(None)  # type: ignore[arg-type]
+                self.connector.list_resources(None)  # type: ignore[arg-type]  # test: edge-case type exercise
         except ImportError:
             self.skipTest("Analytics Hub client library not installed")
         except Exception:

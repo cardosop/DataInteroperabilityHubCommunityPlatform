@@ -905,8 +905,8 @@ class TestCKANConnectorMapping(TestCase):
     def test_map_to_hub_asset_raises_on_none_listing(self):
         """Test that mapping raises ValueError for None listing"""
         with self.assertRaises((ValueError, TypeError, AttributeError)):
-            # type: ignore - intentionally passing None to test error handling
-            self.connector.map_to_hub_asset(None)  # type: ignore
+            # type: ignore[misc]  # test: edge-case type exercise - intentionally passing None to test error handling
+            self.connector.map_to_hub_asset(None)  # type: ignore[misc]  # test: edge-case type exercise
 
     @patch("hub.apps.integrations.connectors.ckan_connector.CKANConnector.list_resources")
     def test_map_to_hub_asset_organization_extraction(self, mock_list_resources):
@@ -1623,7 +1623,7 @@ class TestCKANConnectorErrorHandling(TestCase):
     def test_map_from_hub_asset_handles_none_asset_data(self):
         """CKAN connector is harvest-only: map_from_hub_asset raises NotImplementedError for None."""
         with self.assertRaises(NotImplementedError) as cm:
-            self.connector.map_from_hub_asset(None)  # type: ignore[arg-type]
+            self.connector.map_from_hub_asset(None)  # type: ignore[arg-type]  # test: edge-case type exercise
         self.assertIn("PULL only", str(cm.exception))
 
     def test_map_from_hub_asset_handles_empty_asset_data(self):
@@ -2143,7 +2143,7 @@ class TestCKANConnectorHelperMethods(TestCase):
 
         # Should handle None limit gracefully (may use default)
         try:
-            listings = self.connector.list_listings(limit=None)  # type: ignore[arg-type]
+            listings = self.connector.list_listings(limit=None)  # type: ignore[arg-type]  # test: edge-case type exercise
             self.assertIsInstance(listings, list)
         except (ValueError, TypeError):
             # Expected if validation is strict
@@ -2159,7 +2159,7 @@ class TestCKANConnectorHelperMethods(TestCase):
     def test_get_listing_with_none_id(self, mock_request):
         """Test get_listing() error handling with None ID"""
         with self.assertRaises((ValueError, TypeError, NotFoundError)):
-            self.connector.get_listing(None)  # type: ignore[arg-type]
+            self.connector.get_listing(None)  # type: ignore[arg-type]  # test: edge-case type exercise
 
     @patch("hub.apps.integrations.connectors.ckan_connector.CKANConnector._request_with_retry")
     def test_list_resources_with_empty_package_id(self, mock_request):
@@ -2171,7 +2171,7 @@ class TestCKANConnectorHelperMethods(TestCase):
     def test_list_resources_with_none_package_id(self, mock_request):
         """Test list_resources() error handling with None package ID"""
         with self.assertRaises((ValueError, TypeError, NotFoundError)):
-            self.connector.list_resources(None)  # type: ignore[arg-type]
+            self.connector.list_resources(None)  # type: ignore[arg-type]  # test: edge-case type exercise
 
     def test_authenticate_with_empty_credentials(self):
         """Test authenticate() error handling with empty credentials dict"""
@@ -2181,4 +2181,4 @@ class TestCKANConnectorHelperMethods(TestCase):
     def test_authenticate_with_none_credentials(self):
         """Test authenticate() error handling with None credentials"""
         with self.assertRaises((ValueError, TypeError)):
-            self.connector.authenticate(None)  # type: ignore[arg-type]
+            self.connector.authenticate(None)  # type: ignore[arg-type]  # test: edge-case type exercise

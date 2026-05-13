@@ -163,11 +163,11 @@ class TestGCPMarketplaceConnectorDiscovery(TestCase):
 
         # Non-integer offset
         with self.assertRaises(ValueError):
-            self.connector.list_listings(offset="invalid")  # type: ignore
+            self.connector.list_listings(offset="invalid")  # type: ignore[misc]  # test: edge-case type exercise
 
         # Non-integer limit
         with self.assertRaises(ValueError):
-            self.connector.list_listings(limit="invalid")  # type: ignore
+            self.connector.list_listings(limit="invalid")  # type: ignore[misc]  # test: edge-case type exercise
 
     def test_get_listing_details(self):
         """Test _get_listing_details() retrieves listing details"""
@@ -583,7 +583,7 @@ class TestGCPMarketplaceConnectorDiscovery(TestCase):
         """Test get_listing() error handling with None ID"""
         try:
             with self.assertRaises((ValueError, TypeError, NotFoundError)):
-                self.connector.get_listing(None)  # type: ignore[arg-type]
+                self.connector.get_listing(None)  # type: ignore[arg-type]  # test: edge-case type exercise
         except ImportError:
             self.skipTest("Analytics Hub client library not installed")
 
@@ -600,7 +600,7 @@ class TestGCPMarketplaceConnectorDiscovery(TestCase):
         """Test list_resources() error handling with None dataset"""
         try:
             with self.assertRaises((ValueError, TypeError)):
-                self.connector.list_resources(None)  # type: ignore[arg-type]
+                self.connector.list_resources(None)  # type: ignore[arg-type]  # test: edge-case type exercise
         except ImportError:
             self.skipTest("Analytics Hub client library not installed")
 
@@ -613,7 +613,7 @@ class TestGCPMarketplaceConnectorDiscovery(TestCase):
     def test_extract_odps_metadata_with_none_details(self):
         """Test _extract_odps_metadata() error handling with None"""
         try:
-            odps_metadata = self.connector._extract_odps_metadata(None, "test-exchange")  # type: ignore[arg-type]
+            odps_metadata = self.connector._extract_odps_metadata(None, "test-exchange")  # type: ignore[arg-type]  # test: None metadata for error-path coverage
             # Should handle None gracefully
             self.assertIsInstance(odps_metadata, (dict, type(None)))
         except (TypeError, AttributeError):
@@ -629,7 +629,7 @@ class TestGCPMarketplaceConnectorDiscovery(TestCase):
     def test_extract_odcs_metadata_with_none_details(self):
         """Test _extract_odcs_metadata() error handling with None"""
         try:
-            odcs_metadata = self.connector._extract_odcs_metadata(None)  # type: ignore[arg-type]
+            odcs_metadata = self.connector._extract_odcs_metadata(None)  # type: ignore[arg-type]  # test: None metadata for error-path coverage
             # Should handle None gracefully
             self.assertIsInstance(odcs_metadata, (dict, type(None)))
         except (TypeError, AttributeError):
@@ -652,7 +652,7 @@ class TestGCPMarketplaceConnectorDiscovery(TestCase):
     def test_parse_listing_name_with_none(self):
         """Test _parse_listing_name() error handling with None"""
         with self.assertRaises((ValueError, TypeError, AttributeError)):
-            self.connector._parse_listing_name(None)  # type: ignore[arg-type]
+            self.connector._parse_listing_name(None)  # type: ignore[arg-type]  # test: edge-case type exercise
 
     def test_get_listing_details_with_invalid_exchange(self):
         """Test _get_listing_details() error handling with invalid exchange"""
@@ -666,6 +666,6 @@ class TestGCPMarketplaceConnectorDiscovery(TestCase):
         """Test _get_listing_details() error handling with None exchange"""
         try:
             with self.assertRaises((ValueError, TypeError)):
-                self.connector._get_listing_details(None, "test-listing")  # type: ignore[arg-type]
+                self.connector._get_listing_details(None, "test-listing")  # type: ignore[arg-type]  # test: edge-case type exercise
         except ImportError:
             self.skipTest("Analytics Hub client library not installed")

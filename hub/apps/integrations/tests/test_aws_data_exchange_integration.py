@@ -354,7 +354,7 @@ class TestAWSDataExchangeConnectorIntegration(TestCase):
     def test_list_listings_with_none_limit(self):
         """Test list_listings() error handling with None limit"""
         try:
-            listings = self.connector.list_listings(limit=None)  # type: ignore[arg-type]
+            listings = self.connector.list_listings(limit=None)  # type: ignore[arg-type]  # test: None limit for unbounded list exercise
             # Should handle None limit gracefully (may use default)
             self.assertIsInstance(listings, list)
         except (ValueError, TypeError):
@@ -369,7 +369,7 @@ class TestAWSDataExchangeConnectorIntegration(TestCase):
     def test_get_listing_with_none_id(self):
         """Test get_listing() error handling with None ID"""
         with self.assertRaises(TypeError):
-            self.connector.get_listing(None)  # type: ignore[arg-type]
+            self.connector.get_listing(None)  # type: ignore[arg-type]  # test: edge-case type exercise
 
     def test_list_resources_with_empty_listing_id(self):
         """Test list_resources() error handling with empty listing ID"""
@@ -379,7 +379,7 @@ class TestAWSDataExchangeConnectorIntegration(TestCase):
     def test_list_resources_with_none_listing_id(self):
         """Test list_resources() error handling with None listing ID"""
         with self.assertRaises(TypeError):
-            self.connector.list_resources(None)  # type: ignore[arg-type]
+            self.connector.list_resources(None)  # type: ignore[arg-type]  # test: edge-case type exercise
 
     def test_sync_pull_with_empty_listing_ids(self):
         """Test sync_pull() error handling with empty listing_ids list"""
@@ -416,4 +416,4 @@ class TestAWSDataExchangeConnectorIntegration(TestCase):
             region_name="us-east-1",
         )
         with self.assertRaises((ValueError, TypeError)):
-            connector.authenticate(None)  # type: ignore[arg-type]
+            connector.authenticate(None)  # type: ignore[arg-type]  # test: edge-case type exercise

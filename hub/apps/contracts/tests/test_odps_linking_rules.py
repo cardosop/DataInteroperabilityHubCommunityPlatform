@@ -694,7 +694,7 @@ class ODPSLinkingRulesComprehensiveTest(ODPSLinkingRulesTestBase):
     # Edge cases and error handling tests
     def test_validate_odps_to_odcs_link_with_none_contract(self):
         """Test validation with None contract."""
-        result = self.rules.validate_odps_to_odcs_link(None)  # type: ignore
+        result = self.rules.validate_odps_to_odcs_link(None)  # type: ignore[misc]  # test: edge-case type exercise
         # Should handle None gracefully
         self.assertFalse(result.is_valid)
         self.assertGreater(len(result.errors), 0)
@@ -738,8 +738,8 @@ class ODPSLinkingRulesComprehensiveTest(ODPSLinkingRulesTestBase):
     def test_validate_circular_references_with_none_ids(self):
         """Test circular reference validation with None IDs."""
         result = self.rules.validate_circular_references(
-            odps_contract_id=None,  # type: ignore
-            odcs_contract_id=None,  # type: ignore
+            odps_contract_id=None,  # type: ignore[misc]  # test: edge-case type exercise
+            odcs_contract_id=None,  # type: ignore[misc]  # test: edge-case type exercise
         )
         # Should handle None IDs gracefully
         self.assertFalse(result.is_valid)
@@ -800,7 +800,7 @@ class ODPSLinkingRulesComprehensiveTest(ODPSLinkingRulesTestBase):
 
     def test_validate_referential_integrity_with_none_contract(self):
         """Test referential integrity validation with None contract."""
-        result = self.rules.validate_referential_integrity(None)  # type: ignore
+        result = self.rules.validate_referential_integrity(None)  # type: ignore[misc]  # test: edge-case type exercise
         # Should handle None gracefully
         self.assertFalse(result.is_valid)
         self.assertGreater(len(result.errors), 0)
@@ -819,8 +819,8 @@ class ODPSLinkingRulesComprehensiveTest(ODPSLinkingRulesTestBase):
     def test_validate_all_linking_rules_with_none_contracts(self):
         """Test comprehensive validation with None contracts."""
         result = self.rules.validate_all_linking_rules(
-            odps_contract=None,  # type: ignore
-            odcs_contract=None,  # type: ignore
+            odps_contract=None,  # type: ignore[misc]  # test: edge-case type exercise
+            odcs_contract=None,  # type: ignore[misc]  # test: edge-case type exercise
         )
         # Should handle None contracts gracefully
         self.assertFalse(result.is_valid)
@@ -937,7 +937,7 @@ class ODPSLinkingRulesComprehensiveTest(ODPSLinkingRulesTestBase):
     def test_linking_rules_handle_none_values(self):
         """Test that linking rules handle None values correctly."""
         # Test with None contract
-        result = self.rules.validate_odps_to_odcs_link(None)  # type: ignore
+        result = self.rules.validate_odps_to_odcs_link(None)  # type: ignore[misc]  # test: edge-case type exercise
         # Should handle None values gracefully
         self.assertIsNotNone(result)
         self.assertFalse(result.is_valid)

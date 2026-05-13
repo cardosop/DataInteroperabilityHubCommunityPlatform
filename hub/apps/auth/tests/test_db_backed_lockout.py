@@ -37,7 +37,7 @@ class DBBackedLockoutTest(TestCase):
             status="ACTIVE",
             kyc_status="UNVERIFIED",
         )
-        self.user = User.objects.create_user(  # type: ignore[attr-defined]
+        self.user = User.objects.create_user(  # type: ignore[attr-defined]  # test: edge-case type exercise
             email=f"lockout-{uid}@example.com",
             password="testpass123",
             tenant=self.tenant,

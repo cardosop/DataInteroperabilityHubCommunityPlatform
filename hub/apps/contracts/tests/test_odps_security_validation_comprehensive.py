@@ -1057,7 +1057,7 @@ class ODPSSecurityValidationComprehensiveTest(ContractsAPITestBase):
     def test_security_validation_handles_none_values(self):
         """Test that security validation handles None values correctly."""
         try:
-            result = self.resolver.resolve_external(None)  # type: ignore
+            result = self.resolver.resolve_external(None)  # type: ignore[misc]  # test: edge-case type exercise
             # Should handle None values gracefully
             self.assertIsNotNone(result)
         except (TypeError, ValueError, ODPSRefResolutionError):

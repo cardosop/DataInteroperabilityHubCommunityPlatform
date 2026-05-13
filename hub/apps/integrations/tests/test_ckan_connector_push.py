@@ -146,7 +146,7 @@ class TestCKANConnectorPushOperations(TestCase):
     def test_create_listing_with_none(self):
         """Test create_listing() error handling with None"""
         with self.assertRaises((NotImplementedError, ValueError, TypeError)):
-            self.connector.create_listing(None)  # type: ignore[arg-type]
+            self.connector.create_listing(None)  # type: ignore[arg-type]  # test: edge-case type exercise
 
     def test_update_listing_with_empty_id(self):
         """Test update_listing() error handling with empty ID"""
@@ -166,7 +166,7 @@ class TestCKANConnectorPushOperations(TestCase):
             title="Test Package",
         )
         with self.assertRaises((NotImplementedError, ValueError, TypeError)):
-            self.connector.update_listing(None, listing)  # type: ignore[arg-type]
+            self.connector.update_listing(None, listing)  # type: ignore[arg-type]  # test: edge-case type exercise
 
     def test_publish_resource_with_empty_package_id(self):
         """Test publish_resource() error handling with empty package ID"""
@@ -186,7 +186,7 @@ class TestCKANConnectorPushOperations(TestCase):
             name="Test Resource",
         )
         with self.assertRaises((NotImplementedError, ValueError, TypeError)):
-            self.connector.publish_resource(None, resource)  # type: ignore[arg-type]
+            self.connector.publish_resource(None, resource)  # type: ignore[arg-type]  # test: edge-case type exercise
 
     def test_sync_push_with_empty_asset_ids(self):
         """Test sync_push() error handling with empty asset_ids list"""
@@ -202,7 +202,7 @@ class TestCKANConnectorPushOperations(TestCase):
     def test_map_from_hub_asset_with_none(self):
         """Test map_from_hub_asset() error handling with None"""
         with self.assertRaises((NotImplementedError, ValueError, TypeError)):
-            self.connector.map_from_hub_asset(None)  # type: ignore[arg-type]
+            self.connector.map_from_hub_asset(None)  # type: ignore[arg-type]  # test: edge-case type exercise
 
     def test_map_from_hub_asset_with_empty_dict(self):
         """Test map_from_hub_asset() error handling with empty dict"""

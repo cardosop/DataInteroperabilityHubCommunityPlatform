@@ -718,7 +718,7 @@ product:
     def test_parser_validation_handles_none_values(self):
         """Test that parser validation handles None values correctly."""
         try:
-            is_valid, errors = ODPSParser.validate(None, version="4.1")  # type: ignore
+            is_valid, errors = ODPSParser.validate(None, version="4.1")  # type: ignore[misc]  # test: edge-case type exercise
             # Should handle None values gracefully
             self.assertIsNotNone(is_valid)
         except (TypeError, ValueError):

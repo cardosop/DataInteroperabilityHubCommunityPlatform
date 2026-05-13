@@ -117,7 +117,7 @@ class GCPMarketplaceConnector(DataMarketplaceConnector):
 
     def __init__(
         self,
-        project_id: Optional[str] = _SENTINEL,  # type: ignore[assignment]
+        project_id: Optional[str] = _SENTINEL,  # type: ignore[assignment]  # sentinel object for "not provided" vs None distinction
         credentials_json: Optional[Dict[str, Any]] = None,
         location: str = "US",
         use_adc: bool = False,

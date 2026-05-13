@@ -198,7 +198,7 @@ class TestValidateFieldExists:
 
     def test_empty_payload(self):
         assert validate_field_exists({}, "", "anything") is False
-        assert validate_field_exists(None, "", "anything") is False  # type: ignore[arg-type]
+        assert validate_field_exists(None, "", "anything") is False  # type: ignore[arg-type]  # test: edge-case None arg exercise
 
 
 # ---------------------------------------------------------------------------
@@ -254,8 +254,8 @@ try:  # noqa: SIM105 — explicit ImportError handling intentional
     _HYPOTHESIS_AVAILABLE = True
 except ImportError:  # pragma: no cover — hypothesis is a CI extra
     _HYPOTHESIS_AVAILABLE = False
-    given = None  # type: ignore[assignment]
-    st = None  # type: ignore[assignment]
+    given = None  # type: ignore[assignment]  # test: edge-case type exercise
+    st = None  # type: ignore[assignment]  # test: deliberate None assignment for error path
 
 
 # Define ``_random_dag_edges`` and the property test only when

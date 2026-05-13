@@ -286,6 +286,101 @@ class ComplianceRunViewSetTest(TestCase):
         self.assertEqual(len(response.data["results"]), 1)
         self.assertEqual(response.data["results"][0]["id"], str(compliance_run2.id))
 
+    def test_list_compliance_runs_filter_by_asset_id_query_param(self):
+        """Phase 231.7 — ``asset_id`` is accepted as an alias of ``asset`` for filters."""
+        from hub.apps.assets.models import Asset, AssetStatus
+        from hub.apps.jobs.models import Job, JobStatus, JobType
+
+        asset = Asset.objects.create(
+            tenant=self.tenant,
+            key="trend-asset",
+            name="Trend Asset",
+            status=AssetStatus.DRAFT,
+            created_by=self.user,
+        )
+        job2 = Job.objects.create(
+            tenant=self.tenant,
+            type=JobType.COMPLIANCE_RUN,
+            status=JobStatus.COMPLETED,
+            resource_type="COMPLIANCE_RUN",
+            resource_id=str(uuid.uuid4()),
+            created_by=self.user,
+        )
+        run = ComplianceRun.objects.create(
+            tenant=self.tenant,
+            asset=asset,
+            job=job2,
+            status=ComplianceRunStatus.SUCCEEDED,
+            risk_level=RiskLevel.LOW,
+            completed_at=timezone.now(),
+        )
+
+        self.client.force_authenticate(user=self.user)
+
+        response = self.client.get(f"/api/v1/compliance/runs/?asset_id={asset.id}&status=SUCCEEDED")
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(len(response.data["results"]), 1)
+        self.assertEqual(response.data["results"][0]["id"], str(run.id))
+
+    def test_list_compliance_runs_tiebreak_completed_at_with_created_at(self):
+        """Phase 231.7 — multi-field ordering so trend queries are deterministic when completed_at ties."""
+        from datetime import timedelta
+
+        from hub.apps.jobs.models import Job, JobStatus, JobType
+
+        shared_completed = timezone.now()
+        job_a = Job.objects.create(
+            tenant=self.tenant,
+            type=JobType.COMPLIANCE_RUN,
+            status=JobStatus.COMPLETED,
+            resource_type="COMPLIANCE_RUN",
+            resource_id=str(uuid.uuid4()),
+            created_by=self.user,
+        )
+        job_b = Job.objects.create(
+            tenant=self.tenant,
+            type=JobType.COMPLIANCE_RUN,
+            status=JobStatus.COMPLETED,
+            resource_type="COMPLIANCE_RUN",
+            resource_id=str(uuid.uuid4()),
+            created_by=self.user,
+        )
+        run_a = ComplianceRun.objects.create(
+            tenant=self.tenant,
+            job=job_a,
+            asset=self.asset,
+            status=ComplianceRunStatus.SUCCEEDED,
+            risk_level=RiskLevel.LOW,
+            completed_at=shared_completed,
+        )
+        run_b = ComplianceRun.objects.create(
+            tenant=self.tenant,
+            job=job_b,
+            asset=self.asset,
+            status=ComplianceRunStatus.SUCCEEDED,
+            risk_level=RiskLevel.HIGH,
+            completed_at=shared_completed,
+        )
+        ComplianceRun.objects.filter(pk=run_a.pk).update(
+            created_at=shared_completed - timedelta(seconds=10),
+        )
+        ComplianceRun.objects.filter(pk=run_b.pk).update(
+            created_at=shared_completed - timedelta(seconds=1),
+        )
+
+        self.client.force_authenticate(user=self.user)
+
+        response = self.client.get(
+            f"/api/v1/compliance/runs/?asset_id={self.asset.id}"
+            "&status=SUCCEEDED&ordering=-completed_at,-created_at"
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        ids = [row["id"] for row in response.data["results"]]
+        self.assertEqual(ids[0], str(run_b.id))
+        self.assertEqual(ids[1], str(run_a.id))
+
     def test_list_compliance_runs_requires_authentication(self):
         """Test listing compliance runs requires authentication"""
         response = self.client.get("/api/v1/compliance/runs/")
@@ -841,6 +936,10 @@ class ComplianceRunViewSetTest(TestCase):
         self.assertIn("violation_details", response.data)
         self.assertIn("remediation_suggestions", response.data)
         self.assertIn("risk_assessment", response.data)
+        self.assertIn("cross_border_alert", response.data)
+        self.assertIn("localisation_alert", response.data)
+        self.assertIn("legal_basis_violations", response.data)
+        self.assertIn("regulation_summaries", response.data)
 
     def test_results_action_tenant_isolation(self):
         """Test results action respects tenant isolation"""
@@ -983,10 +1082,10 @@ class ComplianceRunViewSetTest(TestCase):
         # Type annotation: DRF's APIClient returns a rest_framework.response.Response
         # which has `.data` (the parsed body). pyright sees the base Django
         # type on APIClient.get; annotate locally so .data access is typed
-        # correctly without scattering `# type: ignore` comments.
+        # correctly without scattering `# type: ignore[misc]  # test: edge-case type exercise` comments.
         from rest_framework.response import Response
 
-        response: Response = self.client.get(  # type: ignore[assignment]
+        response: Response = self.client.get(  # type: ignore[assignment]  # test: edge-case type exercise
             f"/api/v1/compliance/runs/{self.compliance_run.id}/results/"
         )
         self.assertEqual(response.status_code, status.HTTP_200_OK)

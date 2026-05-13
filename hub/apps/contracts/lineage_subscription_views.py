@@ -70,7 +70,7 @@ class LineageSubscriptionPagination(CursorPagination):
     cursor_query_param = "cursor"
     ordering = "-created_at"
 
-    def get_page_size(self, request):  # type: ignore[override]
+    def get_page_size(self, request):  # type: ignore[override]  # DRF base signature differs (self, request)
         # Accept either "limit" (spec) or "page_size" (alias).
         from rest_framework.pagination import _positive_int
 

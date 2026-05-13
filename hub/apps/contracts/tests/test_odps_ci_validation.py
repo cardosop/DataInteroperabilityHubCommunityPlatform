@@ -567,7 +567,7 @@ class ODPSSchemaCIValidationTest(TestCase):
         """Test schema loading with None version."""
         clear_schema_cache()
         try:
-            schema = load_odps_schema(None)  # type: ignore
+            schema = load_odps_schema(None)  # type: ignore[misc]  # test: edge-case type exercise
             # May return None or raise exception
             self.assertIsNone(schema)
         except (TypeError, ValueError):
@@ -604,7 +604,7 @@ class ODPSSchemaCIValidationTest(TestCase):
         """Test ODPSParser validation with None document."""
         try:
             is_valid, validation_errors = ODPSParser.validate(
-                odps_document=None, version="4.1"  # type: ignore
+                odps_document=None, version="4.1"  # type: ignore[misc]  # test: edge-case type exercise
             )
             # Should return False for None document
             self.assertFalse(is_valid)
@@ -653,7 +653,7 @@ class ODPSSchemaCIValidationTest(TestCase):
         try:
             resolver = ODPSRefResolver()
             original, resolved = resolver.resolve_all_refs(
-                None,  # type: ignore
+                None,  # type: ignore[misc]  # test: edge-case type exercise
                 preserve_original=True,
                 external_ref_handling=ExternalRefHandling.DISABLE,
             )

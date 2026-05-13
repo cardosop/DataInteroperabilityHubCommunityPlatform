@@ -124,7 +124,7 @@ def _make_tenant(prefix: str) -> Tenant:
 
 def _make_user(tenant: Tenant) -> Any:
     suffix = uuid.uuid4().hex[:8]
-    return User.objects.create_user(  # type: ignore[attr-defined]
+    return User.objects.create_user(  # type: ignore[attr-defined]  # test: edge-case type exercise
         email=f"exposition-{suffix}@example.com",
         password="exposition-pass-1234",
         tenant=tenant,

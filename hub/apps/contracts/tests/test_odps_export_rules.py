@@ -126,7 +126,7 @@ class ODPSExportRulesFormatTest(ODPSExportRulesTestBase):
     def test_validate_export_format_none(self):
         """Test None format validation fails."""
         # Type ignore: intentionally testing None for validation
-        result = self.rules.validate_export_format(None)  # type: ignore
+        result = self.rules.validate_export_format(None)  # type: ignore[misc]  # test: edge-case type exercise
 
         self.assertFalse(result.is_valid)
         self.assertTrue(len(result.errors) > 0)
@@ -372,7 +372,7 @@ class ODPSExportRulesFidelityTest(ODPSExportRulesTestBase):
         """Test fidelity validation fails when exported_odps is not a dict."""
         # Type ignore: intentionally testing invalid type for validation
         result = self.rules.validate_fidelity(
-            contract=self.odps_contract, exported_odps="not-a-dict"  # type: ignore
+            contract=self.odps_contract, exported_odps="not-a-dict"  # type: ignore[misc]  # test: edge-case type exercise
         )
 
         self.assertFalse(result.is_valid)

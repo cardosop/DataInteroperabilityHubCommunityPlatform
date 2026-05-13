@@ -303,7 +303,7 @@ class TestCKANTestHelpersIntegration(TestCase):
         """Test create_test_connector() error handling with None instance_name"""
         try:
             connector = create_test_connector(
-                instance_name=None, verify_connection=False  # type: ignore[arg-type]
+                instance_name=None, verify_connection=False  # type: ignore[arg-type]  # test: edge-case type exercise
             )
             # Should handle gracefully (may use default)
             if connector:
@@ -326,11 +326,11 @@ class TestCKANTestHelpersIntegration(TestCase):
     def test_verify_marketplace_connection_with_none_connector(self):
         """Test verify_marketplace_connection() error handling with None connector"""
         with self.assertRaises((ValueError, TypeError, AttributeError)):
-            verify_marketplace_connection(None)  # type: ignore[arg-type]
+            verify_marketplace_connection(None)  # type: ignore[arg-type]  # test: edge-case type exercise
 
     def test_marketplace_available_with_none_instance_name(self):
         """Test marketplace_available() error handling with None instance_name"""
-        result = marketplace_available(None)  # type: ignore[arg-type]
+        result = marketplace_available(None)  # type: ignore[arg-type]  # test: edge-case type exercise
         self.assertFalse(result)
 
     def test_marketplace_available_with_empty_instance_name(self):
@@ -340,7 +340,7 @@ class TestCKANTestHelpersIntegration(TestCase):
 
     def test_get_test_marketplace_config_with_none(self):
         """Test get_test_marketplace_config() error handling with None"""
-        config = get_test_marketplace_config(None)  # type: ignore[arg-type]
+        config = get_test_marketplace_config(None)  # type: ignore[arg-type]  # test: edge-case type exercise
         self.assertIsNone(config)
 
     def test_get_test_marketplace_config_with_empty_string(self):

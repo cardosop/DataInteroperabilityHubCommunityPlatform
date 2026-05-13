@@ -347,7 +347,7 @@ class DataMeshBusinessRulesBoundariesTest(TestCase):
 
     def test_validate_boundaries_invalid_type(self):
         """Test validate_boundaries with invalid type"""
-        boundaries: Any = "not-a-dict"  # type: ignore
+        boundaries: Any = "not-a-dict"  # type: ignore[misc]  # test: edge-case type exercise
 
         result = self.rules.validate_boundaries(boundaries)
 

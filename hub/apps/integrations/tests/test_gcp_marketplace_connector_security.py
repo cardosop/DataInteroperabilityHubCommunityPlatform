@@ -439,11 +439,11 @@ class TestGCPMarketplaceConnectorSecurity(TestCase):
 
         # Test None for listing ID
         with self.assertRaises((ValueError, TypeError, AttributeError, ConnectionError)):
-            connector.get_listing(None)  # type: ignore[arg-type]
+            connector.get_listing(None)  # type: ignore[arg-type]  # test: None arg for error-path coverage
 
         # Test None for resource listing ID
         with self.assertRaises((ValueError, TypeError, AttributeError, ConnectionError)):
-            connector.list_resources(None)  # type: ignore[arg-type]
+            connector.list_resources(None)  # type: ignore[arg-type]  # test: edge-case type exercise
 
     def test_credential_validation_with_empty_strings(self):
         """Test credential validation with empty strings"""

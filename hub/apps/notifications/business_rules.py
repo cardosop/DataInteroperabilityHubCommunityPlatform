@@ -2056,7 +2056,7 @@ class NotificationsBusinessRules(BusinessRules):
         # Handle Django TextChoices enum values
         if hasattr(email_type, 'value') and not isinstance(email_type, str):
             # It's an enum, get the value
-            email_type = getattr(email_type, 'value', str(email_type))  # type: ignore[attr-defined]
+            email_type = getattr(email_type, 'value', str(email_type))  # type: ignore[attr-defined]  # string-or-enum union branch; mypy narrows to str
         elif isinstance(email_type, tuple):
             # It's a tuple (choice value, label)
             email_type = email_type[0] if len(email_type) > 0 else str(email_type)

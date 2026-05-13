@@ -55,12 +55,15 @@ from django.db.models.functions import Now
 # integrations app is not installed (vendored deployments), the helper
 # resolves to ``None`` and ``_emit_outbound_openlineage_events`` becomes
 # a no-op.
+from typing import Optional as _Optional, Callable as _Callable
+
+send_openlineage_event_async: _Optional[_Callable[..., object]] = None
 try:
     from hub.apps.integrations.openlineage.tasks import (
         send_openlineage_event_async,
     )
 except Exception:  # noqa: BLE001 — integrations app is optional at import.
-    send_openlineage_event_async = None  # type: ignore[assignment]
+    pass  # typed as Optional above; stays None when import fails
 
 logger = logging.getLogger(__name__)
 

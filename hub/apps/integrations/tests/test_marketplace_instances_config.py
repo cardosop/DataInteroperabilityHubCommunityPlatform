@@ -366,7 +366,7 @@ class TestCKANInstanceConfigIntegration(TestCase):
 
     def test_get_marketplace_instance_config_with_none(self):
         """Test get_marketplace_instance_config() error handling with None"""
-        config = get_marketplace_instance_config(None)  # type: ignore[arg-type]
+        config = get_marketplace_instance_config(None)  # type: ignore[arg-type]  # test: edge-case type exercise
         self.assertIsNone(config)
 
     def test_get_marketplace_instance_config_with_empty_string(self):
@@ -391,7 +391,7 @@ class TestCKANInstanceConfigIntegration(TestCase):
         """Test MarketplaceInstanceConfig error handling with None name"""
         try:
             config = MarketplaceInstanceConfig(
-                name=None,  # type: ignore[arg-type]
+                name=None,  # type: ignore[arg-type]  # test: edge-case type exercise
                 base_url="https://test.example.com",
             )
             # Should handle gracefully or raise ValueError
@@ -405,7 +405,7 @@ class TestCKANInstanceConfigIntegration(TestCase):
         config = MarketplaceInstanceConfig(
             name="test-instance",
             base_url="https://test.example.com",
-            api_key_env_var=None,  # type: ignore[arg-type]
+            api_key_env_var=None,  # type: ignore[arg-type]  # test: edge-case type exercise
         )
         api_key = config.get_api_key()
         self.assertIsNone(api_key)

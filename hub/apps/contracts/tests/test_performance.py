@@ -48,8 +48,8 @@ try:
 
     _rdf_available = True
 except ImportError:
-    map_hubcontract_to_rdf = None  # type: ignore[assignment]
-    Graph = None  # type: ignore[assignment,misc]
+    map_hubcontract_to_rdf = None  # type: ignore[assignment]  # test: edge-case type exercise
+    Graph = None  # type: ignore[assignment,misc]  # test: edge-case type exercise
 
 
 pytestmark = pytest.mark.slow

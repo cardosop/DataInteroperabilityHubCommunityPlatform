@@ -3688,7 +3688,7 @@ class QueryExecutionBusinessRules(BusinessRules):
 
         if force_async:
             details["selection_criteria"]["force_async"] = True
-            return QueryExecutionMode.ASYNC  # type: ignore
+            return QueryExecutionMode.ASYNC  # type: ignore[return-value]  # enum member returned; mypy sees function return as str
 
         query = virtual_dataset.query or ""
         query_upper = query.upper()
@@ -3734,7 +3734,7 @@ class QueryExecutionBusinessRules(BusinessRules):
             not is_federated and is_small_result):
             details["selection_criteria"]["selected_mode"] = "SYNC"
             details["selection_criteria"]["reason"] = "Simple query with single source and small result"
-            return QueryExecutionMode.SYNC  # type: ignore
+            return QueryExecutionMode.SYNC  # type: ignore[return-value]  # enum member returned; mypy sees function return as str
 
         # Default to ASYNC for complex queries
         details["selection_criteria"]["selected_mode"] = "ASYNC"
@@ -3749,7 +3749,7 @@ class QueryExecutionBusinessRules(BusinessRules):
         else:
             details["selection_criteria"]["reason"] = "Default to async for safety"
 
-        return QueryExecutionMode.ASYNC  # type: ignore
+        return QueryExecutionMode.ASYNC  # type: ignore[return-value]  # enum member returned; mypy sees function return as str
 
     def validate_timeout(
         self,

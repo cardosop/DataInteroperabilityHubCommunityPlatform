@@ -400,7 +400,7 @@ class CKANConnector(DataMarketplaceConnector):
 
             if fq_parts:
                 # Join multiple filter queries with AND
-                params['fq'] = ' AND '.join(fq_parts)  # type: ignore[assignment]
+                params['fq'] = ' AND '.join(fq_parts)  # type: ignore[assignment]  # str → dict value; mypy narrows dict key type
 
         try:
             response = self._request_with_retry('GET', '/api/3/action/package_search', params=params)
@@ -669,7 +669,7 @@ class CKANConnector(DataMarketplaceConnector):
 
         if listing.tags:
             # CKAN API expects tags as list of dicts with 'name' key
-            package_data['tags'] = [{'name': str(tag)} for tag in listing.tags]  # type: ignore[assignment]
+            package_data['tags'] = [{'name': str(tag)} for tag in listing.tags]  # type: ignore[assignment]  # list-of-dict → JSON; mypy narrows dict key type
 
         if listing.category:
             package_data['owner_org'] = listing.category

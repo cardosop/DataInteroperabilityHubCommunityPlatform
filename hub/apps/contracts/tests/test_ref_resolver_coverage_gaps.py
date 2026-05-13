@@ -473,7 +473,7 @@ class RefResolverCoverageGapsTest(TestCase):
 
         # Test with non-dict root document
         with self.assertRaises(ODPSRefResolutionError):
-            resolver.resolve_internal("#/", "not a dict")  # type: ignore
+            resolver.resolve_internal("#/", "not a dict")  # type: ignore[misc]  # test: edge-case type exercise
 
     def test_resolve_internal_array_index_out_of_bounds(self):
         """Test internal ref resolution with array index out of bounds (line 1132)."""
@@ -514,7 +514,7 @@ class RefResolverCoverageGapsTest(TestCase):
                 response.raise_for_status()
                 return response.json()
 
-        resolver.resolve_external = mock_resolve_external  # type: ignore
+        resolver.resolve_external = mock_resolve_external  # type: ignore[misc]  # test: edge-case type exercise
 
         import json
         try:
@@ -582,7 +582,7 @@ class RefResolverCoverageGapsTest(TestCase):
 
         # Test with non-dict
         with self.assertRaises(ValueError):
-            resolver.remove_external_refs("not a dict")  # type: ignore
+            resolver.remove_external_refs("not a dict")  # type: ignore[misc]  # test: edge-case type exercise
 
     def test_resolve_odps_refs_function(self):
         """Test resolve_odps_refs function (lines 2148-2163)."""
@@ -638,7 +638,7 @@ class RefResolverCoverageGapsTest(TestCase):
         """Test resolve_all_refs with None document."""
         try:
             resolved, original = self.resolver.resolve_all_refs(
-                document=None, preserve_original=True  # type: ignore
+                document=None, preserve_original=True  # type: ignore[misc]  # test: edge-case type exercise
             )
             # May return None or raise exception
             self.assertIsNone(resolved)
@@ -659,7 +659,7 @@ class RefResolverCoverageGapsTest(TestCase):
         """Test resolve_all_refs with invalid document type."""
         try:
             resolved, original = self.resolver.resolve_all_refs(
-                document="not a dict", preserve_original=True  # type: ignore
+                document="not a dict", preserve_original=True  # type: ignore[misc]  # test: edge-case type exercise
             )
             # May raise exception
             self.assertIsNone(resolved)
@@ -744,7 +744,7 @@ class RefResolverCoverageGapsTest(TestCase):
     def test_remove_external_refs_with_none_document(self):
         """Test remove_external_refs with None document."""
         try:
-            result = self.resolver.remove_external_refs(None)  # type: ignore
+            result = self.resolver.remove_external_refs(None)  # type: ignore[misc]  # test: edge-case type exercise
             # May raise exception
             self.assertIsNone(result)
         except (TypeError, ValueError):
@@ -763,7 +763,7 @@ class RefResolverCoverageGapsTest(TestCase):
         from hub.apps.contracts.ref_resolver import resolve_odps_refs
 
         try:
-            resolved, original = resolve_odps_refs(None, disable_external_refs=True)  # type: ignore
+            resolved, original = resolve_odps_refs(None, disable_external_refs=True)  # type: ignore[misc]  # test: edge-case type exercise
             # May raise exception
             self.assertIsNone(resolved)
         except (TypeError, ValueError):

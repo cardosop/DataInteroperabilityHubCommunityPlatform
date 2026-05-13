@@ -740,7 +740,7 @@ class ODPSBusinessRulesContractTest(ODPSBusinessRulesTestBase):
     # Edge cases and error handling tests
     def test_validate_odps_structure_with_none_input(self):
         """Test structure validation with None input."""
-        result = self.rules.validate_odps_structure(None)  # type: ignore
+        result = self.rules.validate_odps_structure(None)  # type: ignore[misc]  # test: edge-case type exercise
         # Should handle None gracefully
         self.assertFalse(result.is_valid)
         self.assertGreater(len(result.errors), 0)
@@ -754,7 +754,7 @@ class ODPSBusinessRulesContractTest(ODPSBusinessRulesTestBase):
 
     def test_validate_odps_structure_with_invalid_type(self):
         """Test structure validation with invalid input type."""
-        result = self.rules.validate_odps_structure("not a dict")  # type: ignore
+        result = self.rules.validate_odps_structure("not a dict")  # type: ignore[misc]  # test: edge-case type exercise
         # Should handle invalid type gracefully
         self.assertFalse(result.is_valid)
         self.assertGreater(len(result.errors), 0)
@@ -802,28 +802,28 @@ class ODPSBusinessRulesContractTest(ODPSBusinessRulesTestBase):
 
     def test_validate_odps_version_with_none_input(self):
         """Test version validation with None input."""
-        result = self.rules.validate_odps_version(None)  # type: ignore
+        result = self.rules.validate_odps_version(None)  # type: ignore[misc]  # test: edge-case type exercise
         # Should handle None gracefully
         self.assertFalse(result.is_valid)
         self.assertGreater(len(result.errors), 0)
 
     def test_validate_odps_version_with_empty_string(self):
         """Test version validation with empty string."""
-        result = self.rules.validate_odps_version("")  # type: ignore
+        result = self.rules.validate_odps_version("")  # type: ignore[misc]  # test: edge-case type exercise
         # Should fail validation
         self.assertFalse(result.is_valid)
         self.assertGreater(len(result.errors), 0)
 
     def test_validate_odps_version_with_invalid_version(self):
         """Test version validation with invalid version."""
-        result = self.rules.validate_odps_version("invalid-version")  # type: ignore
+        result = self.rules.validate_odps_version("invalid-version")  # type: ignore[misc]  # test: edge-case type exercise
         # Should fail validation
         self.assertFalse(result.is_valid)
         self.assertGreater(len(result.errors), 0)
 
     def test_validate_odps_version_with_unsupported_version(self):
         """Test version validation with unsupported version."""
-        result = self.rules.validate_odps_version("5.0")  # type: ignore
+        result = self.rules.validate_odps_version("5.0")  # type: ignore[misc]  # test: edge-case type exercise
         # Should fail validation
         self.assertFalse(result.is_valid)
         self.assertGreater(len(result.errors), 0)
@@ -831,8 +831,8 @@ class ODPSBusinessRulesContractTest(ODPSBusinessRulesTestBase):
     def test_validate_odps_linking_with_none_ids(self):
         """Test linking validation with None IDs."""
         result = self.rules.validate_odps_linking(
-            odps_contract_id=None,  # type: ignore
-            odcs_contract_id=None,  # type: ignore
+            odps_contract_id=None,  # type: ignore[misc]  # test: edge-case type exercise
+            odcs_contract_id=None,  # type: ignore[misc]  # test: edge-case type exercise
             tenant_id=str(self.tenant.id),
         )
         # Should handle None IDs gracefully
@@ -861,7 +861,7 @@ class ODPSBusinessRulesContractTest(ODPSBusinessRulesTestBase):
 
     def test_validate_odps_contract_with_none_contract(self):
         """Test contract validation with None contract."""
-        result = self.rules.validate_odps_contract(None)  # type: ignore
+        result = self.rules.validate_odps_contract(None)  # type: ignore[misc]  # test: edge-case type exercise
         # Should handle None gracefully
         self.assertFalse(result.is_valid)
         self.assertGreater(len(result.errors), 0)
@@ -905,13 +905,13 @@ class ODPSBusinessRulesContractTest(ODPSBusinessRulesTestBase):
 
     def test_validate_odps_version_with_numeric_version(self):
         """Test version validation with numeric version."""
-        result = self.rules.validate_odps_version(4.1)  # type: ignore
+        result = self.rules.validate_odps_version(4.1)  # type: ignore[misc]  # test: edge-case type exercise
         # May handle numeric version or require string
         self.assertIsNotNone(result)
 
     def test_validate_odps_version_with_whitespace(self):
         """Test version validation with whitespace."""
-        result = self.rules.validate_odps_version("  4.1  ")  # type: ignore
+        result = self.rules.validate_odps_version("  4.1  ")  # type: ignore[misc]  # test: edge-case type exercise
         # Should handle whitespace (may trim or reject)
         self.assertIsNotNone(result)
 
@@ -966,7 +966,7 @@ class ODPSBusinessRulesContractTest(ODPSBusinessRulesTestBase):
 
     def test_business_rules_handle_none_values(self):
         """Test that business rules handle None values correctly."""
-        result = self.rules.validate_odps_structure(None)  # type: ignore
+        result = self.rules.validate_odps_structure(None)  # type: ignore[misc]  # test: edge-case type exercise
         # Should handle None values gracefully
         self.assertIsNotNone(result)
         self.assertFalse(result.is_valid)

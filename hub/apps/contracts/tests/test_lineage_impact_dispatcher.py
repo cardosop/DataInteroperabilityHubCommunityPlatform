@@ -28,7 +28,7 @@ from typing import Dict
 
 import pytest
 from django.contrib.auth import get_user_model
-from django.test import TestCase
+from django.test import TestCase, TransactionTestCase
 
 from hub.apps.assets.models import Asset, AssetStatus
 from hub.apps.contracts.lineage_impact_dispatcher import (
@@ -117,7 +117,7 @@ def _make_tenant(slug_prefix: str = "f3d") -> Tenant:
     return tenant
 
 
-def _make_user(tenant: Tenant) -> "User":  # type: ignore[name-defined]
+def _make_user(tenant: Tenant) -> "User":  # type: ignore[name-defined]  # test: edge-case type exercise
     suffix = uuid.uuid4().hex[:8]
     return User.objects.create_user(
         email=f"u-{suffix}@example.com",
@@ -175,7 +175,7 @@ def _patch_redis(monkeypatch_or_self) -> FakeRedis:
     # Patch the module-level _get_redis_client; we inject the fake
     # client directly so the dispatcher uses it for both debounce +
     # rate limit.
-    mod._get_redis_client = lambda: fake  # type: ignore[assignment]
+    mod._get_redis_client = lambda: fake  # type: ignore[assignment]  # test: edge-case type exercise
     return fake
 
 
@@ -294,7 +294,17 @@ class DispatcherDebounceTests(TestCase):
 # ---------------------------------------------------------------------------
 
 
-class DispatcherRateLimitTests(TestCase):
+class DispatcherRateLimitTests(TransactionTestCase):
+    """``TransactionTestCase`` (not ``TestCase``) because the
+    rate-limit drop emits an audit row via ``create_audit_event(
+    tenant=None, action='DISPATCH_RATE_LIMITED', ...)`` which routes
+    through the ``admin`` DB alias (B-RLS-0.5).  Django's ``TestCase``
+    enters ``transaction.atomic()`` for every alias in
+    ``cls._databases_names()`` so the admin INSERT gets stranded
+    inside admin's open transaction — invisible to the default-alias
+    reader under READ COMMITTED.  TransactionTestCase runs in
+    TRUNCATE-isolation mode where admin commits land immediately.
+    """
 
     def test_rate_limit_drops_1001st(self):
         """Pre-seed the rate counter to the cap so the next dispatch

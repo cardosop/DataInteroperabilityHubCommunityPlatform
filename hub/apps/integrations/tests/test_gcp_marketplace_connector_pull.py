@@ -164,7 +164,7 @@ class TestGCPMarketplaceConnectorMapToHubAsset(TestCase):
     def test_map_to_hub_asset_with_none_listing(self, mock_list_resources):
         """Test map_to_hub_asset() error handling with None listing"""
         with self.assertRaises((ValueError, TypeError)):
-            self.connector.map_to_hub_asset(None)  # type: ignore[arg-type]
+            self.connector.map_to_hub_asset(None)  # type: ignore[arg-type]  # test: edge-case type exercise
 
     @patch(
         "hub.apps.integrations.connectors.gcp_marketplace_connector.GCPMarketplaceConnector.get_listing"
@@ -198,7 +198,7 @@ class TestGCPMarketplaceConnectorMapToHubAsset(TestCase):
     ):
         """Test sync_pull() error handling with None listing_ids"""
         try:
-            result = self.connector.sync_pull(listing_ids=None)  # type: ignore[arg-type]
+            result = self.connector.sync_pull(listing_ids=None)  # type: ignore[arg-type]  # test: None listing_ids for full sync exercise
             # Should handle None gracefully (may use default behavior)
             self.assertIsInstance(result, SyncResult)
         except (ValueError, TypeError):

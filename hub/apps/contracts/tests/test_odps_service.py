@@ -318,7 +318,7 @@ class ODPSServiceNormalizeTest(ODPSServiceTestBase):
 
         with self.assertRaises(ValidationError):
             self.service.normalize_odps(
-                odps_doc=invalid_doc, tenant_id=str(self.tenant.id)  # type: ignore
+                odps_doc=invalid_doc, tenant_id=str(self.tenant.id)  # type: ignore[misc]  # test: edge-case type exercise
             )
 
     def test_normalize_odps_missing_required_fields(self):
@@ -632,7 +632,7 @@ class ODPSServiceGenerateTest(ODPSServiceTestBase):
 
         with self.assertRaises(ValidationError):
             self.service.generate_odps_from_hubcontract(
-                hub_contract=invalid_hub_contract, target_version="4.1"  # type: ignore
+                hub_contract=invalid_hub_contract, target_version="4.1"  # type: ignore[misc]  # test: edge-case type exercise
             )
 
     def test_generate_odps_from_hubcontract_different_version(self):
@@ -921,7 +921,7 @@ class ODPSServiceEdgeCasesTest(ODPSServiceTestBase):
         """Test ODPS normalization with None."""
         with self.assertRaises(ValidationError):
             self.service.normalize_odps(
-                odps_doc=None, tenant_id=str(self.tenant.id)  # type: ignore
+                odps_doc=None, tenant_id=str(self.tenant.id)  # type: ignore[misc]  # test: edge-case type exercise
             )
 
     def test_normalize_odps_with_malformed_schema_url(self):
@@ -1089,6 +1089,11 @@ class ODPSServiceEdgeCasesTest(ODPSServiceTestBase):
 
     def test_normalize_odps_with_unicode_characters(self):
         """Test ODPS normalization with unicode characters."""
+        # Phase 227 structural-floor invariant requires at least one
+        # resolvable model or schema field. Add a single-field
+        # `dataSchema` so the test exercises its actual concern
+        # (unicode preservation through normalisation) rather than
+        # tripping the floor.
         unicode_doc = {
             "schema": "https://opendataproducts.org/schema/v4.1",
             "product": {
@@ -1098,7 +1103,8 @@ class ODPSServiceEdgeCasesTest(ODPSServiceTestBase):
                         "name": "产品名称",
                         "description": "Descripción con caracteres especiales: ñáéíóú",
                     }
-                }
+                },
+                "dataSchema": {"fields": [{"name": "id", "type": "string"}]},
             },
         }
 

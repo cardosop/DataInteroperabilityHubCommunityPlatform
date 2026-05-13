@@ -38,6 +38,10 @@ JOB_TIMEOUTS = {
     JobType.ODPS_LINKING: 300,  # 5 minutes
     JobType.VIRTUAL_QUERY_EXECUTION: 3600,  # 1 hour (virtual queries can be long-running)
     JobType.MARKETPLACE_SYNC: 3600,  # 1 hour (sync operations can be long-running)
+    JobType.ROPA_GENERATE: 1800,  # RoPA register export (may be large PDF/CSV)
+    JobType.DPIA_REVIEW_DUE: 600,  # Periodic DPIA reopen sweep (multi-tenant)
+    JobType.PROCESSOR_AGREEMENT_EXPIRY_CHECK: 600,  # Processor agreement 60/30/7-day sweep
+    JobType.RETENTION_ENFORCEMENT_SWEEP: 3600,  # Retention tombstone/hard-delete multi-tenant sweep
 }
 
 # Maximum retry attempts per job type (from settings, fallback to defaults)
@@ -60,6 +64,9 @@ JOB_MAX_RETRIES = getattr(
         JobType.ODPS_LINKING: 2,
         JobType.VIRTUAL_QUERY_EXECUTION: 2,
         JobType.MARKETPLACE_SYNC: 2,
+        JobType.DPIA_REVIEW_DUE: 1,
+        JobType.PROCESSOR_AGREEMENT_EXPIRY_CHECK: 1,
+        JobType.RETENTION_ENFORCEMENT_SWEEP: 1,
     },
 )
 
@@ -421,7 +428,7 @@ def increment_tenant_job_counter(tenant_id: str, counter_type: str = "queued") -
         # Refresh TTL so active counters never expire mid-day.
         # expire() is a django-redis extension not present on BaseCache.
         try:
-            cache.expire(key, 86400)  # type: ignore[attr-defined]
+            cache.expire(key, 86400)  # type: ignore[attr-defined]  # django-redis extension; LocMemCache fallback below
         except AttributeError:
             pass  # LocMemCache doesn't expose expire – safe to skip in tests
 
@@ -462,7 +469,7 @@ def decrement_tenant_job_counter(tenant_id: str, counter_type: str = "running") 
         new_count = cache.decr(key) if current > 0 else 0
         # Refresh TTL
         try:
-            cache.expire(key, 86400)  # type: ignore[attr-defined]
+            cache.expire(key, 86400)  # type: ignore[attr-defined]  # django-redis extension; LocMemCache fallback below
         except AttributeError:
             pass  # LocMemCache doesn't expose expire – safe to skip in tests
 

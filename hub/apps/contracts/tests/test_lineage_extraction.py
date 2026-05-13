@@ -269,7 +269,7 @@ class TestFieldLevelLineageExtraction(TestCase):
         # Function expects dict, but test that it handles gracefully
         # In practice, type checking would catch this, but test defensive behavior
         try:
-            result = extract_contract_level_lineage(None)  # type: ignore
+            result = extract_contract_level_lineage(None)  # type: ignore[misc]  # test: edge-case type exercise
             # If it doesn't raise, result should be None or handle gracefully
             self.assertIsNone(result)
         except (AttributeError, TypeError):

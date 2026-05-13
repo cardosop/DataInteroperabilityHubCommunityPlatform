@@ -17,12 +17,14 @@ from typing import Any, Dict, List, Optional, Set, Tuple
 from django.core.cache import cache
 from django.db import models
 
-# Import Contract model - will be available at runtime
+from typing import Optional as _O, Any as _A
+
+# Import Contract model - will be available at runtime.
+Contract: _O[Any] = None
 try:
     from hub.apps.contracts.models import Contract
 except ImportError:
-    # For testing or when models aren't available
-    Contract = None  # type: ignore
+    pass  # Contract stays None — typed as Optional above
 
 
 class LineageReference:

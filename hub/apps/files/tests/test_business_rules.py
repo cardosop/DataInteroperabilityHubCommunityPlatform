@@ -399,7 +399,7 @@ class FileContentValidationTest(FileUploadValidationTest):
         """Test file content validation with missing content"""
         # Use type: ignore to allow None for testing
         result = self.rules._validate_file_content(
-            file_content=None, filename="data.csv", content_type="text/csv"  # type: ignore
+            file_content=None, filename="data.csv", content_type="text/csv"  # type: ignore[misc]  # test: edge-case type exercise
         )
         self.assertFalse(result.is_valid)
         self.assertGreater(len(result.errors), 0)
@@ -472,13 +472,16 @@ class FileUploadIntegrationTest(FileUploadValidationTest):
         file_service = FileService()
         file_service.tenant_id = str(self.tenant.id)
 
-        # Create a file
+        # Create a file. Phase 260.5.C ``unique_active_filename_per_tenant``:
+        # the parent ``FilesTestBase.setUp`` already creates one ACTIVE
+        # File named ``test.csv`` for ``self.tenant``, so use a distinct
+        # name here.
         file_obj = File.objects.create(
             tenant=self.tenant,
-            name="test.csv",
+            name="upload_integration.csv",
             content_type="text/csv",
             size=1024,
-            storage_path="test/test.csv",
+            storage_path="test/upload_integration.csv",
             status=FileStatus.ACTIVE,
             created_by=self.user,
         )
@@ -486,7 +489,7 @@ class FileUploadIntegrationTest(FileUploadValidationTest):
         # Validate upload before creating file
         csv_content = b"name,age\nJohn,30"
         result = self.rules.validate_upload(
-            filename="test.csv",
+            filename="upload_integration.csv",
             file_size=1024,
             content_type="text/csv",
             upload_method="browser",
@@ -927,12 +930,15 @@ class FilesBusinessRulesStorageQuotaValidationTest(FilesTestBase):
 
     def test_validate_storage_quota_with_file(self):
         """Test validate_storage_quota with File instance"""
+        # Distinct name from ``FilesTestBase.setUp``'s ``test.csv`` —
+        # Phase 260.5.C ``unique_active_filename_per_tenant`` rejects
+        # a second ACTIVE File with the same (tenant, name).
         file = File.objects.create(
             tenant=self.tenant,
-            name="test.csv",
+            name="quota_with_file.csv",
             content_type="text/csv",
             size=1024 * 1024 * 50,  # 50 MB
-            storage_path="test/test.csv",
+            storage_path="test/quota_with_file.csv",
             status=FileStatus.ACTIVE,
             created_by=self.user,
         )
@@ -984,13 +990,16 @@ class FilesBusinessRulesStorageQuotaValidationTest(FilesTestBase):
         # Note: Default limit is 10000, so we'll create 10001 files
         # But for testing, let's mock the limit or use a smaller limit
         # Actually, let's test with a file that would push us over if we had many files
-        # For now, we'll test the logic with a file that exists
+        # For now, we'll test the logic with a file that exists.
+        # Distinct name from ``FilesTestBase.setUp``'s ``test.csv`` —
+        # Phase 260.5.C ``unique_active_filename_per_tenant`` rejects
+        # a second ACTIVE File with the same (tenant, name).
         file = File.objects.create(
             tenant=self.tenant,
-            name="test.csv",
+            name="count_quota_exceeds.csv",
             content_type="text/csv",
             size=1024,
-            storage_path="test/test.csv",
+            storage_path="test/count_quota_exceeds.csv",
             status=FileStatus.ACTIVE,
             created_by=self.user,
         )
@@ -1030,12 +1039,15 @@ class FilesBusinessRulesStorageQuotaValidationTest(FilesTestBase):
 
     def test_validate_storage_quota_all_validations(self):
         """Test validate_storage_quota orchestrates all validations"""
+        # Distinct name from ``FilesTestBase.setUp``'s ``test.csv`` —
+        # Phase 260.5.C ``unique_active_filename_per_tenant`` rejects
+        # a second ACTIVE File with the same (tenant, name).
         file = File.objects.create(
             tenant=self.tenant,
-            name="test.csv",
+            name="quota_all.csv",
             content_type="text/csv",
             size=1024 * 1024 * 100,  # 100 MB
-            storage_path="test/test.csv",
+            storage_path="test/quota_all.csv",
             status=FileStatus.ACTIVE,
             created_by=self.user,
         )
@@ -1138,12 +1150,15 @@ class FilesBusinessRulesStorageQuotaValidationTest(FilesTestBase):
 
     def test_validate_storage_quota_in_main_validate_method(self):
         """Test storage quota validation is called in main validate method"""
+        # Distinct name from ``FilesTestBase.setUp``'s ``test.csv`` —
+        # Phase 260.5.C ``unique_active_filename_per_tenant`` rejects
+        # a second ACTIVE File with the same (tenant, name).
         file = File.objects.create(
             tenant=self.tenant,
-            name="test.csv",
+            name="quota_main.csv",
             content_type="text/csv",
             size=1024 * 1024 * 100,  # 100 MB
-            storage_path="test/test.csv",
+            storage_path="test/quota_main.csv",
             status=FileStatus.ACTIVE,
             created_by=self.user,
         )

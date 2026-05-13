@@ -471,7 +471,7 @@ class ODPSSchemaLoadingTest(TestCase):
         """Test that schema loading handles None values correctly."""
         # Test with None version (should fail gracefully)
         try:
-            schema = load_odps_schema(None)  # type: ignore
+            schema = load_odps_schema(None)  # type: ignore[misc]  # test: edge-case type exercise
             # If it doesn't fail, verify structure
             if schema:
                 self.assertIsInstance(schema, dict)

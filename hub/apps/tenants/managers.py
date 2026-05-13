@@ -63,7 +63,7 @@ class TenantScopedQuerySet(models.QuerySet):
         return self.filter(tenant_id=tenant)
 
 
-class TenantScopedManager(models.Manager.from_queryset(TenantScopedQuerySet)):  # type: ignore[misc]
+class TenantScopedManager(models.Manager.from_queryset(TenantScopedQuerySet)):  # type: ignore[misc]  # from_queryset returns Manager[_T]; mypy needs explicit type-ignore
     """Manager that exposes ``.for_tenant`` + ``.get_for_tenant``.
 
     Models opt in by setting ``scoped = TenantScopedManager()``

@@ -1155,7 +1155,14 @@ class AssetCreationWorkflow:
         Returns:
             Task output with created contract ID
         """
-        from hub.apps.contracts.models import Contract, ContractStatus, OriginalSpecType, OriginalFormat, NormalizationStatus
+        from hub.apps.contracts.models import (
+            Contract,
+            ContractStatus,
+            OriginalSpecType,
+            OriginalFormat,
+            NormalizationStatus,
+            ValidationStatus,
+        )
         from django.contrib.auth import get_user_model
         import json
 
@@ -1165,6 +1172,18 @@ class AssetCreationWorkflow:
         odcs_contract_json = instance.state_data.get("odcs_contract_json")
         hub_contract_json = instance.state_data.get("hub_contract_json")
         normalization_status = instance.state_data.get("normalization_status", "NORMALIZED_OK")
+
+        # Phase 250.1.G.3 — propagate the validation result that
+        # ``_validate_generated_odcs_task`` recorded in state_data.
+        # Previously this was dropped on the floor, leaving the Contract
+        # row with ``validation_status=NULL`` even though we'd just
+        # validated the same payload one step earlier. That gap blocked
+        # downstream activation: ``Asset.can_activate`` filters on
+        # ``contracts(status=ACTIVE)`` and ``Contract.clean`` refuses
+        # ACTIVE without a non-null VALID/WARNING_ONLY validation_status,
+        # so the data-first flow could never auto-activate end-to-end.
+        odcs_validation_status = instance.state_data.get("odcs_validation_status")
+        odcs_validation_errors = instance.state_data.get("odcs_validation_errors", [])
 
         if not tenant_id:
             raise ValueError("tenant_id is required")
@@ -1184,6 +1203,15 @@ class AssetCreationWorkflow:
         # Determine ODCS version from contract
         odcs_version = odcs_contract_json.get("apiVersion", "odcs/v3").split("/")[-1] if odcs_contract_json.get("apiVersion") else "3.0.2"
 
+        # Resolve validation_status into the model enum. ``None`` is kept
+        # as ``None`` (column is nullable) so we don't fabricate a state
+        # the validator never produced.
+        contract_validation_status = (
+            ValidationStatus(odcs_validation_status)
+            if odcs_validation_status in {v.value for v in ValidationStatus}
+            else None
+        )
+
         # Create ODCS contract record (asset will be set later in attach_contract step)
         contract = Contract.objects.create(
             tenant=tenant,
@@ -1199,6 +1227,8 @@ class AssetCreationWorkflow:
             normalization_status=NormalizationStatus(normalization_status) if normalization_status else NormalizationStatus.NORMALIZED_OK,
             normalization_errors=instance.state_data.get("normalization_errors", []),
             normalization_warnings=instance.state_data.get("normalization_warnings", []),
+            validation_status=contract_validation_status,
+            validation_errors=odcs_validation_errors,
             created_by=user
         )
 
@@ -1524,6 +1554,32 @@ class AssetCreationWorkflow:
         if not key or not name:
             raise ValueError("Asset key and name are required")
 
+        # Carry the in-memory pre-persistence gate decisions through to
+        # the persisted Asset row so the downstream ``activate_asset``
+        # step's ``Asset.can_activate`` check (which requires
+        # ``dq_status``/``compliance_status`` in {PASS, WARN} when a
+        # dataset is present — assets/models.py:578-590) sees the same
+        # signal that the pre-persistence gates already evaluated.
+        #
+        # Without this, ``compliance_check_inmemory`` and
+        # ``dq_check_inmemory`` write only into ``state_data`` (a
+        # workflow-local dict) and the Asset row inherits the model
+        # defaults of UNKNOWN — which blocks activation even when both
+        # gates returned PASS, leaving auto-activate workflows stuck in
+        # DRAFT and the ``asset.activated`` webhook silent.
+        comp_inmemory = (instance.state_data or {}).get("compliance_inmemory_status")
+        dq_inmemory = (instance.state_data or {}).get("dq_inmemory_status")
+        compliance_status_seed = (
+            ComplianceStatus(comp_inmemory)
+            if comp_inmemory in {v.value for v in ComplianceStatus}
+            else ComplianceStatus.UNKNOWN
+        )
+        dq_status_seed = (
+            DQStatus(dq_inmemory)
+            if dq_inmemory in {v.value for v in DQStatus}
+            else DQStatus.UNKNOWN
+        )
+
         # Create asset
         with transaction.atomic():
             asset = Asset.objects.create(
@@ -1534,7 +1590,9 @@ class AssetCreationWorkflow:
                 domain=domain,
                 status=AssetStatus.DRAFT,
                 visibility=visibility,
-                created_by=created_by
+                created_by=created_by,
+                dq_status=dq_status_seed,
+                compliance_status=compliance_status_seed,
             )
 
         # Validate created asset using AssetsBusinessRules
@@ -1833,7 +1891,7 @@ class AssetCreationWorkflow:
             )
             return {"skipped": True, "reason": "contract_id not provided"}
 
-        from hub.apps.contracts.models import Contract
+        from hub.apps.contracts.models import Contract, ContractStatus
 
         asset = Asset.objects.get(id=asset_id)
         contract = Contract.objects.get(id=contract_id, tenant=asset.tenant)
@@ -1848,7 +1906,40 @@ class AssetCreationWorkflow:
         else:
             contract.version = 1
 
-        contract.save(update_fields=['asset', 'version'])
+        # Promote DRAFT -> ACTIVE when both validation and normalization
+        # already passed earlier in the workflow. Doing it HERE rather
+        # than in ``_validate_contract_task`` is load-bearing: the
+        # ``validate_contract`` DSL step's ``if`` predicate skips it
+        # whenever ``contract_validation_status == 'VALID'``
+        # (DSL: ``contract_id != null && contract_validation_status != 'VALID'``),
+        # which is exactly the happy-path the data-first flow takes.
+        # Without this promotion, the contract stays DRAFT forever and
+        # ``Asset.can_activate`` blocks downstream activation with
+        # "Asset must have an ACTIVE contract" — silently dropping the
+        # ``asset.activated`` webhook for every successful intake.
+        validation_ok = contract.validation_status in ("VALID", "WARNING_ONLY")
+        normalization_ok = contract.normalization_status in (
+            "NORMALIZED_OK",
+            "NORMALIZED_WITH_WARNINGS",
+        )
+        update_fields = ['asset', 'version']
+        if (
+            validation_ok
+            and normalization_ok
+            and contract.status == ContractStatus.DRAFT
+        ):
+            contract.status = ContractStatus.ACTIVE
+            update_fields.append('status')
+            logger.info(
+                "Contract promoted DRAFT -> ACTIVE on attach",
+                workflow_instance_id=str(instance.id),
+                asset_id=str(asset.id),
+                contract_id=str(contract.id),
+                validation_status=contract.validation_status,
+                normalization_status=contract.normalization_status,
+            )
+
+        contract.save(update_fields=update_fields)
 
         # Store contract_id and validation status in state_data
         instance.state_data["contract_id"] = str(contract.id)
@@ -1868,7 +1959,8 @@ class AssetCreationWorkflow:
             "contract_id": str(contract.id),
             "contract_version": contract.version,
             "validation_status": contract.validation_status,
-            "normalization_status": contract.normalization_status
+            "normalization_status": contract.normalization_status,
+            "status": contract.status,
         }
 
     @staticmethod
@@ -2385,45 +2477,58 @@ class AssetCreationWorkflow:
             )
             return {"skipped": True, "reason": "contract_id not provided"}
 
-        # Skip if contract is already validated
-        if contract_validation_status in ["VALID", "WARNING_ONLY"]:
-            logger.info(
-                "Skipping contract validation: already validated",
-                workflow_instance_id=str(instance.id),
-                asset_id=str(asset_id),
-                contract_id=str(contract_id),
-                validation_status=contract_validation_status
-            )
-            return {
-                "validation_status": contract_validation_status,
-                "already_validated": True,
-                "skipped": True
-            }
-
-        from hub.apps.contracts.models import Contract
+        from hub.apps.contracts.models import Contract, ContractStatus
 
         asset = Asset.objects.get(id=asset_id)
         contract = Contract.objects.get(id=contract_id, tenant=asset.tenant)
 
-        # Check if contract is already validated
-        if contract.validation_status in ["VALID", "WARNING_ONLY"]:
+        # Promotion gate (Phase 250.1.G.3): a DRAFT contract whose
+        # validation + normalization both succeeded earlier in the
+        # data-first flow should be promoted to ACTIVE here so the
+        # downstream ``activate_asset`` step's ``can_activate`` check
+        # (which filters ``contracts(status=ACTIVE)``) sees it. Without
+        # this promotion the workflow would silently land in DRAFT and
+        # the asset.activated webhook would never fire.
+        already_validated = contract.validation_status in ("VALID", "WARNING_ONLY")
+        normalization_ok = contract.normalization_status in (
+            "NORMALIZED_OK",
+            "NORMALIZED_WITH_WARNINGS",
+        )
+        if (
+            already_validated
+            and normalization_ok
+            and contract.status == ContractStatus.DRAFT
+        ):
+            contract.status = ContractStatus.ACTIVE
+            contract.save(update_fields=["status"])
+            logger.info(
+                "Contract promoted DRAFT -> ACTIVE",
+                workflow_instance_id=str(instance.id),
+                asset_id=str(asset.id),
+                contract_id=str(contract.id),
+                validation_status=contract.validation_status,
+                normalization_status=contract.normalization_status,
+            )
+
+        # Idempotent short-circuit: already-validated contract
+        if already_validated:
+            instance.state_data["contract_validation_status"] = contract.validation_status
+            instance.save(update_fields=["state_data"])
             logger.info(
                 "Contract already validated",
                 workflow_instance_id=str(instance.id),
                 asset_id=str(asset.id),
                 contract_id=str(contract.id),
-                validation_status=contract.validation_status
+                validation_status=contract.validation_status,
             )
             return {
                 "validation_status": contract.validation_status,
-                "already_validated": True
+                "already_validated": True,
             }
 
-        # Trigger contract validation workflow if needed
-        # For now, we'll just check the contract status
-        # In a full implementation, this would trigger ContractCreationWorkflow.validate_contract step
-
-        # Update state_data with validation status
+        # No prior validation result on the row — a future revision will
+        # delegate to ContractCreationWorkflow.validate_contract here.
+        # For now, surface what we know without falsifying state.
         instance.state_data["contract_validation_status"] = contract.validation_status
         instance.save(update_fields=['state_data'])
 
@@ -3432,7 +3537,7 @@ class AssetCreationWorkflow:
     def _resolve_auto_activate(
         cls,
         *,
-        tenant: "Tenant",  # type: ignore[name-defined]
+        tenant: "Tenant",  # type: ignore[name-defined]  # forward-reference to Tenant model; resolved at runtime
         caller_auto_activate: bool,
     ) -> Dict[str, Any]:
         """Resolve the effective ``auto_activate`` decision.

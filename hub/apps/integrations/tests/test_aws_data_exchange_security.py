@@ -46,7 +46,7 @@ class TestAWSDataExchangeConnectorSecurity(TestCase):
         # Test invalid credentials format
         connector = AWSDataExchangeConnector()
         with self.assertRaises((ValueError, TypeError)):
-            connector.authenticate(None)  # type: ignore[arg-type]
+            connector.authenticate(None)  # type: ignore[arg-type]  # test: edge-case type exercise
 
     def test_iam_role_assumption_validation(self):
         """Test IAM role assumption validation"""
@@ -98,7 +98,7 @@ class TestAWSDataExchangeConnectorSecurity(TestCase):
             connector.get_listing("")
 
         with self.assertRaises(TypeError):
-            connector.get_listing(None)  # type: ignore[arg-type]
+            connector.get_listing(None)  # type: ignore[arg-type]  # test: None arg for error-path coverage
 
         # Non-existent ID: real AWS returns NotFoundError when credentials allow API call.
         # With invalid creds we never reach AWS; integration tests cover real NotFoundError.
@@ -261,10 +261,10 @@ class TestAWSDataExchangeConnectorSecurity(TestCase):
         )
 
         with self.assertRaises(TypeError):
-            connector.get_listing(None)  # type: ignore[arg-type]
+            connector.get_listing(None)  # type: ignore[arg-type]  # test: None arg for error-path coverage  # test: edge-case type exercise
 
         with self.assertRaises(TypeError):
-            connector.list_resources(None)  # type: ignore[arg-type]
+            connector.list_resources(None)  # type: ignore[arg-type]  # test: edge-case type exercise
 
     def test_credential_validation_with_empty_strings(self):
         """Test credential validation with empty strings"""

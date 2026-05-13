@@ -301,7 +301,7 @@ class ConnectionValidationTenantServiceIntegrationTest(TestCase):
     def test_validate_connection_access_with_none_values(self):
         """Test error handling when user_id or tenant_id is None"""
         result = self.rules.validate_connection_access(
-            user_id=None, tenant_id=str(self.tenant.id)  # type: ignore[arg-type]
+            user_id=None, tenant_id=str(self.tenant.id)  # type: ignore[arg-type]  # test: edge-case type exercise
         )
 
         self.assertIsInstance(result, ValidationResult)
@@ -309,7 +309,7 @@ class ConnectionValidationTenantServiceIntegrationTest(TestCase):
         self.assertGreater(len(result.errors), 0)
 
         result = self.rules.validate_connection_access(
-            user_id=str(self.user.id), tenant_id=None  # type: ignore[arg-type]
+            user_id=str(self.user.id), tenant_id=None  # type: ignore[arg-type]  # test: edge-case type exercise
         )
 
         self.assertIsInstance(result, ValidationResult)

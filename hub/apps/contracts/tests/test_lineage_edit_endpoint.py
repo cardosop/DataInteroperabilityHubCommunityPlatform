@@ -57,7 +57,7 @@ def _make_tenant(slug_prefix: str = "f2") -> Tenant:
     return tenant
 
 
-def _make_user(tenant: Tenant) -> "User":  # type: ignore[name-defined]
+def _make_user(tenant: Tenant) -> "User":  # type: ignore[name-defined]  # test: edge-case type exercise
     suffix = uuid.uuid4().hex[:8]
     return User.objects.create_user(
         email=f"u-{suffix}@example.com",

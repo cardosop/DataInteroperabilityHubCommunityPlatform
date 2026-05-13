@@ -537,7 +537,7 @@ class MarketplaceEventPublishingE2ETest(TestCase):
         # ("Tenant with id None not found") or ValidationError if validated earlier
         with self.assertRaises((ValidationError, NotFoundError, TypeError)):
             self.service.create_connection(
-                tenant_id=None,  # type: ignore[arg-type]
+                tenant_id=None,  # type: ignore[arg-type]  # test: edge-case type exercise
                 user_id=str(self.user.id),
                 marketplace_type=MarketplaceType.SNOWFLAKE_DATA_MARKETPLACE.value,
                 name="Test Connection",

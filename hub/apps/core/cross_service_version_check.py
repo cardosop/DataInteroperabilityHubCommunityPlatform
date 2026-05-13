@@ -110,7 +110,7 @@ def _parse_semver(version: str) -> tuple[int, int, int]:
             f"Invalid semver string: {version!r}. Expected "
             f"'major.minor.patch' (suffixes after the patch are tolerated)."
         )
-    return tuple(int(g) for g in match.groups())  # type: ignore[return-value]
+    return tuple(int(g) for g in match.groups())  # type: ignore[return-value]  # mypy narrows .groups() to optional; regex ensures match
 
 
 def _compare_semver(actual: str, required: str) -> int:

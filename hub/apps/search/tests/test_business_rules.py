@@ -485,7 +485,7 @@ class SearchIndexValidationTest(TestCase):
             resource_type="CONTRACT",
             resource_id=uuid.uuid4(),
             title="Test Contract",
-            schema_fields="not a list",  # type: ignore
+            schema_fields="not a list",  # type: ignore[misc]  # test: edge-case type exercise
         )
         context = SearchRuleExecutionContext(tenant_id=str(self.tenant.id), index=index)
         result = self.rules._validate_index_structure(index, context)
@@ -500,7 +500,7 @@ class SearchIndexValidationTest(TestCase):
             resource_type="CONTRACT",
             resource_id=uuid.uuid4(),
             title="Test Contract",
-            tags="not a list",  # type: ignore
+            tags="not a list",  # type: ignore[misc]  # test: edge-case type exercise
         )
         context = SearchRuleExecutionContext(tenant_id=str(self.tenant.id), index=index)
         result = self.rules._validate_index_structure(index, context)
@@ -746,7 +746,7 @@ class SearchFilterValidationTest(TestCase):
     def test_validate_filters_invalid_type(self):
         """Test filter validation with invalid filter type"""
         context = SearchRuleExecutionContext(
-            tenant_id=str(self.tenant.id), filters="not a dict"  # type: ignore
+            tenant_id=str(self.tenant.id), filters="not a dict"  # type: ignore[misc]  # test: edge-case type exercise
         )
         result = self.rules.validate(context)
         self.assertFalse(result.is_valid)

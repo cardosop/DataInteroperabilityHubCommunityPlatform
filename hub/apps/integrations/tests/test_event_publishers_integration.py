@@ -386,7 +386,7 @@ class MarketplaceEventPublisherIntegrationTest(TestCase):
         # Test with None connection_id
         with self.assertRaises((ValueError, TypeError)):
             self.publisher.publish_connection_created(
-                connection_id=None,  # type: ignore[arg-type]
+                connection_id=None,  # type: ignore[arg-type]  # test: edge-case type exercise
                 marketplace_type=MarketplaceType.SNOWFLAKE_DATA_MARKETPLACE.value,
                 name="Test Connection",
                 tenant_id=str(self.tenant.id),

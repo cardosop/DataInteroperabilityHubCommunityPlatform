@@ -104,7 +104,7 @@ def compute_diff(
         before = left_index.get(key)
         after = right_index.get(key)
         if before is None:
-            added.append(after)  # type: ignore[arg-type]
+            added.append(after)  # type: ignore[arg-type]  # diff-entry type varies by call-site; wide container
             continue
         if after is None:
             removed.append(before)

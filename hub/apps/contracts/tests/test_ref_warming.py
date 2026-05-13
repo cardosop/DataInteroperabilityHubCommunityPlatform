@@ -863,7 +863,7 @@ class RefWarmingIntegrationTest(RefWarmingTestBaseWithRedis):
     def test_get_frequently_accessed_refs_with_none_limit(self):
         """Test get_frequently_accessed_refs with None limit."""
         try:
-            refs = get_frequently_accessed_refs(limit=None)  # type: ignore
+            refs = get_frequently_accessed_refs(limit=None)  # type: ignore[misc]  # test: edge-case type exercise
             # May raise exception or handle None gracefully
             self.assertIsInstance(refs, list)
         except (TypeError, ValueError):
@@ -897,7 +897,7 @@ class RefWarmingIntegrationTest(RefWarmingTestBaseWithRedis):
     def test_warm_ref_cache_with_none_refs(self):
         """Test warm_ref_cache with None refs."""
         try:
-            result = warm_ref_cache(None)  # type: ignore
+            result = warm_ref_cache(None)  # type: ignore[misc]  # test: edge-case type exercise
             # May raise exception or handle None gracefully
             self.assertIsInstance(result, dict)
         except (TypeError, ValueError):
@@ -939,7 +939,7 @@ class RefWarmingIntegrationTest(RefWarmingTestBaseWithRedis):
     def test_warm_ref_cache_with_none_tenant_id(self):
         """Test warm_ref_cache with None tenant_id."""
         try:
-            result = warm_ref_cache(["https://example.com/schema.json"], tenant_id=None)  # type: ignore
+            result = warm_ref_cache(["https://example.com/schema.json"], tenant_id=None)  # type: ignore[misc]  # test: edge-case type exercise
             # May raise exception or handle None gracefully
             self.assertIsInstance(result, dict)
         except (TypeError, ValueError):

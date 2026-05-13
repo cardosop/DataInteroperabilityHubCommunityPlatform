@@ -26,7 +26,7 @@ pytestmark = pytest.mark.django_db
 
 
 @pytest.fixture(autouse=True)
-def _clear_cache_between_tests():  # type: ignore[no-untyped-def]
+def _clear_cache_between_tests():  # type: ignore[no-untyped-def]  # test: edge-case type exercise
     cache.clear()
     yield
     cache.clear()

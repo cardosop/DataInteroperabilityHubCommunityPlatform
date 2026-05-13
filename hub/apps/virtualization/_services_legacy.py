@@ -1344,7 +1344,7 @@ class VirtualizationService(BaseService, VirtualizationEventPublisher):
         if version is None:
             version = "1.0.0"
         if status is None:
-            status = VirtualDatasetStatus.DRAFT  # type: ignore
+            status = VirtualDatasetStatus.DRAFT  # type: ignore[assignment]  # enum member assigned to str-typed var
 
         # Validate via VirtualizationBusinessRules before any mutation
         payload_dataset = VirtualDataset(

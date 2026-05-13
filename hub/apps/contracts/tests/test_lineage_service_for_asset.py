@@ -47,7 +47,7 @@ def _make_tenant(slug_prefix: str) -> Tenant:
 
 def _make_contract(
     tenant: Tenant, *, name: str, asset: Asset | None = None,
-) -> "Contract":  # type: ignore[name-defined]
+) -> "Contract":  # type: ignore[name-defined]  # test: edge-case type exercise
     from hub.apps.contracts.models import (
         Contract,
         ContractStatus,

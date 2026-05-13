@@ -315,7 +315,7 @@ class TestGCPMarketplaceConnectorPullIntegration(TestCase):
     def test_map_to_hub_asset_with_none_listing(self):
         """Test map_to_hub_asset() error handling with None listing"""
         with self.assertRaises((ValueError, TypeError, AttributeError)):
-            self.connector.map_to_hub_asset(None)  # type: ignore[arg-type]
+            self.connector.map_to_hub_asset(None)  # type: ignore[arg-type]  # test: edge-case type exercise
 
     def test_map_to_hub_asset_with_invalid_listing_structure(self):
         """Test map_to_hub_asset() error handling with invalid listing structure"""
@@ -386,7 +386,7 @@ class TestGCPMarketplaceConnectorPullIntegration(TestCase):
     def test_map_bigquery_type_with_none(self):
         """Test _map_bigquery_type() error handling with None"""
         with self.assertRaises((TypeError, AttributeError)):
-            self.connector._map_bigquery_type(None)  # type: ignore[arg-type]
+            self.connector._map_bigquery_type(None)  # type: ignore[arg-type]  # test: edge-case type exercise
 
     def test_sync_pull_without_authentication(self):
         """Test sync_pull() error handling when not authenticated"""

@@ -679,7 +679,7 @@ class ContractViewSetTest(ContractsAPITestBase):
 
         try:
             response = self.client.patch(
-                f"/api/v1/contracts/{self.contract.id}/", None, format="json"  # type: ignore
+                f"/api/v1/contracts/{self.contract.id}/", None, format="json"  # type: ignore[misc]  # test: edge-case type exercise
             )
             # May raise exception or return error
             self.assertIn(

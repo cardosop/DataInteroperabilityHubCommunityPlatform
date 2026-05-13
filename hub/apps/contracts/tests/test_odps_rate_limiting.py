@@ -721,7 +721,7 @@ class ODPSRateLimitingIntegrationTest(TestCase):
     def test_generate_rate_limit_key_with_none_tenant_id(self):
         """Test rate limit key generation with None tenant_id."""
         try:
-            key = generate_rate_limit_key(tenant_id=None, level="tenant")  # type: ignore
+            key = generate_rate_limit_key(tenant_id=None, level="tenant")  # type: ignore[misc]  # test: edge-case type exercise
             # May raise exception
             self.assertIsNone(key)
         except ValueError:
@@ -765,7 +765,7 @@ class ODPSRateLimitingIntegrationTest(TestCase):
     def test_check_rate_limit_with_none_tenant_id(self):
         """Test rate limit check with None tenant_id: rejected for security (tenant_id required)."""
         is_allowed, error = check_rate_limit(
-            tenant_id=None, user_id=self.user_id, redis_client=self.redis_client  # type: ignore
+            tenant_id=None, user_id=self.user_id, redis_client=self.redis_client  # type: ignore[misc]  # test: edge-case type exercise
         )
         self.assertFalse(is_allowed, "None tenant_id should be rejected")
         self.assertIsNotNone(error)
@@ -787,7 +787,7 @@ class ODPSRateLimitingIntegrationTest(TestCase):
     def test_check_rate_limit_with_none_redis_client(self):
         """Test rate limit check with None Redis client."""
         is_allowed, error = check_rate_limit(
-            tenant_id=self.tenant_id, user_id=self.user_id, redis_client=None  # type: ignore
+            tenant_id=self.tenant_id, user_id=self.user_id, redis_client=None  # type: ignore[misc]  # test: edge-case type exercise
         )
         # Should handle None Redis client gracefully (fail-open)
         self.assertTrue(is_allowed)
@@ -797,7 +797,7 @@ class ODPSRateLimitingIntegrationTest(TestCase):
         """Test get rate limit info with None tenant_id."""
         try:
             info = get_rate_limit_info(
-                tenant_id=None, user_id=self.user_id, redis_client=self.redis_client  # type: ignore
+                tenant_id=None, user_id=self.user_id, redis_client=self.redis_client  # type: ignore[misc]  # test: edge-case type exercise
             )
             # May raise exception or return empty dict
             self.assertIsInstance(info, dict)
@@ -808,7 +808,7 @@ class ODPSRateLimitingIntegrationTest(TestCase):
     def test_get_rate_limit_info_with_none_redis_client(self):
         """Test get rate limit info with None Redis client."""
         info = get_rate_limit_info(
-            tenant_id=self.tenant_id, user_id=self.user_id, redis_client=None  # type: ignore
+            tenant_id=self.tenant_id, user_id=self.user_id, redis_client=None  # type: ignore[misc]  # test: edge-case type exercise
         )
         # Should handle None Redis client gracefully
         self.assertIsInstance(info, dict)
@@ -920,7 +920,7 @@ class ODPSRateLimitingIntegrationTest(TestCase):
     def test_rate_limiting_handles_none_values(self):
         """Test that rate limiting handles None values correctly."""
         try:
-            key = generate_rate_limit_key(tenant_id=None, user_id=None, level=RATE_LIMIT_GLOBAL)  # type: ignore
+            key = generate_rate_limit_key(tenant_id=None, user_id=None, level=RATE_LIMIT_GLOBAL)  # type: ignore[misc]  # test: edge-case type exercise
             # Should handle None values gracefully
             self.assertIsNotNone(key)
         except Exception as e:

@@ -175,7 +175,7 @@ class TestGCPMarketplaceConnectorMetadataMapping(TestCase):
     def test_map_to_hub_asset_missing_listing(self):
         """Test map_to_hub_asset() raises ValueError for missing listing"""
         with self.assertRaises(ValueError) as cm:
-            self.connector.map_to_hub_asset(None)  # type: ignore[arg-type]
+            self.connector.map_to_hub_asset(None)  # type: ignore[arg-type]  # test: edge-case type exercise
         self.assertIn("required", str(cm.exception).lower())
 
     def test_map_from_hub_asset_raises_not_implemented(self):
@@ -402,17 +402,17 @@ class TestGCPMarketplaceConnectorMetadataMapping(TestCase):
     def test_map_from_hub_asset_with_none(self):
         """Test map_from_hub_asset() error handling with None"""
         with self.assertRaises((NotImplementedError, ValueError, TypeError)):
-            self.connector.map_from_hub_asset(None)  # type: ignore[arg-type]
+            self.connector.map_from_hub_asset(None)  # type: ignore[arg-type]  # test: edge-case type exercise
 
     def test_create_listing_with_none(self):
         """Test create_listing() error handling with None"""
         with self.assertRaises((NotImplementedError, ValueError, TypeError)):
-            self.connector.create_listing(None)  # type: ignore[arg-type]
+            self.connector.create_listing(None)  # type: ignore[arg-type]  # test: edge-case type exercise
 
     def test_update_listing_with_invalid_id(self):
         """Test update_listing() error handling with invalid ID"""
         listing = Mock()
         with self.assertRaises(NotImplementedError):
-            self.connector.update_listing(None, listing)  # type: ignore[arg-type]
+            self.connector.update_listing(None, listing)  # type: ignore[arg-type]  # test: edge-case type exercise
         with self.assertRaises(NotImplementedError):
             self.connector.update_listing("", listing)

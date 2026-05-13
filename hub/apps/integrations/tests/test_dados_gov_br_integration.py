@@ -22,11 +22,13 @@ def handle_auth_failure(e: Exception) -> None:
     """
     Handle authentication failures by skipping tests with clear message.
 
+    Uses ``pytest.skip(...)`` (which raises ``_pytest.outcomes.Skipped`` —
+    a ``BaseException`` subclass) rather than ``unittest.SkipTest`` so
+    the surrounding tests' broad ``except Exception:`` blocks do not
+    accidentally swallow the skip and turn it into a hard failure.
+
     Args:
         e: Exception that may indicate authentication failure
-
-    Raises:
-        pytest.skip: If exception indicates authentication failure
     """
     error_str = str(e).lower()
     if (
@@ -35,8 +37,19 @@ def handle_auth_failure(e: Exception) -> None:
         or "login" in error_str
         or "jwt token" in error_str
         or "redirected to signin" in error_str
+        # ``dados.gov.br`` returns a bare HTTP 401 (no descriptive body)
+        # when the JWT token is missing/expired/revoked. The string-based
+        # detection above misses this; without it the test fails as
+        # ``ConnectionError: ... '401 Unauthorized' ...`` and reads as a
+        # regression even though it is purely an externally-rotated
+        # credential. Match 401 / "unauthorized" too so CI without a
+        # live token degrades to skips, not failures.
+        or "401" in error_str
+        or "unauthorized" in error_str
+        or "403" in error_str
+        or "forbidden" in error_str
     ):
-        raise unittest.SkipTest(f"JWT token authentication failed (token may be expired or invalid): {e}")
+        pytest.skip(f"JWT token authentication failed (token may be expired or invalid): {e}")
 
 
 @pytest.mark.integration
@@ -92,19 +105,13 @@ class TestDadosGovBrConnectorIntegration(TestCase):
         try:
             result = self.connector.test_connection()
             assert result is True
+        except unittest.SkipTest:
+            raise
         except (ValueError, ConnectionError) as e:
-            # Check if it's an authentication failure
-            error_str = str(e).lower()
-            if (
-                "authentication failed" in error_str
-                or "signin" in error_str
-                or "jwt token" in error_str
-            ):
-                raise unittest.SkipTest(
-                    f"JWT token authentication failed (token may be expired or invalid): {e}"
-                )
+            handle_auth_failure(e)
             pytest.fail(f"Connection test failed: {e}")
         except Exception as e:
+            handle_auth_failure(e)
             pytest.fail(f"Connection test failed: {e}")
 
     def test_list_listings_basic(self):
@@ -119,12 +126,13 @@ class TestDadosGovBrConnectorIntegration(TestCase):
                 assert listing.marketplace_id is not None
                 assert listing.title is not None
                 assert listing.marketplace_type == MarketplaceType.CKAN_INSTANCE
-        except ValueError as e:
-            # Check if it's an authentication failure
-            if "authentication failed" in str(e).lower() or "signin" in str(e).lower():
-                raise unittest.SkipTest(f"JWT token authentication failed (token may be expired): {e}")
+        except unittest.SkipTest:
+            raise
+        except (ValueError, ConnectionError) as e:
+            handle_auth_failure(e)
             pytest.fail(f"list_listings failed: {e}")
         except Exception as e:
+            handle_auth_failure(e)
             pytest.fail(f"list_listings failed: {e}")
 
     def test_list_listings_with_filters(self):
@@ -137,6 +145,7 @@ class TestDadosGovBrConnectorIntegration(TestCase):
             handle_auth_failure(e)
             pytest.fail(f"list_listings with filters failed: {e}")
         except Exception as e:
+            handle_auth_failure(e)
             pytest.fail(f"list_listings with filters failed: {e}")
 
     def test_list_listings_pagination(self):
@@ -161,6 +170,7 @@ class TestDadosGovBrConnectorIntegration(TestCase):
             handle_auth_failure(e)
             pytest.fail(f"list_listings pagination failed: {e}")
         except Exception as e:
+            handle_auth_failure(e)
             pytest.fail(f"list_listings pagination failed: {e}")
 
     def test_get_listing_by_id(self):
@@ -187,6 +197,7 @@ class TestDadosGovBrConnectorIntegration(TestCase):
             handle_auth_failure(e)
             pytest.fail(f"get_listing failed: {e}")
         except Exception as e:
+            handle_auth_failure(e)
             pytest.fail(f"get_listing failed: {e}")
 
     def test_get_listing_not_found(self):
@@ -235,6 +246,7 @@ class TestDadosGovBrConnectorIntegration(TestCase):
             handle_auth_failure(e)
             pytest.fail(f"list_resources failed: {e}")
         except Exception as e:
+            handle_auth_failure(e)
             pytest.fail(f"list_resources failed: {e}")
 
     def test_swagger_dataset_to_listing_mapping(self):
@@ -255,6 +267,7 @@ class TestDadosGovBrConnectorIntegration(TestCase):
             handle_auth_failure(e)
             pytest.fail(f"Dataset mapping failed: {e}")
         except Exception as e:
+            handle_auth_failure(e)
             pytest.fail(f"Dataset mapping failed: {e}")
 
     def test_swagger_resource_to_marketplace_resource_mapping(self):
@@ -294,6 +307,7 @@ class TestDadosGovBrConnectorIntegration(TestCase):
             handle_auth_failure(e)
             pytest.fail(f"Resource mapping failed: {e}")
         except Exception as e:
+            handle_auth_failure(e)
             pytest.fail(f"Resource mapping failed: {e}")
 
     def test_jwt_token_authentication(self):
@@ -310,6 +324,7 @@ class TestDadosGovBrConnectorIntegration(TestCase):
             handle_auth_failure(e)
             pytest.fail(f"JWT token authentication failed: {e}")
         except Exception as e:
+            handle_auth_failure(e)
             pytest.fail(f"JWT token authentication failed: {e}")
 
     def test_endpoint_resolution(self):
@@ -327,6 +342,7 @@ class TestDadosGovBrConnectorIntegration(TestCase):
             handle_auth_failure(e)
             pytest.fail(f"Endpoint resolution failed: {e}")
         except Exception as e:
+            handle_auth_failure(e)
             pytest.fail(f"Endpoint resolution failed: {e}")
 
 
@@ -398,6 +414,7 @@ class TestDadosGovBrAPIClientIntegration(TestCase):
             handle_auth_failure(e)
             pytest.fail(f"search_datasets failed: {e}")
         except Exception as e:
+            handle_auth_failure(e)
             pytest.fail(f"search_datasets failed: {e}")
 
     def test_get_dataset(self):
@@ -443,6 +460,7 @@ class TestDadosGovBrAPIClientIntegration(TestCase):
             handle_auth_failure(e)
             pytest.fail(f"get_dataset failed: {e}")
         except Exception as e:
+            handle_auth_failure(e)
             pytest.fail(f"get_dataset failed: {e}")
 
     def test_bearer_token_in_headers(self):
@@ -571,7 +589,7 @@ class TestDadosGovBrBackwardCompatibility(TestCase):
         if self.connector is None:
             raise unittest.SkipTest("dados.gov.br connector not available (config or API key missing)")
         try:
-            listings = self.connector.list_listings(limit=None)  # type: ignore[arg-type]
+            listings = self.connector.list_listings(limit=None)  # type: ignore[arg-type]  # test: None limit for unbounded list exercise
             # Should handle None limit gracefully (may use default)
             self.assertIsInstance(listings, list)
         except (ValueError, TypeError):
@@ -598,7 +616,7 @@ class TestDadosGovBrBackwardCompatibility(TestCase):
             raise unittest.SkipTest("dados.gov.br connector not available (config or API key missing)")
         try:
             with self.assertRaises((ValueError, TypeError, NotFoundError)):
-                self.connector.get_listing(None)  # type: ignore[arg-type]
+                self.connector.get_listing(None)  # type: ignore[arg-type]  # test: edge-case type exercise
         except Exception as e:
             handle_auth_failure(e)
             raise
@@ -620,7 +638,7 @@ class TestDadosGovBrBackwardCompatibility(TestCase):
             raise unittest.SkipTest("dados.gov.br connector not available (config or API key missing)")
         try:
             with self.assertRaises((ValueError, TypeError, NotFoundError)):
-                self.connector.list_resources(None)  # type: ignore[arg-type]
+                self.connector.list_resources(None)  # type: ignore[arg-type]  # test: edge-case type exercise
         except Exception as e:
             handle_auth_failure(e)
             raise
@@ -637,5 +655,5 @@ class TestDadosGovBrBackwardCompatibility(TestCase):
             raise unittest.SkipTest("dados.gov.br instance configuration not found")
         with self.assertRaises((ValueError, TypeError)):
             DadosGovBrConnector(
-                base_url=self.instance_config.base_url, jwt_token=None  # type: ignore[arg-type]
+                base_url=self.instance_config.base_url, jwt_token=None  # type: ignore[arg-type]  # test: edge-case type exercise
             )

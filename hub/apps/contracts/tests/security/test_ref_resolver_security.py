@@ -1058,7 +1058,7 @@ class RefResolverSecurityLoggingTest(TestCase):
         """Test URL validation with None URL through public API."""
         try:
             # Test through public API - resolve_external() validates URL internally
-            self.resolver.resolve_external(None)  # type: ignore
+            self.resolver.resolve_external(None)  # type: ignore[misc]  # test: edge-case type exercise
             # May raise exception
         except (TypeError, ValueError, ODPSRefResolutionError):
             # None URL should raise exception
@@ -1112,7 +1112,7 @@ class RefResolverSecurityLoggingTest(TestCase):
     def test_path_traversal_with_none_path(self):
         """Test path traversal prevention with None path."""
         try:
-            self.resolver.resolve_local(None)  # type: ignore
+            self.resolver.resolve_local(None)  # type: ignore[misc]  # test: edge-case type exercise
             # May raise exception
         except (TypeError, ValueError, ODPSRefResolutionError):
             # None path should raise exception
@@ -1143,7 +1143,7 @@ class RefResolverSecurityLoggingTest(TestCase):
 
         try:
             is_allowed, error = check_rate_limit(
-                tenant_id=None, user_id="test-user", redis_client=self.redis_client  # type: ignore
+                tenant_id=None, user_id="test-user", redis_client=self.redis_client  # type: ignore[misc]  # test: edge-case type exercise
             )
             # May raise exception or return False
             self.assertFalse(is_allowed)
@@ -1280,7 +1280,7 @@ class RefResolverSecurityLoggingTest(TestCase):
         resolver = RefResolver(
             config=self.config, tenant_id="test-tenant", user_id="test-user", enable_caching=False
         )
-        resolver._start_time = None  # type: ignore
+        resolver._start_time = None  # type: ignore[misc]  # test: edge-case type exercise
 
         # Use MockTransport to simulate external ref resolution
         def handler(request: httpx.Request) -> httpx.Response:
@@ -1316,7 +1316,7 @@ class RefResolverSecurityLoggingTest(TestCase):
         """Test security logging with None event_type."""
         try:
             self.resolver._security_logger.log_security_violation(
-                event_type=None,  # type: ignore
+                event_type=None,  # type: ignore[misc]  # test: edge-case type exercise
                 severity=SecuritySeverity.HIGH,
                 tenant_id="test-tenant",
                 user_id="test-user",
@@ -1331,7 +1331,7 @@ class RefResolverSecurityLoggingTest(TestCase):
         try:
             self.resolver._security_logger.log_security_violation(
                 event_type=SecurityEventType.INVALID_URL,
-                severity=None,  # type: ignore
+                severity=None,  # type: ignore[misc]  # test: edge-case type exercise
                 tenant_id="test-tenant",
                 user_id="test-user",
             )

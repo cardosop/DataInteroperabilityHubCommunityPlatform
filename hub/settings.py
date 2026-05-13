@@ -135,7 +135,6 @@ INSTALLED_APPS = [
     "hub.apps.regulation_policies.apps.RegulationPoliciesConfig",
     "hub.apps.semantic",
     "hub.apps.marketplace",
-    # 'hub.apps.marketplace',
     "hub.apps.developer",
     "hub.apps.api",
     "hub.apps.graphql",
@@ -1612,6 +1611,12 @@ REST_FRAMEWORK = {
     # below is what makes the gate actually function in production
     # (without it every request 500s on the throttle init).
     "DEFAULT_THROTTLE_RATES": {
+        # Default / safety-net scope for UserRateThrottle subclasses that
+        # don't set a custom scope or rate.  Without this entry,
+        # SimpleRateThrottle.__init__ → get_rate() raises
+        # ImproperlyConfigured("No default throttle rate set for 'user'")
+        # because UserRateThrottle.scope == "user".
+        "user": "60/minute",
         "semantic_export": "5/min",
         # Phase 230.13 (REQ-SEM-GQL-001) — per-user 60 q/min throttle on
         # the GraphQL-LD endpoint.  Read by
@@ -1710,7 +1715,7 @@ _cors_defaults = [] if ENVIRONMENT == "production" else [
     "http://localhost:5184",   # Vite dev server (alternate port)
     "http://localhost:8000",
 ]
-CORS_ALLOWED_ORIGINS = env.list("CORS_ALLOWED_ORIGINS", default=_cors_defaults)  # type: ignore[arg-type]
+CORS_ALLOWED_ORIGINS = env.list("CORS_ALLOWED_ORIGINS", default=_cors_defaults)  # type: ignore[arg-type]  # env.list returns List[str]; django-cors-headers expects Sequence[str]
 
 if ENVIRONMENT == "production" and not CORS_ALLOWED_ORIGINS:
     raise ImproperlyConfigured(

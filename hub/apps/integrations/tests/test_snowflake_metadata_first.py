@@ -350,7 +350,7 @@ class TestSnowflakeConnectorMetadataFirst:
     def test_sync_pull_with_none_listing_ids(self, connector):
         """Test sync_pull() error handling with None listing_ids"""
         try:
-            result = connector.sync_pull(listing_ids=None)  # type: ignore[arg-type]
+            result = connector.sync_pull(listing_ids=None)  # type: ignore[arg-type]  # test: None listing_ids for full sync exercise
             # Should handle None gracefully (may use default behavior)
             assert isinstance(result, SyncResult)
         except (ValueError, TypeError):
@@ -379,7 +379,7 @@ class TestSnowflakeConnectorMetadataFirst:
     def test_map_to_hub_asset_with_none_listing(self, connector):
         """Test map_to_hub_asset() error handling with None listing"""
         with pytest.raises((ValueError, TypeError)):
-            connector.map_to_hub_asset(None)  # type: ignore[arg-type]
+            connector.map_to_hub_asset(None)  # type: ignore[arg-type]  # test: edge-case type exercise
 
     def test_map_to_hub_asset_with_empty_metadata(self, connector):
         """Test map_to_hub_asset() error handling with empty metadata"""
@@ -406,6 +406,6 @@ class TestSnowflakeConnectorMetadataFirst:
         """Test download_resource() error handling with None resource_id"""
         with pytest.raises((ValueError, TypeError, AttributeError, NotFoundError, ConnectionError)):
             connector.download_resource(
-                resource_id=None,  # type: ignore[arg-type]
+                resource_id=None,  # type: ignore[arg-type]  # test: edge-case type exercise
                 destination_path="/tmp/test.csv",
             )

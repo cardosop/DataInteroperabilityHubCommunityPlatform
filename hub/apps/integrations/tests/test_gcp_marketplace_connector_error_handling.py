@@ -370,7 +370,7 @@ class TestGCPMarketplaceConnectorStructuredLogging(TestCase):
         def failing_operation():
             call_count[0] += 1
             error = GoogleAPIError("Service unavailable")
-            error.code = 503  # type: ignore[attr-defined]
+            error.code = 503  # type: ignore[attr-defined]  # test: edge-case type exercise
             raise error
 
         # Set max_retries to 3 for this test
@@ -395,7 +395,7 @@ class TestGCPMarketplaceConnectorStructuredLogging(TestCase):
         def failing_operation():
             call_count[0] += 1
             error = GoogleAPIError("Bad request")
-            error.code = 400  # type: ignore[attr-defined]
+            error.code = 400  # type: ignore[attr-defined]  # test: edge-case type exercise
             raise error
 
         with self.assertRaises(ValueError):

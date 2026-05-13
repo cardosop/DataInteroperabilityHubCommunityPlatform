@@ -66,7 +66,7 @@ def require_e2e_token(view_func: Callable[..., Any]) -> Callable[..., Any]:
             raise NotFound("Resource not found")
         return view_func(request, *args, **kwargs)
 
-    wrapper._require_e2e_token = True  # type: ignore[attr-defined]
+    wrapper._require_e2e_token = True  # type: ignore[attr-defined]  # monkey-patch on function wrapper; mypy can't see dynamic attrs
     return wrapper
 
 
@@ -534,7 +534,12 @@ def ensure_e2e_tenant_switch_setup(request):
 
     primary = request.user.tenant
     # Ensure primary tenant membership exists (E2E users may have tenant_id but no UserTenantMembership)
-    UserTenantMembershipService().add_membership(request.user, primary)
+    UserTenantMembershipService().add_membership(
+        request.user,
+        primary,
+        actor_user=request.user,
+        reason="e2e_tenant_switch_setup_primary",
+    )
     memberships = list(
         UserTenantMembership.objects.filter(user=request.user)
         .values_list("tenant_id", flat=True)
@@ -559,7 +564,12 @@ def ensure_e2e_tenant_switch_setup(request):
         name=f"E2E Switch Tenant {uid}",
         slug=f"e2e-switch-{uid}",
     )
-    UserTenantMembershipService().add_membership(request.user, secondary)
+    UserTenantMembershipService().add_membership(
+        request.user,
+        secondary,
+        actor_user=request.user,
+        reason="e2e_tenant_switch_setup_secondary",
+    )
     return Response(
         {
             "tenant_ids": [str(primary.id), str(secondary.id)],
@@ -688,7 +698,12 @@ def ensure_e2e_users(request):
             user_tenant = user.tenant or tenant
             if user_tenant:
                 from hub.apps.users.services import UserTenantMembershipService
-                UserTenantMembershipService().add_membership(user, user_tenant)
+                UserTenantMembershipService().add_membership(
+                    user,
+                    user_tenant,
+                    actor_user=user,
+                    reason="e2e_ensure_users_endpoint",
+                )
 
             # Ensure roles
             for role_name in roles:

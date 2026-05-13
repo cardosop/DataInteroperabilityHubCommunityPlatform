@@ -918,7 +918,7 @@ class RefResolverCacheIntegrationTest(TestCase):
         # Test through public API - resolve_external() validates URL internally
         # None URL should raise exception or handle gracefully
         try:
-            result = self.resolver.resolve_external(None)  # type: ignore
+            result = self.resolver.resolve_external(None)  # type: ignore[misc]  # test: edge-case type exercise
             # If it doesn't raise, that's also acceptable behavior
             self.assertIsNotNone(result)
         except (TypeError, ValueError, ODPSRefResolutionError):
@@ -1053,7 +1053,7 @@ class RefResolverCacheIntegrationTest(TestCase):
         # Use MockTransport that returns None-like response
         def handler(request: httpx.Request) -> httpx.Response:
             # Return empty JSON or null
-            return httpx.Response(200, json=None, request=request)  # type: ignore
+            return httpx.Response(200, json=None, request=request)  # type: ignore[misc]  # test: edge-case type exercise
 
         transport = httpx.MockTransport(handler)
 
@@ -1150,7 +1150,7 @@ class RefResolverCacheIntegrationTest(TestCase):
     def test_cache_invalidation_with_none_url(self):
         """Test cache invalidation with None URL."""
         try:
-            deleted = self.resolver.invalidate_cache(None)  # type: ignore
+            deleted = self.resolver.invalidate_cache(None)  # type: ignore[misc]  # test: edge-case type exercise
             # May return 0 or raise exception
             self.assertEqual(deleted, 0)
         except (TypeError, ValueError):

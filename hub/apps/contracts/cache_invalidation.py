@@ -130,7 +130,7 @@ def _trigger_search_reindex(contract) -> None:
     callers that bypass signals (rare — bulk operations) we kick it
     here too. Best-effort: the search subsystem owns the queue."""
     try:
-        from hub.apps.search.indexing import enqueue_contract_reindex  # type: ignore
+        from hub.apps.search.indexing import enqueue_contract_reindex  # type: ignore[import-not-found]  # search app is optional at import-time
     except ImportError:
         # Search module may not be installed in this deployment
         # (some test environments). Skip silently.
@@ -155,7 +155,7 @@ def _trigger_semantic_reingest(contract, tenant_id: Optional[str]) -> None:
     if not enabled:
         return
     try:
-        from hub.apps.semantic.tasks import enqueue_contract_reingest  # type: ignore
+        from hub.apps.semantic.tasks import enqueue_contract_reingest  # type: ignore[import-not-found]  # semantic app is optional at import-time
     except ImportError:
         return
     enqueue_contract_reingest(contract_id=str(contract.id), tenant_id=tenant_id)

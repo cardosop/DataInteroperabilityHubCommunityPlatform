@@ -482,7 +482,7 @@ class TestDataContractCLIClientCircuitBreaker(TestCase):
 
     def test_circuit_breaker_with_none_contract(self):
         """Test circuit breaker with None contract."""
-        raw_contract = None  # type: ignore
+        raw_contract = None  # type: ignore[misc]  # test: edge-case type exercise
 
         def handler(request: httpx.Request) -> httpx.Response:
             return httpx.Response(
@@ -511,7 +511,7 @@ class TestDataContractCLIClientCircuitBreaker(TestCase):
             # Should handle None gracefully
             try:
                 result = self.service_client.validate(
-                    raw_contract=raw_contract, format="json", use_cache=False  # type: ignore
+                    raw_contract=raw_contract, format="json", use_cache=False  # type: ignore[misc]  # test: edge-case type exercise
                 )
                 self.assertIsNotNone(result)
             except (TypeError, ValueError):

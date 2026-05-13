@@ -2576,7 +2576,7 @@ class TestAWSDataExchangeConnectorEdgeCases(TestCase):
     def test_extract_odcs_metadata_with_none(self):
         """Test _extract_odcs_metadata() error handling with None"""
         with self.assertRaises((ValueError, TypeError, AttributeError)):
-            self.connector._extract_odcs_metadata(None)  # type: ignore[arg-type]
+            self.connector._extract_odcs_metadata(None)  # type: ignore[arg-type]  # test: edge-case type exercise
 
     def test_extract_odcs_metadata_with_empty_dict(self):
         """Test _extract_odcs_metadata() error handling with empty dict"""
@@ -2613,7 +2613,7 @@ class TestAWSDataExchangeConnectorEdgeCases(TestCase):
 
         # Should handle None limit gracefully (may use default)
         try:
-            listings = self.connector.list_listings(limit=None)  # type: ignore[arg-type]
+            listings = self.connector.list_listings(limit=None)  # type: ignore[arg-type]  # test: edge-case type exercise
             self.assertIsInstance(listings, list)
         except (ValueError, TypeError):
             # Expected if validation is strict
@@ -2641,7 +2641,7 @@ class TestAWSDataExchangeConnectorEdgeCases(TestCase):
         self.connector._circuit_breaker.call = lambda func: func()
 
         with self.assertRaises((ValueError, TypeError, NotFoundError, ConnectionError)):
-            self.connector.get_listing(None)  # type: ignore[arg-type]
+            self.connector.get_listing(None)  # type: ignore[arg-type]  # test: edge-case type exercise
 
     @patch(
         "hub.apps.integrations.connectors.aws_data_exchange_connector.AWSDataExchangeConnector._get_dataexchange_client"
@@ -2665,4 +2665,4 @@ class TestAWSDataExchangeConnectorEdgeCases(TestCase):
         self.connector._circuit_breaker.call = lambda func: func()
 
         with self.assertRaises((ValueError, TypeError, NotFoundError, ConnectionError)):
-            self.connector.list_resources(None)  # type: ignore[arg-type]
+            self.connector.list_resources(None)  # type: ignore[arg-type]  # test: edge-case type exercise

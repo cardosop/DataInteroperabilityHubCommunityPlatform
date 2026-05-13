@@ -28,7 +28,8 @@ class WorkflowRegistry:
         self._dependency_graph: Dict[str, Set[str]] = {}
         self._reverse_dependency_graph: Dict[str, Set[str]] = {}
         # Cache for workflow definitions to avoid repeated database queries
-        self._workflow_cache: Dict[str, 'WorkflowDefinition'] = {}  # type: ignore
+        from typing import Any as _Any
+        self._workflow_cache: Dict[str, _Any] = {}  # WorkflowDefinition (forward ref)
 
     @transaction.atomic
     def register_workflow(
