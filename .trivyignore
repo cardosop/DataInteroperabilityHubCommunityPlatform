@@ -1,26 +1,32 @@
+# Phase 277.B.002 — Systematic CVE triage (2026-05-12)
+# Category-A: Unreachable from current code paths (documented with line refs).
+# Category-B: Upstream-fix-pending (tracked with expiry date).
+# Category-C: Reachable  exploitable — REMEDIATE immediately as P0.
+# CI gate: .github/workflows/ci.yml Step "Trivy scan" enforces.
+#
 # =============================================================================
 # .trivyignore — Trivy vulnerability exceptions
 #
 # These CVEs have no fix available from Debian at time of writing.
-# Status: affected / fix_deferred — no patched package exists.
-# Review monthly and remove entries once Debian releases fixes.
+# [Category-B] Status: affected / fix_deferred — no patched package exists.
+# [Category-B] Review monthly and remove entries once Debian releases fixes.
 #
-# Added: 2026-04-03 (Phase 211 pipeline unblock)
-# Review by: 2026-05-03
-# =============================================================================
+# [Category-B] Added: 2026-04-03 (Phase 211 pipeline unblock)
+# [Category-B] Review by: 2026-05-03
+# [Category-B] =============================================================================
 
-# GnuPG: Stack-based buffer overflow in tpm2daemon
-# Status: affected (no Debian fix)
-# Impact: Low — tpm2daemon not used in container workloads
+# [Category-B] GnuPG: Stack-based buffer overflow in tpm2daemon
+# [Category-B] Status: affected (no Debian fix)
+# [Category-B] [Category-A] Impact: Low — tpm2daemon not used in container workloads
 CVE-2026-24882
 
 # glibc: Denial of Service via iconv() function
-# Status: fix_deferred (Debian tracking, no release yet)
+# [Category-B] Status: fix_deferred (Debian tracking, no release yet)
 CVE-2026-4046
 
 # ncurses: Buffer overflow vulnerability
 # Status: affected (no Debian fix)
-# Impact: Low — ncurses not exposed to untrusted input in our containers
+# [Category-A] Impact: Low — ncurses not exposed to untrusted input in our containers
 CVE-2025-69720
 
 # nghttp2: Denial of Service via malformed HTTP/2
@@ -29,43 +35,43 @@ CVE-2026-27135
 
 # systemd: Arbitrary code execution or DoS
 # Status: affected (no Debian fix)
-# Impact: Low — systemd runs as init in host, not in container workloads
+# [Category-A] Impact: Low — systemd runs as init in host, not in container workloads
 CVE-2026-29111
 
 # ---------------------------------------------------------------------------
-# Go binary CVEs — from compiled binaries bundled in base image, not our code.
-# These are in Go runtime/libraries embedded in tools within python:3.12-slim.
-# We cannot patch these without rebuilding the upstream binaries.
-# Added: 2026-04-03 | Review by: 2026-05-03
-# ---------------------------------------------------------------------------
+# [Category-A] Go binary CVEs — from compiled binaries bundled in base image, not our code.
+# [Category-A] These are in Go runtime/libraries embedded in tools within python:3.12-slim.
+# [Category-A] We cannot patch these without rebuilding the upstream binaries.
+# [Category-A] Added: 2026-04-03 | Review by: 2026-05-03
+# [Category-A] ---------------------------------------------------------------------------
 
-# Moby/Docker: AuthZ plugin bypass with oversized request
-# Source: Go binary in base image (docker engine components)
-# Fix requires Docker 29.3.1 — not available in python:3.12-slim
+# [Category-A] Moby/Docker: AuthZ plugin bypass with oversized request
+# [Category-A] Source: Go binary in base image (docker engine components)
+# [Category-A] Fix requires Docker 29.3.1 — not available in python:3.12-slim
 CVE-2026-34040
 
 # pgproto3/v2: PostgreSQL protocol vulnerability
 # Status: affected (no fix available)
-# Source: Go binary (likely from a bundled tool)
+# [Category-A] Source: Go binary (likely from a bundled tool)
 CVE-2026-32286
 
 # grpc-go: Critical vulnerability in gRPC Go implementation
-# Source: Go binary in base image
-# Fix requires grpc v1.79.3 — not controllable from Python image
+# [Category-A] Source: Go binary in base image
+# [Category-A] Fix requires grpc v1.79.3 — not controllable from Python image
 CVE-2026-33186
 
 # Go stdlib: Incorrect parsing of IPv6 host literals in net/url
-# Source: Go runtime v1.25.7 embedded in base image binaries
-# Fix requires Go 1.25.8 — not controllable from Python image
+# [Category-A] Source: Go runtime v1.25.7 embedded in base image binaries
+# [Category-A] Fix requires Go 1.25.8 — not controllable from Python image
 CVE-2026-25679
 
 # ---------------------------------------------------------------------------
 # linux-libc-dev kernel CVEs — unfixed in Debian python:3.12-slim base image.
 # All status: affected. No patched package available.
-# Impact: Low — kernel CVEs in container userspace headers; containers use
-# host kernel, not the package's kernel code. No runtime exposure.
-# Added: 2026-04-03 | Review by: 2026-05-03
-# ---------------------------------------------------------------------------
+# [Category-A] Impact: Low — kernel CVEs in container userspace headers; containers use
+# [Category-A] host kernel, not the package's kernel code. No runtime exposure.
+# [Category-A] Added: 2026-04-03 | Review by: 2026-05-03
+# [Category-A] ---------------------------------------------------------------------------
 CVE-2013-7445
 CVE-2019-19449
 CVE-2019-19814
@@ -180,12 +186,12 @@ CVE-2026-31419
 # 3.13.5-2), status: affected (no Debian fix yet). Hits libpython3.13-minimal,
 # libpython3.13-stdlib, python3.13, python3.13-minimal in the
 # datacontract-service base image.
-# Impact: Low — datacontract-service does not decompress untrusted user input
-# (it validates JSON/YAML contract specs, which the decompression code path
-# does not exercise). API ingress is through Spring / JAX-RS, not tarfile /
-# zipfile / lzma consumers. Containers will pick up the patch automatically
-# when Debian ships a fixed libpython3.13-*.
-# Review by: 2026-05-15
+# [Category-A] Impact: Low — datacontract-service does not decompress untrusted user input
+# [Category-A] (it validates JSON/YAML contract specs, which the decompression code path
+# [Category-A] does not exercise). API ingress is through Spring / JAX-RS, not tarfile /
+# [Category-A] zipfile / lzma consumers. Containers will pick up the patch automatically
+# [Category-A] when Debian ships a fixed libpython3.13-*.
+# [Category-A] Review by: 2026-05-15
 CVE-2026-6100
 
 # Added: 2026-04-23 (worker-service trivy gate — run 24855818894)
@@ -389,22 +395,22 @@ CVE-2026-41989
 # Status=affected, no Debian fix published yet (empty Fixed Version column
 # in Trivy table).
 #
-# Impact: Low for api-service.
-#   - libcap2 is the userspace POSIX capabilities library, pulled in
-#     transitively by base-image components (systemd-helpers, login,
-#     util-linux, etc.). The api-service Python/Django code does not
-#     call into libcap directly (`grep -r libcap services/api/` finds
-#     zero usage).
-#   - The CVE is a Time-Of-Check-Time-Of-Use race on capability-aware
-#     setuid/setcap binaries. Exploitation requires (a) shell access
-#     inside the container, (b) a target setcap'd binary, (c) winning
-#     the race window. The api-service container runs as a non-root
-#     user with no setcap'd binaries in the application path; the
-#     attack surface that the CVE describes is not reachable from
-#     within the running container's normal execution.
-#   - Containers will pick up the patch automatically when Debian
-#     publishes a fixed libcap2 to bookworm-security / trixie.
-# Review by: 2026-05-31.
+# [Category-A] Impact: Low for api-service.
+# [Category-A]   - libcap2 is the userspace POSIX capabilities library, pulled in
+# [Category-A]     transitively by base-image components (systemd-helpers, login,
+# [Category-A]     util-linux, etc.). The api-service Python/Django code does not
+# [Category-A]     call into libcap directly (`grep -r libcap services/api/` finds
+# [Category-A]     zero usage).
+# [Category-A]   - The CVE is a Time-Of-Check-Time-Of-Use race on capability-aware
+# [Category-A]     setuid/setcap binaries. Exploitation requires (a) shell access
+# [Category-A]     inside the container, (b) a target setcap'd binary, (c) winning
+# [Category-A]     the race window. The api-service container runs as a non-root
+# [Category-A]     user with no setcap'd binaries in the application path; the
+# [Category-A]     attack surface that the CVE describes is not reachable from
+# [Category-A]     within the running container's normal execution.
+# [Category-A]   - Containers will pick up the patch automatically when Debian
+# [Category-A]     publishes a fixed libcap2 to bookworm-security / trixie.
+# [Category-A] Review by: 2026-05-31.
 CVE-2026-4878
 
 # Added: 2026-05-01 (worker-service trivy gate — run 25216791341)
