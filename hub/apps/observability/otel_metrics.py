@@ -475,6 +475,14 @@ jobs_completed_total = _CounterWrapper(
     expected_labels=("job_type", "status", "tenant_id"),
 )
 
+# Phase 277.B.050 — auth login metrics.
+auth_login_total = _CounterWrapper(
+    "auth_login_total",
+    "Total number of authentication attempts",
+    unit="1",
+    expected_labels=("status", "tenant_id", "auth_method"),
+)
+
 jobs_failed_total = _CounterWrapper(
     "jobs_failed_total",
     "Total number of jobs failed",
@@ -1162,6 +1170,16 @@ job_processing_rate_by_priority = _CounterWrapper(
     "Total number of jobs processed per second by priority",
     unit="1",
     expected_labels=("priority", "job_type"),
+)
+
+# Phase 277.B.071 — RQ queue depth gauges (sampled from Redis)
+rq_queue_depth = _UpDownCounterWrapper(
+    "rq_queue_depth",
+    "Current RQ queue depth sampled from Redis (queued + registry counts).  "
+    "Reported by emit_rq_queue_depth().  An UpDownCounter is used as a "
+    "gauge-compatible instrument — the emitter calls .set() on each sample.",
+    unit="1",
+    expected_labels=("queue_name", "status"),
 )
 
 job_worker_active = _UpDownCounterWrapper(
