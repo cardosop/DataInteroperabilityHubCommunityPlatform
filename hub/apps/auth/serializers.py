@@ -37,7 +37,7 @@ def get_user_permissions(user):
 
     # Platform admins have all permissions
     if hasattr(user, 'is_platform_admin') and user.is_platform_admin:
-        permissions.extend(['read:*', 'write:*', 'admin:*'])
+        permissions.extend(['read:*', 'write:*', 'admin:*', 'VIEW_PII'])
         return permissions
 
     # Get permissions from roles
@@ -49,6 +49,8 @@ def get_user_permissions(user):
             'TENANT_ADMIN': ['read:*', 'write:*', 'admin:tenant'],
             'DATA_PROVIDER': ['read:assets', 'write:assets', 'read:contracts', 'write:contracts'],
             'DATA_CONSUMER': ['read:assets', 'read:contracts', 'read:marketplace'],
+            'DATA_VIEWER': ['read:assets', 'read:contracts'],
+            'PII_VIEWER': ['VIEW_PII', 'read:assets', 'read:contracts'],
             'COMPLIANCE_OFFICER': ['read:*', 'write:compliance', 'read:compliance'],
             'AUDITOR': ['read:*'],
             'USER': ['read:assets', 'read:contracts'],
@@ -115,13 +117,13 @@ class PasswordResetRequestSerializer(serializers.Serializer):
 class PasswordResetConfirmSerializer(serializers.Serializer):
     """Serializer for password reset confirmation (11.3: token is plaintext UUID string)"""
     token = serializers.CharField(max_length=64)
-    new_password = serializers.CharField(write_only=True, min_length=8, style={'input_type': 'password'})
+    new_password = serializers.CharField(write_only=True, min_length=10, style={'input_type': 'password'})
 
 
 class InvitationAcceptanceSerializer(serializers.Serializer):
     """Serializer for invitation acceptance (11.3: token is plaintext UUID string)"""
     token = serializers.CharField(max_length=64)
-    password = serializers.CharField(write_only=True, min_length=8, style={'input_type': 'password'})
+    password = serializers.CharField(write_only=True, min_length=10, style={'input_type': 'password'})
 
 
 class EmailVerificationSerializer(serializers.Serializer):
@@ -207,7 +209,7 @@ class RegisterSerializer(serializers.Serializer):
     email = serializers.EmailField(required=True)
     password = serializers.CharField(
         write_only=True,
-        min_length=8,
+        min_length=10,
         max_length=128,
         style={'input_type': 'password'},
         help_text="Password must be at least 8 characters and contain uppercase, lowercase, and number"
@@ -223,20 +225,33 @@ class RegisterSerializer(serializers.Serializer):
         allow_null=True,
         help_text="Tenant ID for multi-tenant registration (optional)"
     )
+    signup_consent = serializers.BooleanField(
+        required=False,
+        default=False,
+        help_text=(
+            "Must be true when registering into a tenant with "
+            "compliance_consent_enabled and configured signup.privacy purpose."
+        ),
+    )
 
     def validate_password(self, value):
-        """Validate password strength"""
-        if len(value) < 8:
-            raise serializers.ValidationError("Password must be at least 8 characters")
+        """Validate password strength via Django's configured validators + inline checks.
 
-        has_upper = any(c.isupper() for c in value)
-        has_lower = any(c.islower() for c in value)
-        has_digit = any(c.isdigit() for c in value)
+        Phase 277.B.065 — delegates to ``django.contrib.auth.password_validation``
+        which runs all configured ``AUTH_PASSWORD_VALIDATORS`` including the
+        custom complexity, deny-list, and HIBP validators.
+        """
+        from django.contrib.auth.password_validation import validate_password
+        from django.core.exceptions import ValidationError as DjangoValidationError
 
-        if not (has_upper and has_lower and has_digit):
-            raise serializers.ValidationError(
-                "Password must contain at least one uppercase letter, one lowercase letter, and one number"
-            )
+        # Fast inline check first (avoids validator overhead for trivially weak passwords)
+        if len(value) < 10:
+            raise serializers.ValidationError("Password must be at least 10 characters")
+
+        try:
+            validate_password(value)
+        except DjangoValidationError as e:
+            raise serializers.ValidationError(e.messages) from e
 
         return value
 

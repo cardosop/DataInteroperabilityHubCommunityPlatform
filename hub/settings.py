@@ -1551,10 +1551,19 @@ AUTH_PASSWORD_VALIDATORS = [
         "NAME": "django.contrib.auth.password_validation.MinimumLengthValidator",
     },
     {
-        "NAME": "django.contrib.auth.password_validation.CommonPasswordValidator",
+        "NAME": "django.contrib.auth.password_validation.NumericPasswordValidator",
+    },
+    # Phase 277.B.065 — custom validators: complexity, deny-list, HIBP
+    {
+        "NAME": "hub.apps.auth.password_validators.PasswordComplexityValidator",
+        "OPTIONS": {"min_length": 10},
     },
     {
-        "NAME": "django.contrib.auth.password_validation.NumericPasswordValidator",
+        "NAME": "hub.apps.auth.password_validators.CommonPasswordDenyListValidator",
+    },
+    {
+        "NAME": "hub.apps.auth.password_validators.HaveIBeenPwnedValidator",
+        "OPTIONS": {"timeout": 5.0},
     },
 ]
 
