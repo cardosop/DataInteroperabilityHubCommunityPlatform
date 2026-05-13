@@ -1272,6 +1272,13 @@ class RateLimitConfigView(viewsets.ViewSet):
         from hub.apps.tenants.permissions import IsPlatformAdmin
         return [IsPlatformAdmin()]
 
+    # Phase 277.B.092 — ABAC enforcement before admin mutations
+    def check_permissions(self, request):
+        super().check_permissions(request)
+        if request.method in ("POST", "PATCH", "PUT", "DELETE"):
+            from hub.apps.governance.admin_abac import _evaluate_admin_action
+            _evaluate_admin_action(request, "TENANT_CONFIG", "ADMIN_WRITE")
+
     def _get_tenant_or_404(self, tenant_id: str) -> Tenant:
         try:
             return Tenant.objects.get(id=tenant_id)

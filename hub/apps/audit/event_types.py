@@ -1238,6 +1238,12 @@ WEBHOOK_KEY_ROTATION_DRILL: str = "WEBHOOK_KEY_ROTATION_DRILL"
 BYPASSRLS_ADMIN_DB_USED: str = "BYPASSRLS_ADMIN_DB_USED"
 
 # ---------------------------------------------------------------------------
+# Phase 277.B.092 — ABAC enforcement on admin endpoints
+# ---------------------------------------------------------------------------
+
+ABAC_POLICY_DENIED: str = "ABAC_POLICY_DENIED"
+
+# ---------------------------------------------------------------------------
 # Phase 277.B.031 — Billing cost overview
 # ---------------------------------------------------------------------------
 
@@ -1405,6 +1411,8 @@ __all__ = [
     "WEBHOOK_KEY_ROTATION_DRILL",
     # Phase 277.B.084 — Management command BYPASSRLS audit
     "BYPASSRLS_ADMIN_DB_USED",
+    # Phase 277.B.092 — ABAC enforcement on admin endpoints
+    "ABAC_POLICY_DENIED",
     # Phase 277.B.031 — Billing cost overview
     "COST_OVERVIEW_ACCESSED",
 ]
