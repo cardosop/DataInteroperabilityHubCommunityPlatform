@@ -89,6 +89,62 @@ class HealthService(BaseService):
             "unhealthy_instances": unhealthy_instances,
         }
 
+    def check_clamav_health(self) -> Dict[str, Any]:
+        """
+        Phase 277.B.079 — health probe for ClamAV daemon.
+
+        Sends a ``zVERSION`` command to clamd and checks the response
+        contains ``ClamAV`` — same probe as the docker-compose
+        healthcheck and the Kubernetes exec probe.
+
+        When ``CLAMAV_ENABLED`` is False, returns status=disabled.
+        Connection failures return status=unhealthy.
+        """
+        if not getattr(settings, "CLAMAV_ENABLED", False):
+            return {"status": "disabled", "healthy": True}
+
+        host = getattr(settings, "CLAMAV_HOST", "clamav")
+        port = int(getattr(settings, "CLAMAV_PORT", 3310))
+        timeout = float(getattr(settings, "CLAMAV_TIMEOUT_SECONDS", 10.0))
+
+        try:
+            import socket
+            import errno
+
+            sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            sock.settimeout(min(timeout, 5.0))
+            try:
+                sock.connect((host, port))
+                sock.sendall(b"zVERSION\n")
+                banner = b""
+                while True:
+                    chunk = sock.recv(4096)
+                    if not chunk:
+                        break
+                    banner += chunk
+                    if b"\n" in banner:
+                        break
+                banner_str = banner.decode("utf-8", errors="replace").strip()
+                if "ClamAV" in banner_str:
+                    return {
+                        "status": "healthy",
+                        "healthy": True,
+                        "version": banner_str,
+                    }
+                return {
+                    "status": "unhealthy",
+                    "healthy": False,
+                    "error": f"Unexpected VERSION response: {banner_str!r}",
+                }
+            finally:
+                sock.close()
+        except (socket.timeout, ConnectionRefusedError, OSError) as exc:
+            return {
+                "status": "unhealthy",
+                "healthy": False,
+                "error": str(exc),
+            }
+
     def check_baas_health(self) -> Dict[str, Any]:
         """
         Check BaaS Postgres and Redis when BAAS_DATABASE_URL / BAAS_REDIS_URL are set.
@@ -158,6 +214,13 @@ class HealthService(BaseService):
         status["redis"] = redis_health["instances"]
         if not redis_health["all_healthy"]:
             status["status"] = "unhealthy"
+
+        # Phase 277.B.079 — Check ClamAV when enabled
+        if getattr(settings, "CLAMAV_ENABLED", False):
+            clamav_health = self.check_clamav_health()
+            status["clamav"] = clamav_health
+            if not clamav_health.get("healthy", True):
+                status["status"] = "degraded"
 
         # Check BaaS Postgres/Redis when BAAS_*_URL are set
         baas_health = self.check_baas_health()
