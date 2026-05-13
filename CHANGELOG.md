@@ -62,6 +62,75 @@ project adheres to [Semantic Versioning](https://semver.org/).
 - **Observability.** 8 Prometheus metrics, 7 alert rules, capacity sizing
   doc, DR/RTO/RPO runbook, credential rotation guide, threat model.
 
+### Added — Phase 277: Whole-Application Audit & Remediation (2026-05-13)
+
+> Phase 277 is a comprehensive cross-cutting audit and remediation sweep
+> covering 26 audit dimensions (277.A.1–277.A.26), 100+ P0–P3 remediation
+> items, and 9 cross-feature integration closeout tasks.
+
+**Security & AuthZ:**
+- RLS policies for 30 tenant-scoped tables across 25 apps (`277.B.018a`)
+- `ManagementCommandAdminRouter` BYPASSRLS audit trail (`277.B.084`)
+- `tenant_context()` CI enforcement lint (`277.B.095`)
+- ABAC enforcement on admin endpoints (`277.B.092`)
+- Password complexity + common-password deny-list + HIBP validator (`277.B.065`)
+- Account lockout with progressive backoff (`277.B.066`)
+- Cross-tab auth token sync via `storage` event (`277.B.067`)
+- `/auth/sessions/` endpoint with `end_all_other_sessions` (`277.B.068`)
+- Two-person rule for sensitive feature flags (`277.B.096`)
+- Data residency cross-validation for warehouse connections (`277.B.093`)
+- `UserTenantMembership` unique constraint (`277.B.094`)
+
+**Observability & Monitoring:**
+- `asset_operations_total` counter with per-tenant labels (`277.B.051`)
+- RQ queue depth Prometheus gauge (`277.B.071`)
+- Worker p99 latency histogram + uptime gauge per queue (`277.B.075`)
+- RQ task circuit breaker decorator (`277.B.072`)
+- Distributed lock consistency for sweeps (`277.B.074`)
+- Breach notification SLA gauge with 48h/60h alerts (`277.B.088`)
+- Webhook DLQ growth alert + investigation runbook (`277.B.099`)
+- `trace_id` on `AuditEvent` for cross-system correlation (`277.B.111`)
+- Merkle integrity tamper-detection CI test (`277.B.112`)
+- DORA lead-time tracking instrumentation (`277.B.116`)
+- Rate-limit headers (`RateLimit-Limit/Remaining/Reset`) (`277.B.101`)
+
+**API & Platform:**
+- CPO billing cost overview dashboard (`277.B.031`)
+- Records API `StandardCursorPagination` migration (`277.B.048`)
+- SDK release automation CI pipeline (`277.B.103`)
+- OpenAPI completeness gate (`277.B.081`)
+- OpenAPI YAML generation in CI (`277.B.062`)
+- API v2 plan + Sunset/Link header coverage (`277.B.082`)
+- `GET /tenants/me/usage/` dynamic `RESOURCE_COUNTERS` (`277.B.106`)
+- Per-tenant rate limit configuration admin endpoint (`277.B.070`)
+
+**Compliance & Legal:**
+- GDPR export/erasure self-service FE UI (`277.B.085`)
+- RoPA PDF rendering with full GDPR Art. 30 compliance (`277.B.089`)
+- Breach notification SLA alert (`277.B.088`)
+- Email accessibility — alt text + plain-text alternative (`277.B.098`)
+
+**Documentation & Ops:**
+- CLI reference for 8 missing command groups (`277.B.059`)
+- `SECURITY_AND_COMPLIANCE.md` Phase 274+275 refresh (`277.B.064`)
+- GraphQL consolidation ADR selecting Strawberry (`277.B.102`)
+- CODEOWNERS file with primary+secondary owners (`277.B.109`)
+- `INCIDENT_RESPONSE.md` — comprehensive incident playbook (`277.B.056`)
+- Postmortem template + process document (`277.B.115`)
+- Webhook signing-key rotation drill management command (`277.B.080`)
+- ClamAV health probe — Helm exec probes + backend health check (`277.B.079`)
+- CI workflow audit — 6 dormant workflows flagged (`277.B.091`)
+
+**Frontend:**
+- `<PlanLimitErrorBanner>` shared component with upgrade CTA (`277.B.108`)
+- Tenant settings severity coloring + upgrade CTA (`277.B.114`)
+
+**Code Health:**
+- All `# type: ignore` markers documented with error codes + reasons (`277.B.038`)
+- `datetime.now()` → `timezone.now()` sweep + DTZ lint rule (`277.B.026`, `277.B.076`)
+- `makemigrations --check --dry-run` extended to all apps (`277.B.105`)
+- RLS linter FK detection extended + test coverage (`277.B.053`)
+
 ### Added — Phase 270: Marketplace, tax, compliance & worker-discipline deltas (270.0–270.F)
 
 > Phase 270 closes the OpenSpec `preprod01` change for the
