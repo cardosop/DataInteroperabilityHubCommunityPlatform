@@ -149,3 +149,48 @@ class SendJobEmailTest(TestCase):
         self.assertEqual(kw["to_email"], job.created_by.email)
         self.assertEqual(kw["email_type"], "JOB_FAILURE")
         self.assertIn("job", kw["context"])
+
+# ── Phase 277.4.5 — mail.outbox assertions ─────────────────────────
+
+class TestEmailDeliveryRealBackend(TestCase):
+    """Phase 277.4.5 — send_email_async uses real DB + test email backend."""
+
+    def setUp(self):
+        uid = uuid.uuid4().hex[:8]
+        self.tenant = Tenant.objects.create(
+            name=f"EM-{uid}", slug=f"em-{uid}",
+            status="ACTIVE", kyc_status="UNVERIFIED",
+        )
+        self.user = User.objects.create_user(
+            email=f"em-{uid}@meshant.test",
+            password="testpass", tenant=self.tenant,
+            status=UserStatus.ACTIVE,
+        )
+
+    def test_send_email_produces_correct_output(self):
+        """send_email_async delivers correct subject/body/recipient."""
+        from django.core import mail
+        from hub.apps.notifications.tasks import send_email_async
+
+        send_email_async(
+            to_email=self.user.email,
+            subject="Test Subject",
+            body="Test body content.",
+        )
+        assert len(mail.outbox) == 1, f"Expected 1 email, got {len(mail.outbox)}"
+        sent = mail.outbox[0]
+        assert sent.subject == "Test Subject"
+        assert "Test body content." in sent.body
+        assert self.user.email in sent.to
+
+    def test_send_email_handles_empty_body(self):
+        """Empty body does not crash the task."""
+        from django.core import mail
+        from hub.apps.notifications.tasks import send_email_async
+
+        send_email_async(
+            to_email=self.user.email,
+            subject="Empty",
+            body="",
+        )
+        assert len(mail.outbox) >= 1

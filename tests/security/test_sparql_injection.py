@@ -43,3 +43,33 @@ class SPARQLInjectionAPITest(InjectionTestBase):
                 response.status_code, 500,
                 f"SPARQL chars in contract creation caused 500: {payload}",
             )
+
+# ── Phase 277.4.2 — SPARQL injection expansion (2→6 tests) ────────────
+
+class TestSPARQLInjectionExpanded(InjectionTestBase):
+    """Phase 277.4.2 — 4 additional injection vectors."""
+
+    def setUp(self):
+        super().setUp()
+        self.client = APIClient()
+        self.client.force_authenticate(user=self.user)
+
+    def test_union_based_injection_rejected(self):
+        query = "SELECT ?s ?p ?o WHERE { ?s ?p ?o } UNION SELECT 1,2,3"
+        resp = self.client.post("/api/v1/semantic/sparql/", {"query": query, "format": "json"}, format="json")
+        self.assertNotEqual(resp.status_code, 200, "UNION injection should be rejected")
+
+    def test_service_exploitation_blocked(self):
+        query = "SELECT * WHERE { SERVICE <http://localhost:8080/admin> { ?s ?p ?o } }"
+        resp = self.client.post("/api/v1/semantic/sparql/", {"query": query, "format": "json"}, format="json")
+        self.assertNotEqual(resp.status_code, 200, "SERVICE exploitation should be blocked")
+
+    def test_comment_terminator_injection_rejected(self):
+        query = "SELECT * WHERE { ?s ?p ?o } #\n; DROP ALL"
+        resp = self.client.post("/api/v1/semantic/sparql/", {"query": query, "format": "json"}, format="json")
+        self.assertNotEqual(resp.status_code, 200)
+
+    def test_property_path_dos_rejected(self):
+        query = "SELECT ?s WHERE { ?s ?p+/?p*/?p? ?o }"
+        resp = self.client.post("/api/v1/semantic/sparql/", {"query": query, "format": "json"}, format="json")
+        assert resp.status_code != 500, "Property-path DoS should not crash"

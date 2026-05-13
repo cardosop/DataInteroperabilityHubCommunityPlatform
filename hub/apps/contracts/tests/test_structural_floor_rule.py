@@ -13,6 +13,7 @@ from __future__ import annotations
 import pytest
 from django.test import TestCase
 
+from hub.apps.core.services.base import ValidationError
 from hub.apps.contracts.structural_floor import (
     ERROR_CODE,
     SUBCODE_ODPS_NO_PORTS,
@@ -63,7 +64,7 @@ class TestStructuralFloorRule(TestCase):
         assert len(errors) > 0
 
     def test_enforce_raises_on_structureless(self):
-        with pytest.raises(Exception) as exc_info:
+        with pytest.raises(ValidationError) as exc_info:
             enforce_structural_floor(
                 hub_contract={"models": [{"name": "t", "fields": []}]},
                 spec_type="ODCS",
