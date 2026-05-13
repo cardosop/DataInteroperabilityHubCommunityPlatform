@@ -17,8 +17,9 @@ from .views import (
     me_tenants,
     switch_tenant,
     APIKeyViewSet,
+    end_all_other_sessions,
     list_active_sessions,
-    revoke_session
+    revoke_session,
 )
 from .sso_views import SSOViewSet
 
@@ -40,6 +41,7 @@ urlpatterns = [
     path("resend-verification/", resend_verification_email, name="resend-verification"),
     path("accept-invitation/", accept_invitation, name="accept-invitation"),
     path("sessions/", list_active_sessions, name="list-active-sessions"),
+    path("sessions/end-all-others/", end_all_other_sessions, name="end-all-other-sessions"),
     path("sessions/<uuid:session_id>/revoke/", revoke_session, name="revoke-session"),
     path("", include(router.urls)),
 ]

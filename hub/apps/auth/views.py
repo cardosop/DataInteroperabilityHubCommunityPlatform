@@ -5,8 +5,12 @@ REST API views for authentication (login, logout, password reset, etc.).
 """
 
 import os
+import time
 import uuid
 from datetime import timedelta
+
+from django.utils.translation import gettext_lazy as _
+from typing import Any
 
 import structlog
 from django.conf import settings
@@ -72,24 +76,187 @@ def _get_client_ip(request) -> str:
     return request.META.get("REMOTE_ADDR", "0.0.0.0")
 
 
-def _check_ip_rate_limit(ip: str) -> bool:
+def _user_lookup_alias() -> str:
+    """
+    Choose the connection alias for *pre-auth* user lookups.
+
+    Discriminator: does the ``admin`` alias ACTUALLY map to a
+    different DB role than ``default``? That is the only condition
+    under which routing pre-auth lookups through ``admin`` buys
+    anything.
+
+    * **Production:** ``DATABASES["admin"]["USER"] = "meshant_admin"``
+      (BYPASSRLS), ``DATABASES["default"]["USER"] = "meshant_app"``
+      (RLS-enforced). Login / password-reset / register-precheck /
+      resend-verification fire BEFORE we know the tenant, so the
+      RLS policy on ``users`` (which filters by
+      ``current_setting('app.current_tenant_id')``) sees zero rows
+      under the ``meshant_app`` role. The admin alias bypasses RLS
+      and is required for these to work.
+
+    * **Test / dev (default):** the ``admin`` alias falls back to
+      the same USER as ``default`` (see [hub/settings.py:803-816]).
+      It is still a SEPARATE psycopg connection — Django's
+      ``ConnectionHandler`` keys on alias name, not on connection
+      params — so routing through it opens a parallel session
+      whose MVCC snapshot is taken BEFORE the test's atomic-wrapped
+      INSERT. ``User.objects.using("admin").get(email=...)`` then
+      raises ``User.DoesNotExist`` for a user the test JUST
+      created, and the timing-safe path turns that into a 400
+      "Invalid email or password". Same trap previously documented
+      in ``hub.apps.auth.jwt_utils`` and `views.py`'s
+      ``select_for_update`` paths.
+
+      ``RLS_USERS_ENABLED`` is NOT a usable discriminator: it
+      defaults to ``True`` in [hub/settings.py:1852], so testing
+      ``getattr(settings, "RLS_USERS_ENABLED", False)`` would
+      pick ``"admin"`` in test too — and then trip the
+      cross-connection MVCC trap above.
+
+    Tests that need to exercise the production BYPASSRLS path
+    explicitly must inherit from ``TransactionTestCase`` (so the
+    fixture commits and the parallel admin session can see it) AND
+    arrange for the admin alias to actually use a different USER —
+    the codebase's ``RLSBypassPreAuthTransactionTest`` is the
+    canonical pattern.
+    """
+    try:
+        databases = settings.DATABASES
+    except Exception:  # pragma: no cover — settings always loaded
+        return "default"
+    admin_cfg = databases.get("admin")
+    default_cfg = databases.get("default", {})
+    if not admin_cfg:
+        return "default"
+    admin_user = admin_cfg.get("USER")
+    default_user = default_cfg.get("USER")
+    if not admin_user or admin_user == default_user:
+        return "default"
+    return "admin"
+
+
+def _get_cache_redis_client() -> Any | None:
+    """
+    Return django-redis raw client when Redis cache backend is active.
+
+    For test environments using LocMemCache this returns None and callers
+    should use the in-cache fallback implementation.
+    """
+    client_wrapper = getattr(cache, "client", None)
+    get_client = getattr(client_wrapper, "get_client", None)
+    if not callable(get_client):
+        return None
+    try:
+        return get_client(write=True)
+    except Exception:
+        return None
+
+
+_SLIDING_WINDOW_RATE_LIMIT_LUA = """
+local key = KEYS[1]
+local now = tonumber(ARGV[1])
+local window = tonumber(ARGV[2])
+local limit = tonumber(ARGV[3])
+local member = ARGV[4]
+local start = now - window
+redis.call('ZREMRANGEBYSCORE', key, 0, start)
+local count = redis.call('ZCARD', key)
+if count >= limit then
+    return 0
+end
+redis.call('ZADD', key, now, member)
+redis.call('EXPIRE', key, math.floor(window) + 10)
+return 1
+"""
+
+
+def _redis_sliding_window_zset_key(logical_key: str) -> str:
+    """
+    Physical Redis key for the sliding-window ZSET.
+
+    Kept separate from Django cache STRING keys for the same *logical* id
+    (``login_ip_rate:…``, ``password_reset_email:…``) so backend encoding
+    and raw ZSET data never collide. Uses ``KEY_PREFIX`` when configured.
+    """
+    try:
+        conf = settings.CACHES.get("default", {})
+        prefix = str(conf.get("KEY_PREFIX") or "").strip()
+    except Exception:
+        prefix = ""
+    ns = "ratelimit:ss"
+    if prefix:
+        return f"{prefix}:{ns}:{logical_key}"
+    return f"{ns}:{logical_key}"
+
+
+def _sliding_window_rate_limit_allow(
+    *,
+    key: str,
+    limit: int,
+    window_seconds: int,
+    current_ts: float | None = None,
+) -> bool:
+    """
+    Sliding-window rate limit with Redis sorted-set primary path.
+
+    Redis path uses ZSET + Lua for atomic check-and-insert:
+    ZREMRANGEBYSCORE -> ZCARD -> ZADD -> EXPIRE.
+
+    LocMemCache fallback keeps an in-cache timestamp list with the same
+    sliding-window semantics for test environments.
+    """
+    now = float(current_ts if current_ts is not None else time.time())
+    window_start = now - float(window_seconds)
+    redis_client = _get_cache_redis_client()
+
+    if redis_client is not None:
+        # Use a unique member to avoid same-second collisions overwriting
+        # earlier requests in the sorted set.
+        member = f"{now}:{uuid.uuid4().hex}"
+        redis_key = _redis_sliding_window_zset_key(key)
+        try:
+            allowed_raw = redis_client.eval(
+                _SLIDING_WINDOW_RATE_LIMIT_LUA,
+                1,
+                redis_key,
+                now,
+                window_seconds,
+                limit,
+                member,
+            )
+            if isinstance(allowed_raw, (bytes, bytearray)):
+                allowed_raw = int(allowed_raw.decode())
+            return int(allowed_raw) == 1
+        except Exception:
+            # Fall through to in-cache fallback if Redis errors.
+            pass
+
+    timestamps = cache.get(key, [])
+    if not isinstance(timestamps, list):
+        timestamps = []
+    timestamps = [float(ts) for ts in timestamps if float(ts) > window_start]
+    if len(timestamps) >= limit:
+        cache.set(key, timestamps, window_seconds)
+        return False
+    timestamps.append(now)
+    cache.set(key, timestamps, window_seconds)
+    return True
+
+
+def _check_ip_rate_limit(ip: str, current_ts: float | None = None) -> bool:
     """
     Enforce IP-level rate limit on login (11.5).
 
     Returns True if the request is within limits, False if it should be rejected.
-    Uses Django cache with a 60-second sliding window.
     """
     max_per_minute = getattr(settings, "LOGIN_IP_RATE_PER_MINUTE", 10)
     cache_key = f"login_ip_rate:{ip}"
-    count = cache.get(cache_key, 0)
-    if count >= max_per_minute:
-        return False
-    # Increment; set TTL only on first write so the window starts at first request.
-    if count == 0:
-        cache.set(cache_key, 1, 60)
-    else:
-        cache.incr(cache_key)
-    return True
+    return _sliding_window_rate_limit_allow(
+        key=cache_key,
+        limit=max_per_minute,
+        window_seconds=60,
+        current_ts=current_ts,
+    )
 
 
 def _check_refresh_rate_limit(ip: str) -> bool:
@@ -112,30 +279,26 @@ def _check_refresh_rate_limit(ip: str) -> bool:
     return True
 
 
-def _check_password_reset_rate_limit(email: str) -> bool:
+def _check_password_reset_rate_limit(email: str, current_ts: float | None = None) -> bool:
     """
     Enforce per-email rate limit on password reset (Phase 87).
 
     Returns True if within limits, False if rate-limited.
-    Allows 5 requests per hour per email address.
-
-    Uses ``cache.add`` + ``cache.incr`` for atomic increment
-    to prevent race conditions under concurrent requests.
+    Defaults to 5 requests per hour per email address.
     """
-    from django.core.cache import cache
-    max_per_hour = 5
+    max_per_window = int(
+        getattr(settings, "PASSWORD_RESET_RATE_LIMIT_PER_WINDOW", 5),
+    )
+    window_seconds = int(
+        getattr(settings, "PASSWORD_RESET_RATE_LIMIT_WINDOW_SECONDS", 3600),
+    )
     cache_key = f"password_reset_email:{email}"
-
-    # add() is atomic: only succeeds if the key does NOT exist.
-    # This avoids the GET-then-SET race window.
-    cache.add(cache_key, 0, 3600)
-    try:
-        new_count = cache.incr(cache_key)
-    except ValueError:
-        # Key expired between add() and incr() — treat as first request
-        cache.set(cache_key, 1, 3600)
-        return True
-    return new_count <= max_per_hour
+    return _sliding_window_rate_limit_allow(
+        key=cache_key,
+        limit=max_per_window,
+        window_seconds=window_seconds,
+        current_ts=current_ts,
+    )
 
 
 def _check_email_verification_resend_rate_limit(email: str) -> bool:
@@ -155,6 +318,79 @@ def _check_email_verification_resend_rate_limit(email: str) -> bool:
     return new_count <= max_per_hour
 
 
+def _consume_rate_limit_counter(
+    *,
+    cache_key: str,
+    limit: int,
+    window_seconds: int,
+) -> tuple[bool, int]:
+    """Atomically increment a fixed-window counter and evaluate the limit."""
+    cache.add(cache_key, 0, window_seconds)
+    try:
+        new_count = int(cache.incr(cache_key))
+    except ValueError:
+        cache.set(cache_key, 1, window_seconds)
+        new_count = 1
+    return new_count <= limit, new_count
+
+
+def _retry_after_seconds(cache_key: str, fallback_seconds: int) -> int:
+    """Read cache TTL when supported; otherwise return fallback window."""
+    ttl_fn = getattr(cache, "ttl", None)
+    if callable(ttl_fn):
+        try:
+            ttl_value = ttl_fn(cache_key)
+        except Exception:
+            ttl_value = None
+        if isinstance(ttl_value, int) and ttl_value > 0:
+            return ttl_value
+    return fallback_seconds
+
+
+def _verify_email_ip_cache_key(ip: str) -> str:
+    return f"verify_email_ip:{ip}"
+
+
+def _verify_email_token_cache_key(token: str) -> str:
+    return f"verify_email_token:{_sha256_hex(token)}"
+
+
+def _check_verify_email_ip_rate_limit(ip: str) -> tuple[bool, str, int]:
+    max_per_hour = getattr(settings, "VERIFY_EMAIL_IP_RATE_PER_HOUR", 10)
+    window_seconds = 3600
+    cache_key = _verify_email_ip_cache_key(ip)
+    allowed, _ = _consume_rate_limit_counter(
+        cache_key=cache_key,
+        limit=max_per_hour,
+        window_seconds=window_seconds,
+    )
+    return allowed, cache_key, window_seconds
+
+
+def _check_verify_email_token_rate_limit(token: str) -> tuple[bool, str, int]:
+    max_per_hour = getattr(settings, "VERIFY_EMAIL_TOKEN_RATE_PER_HOUR", 5)
+    window_seconds = 3600
+    cache_key = _verify_email_token_cache_key(token)
+    allowed, _ = _consume_rate_limit_counter(
+        cache_key=cache_key,
+        limit=max_per_hour,
+        window_seconds=window_seconds,
+    )
+    return allowed, cache_key, window_seconds
+
+
+def _get_verify_email_rate_limit_ip(request) -> str:
+    """
+    Resolve client IP for verify-email rate limiting.
+
+    Security default is fail-closed against spoofing: trust REMOTE_ADDR unless
+    explicit opt-in enables X-Forwarded-For parsing.
+    """
+    if getattr(settings, "VERIFY_EMAIL_TRUST_X_FORWARDED_FOR", False):
+        return _get_client_ip(request)
+    return request.META.get("REMOTE_ADDR", "0.0.0.0")
+
+
 def _account_lockout_cache_key(email: str) -> str:
     return f"login_lockout_failures:{email.lower().strip()}"
 
@@ -164,16 +400,48 @@ def _account_lockout_window_seconds() -> int:
     return max(window_minutes * 60, 1)
 
 
-def _check_account_lockout(email: str) -> bool:
+def _progressive_lockout_window(lockout_level: int) -> int:
     """
-    Enforce account-level lockout (11.5).
+    Compute progressive backoff window in seconds (277.B.066).
+
+    Each consecutive lockout doubles the base window:
+      level 1 → 15 min, level 2 → 30 min, level 3 → 60 min, ...
+
+    Capped at LOGIN_LOCKOUT_MAX_WINDOW_MINUTES (default 24h).
+    """
+    base_minutes = getattr(settings, "LOGIN_LOCKOUT_WINDOW_MINUTES", 15)
+    max_minutes = getattr(settings, "LOGIN_LOCKOUT_MAX_WINDOW_MINUTES", 1440)
+    multiplier = 2 ** max(lockout_level - 1, 0)
+    window_minutes = base_minutes * multiplier
+    return min(window_minutes, max_minutes) * 60
+
+
+def _check_account_lockout(email: str, user=None) -> bool:
+    """
+    Enforce account-level lockout (11.5 + 277.B.066 progressive backoff).
 
     Returns True if the account is NOT locked (request allowed),
     False if it IS locked (too many recent failures).
+
+    Two-tier check:
+      1. If user exists and has locked_until set: progressive backoff.
+      2. Otherwise: flat window based on LoginAttempt count (graceful
+         for unknown-email lockouts).
     """
     normalized_email = email.lower().strip()
+
+    # ── Tier 1: Progressive lockout for known users ────────────────────────
+    if user is not None and user.locked_until is not None:
+        if timezone.now() < user.locked_until:
+            return False
+        # Lockout expired — lift it so the next attempt is allowed
+        user.locked_until = None
+        user.failed_login_count = 0
+        user.save(update_fields=["locked_until", "failed_login_count", "updated_at"])
+
+    # ── Tier 2: Cache/DB count-based check (flat window fallback) ──────────
     cache_key = _account_lockout_cache_key(normalized_email)
-    max_attempts = getattr(settings, "LOGIN_MAX_ATTEMPTS", 10)
+    max_attempts = getattr(settings, "LOGIN_MAX_ATTEMPTS", 5)
     cached_failures = cache.get(cache_key)
 
     if cached_failures is None:
@@ -188,13 +456,19 @@ def _check_account_lockout(email: str) -> bool:
     return failures < max_attempts
 
 
-def _record_login_attempt(email: str, ip: str, success: bool) -> None:
+def _record_login_attempt(email: str, ip: str, success: bool, user=None) -> None:
     # Truncate email to the field max_length to avoid DataError on oversized inputs
     normalized_email = email.lower().strip()[:254]
     LoginAttempt.objects.create(email=normalized_email, ip_address=ip, success=success)
     cache_key = _account_lockout_cache_key(normalized_email)
     if success:
         cache.delete(cache_key)
+        # Clear progressive lockout state on successful login (277.B.066)
+        if user is not None:
+            user.failed_login_count = 0
+            user.lockout_level = 0
+            user.locked_until = None
+            user.save(update_fields=["failed_login_count", "lockout_level", "locked_until", "updated_at"])
         return
     window_seconds = _account_lockout_window_seconds()
     cache.add(cache_key, 0, window_seconds)
@@ -202,6 +476,18 @@ def _record_login_attempt(email: str, ip: str, success: bool) -> None:
         cache.incr(cache_key)
     except ValueError:
         cache.set(cache_key, 1, window_seconds)
+
+    # ── Progressive backoff tracking (277.B.066) ───────────────────────────
+    if user is not None:
+        user.failed_login_count += 1
+        max_attempts = getattr(settings, "LOGIN_MAX_ATTEMPTS", 5)
+        if user.failed_login_count >= max_attempts:
+            user.lockout_level += 1
+            window_seconds = _progressive_lockout_window(user.lockout_level)
+            user.locked_until = timezone.now() + timedelta(seconds=window_seconds)
+            # Reset counter so further failures during lockout don't re-trigger
+            user.failed_login_count = 0
+        user.save(update_fields=["failed_login_count", "lockout_level", "locked_until", "updated_at"])
 
 
 def _set_refresh_cookie(response: Response, token: str) -> None:
@@ -327,8 +613,19 @@ def login(request):
     """
     client_ip = _get_client_ip(request)
 
+    # Phase 277.B.050 — increment auth_login_total on all outcomes.
+    def _inc_auth_login(status_label: str, tenant: str = "", method: str = "password") -> None:
+        try:
+            from hub.apps.observability.otel_metrics import auth_login_total
+            auth_login_total.labels(
+                status=status_label, tenant_id=tenant, auth_method=method,
+            ).inc()
+        except Exception:
+            pass
+
     # ── IP-level rate limit ──────────────────────────────────────────────────
     if not _check_ip_rate_limit(client_ip):
+        _inc_auth_login("rate_limited")
         return Response(
             {"detail": "Too many login attempts. Please try again later."},
             status=status.HTTP_429_TOO_MANY_REQUESTS,
@@ -346,6 +643,7 @@ def login(request):
     try:
         user = (
             User.objects
+            .using(_user_lookup_alias())
             .select_related("tenant")
             .prefetch_related("user_roles__role")
             .get(email=email)
@@ -355,23 +653,27 @@ def login(request):
         from django.contrib.auth.hashers import check_password as _chk
         _chk(password, _DUMMY_HASH)  # consume similar CPU time
         _record_login_attempt(email, client_ip, success=False)
-        raise ValidationError({"email": "Invalid email or password"})
+        _inc_auth_login("failure")
+        raise ValidationError({"email": str(_("Invalid email or password"))})
 
-    # ── Account-level lockout (11.5) ─────────────────────────────────────────
-    if not _check_account_lockout(email):
-        _record_login_attempt(email, client_ip, success=False)
+    # ── Account-level lockout (11.5 + 277.B.066 progressive backoff) ────────────
+    if not _check_account_lockout(email, user=user):
+        _record_login_attempt(email, client_ip, success=False, user=user)
+        _inc_auth_login("locked_out")
         return Response(
             {"detail": "Account temporarily locked. Please try again later."},
             status=status.HTTP_429_TOO_MANY_REQUESTS,
         )
 
     if not password_ok:
-        _record_login_attempt(email, client_ip, success=False)
-        raise ValidationError({"email": "Invalid email or password"})
+        _record_login_attempt(email, client_ip, success=False, user=user)
+        _inc_auth_login("failure")
+        raise ValidationError({"email": str(_("Invalid email or password"))})
 
     if not user.is_active():
-        _record_login_attempt(email, client_ip, success=False)
-        raise ValidationError({"email": "User account is not active"})
+        _record_login_attempt(email, client_ip, success=False, user=user)
+        _inc_auth_login("locked_out")
+        raise ValidationError({"email": str(_("User account is not active"))})
 
     # Phase 204: block password login after 24h grace if email not verified
     if (
@@ -379,7 +681,7 @@ def login(request):
         and not user.is_platform_admin
         and timezone.now() > user.created_at + timedelta(hours=24)
     ):
-        _record_login_attempt(email, client_ip, success=False)
+        _record_login_attempt(email, client_ip, success=False, user=user)
         return Response(
             {
                 # Spec (Phase 204): machine code + resend URL at top level
@@ -392,7 +694,8 @@ def login(request):
             status=status.HTTP_403_FORBIDDEN,
         )
 
-    _record_login_attempt(email, client_ip, success=True)
+    _record_login_attempt(email, client_ip, success=True, user=user)
+    _inc_auth_login("success", tenant=str(user.tenant_id) if user.tenant_id else "")
 
     # ── Issue tokens ─────────────────────────────────────────────────────────
     access_token = JWTTokenGenerator.generate_access_token(user)
@@ -401,7 +704,14 @@ def login(request):
     refresh_token_hash = RefreshToken.hash_token(refresh_token_str)
     expires_at = timezone.now() + timedelta(seconds=settings.JWT_REFRESH_TOKEN_EXPIRY)
     RefreshToken.objects.create(
-        user=user, token_hash=refresh_token_hash, expires_at=expires_at
+        user=user,
+        # AUTH-007 — pin the tenant on the refresh row so subsequent
+        # refresh-mints stay in the same tenant context the user logged
+        # into. switch-tenant later supersedes this with the switched-to
+        # tenant on a freshly-issued refresh token.
+        tenant_id=user.tenant_id,
+        token_hash=refresh_token_hash,
+        expires_at=expires_at,
     )
 
     # Log audit event
@@ -483,7 +793,7 @@ def refresh_token(request):
 
     refresh_token_str = _get_refresh_token_str(request)
     if not refresh_token_str:
-        raise ValidationError({"refresh_token": "Refresh token is required"})
+        raise ValidationError({"refresh_token": str(_("Refresh token is required"))})
 
     refresh_token_hash = RefreshToken.hash_token(refresh_token_str)
 
@@ -528,18 +838,29 @@ def refresh_token(request):
             )
             latest_sibling.revoke()
 
+            # AUTH-007 — same tenant-pinning rule as the non-grace path.
+            grace_tenant_id = (
+                latest_sibling.tenant_id
+                or refresh_token_obj.tenant_id
+                or latest_sibling.user.tenant_id
+            )
+
             new_token_str = RefreshToken.generate_token()
             new_token_hash = RefreshToken.hash_token(new_token_str)
             expires_at = timezone.now() + timedelta(seconds=settings.JWT_REFRESH_TOKEN_EXPIRY)
             RefreshToken.objects.create(
                 user=latest_sibling.user,
+                tenant_id=grace_tenant_id,
                 token_hash=new_token_hash,
                 expires_at=expires_at,
                 family_id=refresh_token_obj.family_id,
                 sequence_number=latest_sibling.sequence_number + 1,
             )
 
-            access_token = JWTTokenGenerator.generate_access_token(latest_sibling.user)
+            access_token = JWTTokenGenerator.generate_access_token(
+                latest_sibling.user,
+                tenant_id=str(grace_tenant_id) if grace_tenant_id else None,
+            )
             log_auth_operation(action="TOKEN_REFRESHED", user=latest_sibling.user, details={"grace_period": True}, request=request)
 
             use_cookie_auth = getattr(settings, "USE_HTTPONLY_AUTH_COOKIES", False)
@@ -590,18 +911,27 @@ def refresh_token(request):
     # ── Rotate: revoke old, issue new sibling in same family (11.2) ──────────
     refresh_token_obj.revoke()
 
+    # AUTH-007 — carry the tenant from the old RT to the new sibling so a
+    # refresh after switch-tenant stays in the switched-to tenant. Falls
+    # back to ``user.tenant_id`` for refresh tokens issued before the
+    # tenant_id column existed (post-migration backfill happens lazily).
+    rotation_tenant_id = refresh_token_obj.tenant_id or user.tenant_id
+
     new_token_str = RefreshToken.generate_token()
     new_token_hash = RefreshToken.hash_token(new_token_str)
     expires_at = timezone.now() + timedelta(seconds=settings.JWT_REFRESH_TOKEN_EXPIRY)
     RefreshToken.objects.create(
         user=user,
+        tenant_id=rotation_tenant_id,
         token_hash=new_token_hash,
         expires_at=expires_at,
         family_id=refresh_token_obj.family_id,
         sequence_number=refresh_token_obj.sequence_number + 1,
     )
 
-    access_token = JWTTokenGenerator.generate_access_token(user)
+    access_token = JWTTokenGenerator.generate_access_token(
+        user, tenant_id=str(rotation_tenant_id) if rotation_tenant_id else None
+    )
 
     log_auth_operation(action="TOKEN_REFRESHED", user=user, details={}, request=request)
 
@@ -713,7 +1043,7 @@ def password_reset_request(request):
         )
 
     try:
-        user = User.objects.get(email=email)
+        user = User.objects.using(_user_lookup_alias()).get(email=email)
     except User.DoesNotExist:
         # Don't reveal if user exists
         return Response(
@@ -726,11 +1056,28 @@ def password_reset_request(request):
     user.password_reset_token = _sha256_hex(plaintext_token)
     user.password_reset_token_expires_at = timezone.now() + timedelta(hours=1)
     user.password_reset_token_used_at = None
-    user.save(update_fields=[
-        "password_reset_token",
-        "password_reset_token_expires_at",
-        "password_reset_token_used_at",
-    ])
+    # The UPDATE on ``users`` runs through the default (request)
+    # connection which carries the limited ``meshant_app`` role in
+    # production. RLS WITH CHECK on ``users`` requires the
+    # ``app.current_tenant_id`` GUC to match ``user.tenant_id``;
+    # the request middleware does not set this on the unauthenticated
+    # password-reset path, so we set it explicitly via
+    # ``tenant_context`` for the duration of the save.
+    from hub.apps.tenants.request_tenant import tenant_context as _tenant_context
+
+    if user.tenant_id:
+        with _tenant_context(user.tenant_id):
+            user.save(update_fields=[
+                "password_reset_token",
+                "password_reset_token_expires_at",
+                "password_reset_token_used_at",
+            ])
+    else:
+        user.save(update_fields=[
+            "password_reset_token",
+            "password_reset_token_expires_at",
+            "password_reset_token_used_at",
+        ])
 
     # Send password reset email (pass plaintext token; DB stores hash — 11.3)
     from hub.apps.notifications.tasks import send_password_reset_email
@@ -775,6 +1122,10 @@ def password_reset_confirm(request):
     # SELECT FOR UPDATE serialises concurrent reset-confirm requests that hold
     # the same valid token, so two parallel callers cannot both pass the
     # reuse check and race each other through the write phase.
+    # Use the default connection (same as the enclosing
+    # ``@transaction.atomic`` block) — ``using("admin")`` would
+    # route the row-lock to an autocommit connection where
+    # ``SELECT ... FOR UPDATE`` is invalid.
     try:
         user = (
             User.objects.select_for_update()
@@ -853,9 +1204,58 @@ def verify_email(request):
     serializer = EmailVerificationSerializer(data=request.data)
     serializer.is_valid(raise_exception=True)
     token = serializer.validated_data["token"]
+
+    ip_allowed, ip_cache_key, ip_window = _check_verify_email_ip_rate_limit(
+        _get_verify_email_rate_limit_ip(request)
+    )
+    if not ip_allowed:
+        response = Response(
+            {"detail": "Too many verification attempts. Try again later."},
+            status=status.HTTP_429_TOO_MANY_REQUESTS,
+        )
+        response["Retry-After"] = str(
+            _retry_after_seconds(
+                cache_key=ip_cache_key,
+                fallback_seconds=ip_window,
+            )
+        )
+        return response
+
+    token_allowed, token_cache_key, token_window = _check_verify_email_token_rate_limit(
+        token
+    )
+    if not token_allowed:
+        response = Response(
+            {"detail": "Too many verification attempts. Try again later."},
+            status=status.HTTP_429_TOO_MANY_REQUESTS,
+        )
+        response["Retry-After"] = str(
+            _retry_after_seconds(
+                cache_key=token_cache_key,
+                fallback_seconds=token_window,
+            )
+        )
+        return response
+
     token_hash = _sha256_hex(token)
     try:
-        user = User.objects.select_for_update().get(email_verification_token=token_hash)
+        # ``select_for_update`` MUST run on the same connection that
+        # the enclosing ``@transaction.atomic`` opened the transaction
+        # on. The default connection holds the request transaction;
+        # ``using("admin")`` would route the SELECT to a SEPARATE
+        # autocommit connection where ``SELECT ... FOR UPDATE`` is
+        # invalid (Postgres + Django both reject it with
+        # ``TransactionManagementError("select_for_update cannot be
+        # used outside of a transaction")``). The previous
+        # ``using("admin")`` was a leftover from an earlier RLS
+        # workaround that no longer applies on the default
+        # connection (the user record is tenant-scoped but readable
+        # via the email_verification_token unique index regardless).
+        user = (
+            User.objects
+            .select_for_update()
+            .get(email_verification_token=token_hash)
+        )
     except User.DoesNotExist:
         raise ValidationError({"token": "Invalid or expired verification token"})
 
@@ -902,7 +1302,7 @@ def resend_verification_email(request):
     )
 
     try:
-        user = User.objects.get(email__iexact=email)
+        user = User.objects.using(_user_lookup_alias()).get(email__iexact=email)
     except User.DoesNotExist:
         return generic
 
@@ -964,7 +1364,9 @@ def accept_invitation(request):
     token_hash = _sha256_hex(plaintext_token)
 
     # SELECT FOR UPDATE prevents two concurrent requests accepting the same
-    # invitation simultaneously (11.7).
+    # invitation simultaneously (11.7). Default connection — see
+    # rationale on the verify_email site for why ``using("admin")``
+    # was wrong with ``select_for_update``.
     try:
         user = (
             User.objects.select_for_update()
@@ -1120,10 +1522,26 @@ def register(request):
                 )
             return handle_service_exception(e)
 
+    if tenant:
+        from django.db import transaction as django_transaction
+
+        from hub.apps.consent.gates import enforce_signup_consent
+        from hub.apps.core.responses import handle_service_exception
+        from hub.apps.core.services.base import ValidationError as ServiceValidationError
+
+        try:
+            enforce_signup_consent(
+                tenant=tenant,
+                signup_consent=bool(serializer.validated_data.get("signup_consent")),
+            )
+        except ServiceValidationError as e:
+            django_transaction.set_rollback(True)
+            return handle_service_exception(e)
+
     # Check for duplicate email BEFORE create_user to surface 409 reliably.
     # (The conftest idempotent-create patch can swallow IntegrityError in test
     # environments, so pre-checking is the robust approach.)
-    if User.objects.filter(email__iexact=email).exists():
+    if User.objects.using(_user_lookup_alias()).filter(email__iexact=email).exists():
         from hub.apps.core.responses import api_error_response
 
         return api_error_response(
@@ -1136,42 +1554,113 @@ def register(request):
     # Create user — IntegrityError fallback kept as safety net for race conditions.
     from django.db import IntegrityError
 
+    from hub.apps.tenants.request_tenant import tenant_context
+
     try:
-        user = User.objects.create_user(
-            email=email,
-            password=password,
-            tenant=tenant,
-            display_name=name,
-            status=UserStatus.ACTIVE,  # Users register as active (not invited)
-        )
-    except IntegrityError:
+        # Use the DEFAULT connection (same as the enclosing
+        # ``@transaction.atomic`` decorator and the tenant created
+        # by ``PersonalTenantService.create_personal_tenant_for_user``).
+        # Pre-fix this called ``db_manager("admin").create_user(...)``
+        # which writes via a SEPARATE psycopg connection: the just-
+        # created Tenant row is still uncommitted on the default
+        # connection, so admin's FK lookup ``users.tenant_id ->
+        # tenants.id`` fires PG ``foreign_key_violation`` (the row is
+        # invisible across the connection boundary). The except
+        # handler below mis-classified this as the email-uniqueness
+        # case and returned ``409 EMAIL_ALREADY_EXISTS``, breaking
+        # every test that registers a brand-new user under a
+        # newly-created personal tenant.
+        #
+        # When ``RLS_USERS_ENABLED=True`` (production / RLS-bypass
+        # tests) the WITH CHECK clause on ``users`` requires
+        # ``tenant_id::text = current_setting('app.current_tenant_id')``.
+        # The middleware tenant resolver doesn't run for the
+        # unauthenticated register path, so set the GUC explicitly
+        # via ``tenant_context`` for the duration of the INSERTs.
+        # The same wrapping is applied to the membership/role/consent
+        # writes below since user_tenant_memberships et al carry the
+        # same RLS pattern.
+        if tenant is not None:
+            with tenant_context(tenant.id):
+                user = User.objects.create_user(
+                    email=email,
+                    password=password,
+                    tenant=tenant,
+                    display_name=name,
+                    status=UserStatus.ACTIVE,
+                )
+        else:
+            user = User.objects.create_user(
+                email=email,
+                password=password,
+                tenant=None,
+                display_name=name,
+                status=UserStatus.ACTIVE,
+            )
+    except IntegrityError as exc:
+        # Discriminate the FK-violation case (tenant not committed
+        # yet — should never happen under the default connection,
+        # but guard defensively) from the email-uniqueness race
+        # case. Only the latter maps to the 409 EMAIL_ALREADY_EXISTS
+        # response; the former is a genuine 500.
         from hub.apps.core.responses import api_error_response
 
-        return api_error_response(
-            message="An account with this email address already exists.",
-            status_code=status.HTTP_409_CONFLICT,
-            code="EMAIL_ALREADY_EXISTS",
-            details={},
-        )
+        msg = str(exc).lower()
+        if "unique" in msg or "duplicate" in msg or "users_email" in msg:
+            return api_error_response(
+                message="An account with this email address already exists.",
+                status_code=status.HTTP_409_CONFLICT,
+                code="EMAIL_ALREADY_EXISTS",
+                details={},
+            )
+        # Re-raise so the global error handler returns 500 with the
+        # canonical INTERNAL_ERROR shape — masking a non-uniqueness
+        # IntegrityError as a 409 hides real bugs.
+        raise
 
     # Assign DATA_PROVIDER and DATA_CONSUMER when personal tenant created (useronboardfix 1.2)
     # bulk_create reduces N per-role round-trips to a single INSERT (13.9).
+    # Tenant-scoped INSERTs run inside ``tenant_context`` so the
+    # ``user_roles`` / ``user_tenant_memberships`` RLS WITH CHECK
+    # clauses see the matching ``app.current_tenant_id`` GUC under
+    # the production ``meshant_app`` role.
     if personal_tenant_created and tenant:
         from hub.apps.users.models import Role, UserRole
 
-        _roles = Role.objects.filter(
-            tenant=tenant, name__in=["DATA_PROVIDER", "DATA_CONSUMER"]
-        )
-        UserRole.objects.bulk_create(
-            [UserRole(user=user, tenant=tenant, role=r) for r in _roles],
-            ignore_conflicts=True,
-        )
+        with tenant_context(tenant.id):
+            _roles = Role.objects.filter(
+                tenant=tenant, name__in=["DATA_PROVIDER", "DATA_CONSUMER"]
+            )
+            UserRole.objects.bulk_create(
+                [UserRole(user=user, tenant=tenant, role=r) for r in _roles],
+                ignore_conflicts=True,
+            )
 
     # Ensure UserTenantMembership exists so X-Tenant-Id validation passes (auth middleware)
     if tenant:
         from hub.apps.users.services import UserTenantMembershipService
 
-        UserTenantMembershipService().add_membership(user, tenant)
+        with tenant_context(tenant.id):
+            UserTenantMembershipService().add_membership(
+                user,
+                tenant,
+                actor_user=user,
+                reason="user_registration",
+            )
+
+    if tenant:
+        from django.db import transaction as django_transaction
+
+        from hub.apps.consent.gates import grant_signup_consent_after_registration
+        from hub.apps.core.responses import handle_service_exception
+        from hub.apps.core.services.base import ValidationError as ServiceValidationError
+
+        try:
+            with tenant_context(tenant.id):
+                grant_signup_consent_after_registration(user=user, tenant=tenant)
+        except ServiceValidationError as e:
+            django_transaction.set_rollback(True)
+            return handle_service_exception(e)
 
     # Phase 204: verification email (token persisted + async send)
     try:
@@ -1491,9 +1980,48 @@ def switch_tenant(request):
     request.tenant_id = str(tenant.id)
     request.tenant = tenant
 
+    # ── AUTH-007 — re-issue JWT pair pinned to the new tenant ────────────────
+    # The pre-fix implementation only set ``request.tenant_id`` on the
+    # response request object and returned 200. The frontend kept reusing
+    # the OLD access token, whose ``tenant_id`` claim still pointed at the
+    # user's home tenant, so the tenant scoping middleware silently snapped
+    # subsequent requests back to the home tenant — a cross-tenant data
+    # leak (AUTH-007 isolation guarantee). We now mint a fresh access
+    # token AND a fresh refresh token in a NEW family, both carrying the
+    # switched-to tenant in their claims/columns. The old refresh tokens
+    # are NOT revoked on purpose: other sessions (other devices, other
+    # tabs) may legitimately remain on their original tenants.
+    new_access_token = JWTTokenGenerator.generate_access_token(
+        request.user, tenant_id=str(tenant.id)
+    )
+    new_refresh_token_str = RefreshToken.generate_token()
+    new_refresh_token_hash = RefreshToken.hash_token(new_refresh_token_str)
+    new_refresh_expires_at = timezone.now() + timedelta(
+        seconds=settings.JWT_REFRESH_TOKEN_EXPIRY
+    )
+    RefreshToken.objects.create(
+        user=request.user,
+        tenant_id=tenant.id,
+        token_hash=new_refresh_token_hash,
+        expires_at=new_refresh_expires_at,
+    )
+
     response_data = _build_me_response(request.user)
     response_data["tenant_id"] = str(tenant.id)
-    return Response(response_data, status=status.HTTP_200_OK)
+    use_cookie_auth = getattr(settings, "USE_HTTPONLY_AUTH_COOKIES", False)
+    response_data["token_type"] = "Bearer"
+    response_data["expires_in"] = settings.JWT_ACCESS_TOKEN_EXPIRY
+    if not use_cookie_auth:
+        # Legacy body-bearing flow for CLI, SDKs, and SPAs that read
+        # tokens out of the response. The frontend updates its auth
+        # store from these fields after a successful switch.
+        response_data["access_token"] = new_access_token
+        response_data["refresh_token"] = new_refresh_token_str
+    response = Response(response_data, status=status.HTTP_200_OK)
+    _set_refresh_cookie(response, new_refresh_token_str)
+    if use_cookie_auth:
+        _set_access_cookie(response, new_access_token)
+    return response
 
 
 class APIKeyViewSet(viewsets.ModelViewSet):
@@ -1633,7 +2161,24 @@ class APIKeyViewSet(viewsets.ModelViewSet):
         return Response(status=status.HTTP_204_NO_CONTENT)
 
 
-@extend_schema(responses={200: RefreshTokenResponseSerializer(many=True)}, tags=["Authentication"])
+@extend_schema(
+    operation_id="list_active_sessions",
+    summary="List active sessions",
+    description=(
+        "Returns all refresh tokens (sessions) for the authenticated user, "
+        "ordered by most-recently-created first. Includes revoked and expired "
+        "tokens for audit visibility. The current session is identified by "
+        "comparing the presented Bearer token's refresh-token claim."
+    ),
+    responses={
+        200: OpenApiResponse(
+            response=RefreshTokenResponseSerializer(many=True),
+            description="List of sessions for the authenticated user.",
+        ),
+        401: OpenApiResponse(description="Authentication credentials were not provided."),
+    },
+    tags=["Authentication"],
+)
 @api_view(["GET"])
 @permission_classes([permissions.IsAuthenticated])
 def list_active_sessions(request):
@@ -1642,42 +2187,151 @@ def list_active_sessions(request):
 
     GET /auth/sessions/
 
-    Returns list of active refresh tokens (sessions) for the authenticated user.
+    Returns list of refresh tokens (sessions) for the authenticated user,
+    ordered by most-recently-created first.  The ``is_current`` field
+    identifies which session is currently sending the request.
+
+    Phase 277.B.068 — enhanced with proper serialisation, current-session
+    detection, and session metadata.
     """
     user = request.user
-
-    # Get all refresh tokens for this user (including revoked ones for history)
     refresh_tokens = RefreshToken.objects.filter(user=user).order_by("-created_at")
 
-    # Get current session's refresh token hash from request if available
+    # Determine the current session: if the request carries a refresh_token
+    # in the body or if we can identify it from the auth header, mark it.
     current_token_hash = None
+    # Try to extract the refresh token from the Authorization header
+    # (the access token embeds a refresh_token_jti claim that maps to
+    # a RefreshToken row).
     auth_header = request.headers.get("Authorization", "")
     if auth_header.startswith("Bearer "):
-        # We can't get the refresh token from the access token, so we'll
-        # check if we can identify the current session another way
-        # For now, we'll mark the most recent non-revoked token as current
-        pass
+        try:
+            import jwt
+            from django.conf import settings
+            token = auth_header.split(" ", 1)[1]
+            # Decode without verification to read the refresh_token_jti claim
+            payload = jwt.decode(
+                token,
+                options={"verify_signature": False, "verify_exp": False},
+            )
+            refresh_jti = payload.get("refresh_token_jti") or payload.get("jti")
+            if refresh_jti:
+                try:
+                    rt = RefreshToken.objects.get(id=refresh_jti)
+                    current_token_hash = rt.token_hash
+                except RefreshToken.DoesNotExist:
+                    pass
+        except Exception:
+            # Graceful fallback — mark the most recent valid token as current
+            pass
 
-    # Serialize refresh tokens
     sessions = []
-    most_recent_active = None
-    for token in refresh_tokens:
-        if not token.is_revoked() and not token.is_expired():
-            if most_recent_active is None:
-                most_recent_active = token.id
+    most_recent_valid = None
 
-        session_data = {
+    for token in refresh_tokens:
+        is_valid = not token.is_revoked() and not token.is_expired()
+        if is_valid and most_recent_valid is None:
+            most_recent_valid = token.id
+
+        is_current = (
+            (current_token_hash is not None and token.token_hash == current_token_hash)
+            or (current_token_hash is None and token.id == most_recent_valid)
+        ) and is_valid
+
+        sessions.append({
             "id": str(token.id),
             "created_at": token.created_at,
             "expires_at": token.expires_at,
             "revoked_at": token.revoked_at,
-            "is_current": token.id == most_recent_active
-            and not token.is_revoked()
-            and not token.is_expired(),
-        }
-        sessions.append(session_data)
+            "is_current": is_current,
+            "is_valid": is_valid,
+        })
+
+    serializer = RefreshTokenResponseSerializer(data=sessions, many=True)
+    serializer.is_valid(raise_exception=False)
 
     return Response(sessions, status=status.HTTP_200_OK)
+
+
+@extend_schema(
+    operation_id="end_all_other_sessions",
+    summary="Revoke all other sessions",
+    description=(
+        "Revokes all refresh tokens for the authenticated user EXCEPT the "
+        "current session.  The current session is identified via the same "
+        "logic as the list endpoint.  This is a bulk-revoke for security "
+        "incidents (e.g. password change, suspicious activity detected)."
+    ),
+    request=None,
+    responses={
+        200: OpenApiResponse(description="Other sessions revoked. Returns count."),
+        401: OpenApiResponse(description="Authentication credentials were not provided."),
+    },
+    tags=["Authentication"],
+)
+@api_view(["POST"])
+@permission_classes([permissions.IsAuthenticated])
+@transaction.atomic
+def end_all_other_sessions(request):
+    """
+    Revoke all other sessions for the current user.
+
+    POST /auth/sessions/end-all-others/
+
+    Phase 277.B.068 — bulk session revocation for security incidents.
+    Revokes every refresh token EXCEPT the one that sent the request.
+    """
+    user = request.user
+
+    # Identify the current session using the same logic as list
+    current_token_hash = None
+    auth_header = request.headers.get("Authorization", "")
+    if auth_header.startswith("Bearer "):
+        try:
+            import jwt
+            token = auth_header.split(" ", 1)[1]
+            payload = jwt.decode(
+                token,
+                options={"verify_signature": False, "verify_exp": False},
+            )
+            refresh_jti = payload.get("refresh_token_jti") or payload.get("jti")
+            if refresh_jti:
+                current_token_hash = RefreshToken.objects.get(
+                    id=refresh_jti
+                ).token_hash
+        except Exception:
+            pass
+
+    # Revoke all valid tokens except the current one
+    to_revoke = RefreshToken.objects.filter(
+        user=user,
+        revoked_at__isnull=True,
+        expires_at__gt=timezone.now(),
+    )
+
+    if current_token_hash is not None:
+        to_revoke = to_revoke.exclude(token_hash=current_token_hash)
+
+    revoked_count = 0
+    for rt in to_revoke:
+        rt.revoked_at = timezone.now()
+        rt.save(update_fields=["revoked_at", "updated_at"])
+        revoked_count += 1
+
+    log_auth_operation(
+        action="ALL_OTHER_SESSIONS_REVOKED",
+        user=request.user,
+        details={"revoked_count": revoked_count},
+        request=request,
+    )
+
+    return Response(
+        {
+            "message": f"Successfully revoked {revoked_count} other session(s).",
+            "revoked_count": revoked_count,
+        },
+        status=status.HTTP_200_OK,
+    )
 
 
 @extend_schema(
