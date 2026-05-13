@@ -20,6 +20,7 @@ import time
 from typing import Dict, Any, List, Optional, Callable, TypeVar
 
 T = TypeVar('T')
+from django.utils import timezone
 from datetime import datetime
 
 import boto3
@@ -2082,7 +2083,7 @@ class AWSDataExchangeConnector(DataMarketplaceConnector):
             'marketplace_id': listing.marketplace_id,
             'listing_id': listing.marketplace_id,
             'listing_url': listing.url,
-            'synced_at': datetime.now().isoformat(),
+            'synced_at': timezone.now().isoformat(),
             'dataset_id': listing.marketplace_id,
             'revision_id': latest_revision.get('Id') if latest_revision else None,
         }
@@ -2215,7 +2216,7 @@ class AWSDataExchangeConnector(DataMarketplaceConnector):
         dry_run = options.get('dry_run', False)
         limit = options.get('limit')
         include_resources = options.get('include_resources', True)
-        started_at = datetime.now()
+        started_at = timezone.now()
 
         successful_items = 0
         failed_items = 0
@@ -2260,7 +2261,7 @@ class AWSDataExchangeConnector(DataMarketplaceConnector):
                     errors=errors,
                     metadata={'dry_run': dry_run},
                     started_at=started_at,
-                    completed_at=datetime.now()
+                    completed_at=timezone.now()
                 )
 
             # If we have skipped items but no listings, return early
@@ -2275,7 +2276,7 @@ class AWSDataExchangeConnector(DataMarketplaceConnector):
                     errors=errors,
                     metadata={'dry_run': dry_run, 'reason': 'no_datasets_found', 'mappings': []},
                     started_at=started_at,
-                    completed_at=datetime.now()
+                    completed_at=timezone.now()
                 )
 
             if not listings:
@@ -2289,7 +2290,7 @@ class AWSDataExchangeConnector(DataMarketplaceConnector):
                     errors=[],
                     metadata={'dry_run': dry_run, 'reason': 'no_datasets_found', 'mappings': []},
                     started_at=started_at,
-                    completed_at=datetime.now()
+                    completed_at=timezone.now()
                 )
 
             # Process each listing
@@ -2366,7 +2367,7 @@ class AWSDataExchangeConnector(DataMarketplaceConnector):
                     logger.error(error_msg, exc_info=True)
                     continue
 
-            completed_at = datetime.now()
+            completed_at = timezone.now()
             status = SyncStatus.COMPLETED if failed_items == 0 else SyncStatus.PARTIAL if successful_items > 0 else SyncStatus.FAILED
 
             return SyncResult(

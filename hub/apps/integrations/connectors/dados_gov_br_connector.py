@@ -6,6 +6,7 @@ Implements DataMarketplaceConnector interface with Swagger-based API calls.
 """
 
 import logging
+from django.utils import timezone
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 from urllib.parse import urljoin
@@ -897,7 +898,7 @@ class DadosGovBrConnector(DataMarketplaceConnector):
         dry_run = options.get("dry_run", False)
         limit = options.get("limit")
         include_resources = options.get("include_resources", True)
-        started_at = datetime.now()
+        started_at = timezone.now()
 
         successful_items = 0
         failed_items = 0
@@ -916,7 +917,7 @@ class DadosGovBrConnector(DataMarketplaceConnector):
                 errors=[],
                 metadata={"dry_run": dry_run, "reason": "empty_listing_ids"},
                 started_at=started_at,
-                completed_at=datetime.now(),
+                completed_at=timezone.now(),
             )
 
         # Zero limit: sync nothing
@@ -930,7 +931,7 @@ class DadosGovBrConnector(DataMarketplaceConnector):
                 errors=[],
                 metadata={"dry_run": dry_run, "reason": "zero_limit"},
                 started_at=started_at,
-                completed_at=datetime.now(),
+                completed_at=timezone.now(),
             )
 
         # Get listings to sync
@@ -999,7 +1000,7 @@ class DadosGovBrConnector(DataMarketplaceConnector):
                 skipped_items=skipped_items,
                 errors=errors,
                 started_at=started_at,
-                completed_at=datetime.now(),
+                completed_at=timezone.now(),
                 metadata={
                     "mappings": mappings,
                     "dry_run": dry_run,
@@ -1016,7 +1017,7 @@ class DadosGovBrConnector(DataMarketplaceConnector):
                 skipped_items=skipped_items,
                 errors=[str(e)],
                 started_at=started_at,
-                completed_at=datetime.now(),
+                completed_at=timezone.now(),
             )
 
     def sync_push(self, hub_asset_ids: List[str], force_update: bool = False) -> SyncResult:
@@ -1131,7 +1132,7 @@ class DadosGovBrConnector(DataMarketplaceConnector):
             "marketplace_id": "dados.gov.br",
             "listing_id": listing.marketplace_id,
             "listing_url": listing.url,
-            "synced_at": datetime.now().isoformat(),
+            "synced_at": timezone.now().isoformat(),
             # Portuguese metadata fields
             "origin": swagger_dataset.get("origemCadastro"),
             "cataloged_at": swagger_dataset.get("dataCatalogacao"),

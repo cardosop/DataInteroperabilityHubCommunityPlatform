@@ -16,6 +16,7 @@ import os
 import stat
 import time
 from typing import Dict, Any, List, Optional
+from django.utils import timezone
 from datetime import datetime
 from urllib.parse import urljoin, urlparse
 
@@ -1249,7 +1250,7 @@ class CKANConnector(DataMarketplaceConnector):
             'marketplace_id': listing.marketplace_id,
             'listing_id': listing.marketplace_id,
             'listing_url': listing.url,
-            'synced_at': datetime.now().isoformat(),
+            'synced_at': timezone.now().isoformat(),
         }
 
         # Add sync_job_id if provided
@@ -1402,7 +1403,7 @@ class CKANConnector(DataMarketplaceConnector):
         dry_run = options.get('dry_run', False)
         limit = options.get('limit')
         include_resources = options.get('include_resources', True)
-        started_at = datetime.now()
+        started_at = timezone.now()
 
         successful_items = 0
         failed_items = 0
@@ -1421,7 +1422,7 @@ class CKANConnector(DataMarketplaceConnector):
                 errors=[],
                 metadata={'dry_run': dry_run, 'reason': 'empty_listing_ids'},
                 started_at=started_at,
-                completed_at=datetime.now()
+                completed_at=timezone.now()
             )
 
         # Zero limit: sync nothing
@@ -1435,7 +1436,7 @@ class CKANConnector(DataMarketplaceConnector):
                 errors=[],
                 metadata={'dry_run': dry_run, 'reason': 'zero_limit'},
                 started_at=started_at,
-                completed_at=datetime.now()
+                completed_at=timezone.now()
             )
 
         # Get listings to sync
@@ -1471,7 +1472,7 @@ class CKANConnector(DataMarketplaceConnector):
                 errors=errors,
                 metadata={'dry_run': dry_run},
                 started_at=started_at,
-                completed_at=datetime.now()
+                completed_at=timezone.now()
             )
 
         # If we have skipped items but no listings, return early
@@ -1486,7 +1487,7 @@ class CKANConnector(DataMarketplaceConnector):
                 errors=errors,
                 metadata={'dry_run': dry_run, 'reason': 'no_listings_found'},
                 started_at=started_at,
-                completed_at=datetime.now()
+                completed_at=timezone.now()
             )
 
         if not listings:
@@ -1500,7 +1501,7 @@ class CKANConnector(DataMarketplaceConnector):
                 errors=[],
                 metadata={'dry_run': dry_run, 'reason': 'no_listings_found'},
                 started_at=started_at,
-                completed_at=datetime.now()
+                completed_at=timezone.now()
             )
 
         # Process each listing
@@ -1547,7 +1548,7 @@ class CKANConnector(DataMarketplaceConnector):
                 errors.append(error_msg)
                 logger.error(error_msg, exc_info=True)
 
-        completed_at = datetime.now()
+        completed_at = timezone.now()
         status = SyncStatus.COMPLETED if failed_items == 0 else SyncStatus.PARTIAL if successful_items > 0 else SyncStatus.FAILED
 
         return SyncResult(

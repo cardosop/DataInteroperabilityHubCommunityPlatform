@@ -22,6 +22,7 @@ import json
 import logging
 import os
 import time
+from django.utils import timezone
 from datetime import datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Dict, List, Optional
@@ -2114,7 +2115,7 @@ class GCPMarketplaceConnector(DataMarketplaceConnector):
             "marketplace_id": listing.marketplace_id,
             "listing_id": listing.marketplace_id,
             "listing_url": listing.url,
-            "synced_at": datetime.now().isoformat(),
+            "synced_at": timezone.now().isoformat(),
             "data_exchange_id": data_exchange_id,
         }
 
@@ -2284,7 +2285,7 @@ class GCPMarketplaceConnector(DataMarketplaceConnector):
         dry_run = options.get("dry_run", False)
         limit = options.get("limit")
         include_resources = options.get("include_resources", True)
-        started_at = datetime.now()
+        started_at = timezone.now()
 
         successful_items = 0
         failed_items = 0
@@ -2329,7 +2330,7 @@ class GCPMarketplaceConnector(DataMarketplaceConnector):
                     errors=errors,
                     metadata={"dry_run": dry_run},
                     started_at=started_at,
-                    completed_at=datetime.now(),
+                    completed_at=timezone.now(),
                 )
 
             # If we have skipped items but no listings, return early
@@ -2344,7 +2345,7 @@ class GCPMarketplaceConnector(DataMarketplaceConnector):
                     errors=errors,
                     metadata={"dry_run": dry_run, "reason": "no_listings_found", "mappings": []},
                     started_at=started_at,
-                    completed_at=datetime.now(),
+                    completed_at=timezone.now(),
                 )
 
             if not listings:
@@ -2358,7 +2359,7 @@ class GCPMarketplaceConnector(DataMarketplaceConnector):
                     errors=[],
                     metadata={"dry_run": dry_run, "reason": "no_listings_found", "mappings": []},
                     started_at=started_at,
-                    completed_at=datetime.now(),
+                    completed_at=timezone.now(),
                 )
 
             # Process each listing
@@ -2464,7 +2465,7 @@ class GCPMarketplaceConnector(DataMarketplaceConnector):
                     logger.error(error_msg, exc_info=True)
                     continue
 
-            completed_at = datetime.now()
+            completed_at = timezone.now()
             status = (
                 SyncStatus.COMPLETED
                 if failed_items == 0

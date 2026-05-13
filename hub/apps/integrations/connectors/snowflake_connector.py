@@ -18,6 +18,7 @@ discovered and accessed through Snowflake's system views and shared databases.
 import logging
 import threading
 from typing import Dict, Any, List, Optional
+from django.utils import timezone
 from datetime import datetime
 from contextlib import contextmanager
 
@@ -1855,7 +1856,7 @@ class SnowflakeConnector(DataMarketplaceConnector):
         options = options or {}
         limit = options.get("limit")
         include_resources = options.get("include_resources", True)
-        started_at = datetime.now()
+        started_at = timezone.now()
 
         successful_items = 0
         failed_items = 0
@@ -1931,7 +1932,7 @@ class SnowflakeConnector(DataMarketplaceConnector):
                 skipped_items=skipped_items,
                 errors=errors,
                 started_at=started_at,
-                completed_at=datetime.now(),
+                completed_at=timezone.now(),
                 metadata={
                     "mappings": [mapping.__dict__ for mapping in mappings],
                     "include_resources": include_resources,
@@ -1947,7 +1948,7 @@ class SnowflakeConnector(DataMarketplaceConnector):
                 skipped_items=skipped_items,
                 errors=[str(e)],
                 started_at=started_at,
-                completed_at=datetime.now(),
+                completed_at=timezone.now(),
             )
 
     def sync_push(self, asset_ids: List[str], options: Optional[Dict[str, Any]] = None) -> SyncResult:
@@ -2105,7 +2106,7 @@ class SnowflakeConnector(DataMarketplaceConnector):
             "marketplace_id": marketplace_id,
             "listing_id": listing.marketplace_id,
             "listing_url": listing.url,
-            "synced_at": datetime.now().isoformat(),
+            "synced_at": timezone.now().isoformat(),
             "database_name": listing.marketplace_id,
             "database_owner": snowflake_db.get("DATABASE_OWNER"),
             "comment": snowflake_db.get("COMMENT"),
