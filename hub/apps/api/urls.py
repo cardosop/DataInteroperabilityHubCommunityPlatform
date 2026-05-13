@@ -26,9 +26,13 @@ urlpatterns = [
     path("", api_info, name="api-info"),
     # Phase 228 (REQ-LIN-006, 228.0.18) — capability discovery.
     path("capabilities/", capabilities_view, name="capabilities"),
+    path("public/", include("hub.apps.dsar.public_urls")),
     path("openapi.json", OpenAPISchemaView.as_view(), name="openapi-schema-v1"),
     path("openapi.yaml", OpenAPIYAMLView.as_view(), name="openapi-schema-yaml"),
     path("auth/", include("hub.apps.auth.urls")),
+    # Phase 235.1 — PLATFORM_ADMIN admin surface (per-tenant feature
+    # flags + approval workflow + later Phase 235 sub-phases).
+    path("admin/", include("hub.apps.tenants.admin_urls")),
     path("tenants/", include("hub.apps.tenants.urls")),
     path("users/", include("hub.apps.users.urls")),
     path("audit/", include("hub.apps.audit.urls")),
@@ -39,12 +43,14 @@ urlpatterns = [
     path("security/", include("hub.apps.contracts.security_urls")),
     path("assets/", include("hub.apps.assets.urls")),
     path("dq/", include("hub.apps.dq.urls")),
+    path("compliance/", include("hub.apps.compliance.urls")),
     # Phase 240.3.B.3 / D240.10 — deprecated dual-mount of the advanced
     # quality endpoints. Canonical prefix is ``/api/v1/dq/quality/``;
     # this alias serves the same ViewSet but adds Sunset / Deprecation /
     # Link response headers per Phase 227 conventions.
     path("quality/", include("hub.apps.dq.quality_deprecated_urls")),
-    path("compliance/", include("hub.apps.compliance.urls")),
+    path("ropa/", include("hub.apps.ropa.urls")),
+    path("dpia/", include("hub.apps.dpia.urls")),
     path("semantic/", include("hub.apps.semantic.urls")),
     path("marketplace/", include("hub.apps.marketplace.urls")),
     path("scheduled-ingestions/", include("hub.apps.scheduled_ingestion.urls")),
@@ -78,6 +84,8 @@ urlpatterns = [
     ),
     path("baas/", include("hub.apps.baas.urls")),
     path("ml/", include("hub.apps.ml.urls")),
+    # Phase 278.B.4 — form draft CRUD
+    path("drafts/", include("hub.apps.core.draft_urls")),
     path("billing/", include("hub.apps.billing.urls")),
     path("platform/", include("hub.apps.platform.urls")),
     path("versioning/", include("hub.apps.versioning.urls")),
@@ -129,7 +137,7 @@ urlpatterns = [
         name="mailhog-detail-slash",
     ),
     re_path(
-        r"^(?!auth/|tenants/|users/|audit/|files/|datasets/|jobs/|contracts/|assets/|dq/|compliance/|semantic/|marketplace/|scheduled-ingestions/|scheduled-exports/|search/|developer/|webhooks/|events/|mesh/|virtualization/|integrations/|baas/|ml/|billing/|platform/|versioning/|workflows/|transformation/|notifications/|governance/|test/|lineage/).*$",
+        r"^(?!admin/|auth/|tenants/|users/|audit/|files/|datasets/|jobs/|contracts/|assets/|dq/|compliance/|semantic/|marketplace/|scheduled-ingestions/|scheduled-exports/|search/|developer/|webhooks/|events/|mesh/|virtualization/|integrations/|baas/|ml/|billing/|platform/|versioning/|workflows/|transformation/|notifications/|governance/|public/|test/|lineage/).*$",
         api_not_found,
         name="api-not-found",
     ),
