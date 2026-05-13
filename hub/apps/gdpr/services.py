@@ -36,7 +36,7 @@ logger = structlog.get_logger(__name__)
 # Format: semver. Consumers parsing the export should branch on the
 # major version. Documented as part of the GDPR Article 20 contract
 # (see OpenAPI schema for the export-data endpoint).
-GDPR_EXPORT_FORMAT_VERSION = "1.0.0"
+GDPR_EXPORT_FORMAT_VERSION = "1.1.0"  # Phase 277.B.013a — added orders, payments, webhooks, consent
 
 
 class DataPortabilityService(BaseService):
@@ -195,7 +195,11 @@ class DataPortabilityService(BaseService):
             "audit_events": [],
             "assets": [],
             "datasets": [],
-            "contracts": [],
+            "files": [],
+            "marketplace_orders": [],
+            "payment_transactions": [],
+            "webhook_deliveries": [],
+            "consent_records": [],
         }
 
         # Collect audit events
@@ -256,6 +260,29 @@ class DataPortabilityService(BaseService):
                 }
             )
 
+        # Phase 260.1.G.3 — file uploads attributed to the user (Article 20 metadata)
+        from hub.apps.files.models import File
+
+        user_files = File.objects.filter(created_by=user).order_by("created_at")
+
+        for file_row in user_files:
+            data["files"].append(
+                {
+                    "id": str(file_row.id),
+                    "name": file_row.name,
+                    "content_type": file_row.content_type,
+                    "size": file_row.size,
+                    "status": file_row.status,
+                    "storage_path": file_row.storage_path,
+                    "tenant_id": str(file_row.tenant_id),
+                    "created_at": (
+                        file_row.created_at.isoformat()
+                        if file_row.created_at
+                        else None
+                    ),
+                }
+            )
+
         # Collect contracts (metadata only)
         from hub.apps.contracts.models import Contract
 
@@ -272,6 +299,43 @@ class DataPortabilityService(BaseService):
                     "created_at": contract.created_at.isoformat() if contract.created_at else None,
                 }
             )
+
+
+        # Phase 277.B.013a — marketplace orders
+        try:
+            from hub.apps.marketplace.models import Order
+            orders = Order.objects.filter(tenant=user.tenant, buyer=user)
+            for o in orders:
+                data["marketplace_orders"].append({"id": str(o.id), "status": o.status, "created_at": o.created_at.isoformat() if o.created_at else None})
+        except Exception:
+            logger.exception("gdpr_export_orders_failed")
+
+        # Phase 277.B.013a — payment transactions
+        try:
+            from hub.apps.marketplace.models import PaymentTransaction
+            txs = PaymentTransaction.objects.filter(order__tenant=user.tenant, order__buyer=user)
+            for tx in txs:
+                data["payment_transactions"].append({"id": str(tx.id), "status": getattr(tx, "status", "UNKNOWN"), "amount_cents": getattr(tx, "amount_cents", None), "created_at": tx.created_at.isoformat() if tx.created_at else None})
+        except Exception:
+            logger.exception("gdpr_export_payments_failed")
+
+        # Phase 277.B.013a — webhook deliveries
+        try:
+            from hub.apps.webhooks.models import WebhookDelivery
+            deliveries = WebhookDelivery.objects.filter(webhook__tenant=user.tenant).order_by("-created_at")[:100]
+            for d in deliveries:
+                data["webhook_deliveries"].append({"id": str(d.id), "event_type": getattr(d, "event_type", ""), "status": getattr(d, "status", "UNKNOWN"), "created_at": d.created_at.isoformat() if d.created_at else None})
+        except Exception:
+            logger.exception("gdpr_export_webhooks_failed")
+
+        # Phase 277.B.013a — consent records
+        try:
+            from hub.apps.consent.models import ConsentRecord
+            consents = ConsentRecord.objects.filter(tenant=user.tenant, user=user)
+            for c in consents:
+                data["consent_records"].append({"id": str(c.id), "purpose": getattr(c, "purpose", ""), "granted": getattr(c, "granted", True), "created_at": c.created_at.isoformat() if c.created_at else None})
+        except Exception:
+            logger.exception("gdpr_export_consents_failed")
 
         return data
 
@@ -505,8 +569,20 @@ class ErasureService(BaseService):
                     deleted_resources = []
                     retention_exceptions = []
 
-                    # Anonymize user profile
                     original_email = user.email
+
+                    # Audit scrub MUST run before mutating ``User.email``. Phase 2 of
+                    # ``scrub_audit_events_for_gdpr_user_target`` matches JSON
+                    # ``user_email`` against the subject's current address; if we
+                    # anonymize first, that match fails and PII remains in audit rows
+                    # logged by other actors.
+                    from hub.apps.gdpr.audit_erasure import (
+                        scrub_audit_events_for_gdpr_user_target,
+                    )
+
+                    scrub_audit_events_for_gdpr_user_target(user=user)
+
+                    # Anonymize user profile
                     user.email = f"deleted-{user.id}@deleted.local"
                     user.display_name = "Deleted User"
                     user.save()
@@ -547,53 +623,6 @@ class ErasureService(BaseService):
                         revoked_at=timezone.now()
                     )
                     deleted_resources.append("api_keys")
-
-                    # Phase 250.5.F.5 (closes G2-2) — extended PII
-                    # key list. Pre-Phase only ``actor_email`` /
-                    # ``user_email`` were scrubbed; events carrying
-                    # un-prefixed ``email`` / ``phone`` /
-                    # ``ip_address`` / ``user_agent`` / ``display_name``
-                    # leaked PII through audit replay after erasure.
-                    # The list below covers every PII key the hub
-                    # emits across audit-event call sites; the scrub
-                    # iterates over keys (not regex) so non-PII keys
-                    # — even ones that happen to contain user-supplied
-                    # text — are preserved untouched.
-                    _PII_KEYS_TO_SCRUB = (
-                        "actor_email",
-                        "user_email",
-                        "email",
-                        "display_name",
-                        "name",
-                        "phone",
-                        "ip_address",
-                        "user_agent",
-                        "remote_addr",
-                        "x_forwarded_for",
-                    )
-                    _PII_SENTINEL = "deleted@deleted.local"
-
-                    # Anonymize audit events (per policy - some may be retained)
-                    from hub.apps.audit.models import AuditEvent
-
-                    # Keep audit events but anonymize PII in
-                    # details_json (GDPR erasure). Use the
-                    # ``all_objects`` manager so archived events are
-                    # also covered; the standard ``objects`` manager
-                    # filters them out and would leave PII in the
-                    # archive table.
-                    audit_events = AuditEvent.all_objects.filter(actor_user=user)
-                    for event in audit_events:
-                        details = event.details_json
-                        if details and isinstance(details, dict):
-                            anonymized = dict(details)
-                            for pii_key in _PII_KEYS_TO_SCRUB:
-                                if pii_key in anonymized:
-                                    anonymized[pii_key] = _PII_SENTINEL
-                            if anonymized != details:
-                                AuditEvent.all_objects.filter(pk=event.pk).update(
-                                    details_json=anonymized
-                                )
 
                     # Phase 250.5.F.5 — anonymise (NOT hard-delete)
                     # assets owned by the user. Hard-delete would
@@ -638,6 +667,75 @@ class ErasureService(BaseService):
                         asset_count += 1
                     if asset_count:
                         deleted_resources.append("assets")
+
+                    # Phase 231.9 — user-attributed compliance runs (Job.created_by)
+                    # retain row-level audit history but strip PII-bearing JSON
+                    # columns that may embed column samples or regulatory text.
+                    from hub.apps.compliance.models import ComplianceRun
+
+                    _COMPLIANCE_ERASURE_PLACEHOLDER = {
+                        "gdpr_redacted": True,
+                        "reason": "article_17_erasure",
+                    }
+                    comp_updated = ComplianceRun.objects.filter(
+                        job__created_by=user
+                    ).update(
+                        column_findings_json=[],
+                        detected_categories_json={},
+                        regulation_mapping_json=_COMPLIANCE_ERASURE_PLACEHOLDER,
+                        cross_border_alert=_COMPLIANCE_ERASURE_PLACEHOLDER,
+                        localisation_alert=_COMPLIANCE_ERASURE_PLACEHOLDER,
+                        legal_basis_violations=[],
+                        metadata_json=_COMPLIANCE_ERASURE_PLACEHOLDER,
+                        regulations=[],
+                    )
+                    if comp_updated:
+                        deleted_resources.append("compliance_runs")
+
+                    # Phase 277.B.013b — anonymise Marketplace Listings
+                    # where the user is listed as created_by.  The
+                    # listing row is preserved (audit history) but
+                    # PII-bearing metadata and FK are scrubbed.
+                    from hub.apps.marketplace.models import Listing
+
+                    _LISTING_TITLE = "Deleted User Listing"
+                    _LISTING_DESC = (
+                        "PII redacted per GDPR Article 17 right-to-erasure."
+                    )
+                    listing_count = 0
+                    for listing in Listing.objects.filter(
+                        created_by=user,
+                    ).iterator(chunk_size=200):
+                        current_meta = listing.metadata_json or {}
+                        current_meta["title"] = _LISTING_TITLE
+                        current_meta["description"] = _LISTING_DESC
+                        for pii_key in (
+                            "contact_email", "contact_name",
+                            "support_email", "author_name",
+                        ):
+                            if pii_key in current_meta:
+                                current_meta[pii_key] = "redacted@deleted.local"
+                        listing.metadata_json = current_meta
+                        listing.created_by = None
+                        listing.save(
+                            update_fields=[
+                                "metadata_json", "created_by", "updated_at",
+                            ],
+                        )
+                        listing_count += 1
+                    if listing_count:
+                        deleted_resources.append("marketplace_listings")
+
+                    # Phase 277.B.013b — clear FK on ComplianceRun
+                    # jobs where job.created_by = user.
+                    from hub.apps.jobs.models import Job
+
+                    job_updated = Job.objects.filter(
+                        created_by=user,
+                        type=JobType.COMPLIANCE_RUN,
+                    ).update(created_by=None)
+                    if job_updated:
+                        deleted_resources.append("compliance_run_jobs")
 
                     # Note: Some data may be retained for legal/compliance reasons
                     # This would be determined by retention policy
@@ -695,3 +793,16 @@ class ErasureService(BaseService):
         return self.execute_with_metrics(
             operation="execute_erasure", tenant_id=self.tenant_id, func=_execute
         )
+
+
+def export_user_data(user_id: str) -> Dict[str, Any]:
+    """
+    GDPR Article 20 — return the same envelope as ``DataExportJob`` / ``user_data.json``.
+
+    Public entrypoint for management commands and integrations that need the
+    portable JSON document without creating a job row.
+    """
+    from hub.apps.users.models import User
+
+    user = User.objects.get(pk=user_id)
+    return DataPortabilityService()._collect_user_data(user)
