@@ -56,6 +56,12 @@ ROLE_SCOPE_MAP: dict[str, frozenset[str]] = {
         "contracts:read",
         "datasets:read",
     }),
+    "PII_VIEWER": frozenset({
+        "assets:read",
+        "contracts:read",
+        "datasets:read",
+        "datasets:view_pii",
+    }),
     "AUDITOR": frozenset({
         "audit:read",
         "compliance:read",
@@ -104,11 +110,21 @@ def _get_user_scopes(request) -> frozenset[str]:
 class HasRole(permissions.BasePermission):
     """
     Permission class to check if user has a specific role.
-    
+
+    HasRole takes a required-role argument at construction, so it cannot
+    be placed pre-instantiated in ``permission_classes`` — DRF re-invokes
+    each entry via ``permission()`` at request time
+    (``rest_framework/views.py:284``) and at drf-spectacular schema
+    generation, which would raise
+    ``TypeError: 'HasRole' object is not callable``. Always pass
+    pre-instantiated objects via ``get_permissions`` instead.
+
     Usage:
-        permission_classes = [IsAuthenticated, HasRole('TENANT_ADMIN')]
+        class MyViewSet(viewsets.ModelViewSet):
+            def get_permissions(self):
+                return [IsAuthenticated(), HasRole('TENANT_ADMIN')]
     """
-    
+
     def __init__(self, required_role):
         self.required_role = required_role
     
@@ -124,6 +140,8 @@ class HasRole(permissions.BasePermission):
         # Check if user has the required role
         role_names = []
         if hasattr(request.user, 'user_roles'):
+            # N+1 acceptable: user_roles typically 1-3 rows.
+            # Do not add prefetch_related — low cardinality, hot path.
             role_names = [ur.role.name for ur in request.user.user_roles.all()]
         if not role_names and hasattr(request.user, 'id') and request.user.id:
             from hub.apps.users.models import UserRole
@@ -137,11 +155,24 @@ class HasRole(permissions.BasePermission):
 class HasAnyRole(permissions.BasePermission):
     """
     Permission class to check if user has any of the specified roles.
-    
+
+    HasAnyRole takes a required-roles argument at construction, so it
+    cannot be placed pre-instantiated in ``permission_classes`` — DRF
+    re-invokes each entry via ``permission()`` at request time
+    (``rest_framework/views.py:284``) and at drf-spectacular schema
+    generation, which would raise
+    ``TypeError: 'HasAnyRole' object is not callable``. Always pass
+    pre-instantiated objects via ``get_permissions`` instead.
+
     Usage:
-        permission_classes = [IsAuthenticated, HasAnyRole(['TENANT_ADMIN', 'DATA_PROVIDER'])]
+        class MyViewSet(viewsets.ModelViewSet):
+            def get_permissions(self):
+                return [
+                    IsAuthenticated(),
+                    HasAnyRole(['TENANT_ADMIN', 'DATA_PROVIDER']),
+                ]
     """
-    
+
     def __init__(self, required_roles):
         self.required_roles = required_roles
     
@@ -157,6 +188,8 @@ class HasAnyRole(permissions.BasePermission):
         # Check if user has any of the required roles
         role_names = []
         if hasattr(request.user, 'user_roles'):
+            # N+1 acceptable: user_roles typically 1-3 rows.
+            # Do not add prefetch_related — low cardinality, hot path.
             role_names = [ur.role.name for ur in request.user.user_roles.all()]
         # Fallback: direct query when relation is empty (TransactionTestCase, force_authenticate)
         if not role_names and hasattr(request.user, 'id') and request.user.id:
@@ -172,8 +205,15 @@ class HasScope(permissions.BasePermission):
     """
     Permission class to check if user/API key has a specific scope.
 
+    HasScope takes a required-scope argument at construction, so it
+    cannot be placed pre-instantiated in ``permission_classes`` (see
+    :class:`HasRole` for the same caveat). Use ``get_permissions``
+    instead.
+
     Usage:
-        permission_classes = [IsAuthenticated, HasScope('assets:write')]
+        class MyViewSet(viewsets.ModelViewSet):
+            def get_permissions(self):
+                return [IsAuthenticated(), HasScope('assets:write')]
     """
 
     def __init__(self, required_scope):
