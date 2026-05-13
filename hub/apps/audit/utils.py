@@ -9,6 +9,7 @@ import re
 from typing import Any, Dict, Optional
 
 from django.contrib.auth import get_user_model
+from django.db import connection
 from django.http import HttpRequest
 
 from .models import AuditEvent
@@ -201,6 +202,59 @@ def redact_fail_closed_audit_payload(payload: Dict[str, Any]) -> Dict[str, Any]:
     return redacted if isinstance(redacted, dict) else {}
 
 
+def _sanitize(value: str) -> str:
+    """Neutralize C0 control characters, DEL, NUL, and Unicode line/paragraph separators.
+
+    Replaces characters below ASCII space and ``\\x7f`` with a single ASCII space,
+    strips NUL, neutralizes U+2028/U+2029 (log/UI line-break injection in some
+    exporters), then collapses contiguous whitespace. Mitigates CRLF / fake-log-line
+    injection when filenames or free-text fields are persisted in audit JSON (Phase
+    260.2.G / pass-3 S3-4).
+
+    Mirrors the intent of historical compliance ``_sanitize()`` call sites that fed
+    structured audit payloads (see dq ``log_helpers`` module docstring cross-ref).
+    """
+    if not isinstance(value, str):
+        return value
+
+    cleaned_chars: list[str] = []
+    for ch in value:
+        o = ord(ch)
+        if o == 0:
+            continue
+        if ch in ("\u2028", "\u2029"):
+            cleaned_chars.append(" ")
+            continue
+        if o < 32 or o == 127:
+            cleaned_chars.append(" ")
+        else:
+            cleaned_chars.append(ch)
+
+    collapsed = re.sub(r"\s+", " ", "".join(cleaned_chars)).strip()
+    return collapsed if collapsed else "[SANITIZED_EMPTY]"
+
+
+def _sanitize_audit_payload_values(payload: Any) -> Any:
+    """Recursively sanitize string leaves **and string dict keys** (details trees).
+
+    Keys are normalized too so JSON/export pipelines cannot carry forgeable field names
+    with embedded newlines (Phase 260.2.G closure).
+    """
+    if isinstance(payload, dict):
+        out: Dict[Any, Any] = {}
+        for k, v in payload.items():
+            nk = _sanitize(k) if isinstance(k, str) else k
+            out[nk] = _sanitize_audit_payload_values(v)
+        return out
+    if isinstance(payload, list):
+        return [_sanitize_audit_payload_values(item) for item in payload]
+    if isinstance(payload, tuple):
+        return tuple(_sanitize_audit_payload_values(item) for item in payload)
+    if isinstance(payload, str):
+        return _sanitize(payload)
+    return payload
+
+
 def create_audit_event(
     resource_type: str,
     action: str,
@@ -211,6 +265,8 @@ def create_audit_event(
     details: Optional[Dict[str, Any]] = None,
     full_details: Optional[Dict[str, Any]] = None,
     request: Optional[HttpRequest] = None,
+    *,
+    infer_tenant_from_actor: bool = True,
 ) -> AuditEvent:
     """
     Create an audit event with automatic PII redaction.
@@ -219,18 +275,25 @@ def create_audit_event(
         resource_type: Type of resource (e.g., "TENANT", "USER", "CONTRACT", "AUTH")
         action: Action performed (e.g., "CREATED", "UPDATED", "DELETED", "LOGIN")
         actor_user: User who performed the action (optional)
-        tenant: Tenant this event belongs to (optional, inferred from actor_user if not provided)
+        tenant: Tenant this event belongs to (optional; see ``infer_tenant_from_actor``)
         resource_id: ID of the resource (optional)
         result: Result of the action ("SUCCESS", "FAILURE", "WARNING")
-        details: Additional details as dictionary (will be redacted)
-        full_details: Restricted unredacted details, stored for admin access only
+        details: Additional details as dictionary (will be sanitized for injection,
+            then redacted for PII)
+        full_details: Restricted details for admin storage (sanitized for injection;
+            not passed through ``redact_pii`` — intentionally richer than ``details``)
         request: HTTP request object (optional, for extracting IP address, user agent)
+        infer_tenant_from_actor: When True (default), if ``tenant`` is omitted (None),
+            fall back to ``actor_user.tenant``. When False, keep ``tenant`` exactly as
+            passed — required for Phase 260.1.F tenant-hard-delete summaries where the
+            actor may still belong to an unrelated tenant FK but the event must remain
+            system-scoped (``tenant=NULL`` DB row).
 
     Returns:
         Created AuditEvent instance
     """
-    # Infer tenant from actor_user if not provided
-    if tenant is None and actor_user and hasattr(actor_user, "tenant"):
+    # Infer tenant from actor_user unless caller forbids it (explicit NULL tenant FK).
+    if infer_tenant_from_actor and tenant is None and actor_user and hasattr(actor_user, "tenant"):
         tenant = actor_user.tenant
 
     # Prepare details with request metadata
@@ -264,6 +327,11 @@ def create_audit_event(
             if full_details_dict is not None:
                 full_details_dict["request_id"] = str(request_id)
 
+    # Phase 260.2.G — strip forgeable control characters before PII redaction / persist.
+    details_dict = _sanitize_audit_payload_values(details_dict)
+    if full_details_dict is not None:
+        full_details_dict = _sanitize_audit_payload_values(full_details_dict)
+
     # Redact PII from details
     redacted_details = redact_pii(details_dict)
 
@@ -278,17 +346,105 @@ def create_audit_event(
             # This allows audit events to be created even with invalid resource IDs
             resource_id = None
 
-    # Create audit event
-    audit_event = AuditEvent.objects.create(
-        tenant=tenant,
-        actor_user=actor_user,
-        resource_type=resource_type,
-        resource_id=resource_id,
-        action=action,
-        result=result,
-        details_json=redacted_details,
-        full_details_json=full_details_dict,
-    )
+    def _create_event_with_manager():
+        # Phase 277.B.111 — extract OTel trace_id for cross-system correlation
+        trace_id = None
+        try:
+            from opentelemetry import trace as otel_trace
+            span = otel_trace.get_current_span()
+            if span is not None:
+                ctx = span.get_span_context()
+                if ctx.is_valid:
+                    raw = ctx.trace_id
+                    if raw:
+                        trace_id = str(raw)
+        except Exception:
+            pass  # OTel not available or span context invalid
+
+        return AuditEvent.objects.create(
+            tenant=tenant,
+            actor_user=actor_user,
+            resource_type=resource_type,
+            resource_id=resource_id,
+            action=action,
+            result=result,
+            details_json=redacted_details,
+            full_details_json=full_details_dict,
+            trace_id=trace_id,
+        )
+
+    tenant_id = None
+    if tenant is not None:
+        tenant_id = getattr(tenant, "id", None) or tenant
+
+    # RLS hardening: ensure tenant-scoped audit rows are written under the
+    # matching tenant GUC even on anonymous/auth bootstrap paths where
+    # middleware tenant context is not yet available.
+    if tenant_id:
+        from hub.apps.tenants.request_tenant import tenant_context
+
+        current_tenant = None
+        with connection.cursor() as cursor:
+            cursor.execute("SELECT current_setting('app.current_tenant_id', true)")
+            row = cursor.fetchone()
+            if row and row[0]:
+                current_tenant = str(row[0])
+
+        tenant_id_str = str(tenant_id)
+        if current_tenant == tenant_id_str:
+            audit_event = _create_event_with_manager()
+        else:
+            with tenant_context(tenant_id_str):
+                audit_event = _create_event_with_manager()
+    else:
+        # Tenant-null/system-level audit rows. Production routes
+        # this through the ``admin`` BYPASSRLS alias so the
+        # ``WITH CHECK (tenant_id = current_setting(...))`` policy
+        # doesn't reject NULL-tenant inserts. In test/dev where
+        # ``admin`` and ``default`` share the same role, the admin
+        # connection has a SEPARATE MVCC snapshot that doesn't see
+        # the test transaction's freshly-inserted ``actor_user`` —
+        # the INSERT then trips ``audit_events_actor_user_id_...
+        # _fk_users_id``.
+        #
+        # Resolution: try ``admin`` first (production-correct path);
+        # on FK violation, fall back to ``default`` with
+        # ``row_security=off`` for the duration of the INSERT so the
+        # RLS WITH CHECK doesn't reject the NULL-tenant row. The
+        # default connection sees its own committed-and-uncommitted
+        # data, so the actor_user FK resolves.
+        from django.db import IntegrityError as _IE
+        try:
+            audit_event = AuditEvent.objects.db_manager("admin").create(
+                tenant=tenant,
+                actor_user=actor_user,
+                resource_type=resource_type,
+                resource_id=resource_id,
+                action=action,
+                result=result,
+                details_json=redacted_details,
+                full_details_json=full_details_dict,
+            )
+        except _IE as exc:
+            if "actor_user_id" not in str(exc):
+                raise
+            # Fall back to default connection with row_security off
+            # for the INSERT — same RLS-bypass effect, but on a
+            # connection whose snapshot can see the actor_user row.
+            from django.db import transaction as _txn
+            with _txn.atomic():
+                with connection.cursor() as _c:
+                    _c.execute("SET LOCAL row_security = off")
+                audit_event = AuditEvent.objects.create(
+                    tenant=tenant,
+                    actor_user=actor_user,
+                    resource_type=resource_type,
+                    resource_id=resource_id,
+                    action=action,
+                    result=result,
+                    details_json=redacted_details,
+                    full_details_json=full_details_dict,
+                )
 
     # Phase 227 Wave 1 (227.L7 audit follow-up) — emit the
     # ``audit_events_total{action,resource_type,result}`` counter so

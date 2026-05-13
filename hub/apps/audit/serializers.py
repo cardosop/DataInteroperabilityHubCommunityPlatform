@@ -2,7 +2,40 @@
 Audit Event Serializers
 """
 from rest_framework import serializers
-from .models import AuditEvent
+
+from .models import AuditEvent, AuditEventRetentionPolicy
+from .utils import _sanitize
+
+
+class AuditEventRetentionPolicySerializer(serializers.ModelSerializer):
+    """Phase 234.5 — TENANT_ADMIN-facing serializer for per-event-type overrides.
+
+    The ``tenant`` FK is read-only on the wire — the viewset assigns it
+    from the request's tenant context on create, and a PATCH that
+    tries to move a row to another tenant would otherwise let an admin
+    silently re-scope a policy they shouldn't own.
+
+    ``retention_days`` is BOTH writable (operators may supply an explicit
+    integer) AND a read-back of the registry-derived value (when
+    ``regulation_keys`` is non-empty, the model's ``clean()`` overrides
+    the inbound value with the registry result). Clients posting both
+    will see the resolved value in the response.
+    """
+
+    class Meta:
+        model = AuditEventRetentionPolicy
+        fields = [
+            "id",
+            "tenant",
+            "event_type",
+            "retention_days",
+            "regulation_keys",
+            "enabled",
+            "created_by",
+            "created_at",
+            "updated_at",
+        ]
+        read_only_fields = ["id", "tenant", "created_by", "created_at", "updated_at"]
 
 
 class AuditEventSerializer(serializers.ModelSerializer):
@@ -24,7 +57,8 @@ class AuditEventSerializer(serializers.ModelSerializer):
             'action',
             'result',
             'details_json',
-            'timestamp'
+            'timestamp',
+            'trace_id',
         ]
         read_only_fields = fields
 
@@ -66,8 +100,9 @@ def sanitize_activity_details(details):
     - Any key starting with ``_`` is dropped (our private-field convention).
     - Any key (case-insensitive) in ``RESOURCE_ACTIVITY_FORBIDDEN_KEYS`` is
       dropped regardless of value.
-    - Nested dicts are sanitized recursively; nested lists are walked so nested
-      dicts inside them are cleaned too.
+    - Dict keys that survive filtering are normalized via ``_sanitize`` (Phase 260.2.G).
+    - Nested dicts are sanitized recursively; nested lists and tuples are walked so nested
+      dicts inside them are cleaned too; string scalars are sanitized.
     - Non-dict inputs are returned unchanged.
     """
     if not isinstance(details, dict):
@@ -83,15 +118,29 @@ def sanitize_activity_details(details):
             continue
         if key.lower() in RESOURCE_ACTIVITY_FORBIDDEN_KEYS:
             continue
+        safe_key = _sanitize(key)
         if isinstance(value, dict):
-            clean[key] = sanitize_activity_details(value)
+            clean[safe_key] = sanitize_activity_details(value)
         elif isinstance(value, list):
-            clean[key] = [
-                sanitize_activity_details(item) if isinstance(item, dict) else item
+            clean[safe_key] = [
+                sanitize_activity_details(item)
+                if isinstance(item, dict)
+                else _sanitize(item)
+                if isinstance(item, str)
+                else item
                 for item in value
             ]
+        elif isinstance(value, tuple):
+            clean[safe_key] = tuple(
+                sanitize_activity_details(item)
+                if isinstance(item, dict)
+                else _sanitize(item)
+                if isinstance(item, str)
+                else item
+                for item in value
+            )
         else:
-            clean[key] = value
+            clean[safe_key] = _sanitize(value) if isinstance(value, str) else value
     return clean
 
 

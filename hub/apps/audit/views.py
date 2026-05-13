@@ -7,11 +7,13 @@ REST API views for querying and exporting audit events.
 import csv
 import json
 import uuid
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone as dt_timezone
 
 from django.http import HttpResponse
 from django.utils import timezone
-from rest_framework import permissions, status, viewsets
+from drf_spectacular.types import OpenApiTypes
+from drf_spectacular.utils import OpenApiParameter, extend_schema, extend_schema_view
+from rest_framework import permissions, serializers as drf_serializers, status, viewsets
 from rest_framework.decorators import action
 from rest_framework.renderers import BaseRenderer, JSONRenderer
 from rest_framework.response import Response
@@ -19,9 +21,15 @@ from rest_framework.response import Response
 from hub.apps.auth.permissions import HasAnyRole, HasRole
 from hub.apps.tenants.request_tenant import get_request_tenant_id
 
+from . import event_types as _audit_et
 from .involvement import user_is_involved
-from .models import AuditEvent
-from .serializers import AuditEventSerializer, ResourceActivityEventSerializer
+from .models import AuditEvent, AuditEventRetentionPolicy
+from .serializers import (
+    AuditEventRetentionPolicySerializer,
+    AuditEventSerializer,
+    ResourceActivityEventSerializer,
+)
+from .utils import create_audit_event
 
 # Roles allowed to read raw audit events (list / retrieve / export).
 # ``HasAnyRole`` internally bypasses the check for the ``is_platform_admin``
@@ -48,6 +56,79 @@ class CSVRenderer(BaseRenderer):
         return data
 
 
+_AUDIT_LIST_QUERY_PARAMS = [
+    OpenApiParameter(
+        name="resource_type",
+        type=str,
+        location=OpenApiParameter.QUERY,
+        required=False,
+        description=(
+            "Filter audit events by resource type "
+            "(e.g. ``ASSET``, ``CONTRACT``, ``FILE``, ``DATASET``)."
+        ),
+    ),
+    OpenApiParameter(
+        name="resource_id",
+        type=OpenApiTypes.UUID,
+        location=OpenApiParameter.QUERY,
+        required=False,
+        description=(
+            "Phase 260.4.H — narrow the audit log to a single resource "
+            "UUID. Used by the admin audit-log search page to deep-link "
+            "from detail pages (``?resource_type=FILE&resource_id={id}``). "
+            "Malformed UUIDs return an empty list (no 500 leak)."
+        ),
+    ),
+    OpenApiParameter(
+        name="action",
+        type=str,
+        location=OpenApiParameter.QUERY,
+        required=False,
+        description="Filter by audit action (e.g. ``CREATED``, ``FILE_RENAMED``).",
+    ),
+    OpenApiParameter(
+        name="actor_user_id",
+        type=OpenApiTypes.UUID,
+        location=OpenApiParameter.QUERY,
+        required=False,
+        description="Filter by acting user UUID.",
+    ),
+    OpenApiParameter(
+        name="start_date",
+        type=OpenApiTypes.DATETIME,
+        location=OpenApiParameter.QUERY,
+        required=False,
+        description="ISO-8601 lower bound (inclusive) on ``timestamp``.",
+    ),
+    OpenApiParameter(
+        name="end_date",
+        type=OpenApiTypes.DATETIME,
+        location=OpenApiParameter.QUERY,
+        required=False,
+        description="ISO-8601 upper bound (inclusive) on ``timestamp``.",
+    ),
+    OpenApiParameter(
+        name="q",
+        type=str,
+        location=OpenApiParameter.QUERY,
+        required=False,
+        description=(
+            "Phase 234.6 — Postgres full-text search over the audit "
+            "event's ``action``, ``resource_type`` and ``details_json``. "
+            "Uses ``websearch_to_tsquery('english', :q)`` so the SPA can "
+            "pass user input verbatim (supports quoted phrases, "
+            "``-negation``, ``or``). Results are ordered by ``ts_rank`` "
+            "descending and then by ``timestamp`` descending. ALWAYS "
+            "ANDed with the existing tenant-scope filter — a search "
+            "from tenant A can never surface tenant B's rows."
+        ),
+    ),
+]
+
+
+@extend_schema_view(
+    list=extend_schema(parameters=_AUDIT_LIST_QUERY_PARAMS),
+)
 class AuditEventViewSet(viewsets.ReadOnlyModelViewSet):
     """
     ViewSet for audit event querying and export.
@@ -128,6 +209,11 @@ class AuditEventViewSet(viewsets.ReadOnlyModelViewSet):
         if actor_user_id:
             queryset = queryset.filter(actor_user_id=actor_user_id)
 
+        # Phase 277.B.111 — filter by OTel trace_id
+        trace_id = self.request.query_params.get("trace_id")
+        if trace_id:
+            queryset = queryset.filter(trace_id=trace_id)
+
         # Time range filters
         from datetime import timezone as dt_timezone
 
@@ -189,10 +275,63 @@ class AuditEventViewSet(viewsets.ReadOnlyModelViewSet):
                 logger.warning(f"Invalid end_date format: {end_date}, error: {e}")
                 pass
 
+        # Phase 234.6 — Postgres FTS over the GENERATED tsvector column.
+        # The ``q`` filter is the LAST clause appended so it ALWAYS runs
+        # after the tenant scope already attached above (AUDIT.3): a
+        # search from tenant A's user can never bleed into tenant B's
+        # rows because by the time we add the ``@@`` predicate the
+        # queryset is already filtered to ``tenant_id=request.tenant``.
+        #
+        # ``search_type="websearch"`` accepts user input verbatim —
+        # quoted phrases, ``-negation`` and ``or`` syntax map straight
+        # to ``websearch_to_tsquery``, the same parser the SPA's
+        # search-box semantics expect.
+        #
+        # The timer that emits ``audit_search_query_duration_seconds``
+        # wraps the eventual SQL execution — see :meth:`list` below,
+        # which calls ``super().list`` inside :func:`time_search_query`.
+        # Here we only build the queryset (Django is lazy); evaluation
+        # happens during DRF's pagination/render path.
+        q_raw = self.request.query_params.get("q")
+        q = (q_raw or "").strip()
+        if q:
+            from django.contrib.postgres.search import SearchQuery, SearchRank
+            from django.db.models import F
+
+            sq = SearchQuery(q, search_type="websearch", config="english")
+            queryset = (
+                queryset.filter(details_json_tsvector=sq)
+                .annotate(rank=SearchRank(F("details_json_tsvector"), sq))
+                .order_by("-rank", "-timestamp")
+            )
+            return queryset
+
         return queryset.order_by("-timestamp")
 
     def list(self, request, *args, **kwargs):
-        """List audit events with filtering"""
+        """List audit events with filtering.
+
+        Phase 234.6.AUDIT.4 — when ``?q=`` is present we time the entire
+        list response (queryset evaluation + count query + serialization)
+        and record the elapsed seconds on the
+        ``audit_search_query_duration_seconds`` histogram. The
+        observation fires whether the request succeeds or raises so
+        a 500 still contributes to the latency curve — a query that
+        takes 8 seconds before crashing is operationally identical to
+        one that takes 8 seconds and returns.
+
+        The non-``?q=`` path does NOT emit on this histogram (would
+        pollute the percentile with discrete-filter queries that don't
+        share the FTS code path).
+        """
+        q_raw = request.query_params.get("q") if hasattr(request, "query_params") else None
+        q = (q_raw or "").strip()
+        if q:
+            from hub.apps.audit.metrics import time_search_query
+
+            tenant_label = str(get_request_tenant_id(request) or "__platform__")
+            with time_search_query(tenant_id=tenant_label):
+                return super().list(request, *args, **kwargs)
         return super().list(request, *args, **kwargs)
 
     def retrieve(self, request, *args, **kwargs):
@@ -216,6 +355,19 @@ class AuditEventViewSet(viewsets.ReadOnlyModelViewSet):
         """
         return _resource_activity_response(request)
 
+    @extend_schema(
+        parameters=[
+            OpenApiParameter(
+                name="format",
+                type=str,
+                location=OpenApiParameter.QUERY,
+                required=False,
+                description="Export format: ``csv`` or ``json`` (default ``json``).",
+                enum=["csv", "json"],
+            ),
+            *_AUDIT_LIST_QUERY_PARAMS,
+        ],
+    )
     @action(
         detail=False,
         methods=["get"],
@@ -436,4 +588,405 @@ class ResourceActivityViewSet(viewsets.ViewSet):
 
     def list(self, request):
         return _resource_activity_response(request)
+
+
+# ---------------------------------------------------------------------------
+# Phase 234.1.8 — integrity verification endpoint
+# ---------------------------------------------------------------------------
+
+
+def _parse_iso(value: str | None):
+    """Lenient ISO-8601 parser that tolerates ``Z`` suffix and naive input."""
+    if not value:
+        return None
+    s = value.strip()
+    if not s:
+        return None
+    if s.endswith("Z"):
+        s = s[:-1] + "+00:00"
+    try:
+        dt = datetime.fromisoformat(s)
+    except ValueError:
+        return None
+    if dt.tzinfo is None:
+        # Naive datetimes are an explicit input error from the client, but
+        # we accept them defensively and interpret as UTC — the Phase 234
+        # contract pins ALL chain timestamps to UTC so any other policy
+        # would create an attack surface where mismatched timezones flip
+        # the verifier outcome.
+        dt = dt.replace(tzinfo=dt_timezone.utc)
+    return dt
+
+
+@extend_schema(
+    tags=["Audit"],
+    parameters=[
+        OpenApiParameter(
+            name="tenant_id",
+            type=OpenApiTypes.UUID,
+            location=OpenApiParameter.QUERY,
+            required=False,
+            description=(
+                "Verify the chain for this tenant. Defaults to the requesting "
+                "user's tenant. Platform admins may supply any tenant UUID; "
+                "non-admins are restricted to their own tenant (403 otherwise)."
+            ),
+        ),
+        OpenApiParameter(
+            name="since",
+            type=OpenApiTypes.DATETIME,
+            location=OpenApiParameter.QUERY,
+            required=False,
+            description="ISO-8601 lower bound on ``timestamp`` (inclusive).",
+        ),
+        OpenApiParameter(
+            name="until",
+            type=OpenApiTypes.DATETIME,
+            location=OpenApiParameter.QUERY,
+            required=False,
+            description="ISO-8601 upper bound on ``timestamp`` (exclusive).",
+        ),
+        OpenApiParameter(
+            name="include_snapshots",
+            type=bool,
+            location=OpenApiParameter.QUERY,
+            required=False,
+            description=(
+                "When ``true``, also recompute the Merkle root for every "
+                "``AuditMerkleSnapshot`` covering the window and compare "
+                "against the signed root. Catches full-chain rewrite that "
+                "the per-row check cannot. Defaults to ``false`` for "
+                "backwards compatibility."
+            ),
+        ),
+    ],
+    responses={
+        200: OpenApiTypes.OBJECT,
+        400: OpenApiTypes.OBJECT,
+        403: OpenApiTypes.OBJECT,
+    },
+)
+class AuditIntegrityVerifyView(viewsets.ViewSet):
+    """Phase 234.1.8 — ``GET /api/v1/audit/integrity/verify``.
+
+    Re-runs :func:`hub.apps.audit.chain.verify_chain_segment` over the
+    requested window and returns the structured outcome:
+
+    .. code-block:: json
+
+        {
+          "verified": true,
+          "checked": 42,
+          "mismatches": [],
+          "gaps": []
+        }
+
+    Tampering surfaces as one or more ``mismatches`` entries (with the
+    offending ``event_id``, ``chain_sequence``, and a ``reason`` code
+    of ``chain_hash_mismatch`` or ``prev_link_mismatch``). GDPR-erasure
+    holes surface as ``gaps`` and do NOT flip ``verified`` to false
+    on their own — per the cross-spec contract with 232.2.
+    """
+
+    permission_classes = [permissions.IsAuthenticated]
+
+    def list(self, request):
+        # Local imports to keep chain logic out of module-import-time
+        # dependencies and to mirror the verifier the backfill command
+        # uses.
+        from hub.apps.audit.chain import (
+            verify_chain_against_snapshots,
+            verify_chain_segment,
+        )
+        from hub.apps.audit.merkle import verify_root_signature
+        from hub.apps.audit.models import AuditMerkleSnapshot
+
+        # ---- tenant authorization -----------------------------------------
+        user = request.user
+        is_platform_admin = bool(getattr(user, "is_platform_admin", False))
+        requested_tenant_id = request.query_params.get("tenant_id") or None
+        own_tenant_id = get_request_tenant_id(request)
+        if requested_tenant_id:
+            if not is_platform_admin and str(requested_tenant_id) != str(own_tenant_id or ""):
+                return Response(
+                    {"detail": "Cannot verify another tenant's chain."},
+                    status=status.HTTP_403_FORBIDDEN,
+                )
+            tenant_filter = requested_tenant_id
+        else:
+            tenant_filter = own_tenant_id
+        if not tenant_filter:
+            return Response(
+                {"detail": "tenant_id is required (no tenant context on request)."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        # ---- role gate (mirror AuditEventViewSet) -------------------------
+        role_check = HasAnyRole(AUDIT_READ_ROLES)
+        if not role_check.has_permission(request, self):
+            return Response(
+                {"detail": "Requires TENANT_ADMIN / AUDITOR / PLATFORM_ADMIN."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        # ---- window parsing ----------------------------------------------
+        since = _parse_iso(request.query_params.get("since"))
+        until = _parse_iso(request.query_params.get("until"))
+
+        qs = AuditEvent.all_objects.filter(
+            tenant_id=tenant_filter,
+            chain_hash__isnull=False,
+        )
+        if since is not None:
+            qs = qs.filter(timestamp__gte=since)
+        if until is not None:
+            qs = qs.filter(timestamp__lt=until)
+        events = list(qs.order_by("chain_sequence"))
+        result = verify_chain_segment(events)
+
+        # ---- optional snapshot cross-check --------------------------------
+        # The in-row verifier above catches single-row forgery and
+        # neighbour-link forgery (no-gap case). It CANNOT catch a
+        # full-chain rewrite where every row's chain_hash + prev_chain_hash
+        # are forged to be internally consistent. The signed Merkle
+        # snapshots are the cryptographic anchor for that case: re-hashing
+        # the current rows must reproduce the signed root.
+        include_snapshots = (
+            str(request.query_params.get("include_snapshots") or "")
+            .strip().lower()
+            in ("1", "true", "yes")
+        )
+        if include_snapshots:
+            snap_qs = AuditMerkleSnapshot.objects.filter(tenant_id=tenant_filter)
+            if since is not None:
+                snap_qs = snap_qs.filter(period_end__gte=since)
+            if until is not None:
+                snap_qs = snap_qs.filter(period_start__lt=until)
+            snapshots = list(snap_qs.order_by("period_end"))
+
+            # For each snapshot resolve its window-leaf set from the CURRENT
+            # rows (filter chain_hash__isnull=False so pre-backfill rows
+            # don't perturb the recomputed root).
+            pairs: list[tuple[AuditMerkleSnapshot, list[AuditEvent]]] = []
+            for snap in snapshots:
+                window_events = list(
+                    AuditEvent.all_objects.filter(
+                        tenant_id=tenant_filter,
+                        chain_hash__isnull=False,
+                        timestamp__gte=snap.period_start,
+                        timestamp__lt=snap.period_end,
+                    ).order_by("chain_sequence")
+                )
+                pairs.append((snap, window_events))
+
+            result = verify_chain_against_snapshots(
+                base=result,
+                snapshot_pairs=pairs,
+                signature_verifier=verify_root_signature,
+            )
+
+        # ---- Phase 234.7.2 / 234.7.1 — observability + meta-audit -------
+        # Counter (one increment PER mismatch row, per-reason) drives the
+        # ``AuditChainBreakDetected`` PagerDuty alert. Then we emit the
+        # AUDIT_INTEGRITY_VERIFIED / _MISMATCH meta-audit so an auditor
+        # reconstructing a regulatory-period timeline from the audit log
+        # alone can see when the chain was last machine-verified — not
+        # just rely on Grafana history.
+        from hub.apps.audit.metrics import observe_chain_break
+        from hub.apps.audit.utils import create_audit_event
+        from hub.apps.audit import event_types as _audit_et
+
+        tenant_label = str(tenant_filter) if tenant_filter else "__platform__"
+        for m in result.mismatches:
+            observe_chain_break(tenant_id=tenant_label, reason=m.reason)
+        snapshot_mismatch_count = len(getattr(result, "snapshot_mismatches", []) or [])
+        for _snap_m in getattr(result, "snapshot_mismatches", []) or []:
+            observe_chain_break(
+                tenant_id=tenant_label, reason="snapshot_root_mismatch"
+            )
+
+        # Resolve the tenant ORM row for the meta-audit FK (None for the
+        # platform chain — when ``tenant_filter`` is the literal string
+        # "__platform__" we treat as no tenant context, mirroring the
+        # convention used elsewhere in this module).
+        meta_tenant = None
+        if tenant_filter and str(tenant_filter) != "__platform__":
+            from hub.apps.tenants.models import Tenant
+
+            meta_tenant = Tenant.objects.filter(id=tenant_filter).first()
+
+        if result.verified:
+            create_audit_event(
+                resource_type="JOB",
+                action=_audit_et.AUDIT_INTEGRITY_VERIFIED,
+                actor_user=request.user if request.user.is_authenticated else None,
+                tenant=meta_tenant,
+                resource_id=None,
+                result="SUCCESS",
+                details={
+                    "tenant_id": tenant_label,
+                    "checked": result.checked,
+                    "gaps": len(result.gaps),
+                    "include_snapshots": include_snapshots,
+                    "snapshots_checked": getattr(result, "snapshots_checked", 0),
+                },
+                request=request,
+                infer_tenant_from_actor=False,
+            )
+        else:
+            sample = [
+                {
+                    "event_id": m.event_id,
+                    "chain_sequence": m.chain_sequence,
+                    "reason": m.reason,
+                }
+                for m in result.mismatches[:10]
+            ]
+            create_audit_event(
+                resource_type="JOB",
+                action=_audit_et.AUDIT_INTEGRITY_MISMATCH,
+                actor_user=request.user if request.user.is_authenticated else None,
+                tenant=meta_tenant,
+                resource_id=None,
+                result="FAILURE",
+                details={
+                    "tenant_id": tenant_label,
+                    "checked": result.checked,
+                    "mismatch_count": len(result.mismatches),
+                    "mismatches": sample,
+                    "gaps": len(result.gaps),
+                    "snapshot_mismatches": snapshot_mismatch_count,
+                    "include_snapshots": include_snapshots,
+                },
+                request=request,
+                infer_tenant_from_actor=False,
+            )
+
+        return Response(result.to_dict(), status=status.HTTP_200_OK)
+
+
+# ---------------------------------------------------------------------------
+# Phase 234.5 — Per-event-type audit retention policy CRUD
+# ---------------------------------------------------------------------------
+
+
+class AuditEventRetentionPolicyViewSet(viewsets.ModelViewSet):
+    """Phase 234.5 — TENANT_ADMIN CRUD over ``AuditEventRetentionPolicy``.
+
+    Mounted under ``/api/v1/audit/event-retention-policies/``. Tenant-scoped:
+    the queryset is filtered to ``request.tenant`` at every action and
+    the ``perform_create`` hook stamps the tenant FK from the request
+    context (the wire payload's ``tenant`` field is read-only on the
+    serializer — see :class:`AuditEventRetentionPolicySerializer`).
+
+    Permissions: ``TENANT_ADMIN`` role required. ``PLATFORM_ADMIN`` is
+    accepted via :class:`HasRole`'s flag-bypass shape.
+
+    Audit emission: every successful CRUD action emits one
+    ``AUDIT_EVENT_RETENTION_POLICY_{CREATED,UPDATED,DELETED}`` row
+    against the tenant. ``details_json`` carries the policy id, event
+    type, resolved retention days, regulation key list, and (on
+    update) the previous retention days for replay-time reconstruction.
+    """
+
+    serializer_class = AuditEventRetentionPolicySerializer
+    lookup_field = "id"
+
+    def get_permissions(self):
+        # DRF instantiates each entry in ``permission_classes`` via
+        # ``permission()`` (rest_framework/views.py:284). ``HasRole`` takes
+        # a required-role argument at construction, so pre-instantiated
+        # entries in ``permission_classes`` raise
+        # ``TypeError: 'HasRole' object is not callable`` at request time
+        # AND at schema-generation time — the latter kills the entire
+        # drf-spectacular OpenAPI build and forces the 5-path fallback
+        # stub in ``hub/apps/api/views.py``. Match the override pattern
+        # used at ``audit/views.py`` line 140 and ``semantic/views.py``
+        # line 1398 to return pre-instantiated permissions directly.
+        return [permissions.IsAuthenticated(), HasRole("TENANT_ADMIN")]
+
+    def get_queryset(self):
+        tenant_id = get_request_tenant_id(self.request)
+        if not tenant_id:
+            return AuditEventRetentionPolicy.objects.none()
+        return AuditEventRetentionPolicy.objects.filter(
+            tenant_id=tenant_id
+        ).order_by("event_type")
+
+    def _resolve_tenant(self):
+        """Return the tenant ORM row for the request, or 400-equivalent None."""
+        from hub.apps.tenants.models import Tenant
+
+        tenant_id = get_request_tenant_id(self.request)
+        if not tenant_id:
+            return None
+        return Tenant.objects.filter(id=tenant_id).first()
+
+    def perform_create(self, serializer):
+        tenant = self._resolve_tenant()
+        if tenant is None:
+            # Defensive: should not happen because IsAuthenticated +
+            # HasRole(TENANT_ADMIN) already imply a tenant context, but
+            # we don't want a server-side IntegrityError if the
+            # middleware ever resolves to None.
+            raise drf_serializers.ValidationError(
+                "Tenant context is required to create an audit retention policy."
+            )
+        instance = serializer.save(tenant=tenant, created_by=self.request.user)
+        create_audit_event(
+            resource_type="AUDIT_EVENT_RETENTION_POLICY",
+            action=_audit_et.AUDIT_EVENT_RETENTION_POLICY_CREATED,
+            actor_user=self.request.user,
+            tenant=tenant,
+            resource_id=str(instance.id),
+            details={
+                "policy_id": str(instance.id),
+                "event_type": instance.event_type,
+                "retention_days": instance.retention_days,
+                "regulation_keys": list(instance.regulation_keys or []),
+                "enabled": instance.enabled,
+            },
+            request=self.request,
+        )
+
+    def perform_update(self, serializer):
+        tenant = self._resolve_tenant()
+        previous_retention_days = serializer.instance.retention_days
+        instance = serializer.save()
+        create_audit_event(
+            resource_type="AUDIT_EVENT_RETENTION_POLICY",
+            action=_audit_et.AUDIT_EVENT_RETENTION_POLICY_UPDATED,
+            actor_user=self.request.user,
+            tenant=tenant,
+            resource_id=str(instance.id),
+            details={
+                "policy_id": str(instance.id),
+                "event_type": instance.event_type,
+                "retention_days": instance.retention_days,
+                "previous_retention_days": previous_retention_days,
+                "regulation_keys": list(instance.regulation_keys or []),
+                "enabled": instance.enabled,
+            },
+            request=self.request,
+        )
+
+    def perform_destroy(self, instance):
+        tenant = self._resolve_tenant()
+        snapshot = {
+            "policy_id": str(instance.id),
+            "event_type": instance.event_type,
+            "retention_days": instance.retention_days,
+            "regulation_keys": list(instance.regulation_keys or []),
+            "enabled": instance.enabled,
+        }
+        instance.delete()
+        create_audit_event(
+            resource_type="AUDIT_EVENT_RETENTION_POLICY",
+            action=_audit_et.AUDIT_EVENT_RETENTION_POLICY_DELETED,
+            actor_user=self.request.user,
+            tenant=tenant,
+            resource_id=snapshot["policy_id"],
+            details=snapshot,
+            request=self.request,
+        )
 
