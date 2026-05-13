@@ -1182,6 +1182,24 @@ rq_queue_depth = _UpDownCounterWrapper(
     expected_labels=("queue_name", "status"),
 )
 
+# Phase 277.B.075 — per-queue job latency histogram + worker uptime gauge
+job_queue_latency_seconds = _HistogramWrapper(
+    "job_queue_latency_seconds",
+    "Job execution wall-clock latency per RQ queue.  Bucketed for "
+    "p50 / p95 / p99 percentile queries in Prometheus.",
+    unit="s",
+    buckets=(0.01, 0.05, 0.1, 0.5, 1.0, 5.0, 10.0, 30.0, 60.0, 300.0, 600.0, 1800.0),
+    expected_labels=("queue_name", "job_type", "status"),
+)
+
+worker_uptime_seconds = _UpDownCounterWrapper(
+    "worker_uptime_seconds",
+    "Worker process uptime in seconds, per RQ queue.  Set by worker "
+    "heartbeat — Prometheus can detect restarts via counter resets.",
+    unit="s",
+    expected_labels=("queue_name",),
+)
+
 job_worker_active = _UpDownCounterWrapper(
     "job_worker_active",
     "Current number of active job workers",
