@@ -206,7 +206,20 @@ def _detail_label_from_span(span_name: str) -> str | None:
     return None
 
 
+# ---------------------------------------------------------------------------
+# Phase 277.B.051 — Asset operations counter
+# ---------------------------------------------------------------------------
+
+asset_operations_total = _CounterWrapper(
+    "asset_operations_total",
+    "Total number of asset CRUD + lifecycle operations (Phase 277.B.051).",
+    unit="1",
+    expected_labels=("operation", "tenant_id", "status"),
+)
+
+
 __all__ = [
+    "asset_operations_total",
     "lineage_edge_writes_total",
     "lineage_query_duration_seconds",
     "lineage_query_total",

@@ -24,6 +24,7 @@ from hub.apps.core.services.base import (
 from hub.apps.core.services.base import (
     ValidationError as ServiceValidationError,
 )
+from hub.apps.observability.metrics import asset_operations_total
 from hub.apps.tenants.request_tenant import get_request_tenant, get_request_tenant_id
 
 from .caching import (
@@ -210,6 +211,23 @@ def _emit_visibility_deprecation_signal(
         )
 
 
+def _emit_asset_operation(operation: str, tenant_id: str, status_label: str) -> None:
+    """Emit ``asset_operations_total`` counter increment.
+
+    Best-effort: a failed emit must never block the response.
+    """
+    try:
+        asset_operations_total.inc(
+            attributes={
+                "operation": operation,
+                "tenant_id": tenant_id or "unknown",
+                "status": status_label,
+            }
+        )
+    except Exception:
+        pass
+
+
 class AssetViewSet(viewsets.ModelViewSet):
     """
     ViewSet for asset management.
@@ -390,6 +408,7 @@ class AssetViewSet(viewsets.ModelViewSet):
         )
         is_platform_admin = hasattr(user, "is_platform_admin") and user.is_platform_admin
         if not (has_write_role or is_platform_admin):
+            _emit_asset_operation("create", get_request_tenant_id(request) or "", "permission_denied")
             return Response(
                 {
                     "error": "Permission denied: DATA_PROVIDER or TENANT_ADMIN role required to create assets",
@@ -445,8 +464,10 @@ class AssetViewSet(viewsets.ModelViewSet):
                 created_by=request.user,
             )
         except ServiceValidationError as e:
+            _emit_asset_operation("create", tenant_id_str, "validation_error")
             return handle_service_exception(e)
         except ServiceConflictError as e:
+            _emit_asset_operation("create", tenant_id_str, "conflict")
             return handle_service_exception(e)
 
         # Invalidate cache
@@ -476,6 +497,7 @@ class AssetViewSet(viewsets.ModelViewSet):
         except Exception as e:
             logger.warning(f"Failed to create audit event for asset {asset.id}: {e}", exc_info=True)
 
+        _emit_asset_operation("create", tenant_id_str, "success")
         return Response(AssetSerializer(asset).data, status=status.HTTP_201_CREATED)
 
     #: Phase 250.1.A.11 / B-9 — same numeric cap as
@@ -1249,6 +1271,7 @@ class AssetViewSet(viewsets.ModelViewSet):
             request=request,
         )
 
+        _emit_asset_operation("update", get_request_tenant_id(request) or "", "success")
         return Response(AssetSerializer(asset).data, status=status.HTTP_200_OK)
 
     @transaction.atomic
@@ -1307,6 +1330,7 @@ class AssetViewSet(viewsets.ModelViewSet):
             request=request,
         )
 
+        _emit_asset_operation("delete", str(asset.tenant_id), "success")
         return Response(status=status.HTTP_204_NO_CONTENT)
 
     @transaction.atomic
@@ -2328,6 +2352,7 @@ class AssetViewSet(viewsets.ModelViewSet):
         except Exception:
             pass  # Notifications must never block business operations
 
+        _emit_asset_operation("activate", str(asset.tenant_id), "success")
         return Response(AssetSerializer(asset).data, status=status.HTTP_200_OK)
 
     @transaction.atomic
@@ -2401,6 +2426,7 @@ class AssetViewSet(viewsets.ModelViewSet):
         )
 
         asset.refresh_from_db()
+        _emit_asset_operation("retire", str(asset.tenant_id), "success")
         return Response(AssetSerializer(asset).data, status=status.HTTP_200_OK)
 
     @action(
