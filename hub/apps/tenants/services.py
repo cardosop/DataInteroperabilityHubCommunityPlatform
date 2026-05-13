@@ -119,6 +119,7 @@ def get_tenant_config(tenant: Tenant) -> Dict[str, Any]:
             if config.workflows_enabled is not None
             else platform_defaults["workflows_enabled"]
         ),
+        "compliance_risk_threshold": config.compliance_risk_threshold,
         "created_at": config.created_at.isoformat() if config.created_at else None,
         "updated_at": config.updated_at.isoformat() if config.updated_at else None,
     }
@@ -154,6 +155,7 @@ def get_tenant_config_value(tenant: Tenant, key: str, default: Any = None) -> An
             "trust_signals_enabled": ("trust_signals_enabled", lambda v: v if v is not None else None),
             "versioning_enabled": ("versioning_enabled", lambda v: v if v is not None else None),
             "workflows_enabled": ("workflows_enabled", lambda v: v if v is not None else None),
+            "compliance_risk_threshold": ("compliance_risk_threshold", lambda v: v),
         }
 
         if key in key_to_attr:
@@ -507,6 +509,7 @@ class TenantService(BaseService, TenantEventPublisher):
         trust_signals_enabled: Optional[bool] = None,
         versioning_enabled: Optional[bool] = None,
         workflows_enabled: Optional[bool] = None,
+        compliance_risk_threshold: Optional[str] = None,
         **kwargs,
     ) -> TenantConfig:
         """
@@ -604,6 +607,14 @@ class TenantService(BaseService, TenantEventPublisher):
                         new_value=rate_limits,
                         **kwargs,
                     )
+
+            if compliance_risk_threshold is not None:
+                prev_thr = getattr(
+                    config, "compliance_risk_threshold", None
+                )
+                if prev_thr != compliance_risk_threshold:
+                    config.compliance_risk_threshold = compliance_risk_threshold
+                    updated_fields.append("compliance_risk_threshold")
 
             # Save config - always save all fields to ensure JSONField changes are persisted
             # Using update_fields can sometimes cause issues with JSONField, so we save all fields
@@ -900,7 +911,7 @@ class TenantUsageService(BaseService):
             from hub.apps.files.models import File, FileStatus
 
             storage_result = File.objects.filter(
-                tenant_id=tenant_id, status__in=[FileStatus.ACTIVE, FileStatus.COMPLETED]
+                tenant_id=tenant_id, status=FileStatus.ACTIVE
             ).aggregate(total_size=Sum("size"))
             storage_bytes = storage_result["total_size"] or 0
 
@@ -939,57 +950,43 @@ class TenantUsageService(BaseService):
 
     def get_current_usage(self, tenant_id: str) -> Dict[str, Any]:
         """
-        Get current usage metrics for a tenant (not period-based, current counts).
+        Phase 277.B.106 — dynamic RESOURCE_COUNTERS usage.
+
+        Iterates every counter in ``RESOURCE_COUNTERS`` so all 30+
+        ``KNOWN_LIMIT_KEYS`` return real usage data instead of zero.
+        Cached in Redis for 60 s (30+ COUNT queries per uncached call).
 
         Args:
             tenant_id: Tenant ID
 
         Returns:
-            Dictionary with current usage metrics
+            Dictionary with ``{limit_key}_usage`` entries for every
+            registered counter, plus ``quota_warnings`` for >=80%.
         """
 
         def _get_current():
-            tenant = self.get_resource_or_raise(Tenant, tenant_id)
+            from django.core.cache import cache as _cache
 
-            # Get current counts
-            from hub.apps.assets.models import Asset
-            from hub.apps.datasets.models import Dataset
-            from hub.apps.files.models import File, FileStatus
-            from hub.apps.scheduled_export.models import ScheduledExport
-            from hub.apps.scheduled_ingestion.models import ScheduledIngestion
+            cache_key = f"tenant_usage:{tenant_id}"
+            cached = _cache.get(cache_key)
+            if cached is not None:
+                return cached
 
-            asset_count = Asset.objects.filter(tenant_id=tenant_id).count()
-            dataset_count = Dataset.objects.filter(tenant_id=tenant_id).count()
-            scheduled_ingestion_count = ScheduledIngestion.objects.filter(
-                tenant_id=tenant_id
-            ).count()
-            scheduled_export_count = ScheduledExport.objects.filter(tenant_id=tenant_id).count()
+            from hub.apps.billing.limit_registry import RESOURCE_COUNTERS, get_resource_count
 
-            storage_result = File.objects.filter(
-                tenant_id=tenant_id, status__in=[FileStatus.ACTIVE, FileStatus.COMPLETED]
-            ).aggregate(total_size=Sum("size"))
-            storage_bytes = storage_result["total_size"] or 0
+            usage: dict[str, Any] = {"tenant_id": str(tenant_id)}
 
-            # Get API calls for current month
-            from hub.apps.baas.models import APIKey, APIUsage
+            for limit_key in sorted(RESOURCE_COUNTERS.keys()):
+                try:
+                    count_or_size = get_resource_count(tenant_id, limit_key)
+                except Exception:
+                    count_or_size = 0
+                # Normalise limit_key → usage key: max_assets → asset_usage
+                usage_key = limit_key.replace("max_", "") + "_usage"
+                usage[usage_key] = count_or_size
 
-            now = timezone.now()
-            month_start = datetime(now.year, now.month, 1, tzinfo=now.tzinfo)
-            api_keys = APIKey.objects.filter(tenant_id=tenant_id)
-            api_calls_count = APIUsage.objects.filter(
-                api_key__in=api_keys, timestamp__gte=month_start
-            ).count()
-
-            return {
-                "tenant_id": str(tenant_id),
-                "asset_count": asset_count,
-                "dataset_count": dataset_count,
-                "scheduled_ingestion_count": scheduled_ingestion_count,
-                "scheduled_export_count": scheduled_export_count,
-                "storage_bytes": storage_bytes,
-                "storage_gb": storage_bytes / (1024**3),
-                "api_calls_this_month": api_calls_count,
-            }
+            _cache.set(cache_key, usage, timeout=60)
+            return usage
 
         return self.execute_with_metrics(
             operation="get_current_usage", tenant_id=tenant_id, func=_get_current

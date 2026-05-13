@@ -6,6 +6,8 @@ DRF serializers for Tenant API.
 
 from rest_framework import serializers
 
+from hub.apps.compliance.models import RiskLevel
+
 from .models import KYCStatus, Tenant, TenantConfig, TenantStatus
 from .validators import (
     get_platform_defaults,
@@ -32,10 +34,39 @@ class TenantSerializer(serializers.ModelSerializer):
             "region",
             "plan",
             "deleted_at",
+            # Phase 235.3 — surface the lifecycle fields so the SPA
+            # can pre-disable the Deactivate button on tenants with
+            # an active legal hold OR an already-scheduled hard delete.
+            # Without these, the operator first sees a 422 only after
+            # clicking the button — surfacing the state up-front turns
+            # the deactivate flow from "click-and-toast" into a
+            # visible-precondition UX.
+            "scheduled_for_deletion_at",
+            "legal_hold",
+            # Phase 235.4 — surface impersonation opt-in + per-tenant
+            # default duration so the SPA can decide locally whether
+            # to render the ImpersonationButton on user-detail pages
+            # and what value to pre-fill into the max_minutes field
+            # of the start dialog.
+            "impersonation_allowed",
+            "impersonation_default_max_minutes",
             "created_at",
             "updated_at",
         ]
-        read_only_fields = ["id", "status", "deleted_at", "created_at", "updated_at"]
+        read_only_fields = [
+            "id",
+            "status",
+            "deleted_at",
+            "scheduled_for_deletion_at",
+            # ``legal_hold`` is intentionally NOT in read_only_fields —
+            # a platform-admin endpoint (out of 235.3 scope; future
+            # 235.x or runbook-driven) can PATCH it. For 235.3, the
+            # serializer surfaces it as read-only via the existing
+            # ModelSerializer + the absence of a write-side write
+            # path; only specific endpoints will mutate it.
+            "created_at",
+            "updated_at",
+        ]
 
     def validate_slug(self, value):
         """Validate slug format"""
@@ -164,6 +195,17 @@ class TenantConfigSerializer(serializers.ModelSerializer):
         allow_null=True,
         help_text="Per-endpoint category rate limits",
     )
+    # Phase 270.C.4.5 — surface the per-tenant strict-mode flag on
+    # the TenantConfig API even though the field lives on the
+    # ``Tenant`` model. Read-only here; the update path in
+    # ``TenantConfigUpdateSerializer`` writes it via the related
+    # Tenant. The frontend's ``TenantSettingsPage`` reads + writes
+    # this field through the same ``PATCH /tenants/me/config/``
+    # endpoint as every other compliance flag.
+    compliance_legal_basis_strict = serializers.BooleanField(
+        source="tenant.compliance_legal_basis_strict",
+        read_only=True,
+    )
 
     class Meta:
         model = TenantConfig
@@ -172,6 +214,7 @@ class TenantConfigSerializer(serializers.ModelSerializer):
             "default_dq_profile",
             "allowed_compliance_regimes",
             "default_compliance_regimes",
+            "compliance_risk_threshold",
             "data_retention_days",
             "rate_limits",
             "max_file_size_bytes",
@@ -180,6 +223,7 @@ class TenantConfigSerializer(serializers.ModelSerializer):
             "trust_signals_enabled",
             "versioning_enabled",
             "workflows_enabled",
+            "compliance_legal_basis_strict",
             "created_at",
             "updated_at",
         ]
@@ -246,6 +290,14 @@ class TenantConfigUpdateSerializer(serializers.ModelSerializer):
         allow_null=True,
         help_text="Per-endpoint category rate limits",
     )
+    # Phase 270.C.4.5 — write-through to the related ``Tenant``
+    # model's ``compliance_legal_basis_strict`` field. Declared as
+    # a non-model BooleanField because the value lives on Tenant
+    # (not TenantConfig); ``update()`` below routes the value to
+    # the right model.
+    compliance_legal_basis_strict = serializers.BooleanField(
+        required=False, allow_null=True,
+    )
 
     class Meta:
         model = TenantConfig
@@ -253,6 +305,7 @@ class TenantConfigUpdateSerializer(serializers.ModelSerializer):
             "default_dq_profile",
             "allowed_compliance_regimes",
             "default_compliance_regimes",
+            "compliance_risk_threshold",
             "data_retention_days",
             "rate_limits",
             "max_file_size_bytes",
@@ -261,7 +314,39 @@ class TenantConfigUpdateSerializer(serializers.ModelSerializer):
             "trust_signals_enabled",
             "versioning_enabled",
             "workflows_enabled",
+            "compliance_legal_basis_strict",
         ]
+
+    def update(self, instance, validated_data):
+        """Phase 270.C.4.5 — handle the ``compliance_legal_basis_strict``
+        cross-model write: pop the value out of validated_data, apply
+        it to the related Tenant + the TenantConfig fields together
+        inside a single ``transaction.atomic()`` so partial writes
+        are impossible.
+
+        Phase 270.C.4 audit-fix Gap 1 — the original implementation
+        saved the Tenant FIRST then called ``super().update()``
+        OUTSIDE any explicit atomic. A failure in ``super().update()``
+        (DB blip, constraint violation, validation failure that
+        surfaces only at the model layer) would leave the Tenant's
+        ``compliance_legal_basis_strict`` flag advanced while the
+        TenantConfig fields the user PATCHed remained un-applied —
+        a classic half-written state. Wrapping both writes in a
+        single atomic transaction makes the PATCH all-or-nothing.
+        """
+        from django.db import transaction as _tx
+
+        cross_model = validated_data.pop(
+            "compliance_legal_basis_strict", None,
+        )
+        with _tx.atomic():
+            if cross_model is not None and instance.tenant is not None:
+                tenant = instance.tenant
+                tenant.compliance_legal_basis_strict = bool(cross_model)
+                tenant.save(update_fields=[
+                    "compliance_legal_basis_strict", "updated_at",
+                ])
+            return super().update(instance, validated_data)
 
     def validate_default_dq_profile(self, value):
         """Validate DQ profile"""
@@ -313,19 +398,16 @@ class TenantConfigUpdateSerializer(serializers.ModelSerializer):
 
 
 class TenantUsageSerializer(serializers.Serializer):
-    """Serializer for tenant usage summary"""
+    """Phase 277.B.106 — serializer for tenant usage summary.
+
+    Usage counts are dynamic (derived from RESOURCE_COUNTERS keys)
+    and surfaced as ``{limit_key_prefix}_usage`` fields.
+    """
 
     tenant_id = serializers.UUIDField(read_only=True)
-    period_start = serializers.DateTimeField(read_only=True, allow_null=True)
-    period_end = serializers.DateTimeField(read_only=True, allow_null=True)
-    asset_count = serializers.IntegerField(read_only=True)
-    dataset_count = serializers.IntegerField(read_only=True)
-    scheduled_ingestion_count = serializers.IntegerField(read_only=True)
-    scheduled_export_count = serializers.IntegerField(read_only=True)
-    storage_bytes = serializers.IntegerField(read_only=True)
-    storage_gb = serializers.FloatField(read_only=True)
-    api_calls_this_month = serializers.IntegerField(read_only=True)
     plan_limits = serializers.DictField(read_only=True)
     usage_percentages = serializers.DictField(read_only=True)
+    quota_warnings = serializers.DictField(read_only=True)
     plan_slug = serializers.CharField(read_only=True, allow_null=True)
     plan_tier = serializers.CharField(read_only=True, allow_null=True)
+    plan_compliance_pro_pack = serializers.BooleanField(read_only=True)

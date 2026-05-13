@@ -1101,31 +1101,30 @@ class TenantConfigViewSet(viewsets.ViewSet):
                 if max_limit is None:
                     usage_percentages[limit_key] = None  # Unlimited
                 else:
-                    current = current_usage.get(f"{limit_key.replace('max_', '')}_count", 0)
-                    if limit_key == "max_storage_gb":
-                        current = current_usage.get("storage_gb", 0)
-                    elif limit_key == "max_api_calls_per_month":
-                        current = current_usage.get("api_calls_this_month", 0)
-                    else:
-                        # Map limit keys to usage keys
-                        usage_key_map = {
-                            "max_assets": "asset_count",
-                            "max_datasets": "dataset_count",
-                            "max_scheduled_ingestions": "scheduled_ingestion_count",
-                            "max_scheduled_exports": "scheduled_export_count",
-                        }
-                        usage_key = usage_key_map.get(limit_key)
-                        if usage_key:
-                            current = current_usage.get(usage_key, 0)
-
+                    # Phase 277.B.106 — dynamic usage key: max_assets → asset_usage
+                    usage_key = limit_key.replace("max_", "") + "_usage"
+                    current = current_usage.get(usage_key, 0)
                     percentage = (current / max_limit * 100) if max_limit > 0 else 0
-                    usage_percentages[limit_key] = min(percentage, 100.0)
+                    usage_percentages[limit_key] = round(min(percentage, 100.0), 1)
+
+        # Phase 277.B.106 — quota_warnings for limits at >=80%
+        from hub.apps.billing.limit_registry import RESOURCE_COUNTERS
+        quota_warnings: dict[str, dict[str, Any]] = {}
+        for limit_key, pct in usage_percentages.items():
+            if pct is not None and pct >= 80.0:
+                usage_key = limit_key.replace("max_", "") + "_usage"
+                quota_warnings[limit_key] = {
+                    "usage": current_usage.get(usage_key, 0),
+                    "limit": plan_limits[limit_key],
+                    "percentage": pct,
+                }
 
         # Build response
         response_data = {
             **current_usage,
             "plan_limits": plan_limits,
             "usage_percentages": usage_percentages,
+            "quota_warnings": quota_warnings,
             "plan_slug": plan.slug if plan else None,
             "plan_tier": plan.tier if plan else None,
         }
