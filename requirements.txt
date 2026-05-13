@@ -1,3 +1,4 @@
+django>=5.2,<6.0  # Phase 277.A.3 — explicit security pin per dependency audit
 # WSGI/ASGI Production Server
 # gunicorn manages worker processes; uvicorn.workers.UvicornWorker handles ASGI (HTTP + WebSocket).
 # uvicorn[standard] includes uvloop + httptools for best async performance.
