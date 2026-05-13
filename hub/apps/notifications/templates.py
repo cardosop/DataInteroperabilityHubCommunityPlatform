@@ -40,7 +40,17 @@ def render_email_template(
     # Render HTML template
     html_content = render_to_string(template_name, ctx)
 
-    # Generate plain text from HTML if text template not provided
+    # Phase 277.B.098 — auto-detect .txt counterpart at render time.
+    # When no explicit text_template_name is passed, try <name>.txt first;
+    # if it exists, use it. Otherwise fall through to auto-generation.
+    if not text_template_name:
+        candidate = template_name.rsplit(".", 1)[0] + ".txt"
+        try:
+            render_to_string(candidate, ctx)
+            text_template_name = candidate
+        except Exception:
+            pass  # .txt counterpart doesn't exist — fall through
+
     if text_template_name:
         text_content = render_to_string(text_template_name, ctx)
     else:
@@ -183,4 +193,20 @@ def build_marketplace_connection_url(connection_id: str) -> str:
     """
     base_url = get_base_url()
     return f"{base_url}/api/v1/integrations/marketplace/connections/{connection_id}/"
+
+
+def build_unsubscribe_url(token: str) -> str:
+    """
+    Build one-click unsubscribe URL (277.B.097 — CAN-SPAM / GDPR).
+
+    The URL encodes a plaintext UUID that maps to the hashed token stored
+    on the User model.  No authentication is required to use it.
+    """
+    base_url = get_base_url()
+    return f"{base_url}/api/v1/notifications/unsubscribe/{token}/"
+
+
+def build_email_preferences_url() -> str:
+    """Build authenticated email preferences management URL (277.B.097)."""
+    return f"{get_base_url()}/api/v1/auth/me/email-preferences/"
 
