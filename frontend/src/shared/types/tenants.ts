@@ -3,6 +3,29 @@
  * Based on backend tenant models and serializers
  */
 
+/** Backend `RiskLevel` choices (`hub/apps/compliance/models.py`).
+ *  Promoted to a `const` tuple so we can derive the literal union AND
+ *  validate user-controlled input (e.g. form fields) at runtime via
+ *  {@link isComplianceRiskThreshold}. */
+export const COMPLIANCE_RISK_THRESHOLDS = [
+  'NONE',
+  'LOW',
+  'MEDIUM',
+  'HIGH',
+  'CRITICAL',
+] as const;
+export type ComplianceRiskThreshold =
+  (typeof COMPLIANCE_RISK_THRESHOLDS)[number];
+
+export function isComplianceRiskThreshold(
+  value: unknown,
+): value is ComplianceRiskThreshold {
+  return (
+    typeof value === 'string' &&
+    (COMPLIANCE_RISK_THRESHOLDS as readonly string[]).includes(value)
+  );
+}
+
 export interface Tenant {
   id: string;
   name: string;
@@ -10,6 +33,35 @@ export interface Tenant {
   region?: string;
   status: 'ACTIVE' | 'SUSPENDED' | 'DELETED' | 'INACTIVE';
   kyc_status: 'VERIFIED' | 'UNVERIFIED' | 'PENDING' | 'REJECTED';
+  /**
+   * Phase 235.3 — soft-delete grace anchor. Non-null when the tenant
+   * has been deactivated via ``DELETE /api/v1/admin/tenants/{id}/``;
+   * the daily cron hard-deletes the tenant 90 days after this
+   * timestamp.
+   */
+  scheduled_for_deletion_at?: string | null;
+  /**
+   * Phase 235.3 — legal-hold flag. When True, blocks both the
+   * Deactivate endpoint (HTTP 422 LEGAL_HOLD_ACTIVE) and the daily
+   * hard-delete sweep. The SPA pre-disables the Deactivate button
+   * when this is True so operators see the precondition without
+   * needing to click + error.
+   */
+  legal_hold?: boolean;
+  /**
+   * Phase 235.4 — when True, PLATFORM_ADMIN may impersonate users in
+   * this tenant via the admin impersonate endpoint. The SPA hides the
+   * ImpersonationButton on user-detail pages when this is False
+   * (mirrors the backend gate so a misconfigured FE can't trigger the
+   * 403 round-trip).
+   */
+  impersonation_allowed?: boolean;
+  /**
+   * Phase 235.4 — per-tenant default for an impersonation session's
+   * duration cap (minutes). Hard cap is 240 enforced server-side.
+   */
+  impersonation_default_max_minutes?: number;
+  deleted_at?: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -33,6 +85,17 @@ export interface TenantConfig {
   trust_signals_enabled?: boolean;
   versioning_enabled?: boolean;
   workflows_enabled?: boolean;
+  compliance_risk_threshold?: ComplianceRiskThreshold;
+  /**
+   * Phase 270.C.4 — per-tenant compliance legal-basis strict mode.
+   * When true, the compliance microservice rejects scans missing a
+   * valid GDPR/UK_GDPR/LGPD ``legal_basis`` with HTTP 422
+   * ``LEGAL_BASIS_INVALID``. When false (default in staging/dev),
+   * the scan succeeds with an ERROR-severity issue in the report
+   * (Phase 19.7.1 behaviour). Surfaced via the
+   * ``Tenant.compliance_legal_basis_strict`` model field.
+   */
+  compliance_legal_basis_strict?: boolean;
   created_at: string;
   updated_at: string;
 }
@@ -50,6 +113,9 @@ export interface TenantConfigUpdate {
   trust_signals_enabled?: boolean | null;
   versioning_enabled?: boolean | null;
   workflows_enabled?: boolean | null;
+  compliance_risk_threshold?: ComplianceRiskThreshold | null;
+  /** Phase 270.C.4 — see ``TenantConfig.compliance_legal_basis_strict``. */
+  compliance_legal_basis_strict?: boolean | null;
 }
 
 /** Single tenant usage row from GET /platform/tenants/usage/ */
@@ -103,17 +169,21 @@ export interface TenantOnboardingResponse {
 }
 
 /** Response from GET /tenants/me/usage/ */
+interface QuotaWarning {
+  usage: number;
+  limit: number;
+  percentage: number;
+}
+
 export interface TenantUsage {
   tenant_id: string;
-  asset_count: number;
-  dataset_count: number;
-  scheduled_ingestion_count: number;
-  scheduled_export_count: number;
-  storage_bytes: number;
-  storage_gb: number;
-  api_calls_this_month: number;
+  /** Phase 277.B.106 — dynamic usage keys: {limit_key}_usage for every KNOWN_LIMIT_KEY */
+  [key: `${string}_usage`]: number | string;
   plan_limits: Record<string, number | null>;
   usage_percentages: Record<string, number | null>;
+  /** Phase 277.B.106 — any limit at >=80% flagged with {usage, limit, percentage} */
+  quota_warnings: Record<string, QuotaWarning>;
   plan_slug?: string;
   plan_tier?: string;
+  plan_compliance_pro_pack?: boolean;
 }
