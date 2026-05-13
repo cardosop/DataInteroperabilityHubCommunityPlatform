@@ -356,7 +356,7 @@ services:
   # ClamAV daemon (Phase 203 — malware scanning for uploaded files).
   # Needs ~2GB RAM while loading signature DB; persist DB to avoid long cold starts.
   clamav:
-    image: clamav/clamav:1.3
+    image: clamav/clamav:1.5
     container_name: hub-clamav
     ports:
       - "127.0.0.1:${CLAMAV_PORT:-3310}:3310"
@@ -368,11 +368,14 @@ services:
           memory: 2g
         reservations:
           memory: 1g
+    # Phase 277.B.021 — clamd VERSION probe (D260.4).
+    # The TCP socket probe only checks the port is open; VERSION
+    # confirms clamd actually responds to commands.
     healthcheck:
       test:
         [
           "CMD-SHELL",
-          "python3 -c \"import socket; s=socket.socket(); s.settimeout(2); s.connect(('127.0.0.1',3310)); s.close()\"",
+          "echo zVERSION | nc -w 2 127.0.0.1 3310 | grep -q 'ClamAV'",
         ]
       interval: 30s
       timeout: 10s
