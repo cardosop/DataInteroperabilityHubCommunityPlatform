@@ -226,8 +226,20 @@ class AuthService {
   }
 
   setAccessToken(token: string): void {
-    // Phase 11.1: store only in apiClient memory, never in localStorage
+    // Phase 11.1: store in apiClient memory (primary).
+    // Phase 277.B.067: also persist to localStorage so cross-tab
+    // sync via `storage` event can propagate login across tabs.
     apiClient.setAccessToken(token);
+    try {
+      if (typeof localStorage !== 'undefined') {
+        localStorage.setItem(TOKEN_STORAGE_KEY, token);
+        // Bump sync timestamp so other tabs pick up the change even
+        // when the token value is identical (e.g. refresh rotation).
+        localStorage.setItem('_auth_sync_ts', String(Date.now()));
+      }
+    } catch {
+      // localStorage unavailable — cross-tab sync not possible
+    }
   }
 
   // User management
@@ -256,6 +268,12 @@ class AuthService {
     // G4.4 (glittery-herding-graham): also clear active_tenant_id so direct
     // callers of clearAuth() don't leave stale tenant context.
     try { localStorage.removeItem('active_tenant_id'); } catch { /* ignore */ }
+    // Phase 277.B.067 — bump sync timestamp so other tabs detect logout
+    try {
+      if (typeof localStorage !== 'undefined') {
+        localStorage.setItem('_auth_sync_ts', String(Date.now()));
+      }
+    } catch { /* ignore */ }
     apiClient.clearTokens();
   }
 

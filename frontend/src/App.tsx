@@ -10,11 +10,15 @@ import './App.css';
 import { AppProviders } from './app/providers/AppProviders';
 import { router } from './app/routes/routes';
 import { useAuthStore } from './features/auth/store/authStore';
+import { useCrossTabAuthSync } from './features/auth/hooks/useCrossTabAuthSync';
+import { ImpersonationBanner } from './features/admin/impersonation/ImpersonationBanner';
 import { APP_NAME } from './shared/constants/brand';
 import { ErrorBoundary } from './shared/components/ErrorBoundary';
 
 function App() {
   const { initialize } = useAuthStore();
+  // Phase 277.B.067 — sync auth tokens across browser tabs
+  useCrossTabAuthSync();
 
   useEffect(() => {
     document.title = APP_NAME;
@@ -47,6 +51,16 @@ function App() {
       */}
       <HelmetProvider>
         <AppProviders>
+          {/*
+            Phase 235.4 — red top-banner shown while the operator is
+            impersonating a user. Renders nothing when there is no
+            active impersonation session, so the common-case render
+            cost is a single hook subscription. Mounted ABOVE the
+            RouterProvider so it sits at the top of every page —
+            including login / error routes the operator might land on
+            mid-session.
+          */}
+          <ImpersonationBanner />
           <RouterProvider router={router} />
         </AppProviders>
       </HelmetProvider>
