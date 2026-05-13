@@ -8,7 +8,7 @@ from rest_framework.routers import DefaultRouter
 from hub.apps.semantic.views import TenantSparqlEndpointViewSet
 
 from .ephemeral_views import ephemeral_tenant
-from .views import TenantConfigViewSet, TenantViewSet
+from .views import RateLimitConfigView, TenantConfigViewSet, TenantViewSet
 
 router = DefaultRouter()
 router.register(r"", TenantViewSet, basename="tenant")
@@ -49,10 +49,27 @@ urlpatterns = [
         ),
         name="tenant-me-feature-flag-history",
     ),
+    # Phase 270.D.3 — Tax & Billing Identity surface. Manually
+    # registered (same reason as the other ``me/*`` routes — the
+    # router's ``<id>/`` pattern below would otherwise try to
+    # match ``me`` as a tenant UUID).
+    path(
+        "me/tax-id/",
+        TenantConfigViewSet.as_view(
+            {"get": "me_tax_id", "post": "me_tax_id"}
+        ),
+        name="tenant-me-tax-id",
+    ),
     # Phase 226 OQ4 — test-only ephemeral-tenant provisioning. Gated by
     # ENVIRONMENT + E2E_TEST_SECRET; production 404s. Cleanup runs via
     # the staging-prefix-purge cron (slug starts with `e2e-ephemeral-`).
     path("ephemeral/", ephemeral_tenant, name="tenant-ephemeral"),
+    # Phase 277.B.070 — per-tenant rate limit admin
+    path(
+        "<uuid:tenant_id>/rate-limits/",
+        RateLimitConfigView.as_view({"get": "retrieve", "patch": "partial_update"}),
+        name="tenant-rate-limits",
+    ),
     path(
         "<uuid:tenant_id>/config/",
         TenantConfigViewSet.as_view({"get": "retrieve", "patch": "partial_update"}),

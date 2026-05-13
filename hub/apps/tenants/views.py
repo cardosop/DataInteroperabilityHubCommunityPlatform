@@ -4,6 +4,8 @@ Tenant Views
 REST API views for tenant management.
 """
 
+import logging
+
 from django.db import transaction
 from django.shortcuts import get_object_or_404
 from drf_spectacular.utils import OpenApiResponse, extend_schema, inline_serializer
@@ -12,7 +14,10 @@ from rest_framework.decorators import action
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
-from hub.apps.audit.utils import log_tenant_operation
+from hub.apps.api.e2e_gating import is_e2e_environment, verify_e2e_token
+from hub.apps.audit import event_types as audit_event_types
+from hub.apps.audit.utils import create_audit_event, log_tenant_operation
+from hub.apps.compliance.models import RiskLevel
 from hub.apps.auth.permissions import HasRole
 from hub.apps.billing.services import SubscriptionService
 from hub.apps.core.responses import handle_service_exception
@@ -33,6 +38,8 @@ from .serializers import (
     TenantUsageSerializer,
 )
 from .services import TenantOnboardingService, TenantService, TenantUsageService, get_tenant_config
+
+logger = logging.getLogger(__name__)
 
 
 class TenantViewSet(viewsets.ModelViewSet):
@@ -262,8 +269,30 @@ class TenantViewSet(viewsets.ModelViewSet):
         Sets status to DELETED and blocks all access.
         Data retention period begins (default: 30 days).
         Events are published automatically via TenantService.
+
+        Query ``?cascade=true`` — **test/staging gated**: platform-admin hard-delete with
+        E2E token; removes User rows (RESTRICT), then Tenant row → DB CASCADE removes
+        File rows; ``pre_delete`` schedules S3 purges ``on_commit`` (Phase 260.1.F).
         """
         tenant = self.get_object()
+        cascade_raw = request.query_params.get("cascade")
+        cascade_hard = str(cascade_raw or "").strip().lower() in (
+            "1",
+            "true",
+            "yes",
+        )
+        if cascade_hard:
+            if not is_e2e_environment():
+                return Response(
+                    {"detail": "Tenant hard-delete cascade is not enabled in this environment."},
+                    status=status.HTTP_403_FORBIDDEN,
+                )
+            if not verify_e2e_token(request):
+                return Response(
+                    {"detail": "X-E2E-Token header required for cascade delete."},
+                    status=status.HTTP_403_FORBIDDEN,
+                )
+            return self._hard_delete_tenant_cascade(request, tenant)
 
         # Use TenantService to delete tenant (publishes events automatically)
         service = TenantService(tenant_id=str(tenant.id), user_id=str(request.user.id))
@@ -281,6 +310,32 @@ class TenantViewSet(viewsets.ModelViewSet):
             request=request,
         )
 
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+    def _hard_delete_tenant_cascade(self, request, tenant: Tenant):
+        """E2E / operator hard-delete — DB CASCADE + storage purge callbacks (Phase 260.1.F).
+
+        Audit placement: ``tenant.delete()`` runs first so ``pre_delete`` emits every
+        ``FILE_TENANT_OFFBOARD_PURGE_SCHEDULED`` while the Tenant FK is still valid; the
+        operator summary row is appended after the row hard-delete completes.
+        """
+        from hub.apps.users.models import User
+
+        tid = tenant.pk
+        slug = getattr(tenant, "slug", None)
+        tenant_id_str = str(tid)
+        User.objects.filter(tenant_id=tid).delete()
+        tenant.delete()
+        create_audit_event(
+            resource_type="TENANT",
+            action=audit_event_types.TENANT_HARD_DELETE_CASCADE,
+            actor_user=request.user,
+            tenant=None,
+            resource_id=tenant_id_str,
+            details={"tenant_id": tenant_id_str, "slug": slug},
+            request=request,
+            infer_tenant_from_actor=False,
+        )
         return Response(status=status.HTTP_204_NO_CONTENT)
 
     def _send_suspension_notification(self, tenant, reason=None):
@@ -421,6 +476,10 @@ class TenantConfigViewSet(viewsets.ViewSet):
         # Get or create tenant config for validation
         config, created = TenantConfig.objects.get_or_create(tenant=tenant)
 
+        prev_compliance_thr = str(
+            getattr(config, "compliance_risk_threshold", RiskLevel.HIGH.value)
+        )
+
         serializer = TenantConfigUpdateSerializer(config, data=request.data, partial=True)
         serializer.is_valid(raise_exception=True)
 
@@ -452,6 +511,36 @@ class TenantConfigViewSet(viewsets.ViewSet):
             details=serializer.validated_data,
             request=request,
         )
+
+        if "compliance_risk_threshold" in vd:
+            cfg_fresh = TenantConfig.objects.get(pk=config.pk)
+            new_thr = str(
+                getattr(cfg_fresh, "compliance_risk_threshold", RiskLevel.HIGH.value)
+            )
+            if new_thr != prev_compliance_thr:
+                try:
+                    create_audit_event(
+                        resource_type="TENANT",
+                        action=audit_event_types.TENANT_COMPLIANCE_THRESHOLD_CHANGED,
+                        actor_user=request.user,
+                        tenant=tenant,
+                        resource_id=str(tenant.id),
+                        details={
+                            "tenant_id": str(tenant.id),
+                            "previous_threshold": prev_compliance_thr,
+                            "new_threshold": new_thr,
+                        },
+                        request=request,
+                    )
+                except Exception as exc:
+                    logger.warning(
+                        "tenant_compliance_threshold_audit_failed",
+                        extra={
+                            "error": str(exc),
+                            "tenant_id": str(tenant.id),
+                        },
+                        exc_info=True,
+                    )
 
         # Return complete config with defaults
         config_dict = get_tenant_config(tenant)
@@ -645,6 +734,16 @@ class TenantConfigViewSet(viewsets.ViewSet):
             "billing dispute, etc.). Phase 250.6.A / D250.17.",
         ),
         (
+            "datasets_enabled",
+            "When True (default), Dataset REST API (/api/v1/datasets/*) is "
+            "enabled. When False, returns 403 DATASETS_DISABLED. Phase 260.3.B.",
+        ),
+        (
+            "files_enabled",
+            "When True (default), File REST API (/api/v1/files/*) is "
+            "enabled. When False, returns 403 FILES_DISABLED. Phase 260.3.B.",
+        ),
+        (
             "federated_import_enabled",
             "When True, this tenant may import federated assets from "
             "configured marketplace connections. Default False — opt-in "
@@ -678,6 +777,47 @@ class TenantConfigViewSet(viewsets.ViewSet):
             "detection, trend analysis, scorecards, RCA). Conjunctive "
             "with the base flag — disabling the base also disables "
             "this. Phase 240.3.B.",
+        ),
+        (
+            "compliance_consent_enabled",
+            "When True, the Phase 232.1 consent subsystem is active: purposes, "
+            "HMAC-bound consent records, signup/marketplace/webhook gates, "
+            "and consent webhooks. Default False — explicit opt-in.",
+        ),
+        (
+            "compliance_ropa_enabled",
+            "When True, RoPA generation endpoints and history are enabled for handlers "
+            "(Phase 232.4). Default False — explicit opt-in.",
+        ),
+        (
+            "compliance_dpia_enabled",
+            "When True, DPIA register, wizard, DPO review queue, and asset DPIA badges "
+            "are enabled (Phase 232.5). Default False — explicit opt-in.",
+        ),
+        (
+            "compliance_dsar_enabled",
+            "When True, public DSAR ingress and tenant DSAR handler queue are enabled "
+            "(Phase 232.2). Default False — explicit opt-in; requires appropriate DPA tier.",
+        ),
+        (
+            "compliance_breach_enabled",
+            "When True, breach incident register, templates, and statutory notification flows "
+            "are enabled (Phase 232.3). Default False — explicit opt-in.",
+        ),
+        (
+            "compliance_processor_agreements_enabled",
+            "When True, Article 28 processor register, agreements, and asset–processor links "
+            "are enabled (Phase 232.6). Default False — explicit opt-in.",
+        ),
+        (
+            "compliance_retention_enforcer_enabled",
+            "When True, Phase 232.7 retention auto-sweep may tombstone datasets/assets after "
+            "expiry and hard-delete following a 90-day grace. Default False — explicit opt-in.",
+        ),
+        (
+            "compliance_audit_full_sampling",
+            "When True, every successful GET /api/v1/files/{id}/ emits a FILE_METADATA_VIEWED "
+            "audit row (Phase 260.2.F). When False (default), ~10% deterministic sampling applies.",
         ),
     )
 
@@ -888,7 +1028,7 @@ class TenantConfigViewSet(viewsets.ViewSet):
         events_qs = AuditEvent.objects.filter(
             tenant_id=tenant_id,
             action=_audit_event_types.TENANT_FEATURE_FLAG_UPDATED,
-        ).order_by("-created_at")[:100]
+        ).order_by("-timestamp")[:100]
         # Hard-cap at 100 rows so a chatty admin's history doesn't
         # blow the response payload size; the SPA can paginate if
         # the limit is hit (follow-up). 100 covers ~3 months of
@@ -902,7 +1042,7 @@ class TenantConfigViewSet(viewsets.ViewSet):
                     str(ev.actor_user_id) if ev.actor_user_id else None
                 ),
                 "result": ev.result,
-                "created_at": ev.created_at.isoformat(),
+                "created_at": ev.timestamp.isoformat(),
                 "details_json": ev.details_json,
             }
             for ev in events_qs
@@ -990,5 +1130,262 @@ class TenantConfigViewSet(viewsets.ViewSet):
             "plan_tier": plan.tier if plan else None,
         }
 
+        # D232.16 — commercial Compliance Pro packaging on the subscription plan (read-only here).
+        response_data["plan_compliance_pro_pack"] = (
+            bool(plan.compliance_pro_pack) if plan else False
+        )
+
         serializer = TenantUsageSerializer(response_data)
         return Response(serializer.data, status=status.HTTP_200_OK)
+
+    # ------------------------------------------------------------------
+    # Phase 270.D.3 — Tax & Billing Identity surface
+    # ------------------------------------------------------------------
+
+    @action(detail=False, methods=["get", "post"], url_path="me/tax-id")
+    def me_tax_id(self, request):
+        """Phase 270.D.3 — tenant tax-identity submission.
+
+        ``GET  /api/v1/tenants/me/tax-id/`` returns the current
+        ``{tax_id, tax_id_type, tax_id_verified, tax_address}``
+        (tax_address is decrypted). ``POST`` submits a new
+        registration: validates input, calls
+        ``stripe.Customer.create_tax_id`` to register the value
+        Stripe-side, persists the four fields locally (tax_id
+        flips back to unverified pending the verified webhook).
+
+        Audit: emits ``TENANT_TAX_ID_SUBMITTED`` with the
+        masked tax_id + country so the audit log carries the
+        submission record without leaking the plaintext ID.
+        """
+        from hub.apps.audit import event_types as _ev
+        from hub.apps.audit.utils import create_audit_event
+        from hub.apps.tenants.tax_id_service import (
+            submit_tax_id_to_stripe,
+            TaxIdSubmissionError,
+        )
+
+        tenant_id = get_request_tenant_id(request)
+        if not tenant_id:
+            return Response(
+                {"error": "Tenant context required"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        tenant = self.get_tenant(tenant_id)
+
+        if request.method == "GET":
+            return Response(
+                {
+                    "tax_id": tenant.tax_id or "",
+                    "tax_id_type": tenant.tax_id_type or "",
+                    "tax_id_verified": bool(tenant.tax_id_verified),
+                    "tax_address": tenant.get_tax_address(),
+                },
+                status=status.HTTP_200_OK,
+            )
+
+        # POST — submit + persist.
+        tax_id_value = (request.data.get("tax_id") or "").strip()
+        tax_id_type = (request.data.get("tax_id_type") or "").strip()
+        tax_address = request.data.get("tax_address") or None
+
+        if not tax_id_value or not tax_id_type:
+            return Response(
+                {
+                    "error": "tax_id and tax_id_type are required",
+                    "code": "TAX_ID_INPUT_INVALID",
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        if tax_address is not None and not isinstance(tax_address, dict):
+            return Response(
+                {
+                    "error": "tax_address must be a JSON object",
+                    "code": "TAX_ID_INPUT_INVALID",
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        # Submit to Stripe + persist locally. The service-layer
+        # call is the boundary that talks to Stripe; the view is
+        # a thin wrapper that wires HTTP semantics.
+        try:
+            result = submit_tax_id_to_stripe(
+                tenant=tenant,
+                tax_id_value=tax_id_value,
+                tax_id_type=tax_id_type,
+                tax_address=tax_address,
+            )
+        except TaxIdSubmissionError as exc:
+            return Response(
+                {"error": str(exc), "code": "TAX_ID_SUBMISSION_FAILED"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        # Audit row carries the MASKED tax_id only — the
+        # encrypted Tenant.tax_id column is the system-of-record
+        # for the unmasked value.
+        from hub.apps.billing.views import _mask_tax_id  # local import
+        create_audit_event(
+            resource_type="TENANT",
+            action=_ev.TENANT_TAX_ID_SUBMITTED,
+            actor_user=request.user,
+            tenant=tenant,
+            resource_id=str(tenant.id),
+            details={
+                "tax_id_type": tax_id_type,
+                "tax_id_masked": _mask_tax_id(tax_id_value),
+                "country": (tax_address or {}).get("country") if tax_address else "",
+                "stripe_tax_id_id": result.get("stripe_tax_id_id"),
+            },
+            request=request,
+        )
+
+        return Response(
+            {
+                "tax_id": tenant.tax_id,
+                "tax_id_type": tenant.tax_id_type,
+                "tax_id_verified": bool(tenant.tax_id_verified),
+                "tax_address": tenant.get_tax_address(),
+                "stripe_tax_id_id": result.get("stripe_tax_id_id"),
+            },
+            status=status.HTTP_200_OK,
+        )
+
+
+# ── Phase 277.B.070 — Per-Tenant Rate Limit Admin ────────────────
+
+
+class RateLimitConfigView(viewsets.ViewSet):
+    """
+    Platform-admin endpoint for viewing and updating per-tenant rate limits.
+
+    GET  /api/v1/admin/tenants/{id}/rate-limits/
+    PATCH /api/v1/admin/tenants/{id}/rate-limits/
+
+    Validates overrides against PLATFORM_MAXIMUM_LIMITS so a tenant
+    can never exceed the global ceiling.  Emits ``TENANT_RATE_LIMITS_UPDATED``
+    audit event on every mutation.
+    """
+
+    def get_permissions(self):
+        from hub.apps.tenants.permissions import IsPlatformAdmin
+        return [IsPlatformAdmin()]
+
+    def _get_tenant_or_404(self, tenant_id: str) -> Tenant:
+        try:
+            return Tenant.objects.get(id=tenant_id)
+        except Tenant.DoesNotExist:
+            from rest_framework.exceptions import NotFound
+            raise NotFound("Tenant not found")
+
+    def _get_config_or_create(self, tenant: Tenant) -> TenantConfig:
+        config, _created = TenantConfig.objects.get_or_create(
+            tenant=tenant,
+            defaults={"rate_limits": {}},
+        )
+        return config
+
+    @extend_schema(
+        operation_id="get_tenant_rate_limits",
+        summary="Get tenant rate limits",
+        description=(
+            "Returns the current per-tenant rate limit overrides for the "
+            "specified tenant.  Categories not overridden fall back to "
+            "platform defaults at enforcement time."
+        ),
+        responses={
+            200: OpenApiResponse(description="Rate limits for the tenant."),
+            401: OpenApiResponse(description="Unauthorized."),
+            403: OpenApiResponse(description="Forbidden — PLATFORM_ADMIN required."),
+            404: OpenApiResponse(description="Tenant not found."),
+        },
+        tags=["Tenants"],
+    )
+    def retrieve(self, request, tenant_id=None):
+        tenant = self._get_tenant_or_404(tenant_id)
+        config = self._get_config_or_create(tenant)
+
+        effective_limits = {}
+        for category in [
+            "auth", "asset", "contract", "search", "file_upload",
+            "dq_runs", "compliance_runs", "file_download",
+            "contract_validation", "catalog_reads", "sparql_queries", "general",
+        ]:
+            from hub.apps.rate_limiting.config import (
+                get_tenant_rate_limit,
+                get_platform_default_limit,
+                get_platform_maximum_limit,
+            )
+            from hub.apps.rate_limiting.utils import TimeWindow
+
+            effective_limits[category] = {
+                "burst_per_10s": get_tenant_rate_limit(tenant_id, category, TimeWindow.BURST),
+                "sustained_per_min": get_tenant_rate_limit(tenant_id, category, TimeWindow.SUSTAINED),
+                "daily_cap": get_tenant_rate_limit(tenant_id, category, TimeWindow.DAILY),
+            }
+
+        return Response({
+            "tenant_id": str(tenant.id),
+            "overrides": config.rate_limits or {},
+            "effective": effective_limits,
+        }, status=status.HTTP_200_OK)
+
+    @extend_schema(
+        operation_id="update_tenant_rate_limits",
+        summary="Update tenant rate limits",
+        description=(
+            "Update per-tenant rate limit overrides.  Only the categories "
+            "present in the request body are modified; other overrides are "
+            "left unchanged.  Values are validated against platform maximums."
+        ),
+        request=TenantConfigSerializer,
+        responses={
+            200: OpenApiResponse(description="Rate limits updated."),
+            400: OpenApiResponse(description="Validation error."),
+            401: OpenApiResponse(description="Unauthorized."),
+            403: OpenApiResponse(description="Forbidden — PLATFORM_ADMIN required."),
+            404: OpenApiResponse(description="Tenant not found."),
+        },
+        tags=["Tenants"],
+    )
+    def partial_update(self, request, tenant_id=None):
+        from hub.apps.tenants.validators import validate_rate_limits
+
+        tenant = self._get_tenant_or_404(tenant_id)
+        config = self._get_config_or_create(tenant)
+
+        rate_limits_payload = request.data.get("rate_limits")
+        if rate_limits_payload is None:
+            return Response(
+                {"error": "rate_limits field is required"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        validate_rate_limits(rate_limits_payload)
+
+        # Merge with existing overrides
+        current = config.rate_limits or {}
+        current.update(rate_limits_payload)
+        config.rate_limits = current
+        config.save(update_fields=["rate_limits", "updated_at"])
+
+        create_audit_event(
+            resource_type="TENANT_CONFIG",
+            action="TENANT_RATE_LIMITS_UPDATED",
+            actor_user=request.user,
+            tenant=tenant,
+            resource_id=str(tenant.id),
+            result="SUCCESS",
+            details={
+                "updated_categories": list(rate_limits_payload.keys()),
+                "rate_limits": rate_limits_payload,
+            },
+            request=request,
+        )
+
+        return Response({
+            "tenant_id": str(tenant.id),
+            "rate_limits": config.rate_limits,
+            "message": "Rate limits updated successfully",
+        }, status=status.HTTP_200_OK)
