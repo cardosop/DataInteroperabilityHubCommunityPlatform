@@ -49,6 +49,8 @@ via ``ATOMIC_REQUESTS`` / ``using="default"`` coercion)::
 """
 from __future__ import annotations
 
+import os
+
 from django.conf import settings
 
 # App labels whose *read* queries are routed to the replica.
@@ -68,6 +70,74 @@ def _replica_configured() -> bool:
     return "replica" in getattr(settings, "DATABASES", {})
 
 
+def _command_admin_mode_enabled() -> bool:
+    raw = os.getenv("HUB_USE_ADMIN_DB_FOR_COMMANDS", "")
+    return raw.strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _command_admin_alias() -> str:
+    return os.getenv("HUB_COMMAND_DB_ALIAS", "admin").strip() or "admin"
+
+
+class ManagementCommandAdminRouter:
+    """
+    Route ORM operations to admin alias during management command mode.
+
+    Activated by manage.py via ``HUB_USE_ADMIN_DB_FOR_COMMANDS=1``.
+
+    Phase 277.B.084 — emits ``BYPASSRLS_ADMIN_DB_USED`` audit event on
+    first activation so the audit trail records every management command
+    that uses the elevated-privilege BYPASSRLS connection.
+    """
+
+    _audit_emitted: bool = False  # once per process lifetime
+
+    @staticmethod
+    def _resolved_alias() -> str | None:
+        if not _command_admin_mode_enabled():
+            return None
+        alias = _command_admin_alias()
+        if alias not in getattr(settings, "DATABASES", {}):
+            return None
+        return alias
+
+    def _maybe_emit_audit(self):
+        if self._audit_emitted:
+            return
+        self._audit_emitted = True
+        try:
+            from hub.apps.audit.event_types import BYPASSRLS_ADMIN_DB_USED
+            from hub.apps.audit.utils import create_audit_event
+            create_audit_event(
+                resource_type="DATABASE",
+                action=BYPASSRLS_ADMIN_DB_USED,
+                actor_user=None,
+                tenant=None,
+                resource_id="management_command_admin_router",
+                result="SUCCESS",
+                details={
+                    "reason": "Management command execution — BYPASSRLS via admin DB alias",
+                },
+            )
+        except Exception:
+            pass  # audit DB may not be available yet
+
+    def db_for_read(self, model, **hints):
+        alias = self._resolved_alias()
+        if alias:
+            self._maybe_emit_audit()
+        return alias
+
+    def db_for_write(self, model, **hints):
+        alias = self._resolved_alias()
+        if alias:
+            self._maybe_emit_audit()
+        return alias
+
+    def allow_migrate(self, db, app_label, model_name=None, **hints):
+        return None
+
+
 class PrimaryReplicaRouter:
     """
     Route reads for read-heavy apps to the replica; all writes to primary.
@@ -76,8 +146,12 @@ class PrimaryReplicaRouter:
     no-op — all methods return ``None`` so Django uses its default routing.
     """
 
+
+class ReadReplicaRouter:
+    """Route reads to replica when configured, writes to primary."""
+
     def db_for_read(self, model, **hints):
-        """Return 'replica' for read-replica apps when the replica is available."""
+        """Return 'replica' for read-heavy apps when configured."""
         if not _replica_configured():
             return None
         if model._meta.app_label in _READ_REPLICA_APPS:
