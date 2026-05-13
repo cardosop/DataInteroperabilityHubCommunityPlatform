@@ -62,6 +62,14 @@ datahub jobs watch <job-id>
 | [`datahub gdpr`](gdpr.md) | GDPR data-subject requests: export, erase, consent |
 | [`datahub search`](search.md) | Full-text and faceted search across the catalogue |
 | [`datahub semantic`](semantic.md) | Semantic layer: resolve terms, SPARQL queries, browse |
+| [`datahub baas`](baas.md) | BaaS: API keys, usage tracking, billing reports |
+| [`datahub mesh`](mesh.md) | Data mesh: domains, topology, policies, compliance |
+| [`datahub ml`](ml.md) | ML registry: models, inference, training, serving, A/B tests |
+| [`datahub scheduled-export`](scheduled_export.md) | Recurring data exports to external destinations |
+| [`datahub scheduled-ingestion`](scheduled_ingestion.md) | Recurring data ingestion from external sources |
+| [`datahub transformation`](transformation.md) | Transformation pipelines and wrangling sessions |
+| [`datahub virtualization`](virtualization.md) | Virtual datasets, query execution, topology |
+| [`datahub phase232-programme`](phase232_programme.md) | Phase 232 compliance programme catalogue and probes |
 
 ## Global Options
 
@@ -79,8 +87,10 @@ These flags are available on every command:
 
 ## Post-MVP (Gated) Features
 
-The following API prefixes are gated in MVP mode and not yet exposed
-through the CLI: `ai`, `baas`, `integrations`, `mesh`, `ml`, `scheduled-exports`, `scheduled-ingestions`, `social`, `transformation`, `virtualization`.
+The following API prefixes are gated in MVP mode and CLI access may
+return `MVP_FEATURE_GATED` depending on the tenant's plan and feature
+flags: `ai`, `integrations`, `social`.
 
-These will be enabled in a future release. Attempting to reach a gated
-endpoint returns error code `MVP_FEATURE_GATED`.
+Commands for these prefixes exist in the CLI and are documented above,
+but the backend endpoints may reject requests when the corresponding
+feature flag is disabled for the tenant.
