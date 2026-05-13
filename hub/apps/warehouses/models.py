@@ -96,6 +96,10 @@ class WarehouseConnection(models.Model):
         self.config = encrypt_json_field(raw_config)
 
     def save(self, *args, **kwargs):
+        # Phase 277.B.093 — data residency cross-validation:
+        # warehouse region must be compatible with tenant residency.
+        self._validate_residency()
+
         # Phase 275.A.1 — SSRF guard at config-save: validate any URL-like
         # fields in the raw config before encrypting. Reuses the SPARQL
         # federation validator pattern (is_safe_url + allowlist).
@@ -133,6 +137,30 @@ class WarehouseConnection(models.Model):
                         f"URL in '{key}' is not safe: {value}. "
                         f"Internal/loopback addresses are blocked per SSRF policy."
                     )
+
+    def _validate_residency(self) -> None:
+        """Phase 277.B.093 — enforce tenant data residency on warehouse region."""
+        if not self.region:
+            return
+        tenant = self.tenant
+        residency = getattr(tenant, "data_residency_region", None)
+        if not residency:
+            return
+        from hub.apps.warehouses.residency_validator import validate_warehouse_region
+        result = validate_warehouse_region(residency, self.region)
+        if not result.valid:
+            from django.core.exceptions import ValidationError
+            raise ValidationError(
+                {
+                    "region": (
+                        f"Warehouse region '{self.region}' (ISO {result.warehouse_iso}) "
+                        f"is not compatible with tenant data residency "
+                        f"'{residency}'. Allowed ISO codes: "
+                        f"{sorted(result.allowed_iso)[:10]}..."
+                    ),
+                },
+                code="DATA_RESIDENCY_MISMATCH",
+            )
 
     def delete(self, *args, **kwargs):
         """Phase 275.A.17 — refuse deletion while LIVE_QUERY assets reference
