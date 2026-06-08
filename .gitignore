@@ -148,3 +148,9 @@ openapitools.json
 # Accidental shell redirect artifacts.
 --help
 --help/
+
+# Dev server logs — can be large (48MB+ each). Never commit.
+server.*.log
+
+# E2E test journey result captures (CI artifacts, not source).
+tests/e2e/journey_results/
