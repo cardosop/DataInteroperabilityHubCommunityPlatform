@@ -136,7 +136,7 @@ class Command(BaseCommand):
 
             purged += self._purge_queryset(
                 User.objects.filter(
-                    date_joined__lt=cutoff,
+                    created_at__lt=cutoff,
                 ).filter(_user_pattern_q),
                 "users",
                 dry_run,

@@ -102,6 +102,8 @@ def _get_e2e_invitation_token(
             continue
 
         if resp.status_code == 404:
+            import sys as _s2
+            print(f"\n[DIAG] E2E invitation endpoint returned 404 on attempt {attempt}", file=_s2.stderr, flush=True)
             return None  # endpoint genuinely not deployed
 
         # 401 / TOKEN_INVALIDATED — purge cache + re-provision on
@@ -144,6 +146,8 @@ def _get_e2e_invitation_token(
     except Exception:
         pass
 
+    import sys as _s3
+    print(f"\n[DIAG] _get_e2e_invitation_token ALL RETRIES + LAST-RESORT EXHAUSTED", file=_s3.stderr, flush=True)
     return None
 
 

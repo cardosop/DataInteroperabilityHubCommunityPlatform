@@ -492,7 +492,7 @@ def ensure_e2e_invitation_token(request):
         email__startswith="e2e-invited-",
         email__endswith="@example.com",
         status=UserStatus.INVITED,
-        date_joined__lt=_stale_cutoff,
+        created_at__lt=_stale_cutoff,
     ).delete()
 
     from hub.apps.auth.utils import sha256_hex
