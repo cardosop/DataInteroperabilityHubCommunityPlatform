@@ -1,0 +1,102 @@
+/**
+ * Phase 260.3.H.1 — ScanStatusBanner styles (R1 audit-pass: real
+ * design-system tokens).
+ *
+ * Five visual variants (pending / overdue / infected / error /
+ * unavailable) + a neutral fallback. Colour cues are reinforced
+ * with text + ``role`` + icon-style strong-tag so colour-blind
+ * users never lose meaning (WCAG 2.1 AA — 1.4.1 Use of Color).
+ *
+ * Token map (all defined in ``frontend/src/index.css``):
+ *   - pending banner    → ``--color-info-light`` + ``--color-primary-700``
+ *   - overdue banner    → ``--color-warning-bg`` + ``--color-warning-border``
+ *   - infected/error    → ``--color-error-100`` + ``--color-error-700``
+ *   - unavailable       → ``--color-warning-bg`` + ``--color-warning-border``
+ *   - unknown           → ``--color-neutral-100`` + ``--color-neutral-600``
+ */
+
+.scan-status-banner {
+  display: block;
+  border-radius: var(--border-radius-sm, 4px);
+  padding: var(--spacing-sm, 8px) var(--spacing-md, 12px);
+  margin-bottom: var(--spacing-md, 12px);
+  font-size: var(--font-size-sm, 14px);
+  line-height: 1.4;
+  border-left: 4px solid var(--color-neutral-300, #E0E0E0);
+}
+
+.scan-status-banner strong {
+  display: inline-block;
+  margin-right: var(--spacing-xs, 4px);
+}
+
+.scan-status-banner-pending {
+  background: var(--color-info-light, #E3F2FD);
+  border-left-color: var(--color-primary-500, #2196F3);
+  color: var(--color-primary-900, #0D47A1);
+}
+
+.scan-status-banner-overdue {
+  background: var(--color-warning-bg, #fffbeb);
+  border-left-color: var(--color-warning-border, #fde68a);
+  color: var(--color-warning-800, #7D4200);
+}
+
+.scan-status-banner-infected,
+.scan-status-banner-error {
+  background: var(--color-error-100, #FFCDD2);
+  border-left-color: var(--color-error-500, #F44336);
+  color: var(--color-error-900, #B71C1C);
+}
+
+.scan-status-banner-unavailable {
+  background: var(--color-warning-bg, #fffbeb);
+  border-left-color: var(--color-warning-border, #fde68a);
+  color: var(--color-warning-800, #7D4200);
+}
+
+.scan-status-banner-unknown {
+  background: var(--color-neutral-100, #F5F5F5);
+  border-left-color: var(--color-neutral-300, #E0E0E0);
+  color: var(--color-neutral-700, #616161);
+}
+
+/* Help disclosure — native <details>/<summary> with restrained
+ * styling so it sits inside the banner without competing with
+ * the headline copy. */
+.scan-status-banner-help {
+  display: block;
+  margin-top: var(--spacing-sm, 8px);
+}
+
+.scan-status-banner-help-summary {
+  cursor: pointer;
+  font-weight: 500;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.scan-status-banner-help-summary:hover,
+.scan-status-banner-help-summary:focus-visible {
+  text-decoration-thickness: 2px;
+  outline: 2px solid currentColor;
+  outline-offset: 2px;
+}
+
+.scan-status-banner-help-body {
+  margin-top: var(--spacing-sm, 8px);
+  font-size: var(--font-size-xs, 12px);
+}
+
+.scan-status-banner-help-body p {
+  margin: 0 0 var(--spacing-sm, 8px) 0;
+}
+
+.scan-status-banner-help-body ul {
+  margin: 0 0 var(--spacing-sm, 8px) 0;
+  padding-left: var(--spacing-lg, 16px);
+}
+
+.scan-status-banner-help-body li {
+  margin-bottom: var(--spacing-xs, 4px);
+}

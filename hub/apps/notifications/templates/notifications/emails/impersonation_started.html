@@ -1,0 +1,45 @@
+{% extends "notifications/emails/base.html" %}
+
+{% block title %}Your account is being accessed by platform support{% endblock %}
+
+{% block content %}
+<h2>Platform support has opened a session on your account</h2>
+<p>Hello{% if user.display_name %} {{ user.display_name }}{% endif %},</p>
+<p>
+    A platform administrator has opened a temporary support session against your
+    account on <strong>{{ tenant.name }}</strong>. This is a transparency
+    notification &mdash; you do not need to take any action.
+</p>
+<table class="data-table" role="presentation">
+    <tr>
+        <th>Operator</th>
+        <td>{{ impersonator_email }}</td>
+    </tr>
+    <tr>
+        <th>Started at</th>
+        <td>{{ started_at }}</td>
+    </tr>
+    <tr>
+        <th>Expires at</th>
+        <td>{{ expires_at }}</td>
+    </tr>
+    <tr>
+        <th>Maximum duration</th>
+        <td>{{ max_minutes }} minutes</td>
+    </tr>
+    <tr>
+        <th>Stated reason</th>
+        <td>{{ reason }}</td>
+    </tr>
+</table>
+<p>
+    The operator can act on your behalf for the duration of this session. All
+    actions taken during the session are recorded in the audit log with both the
+    operator and your account identified so the change history remains
+    traceable.
+</p>
+<p>
+    If you did not expect this, contact platform support to revoke the session
+    immediately.
+</p>
+{% endblock %}

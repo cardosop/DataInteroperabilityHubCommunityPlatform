@@ -1,0 +1,55 @@
+# 285.14.6.8 — RLS exemption audit.
+# Models listed here are exempt from the RLS migration requirement.
+# Each entry must carry a reason, review_date, and sunset_date.
+# Remove stale exemptions with sunset_date in the past.
+
+exemptions:
+  - model: "auth.User"
+    reason: "Global user model — not tenant-scoped. Tenant membership via UserTenantMembership."
+    review_date: "2026-12-01"
+    sunset_date: "2027-06-01"
+
+  - model: "auth.Session"
+    reason: "Sessions are per-user; tenant context derived from user's active tenant."
+    review_date: "2026-12-01"
+    sunset_date: "2027-06-01"
+
+  - model: "tenants.Tenant"
+    reason: "Root tenant model — RLS would be circular. TenantContext sets app.current_tenant_id."
+    review_date: "2026-12-01"
+    sunset_date: "2027-06-01"
+
+  - model: "tenants.TenantPlan"
+    reason: "Global plan catalog — not tenant-scoped. Shared across all tenants."
+    review_date: "2026-12-01"
+    sunset_date: "2027-06-01"
+
+  - model: "tenants.TierProfile"
+    reason: "One-to-one with TenantPlan — inherits global scope."
+    review_date: "2026-12-01"
+    sunset_date: "2027-06-01"
+
+  - model: "tenants.Role"
+    reason: "Global role catalog — per-tenant roles are created on provisioning."
+    review_date: "2026-12-01"
+    sunset_date: "2027-06-01"
+
+  - model: "tenants.PlanPriceChangeApproval"
+    reason: "Cross-tenant approval model — operates at platform-admin level."
+    review_date: "2026-12-01"
+    sunset_date: "2027-06-01"
+
+  - model: "tenants.FeatureFlagFlipApproval"
+    reason: "Phase 235.1 — cross-tenant two-person rule. Platform-admin level."
+    review_date: "2026-12-01"
+    sunset_date: "2027-06-01"
+
+  - model: "tenants.LimitDimension"
+    reason: "Global dimension registry — shared across all tenants for plan validation."
+    review_date: "2026-12-01"
+    sunset_date: "2027-06-01"
+
+  - model: "tenants.TenantPlan.TierProfile"
+    reason: "Marketing profile — one-to-one with TenantPlan, not tenant-scoped."
+    review_date: "2026-12-01"
+    sunset_date: "2027-06-01"

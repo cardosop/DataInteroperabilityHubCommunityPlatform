@@ -1,0 +1,73 @@
+/**
+ * Phase 278.H.2 — Trust signals bar styles.
+ * 278.C.P1.2 — Design-token migration: 21 hardcoded hex values →
+ *   4 state variants × (bg + color + border) mapped to semantic tokens.
+ */
+.trust-signals-bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  align-items: center;
+  margin-top: var(--space-1, 0.25rem);
+  font-size: var(--font-size-xs, 0.75rem);
+}
+
+.trust-signal {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 1px 6px;
+  border-radius: var(--radius-sm, 4px);
+  white-space: nowrap;
+  line-height: 1.4;
+}
+
+/* KYC signals */
+.trust-signal-kyc-verified {
+  background: var(--color-success-subtle);
+  color: var(--color-success-900);
+  border: 1px solid var(--color-success-500);
+}
+
+.trust-signal-kyc-pending_review {
+  background: var(--color-warning-bg);
+  color: var(--color-warning-800);
+  border: 1px solid var(--color-warning-border);
+}
+
+.trust-signal-kyc-unverified {
+  background: var(--color-error-subtle);
+  color: var(--color-error-900);
+  border: 1px solid var(--color-error-500);
+}
+
+/* Compliance grade signals */
+.trust-signal-compliance-pass {
+  background: var(--color-success-subtle);
+  color: var(--color-success-900);
+  border: 1px solid var(--color-success-500);
+}
+
+.trust-signal-compliance-warn {
+  background: var(--color-warning-bg);
+  color: var(--color-warning-800);
+  border: 1px solid var(--color-warning-border);
+}
+
+.trust-signal-compliance-fail {
+  background: var(--color-error-subtle);
+  color: var(--color-error-900);
+  border: 1px solid var(--color-error-500);
+}
+
+/* Sample available */
+.trust-signal-sample {
+  background: var(--color-info-subtle);
+  color: var(--color-primary-800);
+  border: 1px solid var(--color-primary-200);
+}
+
+/* Last updated */
+.trust-signal-updated {
+  color: var(--color-text-muted, #64748b);
+}

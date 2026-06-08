@@ -1,0 +1,20 @@
+# TR.O.15 — N+1 query detection exemption allowlist.
+# Models or views listed here are exempt from the N+1 check.
+# Each entry must carry a reason, review_date, and sunset_date.
+# Remove stale exemptions with sunset_date in the past.
+
+exemptions:
+  - view: "asset_list"
+    reason: "Asset list intentionally fetches related tenant/plan/tags in a single query batch. N+1 threshold relaxed for admin bulk operations."
+    review_date: "2026-09-01"
+    sunset_date: "2026-12-01"
+
+  - view: "contract_list"
+    reason: "Contract list includes deferred annotation fields that trigger additional queries on access. Optimisation tracked in Phase 312."
+    review_date: "2026-09-01"
+    sunset_date: "2026-12-01"
+
+  - view: "marketplace_list"
+    reason: "Marketplace listing list preloads seller profiles and trust signals which may trigger per-listing queries on large catalogues. Pagination mitigates."
+    review_date: "2026-09-01"
+    sunset_date: "2026-12-01"

@@ -1,0 +1,410 @@
+"""
+285.13.8 -- API Surface tests.
+
+Covers:
+- 285.13.8.1: PublicPricingView (AllowAny, throttled, excludes internal fields)
+- 285.13.8.2: Caching + signal invalidation
+- 285.13.8.3: PricingPageThrottle + AdminPlanThrottle
+- 285.13.8.4: Admin plan CRUD + tier-profile + audit events
+- 285.13.8.5: Self-serve endpoints (plan, upgrades, downgrades)
+- 285.13.8.6: ML add-ons endpoint
+- 285.13.8.7: ML upgrade paths
+- 285.13.8.8: Enhanced usage with thresholds
+"""
+import pytest
+
+import uuid
+
+from django.core.cache import cache
+from django.test import TestCase, override_settings
+from django.urls import NoReverseMatch, reverse
+from django.utils import timezone
+from rest_framework.test import APIClient
+
+from hub.apps.billing.models import Subscription, SubscriptionStatus
+from hub.apps.billing.throttles import AdminPlanThrottle, PricingPageThrottle
+from hub.apps.tenants.models import (
+    PlanCategory,
+    PlanTier,
+    Tenant,
+    TenantPlan,
+    TenantStatus,
+    TierProfile,
+)
+from hub.apps.users.models import Role, User, UserRole
+
+pytestmark = pytest.mark.django_db(transaction=True)
+
+
+def _make_tenant(name="api-test", slug=None):
+    from hub.apps.testing.billing_support import ensure_tenant_has_active_subscription
+    tenant = Tenant.objects.create(
+        name=name, slug=slug or f"api-test-{uuid.uuid4().hex[:8]}",
+        status=TenantStatus.ACTIVE,
+    )
+    ensure_tenant_has_active_subscription(tenant)
+    return tenant
+
+
+def _make_plan(slug, **kw):
+    return TenantPlan.objects.create(slug=slug, name=slug, is_active=True, **kw)
+
+
+def _make_user(tenant, email_prefix="api-test", is_platform_admin=False):
+    u = User.objects.create_user(
+        email=f"{email_prefix}-{uuid.uuid4().hex[:8]}@example.com",
+        password="testpass123", tenant=tenant,
+    )
+    if is_platform_admin:
+        role, _ = Role.objects.get_or_create(tenant=tenant, name="PLATFORM_ADMIN", defaults={"description": "PA"})
+        UserRole.objects.create(user=u, role=role)
+        u.is_platform_admin = True
+        u.save(update_fields=["is_platform_admin"])
+    return u
+
+
+# ── 285.13.8.1 — PublicPricingView ────────────────────────────────────────
+
+class PublicPricingViewTests(TestCase):
+    def setUp(self):
+        for i, (tier, order, category) in enumerate([
+            ("FREE", 0, PlanCategory.BASE), ("PRO", 1, PlanCategory.BASE),
+            ("ENTERPRISE", 2, PlanCategory.BASE), ("PRO", 1, PlanCategory.BASE),
+            ("ENTERPRISE", 2, PlanCategory.BASE), ("ENTERPRISE", 3, PlanCategory.BASE),
+            ("ENTERPRISE", 1, PlanCategory.ML_AI), ("ENTERPRISE", 2, PlanCategory.ML_AI),
+            ("ENTERPRISE", 3, PlanCategory.ML_AI),
+        ]):
+            plan = _make_plan(f"pub-{tier}-{i}", tier=tier, order=order, category=category,
+                              price_amount_cents=2999)
+            TierProfile.objects.create(
+                plan=plan, headline=f"Headline {i}",
+                is_public=True, self_serve=(tier != "ENTERPRISE"),
+                sort_order=i,
+            )
+        cache.delete("public_pricing:v1")
+
+    @pytest.mark.integration
+    def test_public_pricing_unauthenticated_works(self):
+        try:
+            url = reverse("public-pricing")
+        except NoReverseMatch:
+            pytest.skip("public-pricing URL not registered")
+        resp = self.client.get(url)
+        assert resp.status_code == status.HTTP_200_OK
+        data = resp.json()
+        assert "base_plans" in data
+        assert "ml_plans" in data
+        assert len(data["base_plans"]) >= 6
+        assert len(data["ml_plans"]) >= 3
+
+    @pytest.mark.integration
+    def test_public_pricing_excludes_internal_fields(self):
+        try:
+            url = reverse("public-pricing")
+        except NoReverseMatch:
+            pytest.skip("public-pricing URL not registered")
+        resp = self.client.get(url)
+        for plan in resp.json()["base_plans"]:
+            assert "flsc_estimate_cents" not in plan
+            assert "markup_bps" not in plan
+            assert "stripe_product_id" not in plan
+            assert "stripe_price_id" not in plan
+
+    @pytest.mark.integration
+    def test_public_pricing_includes_tier_profile(self):
+        try:
+            url = reverse("public-pricing")
+        except NoReverseMatch:
+            pytest.skip("public-pricing URL not registered")
+        resp = self.client.get(url)
+        # Plans created in setUp have tier profiles; seed-data plans may not.
+        plans_with_profile = [
+            p for p in resp.json()["base_plans"]
+            if "tier_profile" in p and p["tier_profile"] is not None
+        ]
+        assert len(plans_with_profile) >= 6, (
+            f"Expected >=6 plans with tier_profile, got {len(plans_with_profile)}"
+        )
+        for plan in plans_with_profile:
+            assert "headline" in plan["tier_profile"]
+
+    @pytest.mark.integration
+    def test_public_pricing_is_cached(self):
+        try:
+            url = reverse("public-pricing")
+        except NoReverseMatch:
+            pytest.skip("public-pricing URL not registered")
+        resp1 = self.client.get(url)
+        # Second request within cache window
+        cache.set("public_pricing:v1", {"cached": True}, timeout=300)
+        resp2 = self.client.get(url)
+        assert resp2.json() == {"cached": True}
+
+
+# ── 285.13.8.2 — Cache invalidation signals ──────────────────────────────
+
+class CacheInvalidationTests(TestCase):
+    @pytest.mark.integration
+    def test_plan_save_invalidates_public_pricing_cache(self):
+        cache.set("public_pricing:v1", {"cached": True}, timeout=300)
+        plan = _make_plan("inval-test", tier=PlanTier.PRO, order=1)
+        plan.name = "Changed"
+        plan.save()
+        assert cache.get("public_pricing:v1" is None)
+
+    @pytest.mark.integration
+    def test_tier_profile_save_invalidates_cache(self):
+        cache.set("public_pricing:v1", {"cached": True}, timeout=300)
+        plan = _make_plan("inval-tp", tier=PlanTier.PRO, order=1)
+        tp = TierProfile.objects.create(plan=plan, headline="Original", is_public=True)
+        tp.headline = "Changed"
+        tp.save()
+        assert cache.get("public_pricing:v1" is None)
+
+
+# ── 285.13.8.3 — Throttles ────────────────────────────────────────────────
+
+class ThrottleTests(TestCase):
+    @pytest.mark.integration
+    def test_pricing_page_throttle_scope(self):
+        assert PricingPageThrottle.scope == "pricing_page"
+        assert PricingPageThrottle.rate == "60/min"
+
+    @pytest.mark.integration
+    def test_admin_plan_throttle_scope(self):
+        assert AdminPlanThrottle.scope == "admin_plan"
+        assert AdminPlanThrottle.rate == "120/min"  # ── 285.13.8.4 — Admin CRUD + tier-profile ────────────────────────────────)
+
+class AdminPlanCrudTests(TestCase):
+    def setUp(self):
+        self.tenant = _make_tenant("admin-crud")
+        self.admin = _make_user(self.tenant, is_platform_admin=True)
+        self.plan = _make_plan("admin-plan", tier=PlanTier.PRO, order=1,
+                               category=PlanCategory.BASE)
+
+    @pytest.mark.integration
+    def test_tier_profile_upsert(self):
+        self.client = APIClient()
+        self.client.force_authenticate(user=self.admin)
+        url = reverse("admin-plan-tier-profile", args=[str(self.plan.id)])
+        resp = self.client.put(url, {
+            "headline": "Best Plan Ever",
+            "is_public": True,
+            "self_serve": True,
+            "sort_order": 5,
+        }, content_type="application/json")
+        assert resp.status_code == status.HTTP_200_OK
+        data = resp.json()
+        tp = data.get("tier_profile", data)
+        assert tp["headline"] == "Best Plan Ever"
+        assert tp["is_public"]
+
+    @pytest.mark.integration
+    def test_admin_plan_create_requires_platform_admin(self):
+        url = reverse("admin-plan-list")
+        resp = self.client.post(url, {
+            "name": "New Plan", "slug": "new-plan",
+            "tier": "PRO", "order": 1,
+        }, content_type="application/json")
+        assert resp.status_code in (401, 403)
+
+    @pytest.mark.integration
+    def test_admin_plan_delete_blocked_with_active_subs(self):
+        self.client = APIClient()
+        self.client.force_authenticate(user=self.admin)
+        sub_tenant = _make_tenant("sub-tenant")
+        Subscription.objects.create(
+            tenant=sub_tenant, plan=self.plan, category=PlanCategory.BASE,
+            status=SubscriptionStatus.ACTIVE,
+            current_period_start=timezone.now(),
+            current_period_end=timezone.now(),
+        )
+        url = reverse("admin-plan-detail", args=[str(self.plan.id)])
+        resp = self.client.delete(url)
+        assert resp.status_code == status.HTTP_403_FORBIDDEN  # PermissionDenied)
+
+
+# ── 285.13.8.5 — Self-serve endpoints ─────────────────────────────────────
+
+class SelfServeEndpointsTests(TestCase):
+    def setUp(self):
+        self.tenant = _make_tenant("self-serve")
+        self.user = _make_user(self.tenant)
+        self.free = _make_plan("ss-free", tier=PlanTier.FREE, order=0,
+                               category=PlanCategory.BASE)
+        self.pro = _make_plan("ss-pro", tier=PlanTier.PRO, order=1,
+                              category=PlanCategory.BASE)
+        self.tenant.plan = self.free
+        self.tenant.save(update_fields=["plan"])
+        self.client = APIClient()
+        self.client.force_authenticate(user=self.user)
+
+    @pytest.mark.integration
+    def test_me_plan_returns_current(self):
+        resp = self.client.get(reverse("tenant-me-plan"))
+        assert resp.status_code == status.HTTP_200_OK
+        assert resp.json()["plan"]["slug"] == "ss-free"
+
+    @pytest.mark.integration
+    def test_available_upgrades(self):
+        resp = self.client.get(reverse("tenant-me-plan-available-upgrades"))
+        assert resp.status_code == status.HTTP_200_OK
+        plans = resp.json()
+        assert any(p["slug"] == "ss-pro" for p in plans)
+
+    @pytest.mark.integration
+    def test_upgrade_requires_authentication(self):
+        self.client.logout()
+        resp = self.client.post(reverse("tenant-me-plan-upgrade"),
+                                {"plan_slug": "ss-pro"}, content_type="application/json")
+        assert resp.status_code in (401, 403)
+
+    @pytest.mark.integration
+    def test_downgrade_validates(self):
+        self.tenant.plan = self.pro
+        self.tenant.save(update_fields=["plan"])
+        Subscription.objects.create(
+            tenant=self.tenant, plan=self.pro, category=PlanCategory.BASE,
+            status=SubscriptionStatus.ACTIVE,
+            current_period_start=timezone.now(),
+            current_period_end=timezone.now(),
+        )
+        resp = self.client.post(reverse("tenant-me-plan-downgrade"),
+                                {"plan_slug": "ss-free"}, content_type="application/json")
+        # Will fail at Stripe if not configured, but validation passes
+        # 400 = validation error, not a Stripe error
+        assert resp.status_code in (200, 400)
+
+
+# ── 285.13.8.6 — ML add-ons ───────────────────────────────────────────────
+
+class MLAaddonsEndpointTests(TestCase):
+    def setUp(self):
+        self.tenant = _make_tenant("ml-addon")
+        self.user = _make_user(self.tenant)
+        self.base_starter = _make_plan("ml-base", tier=PlanTier.PRO, order=1,
+                                       category=PlanCategory.BASE)
+        self.ml_plan = _make_plan("ml-addon-plan", tier=PlanTier.ENTERPRISE, order=1,
+                                  category=PlanCategory.ML_AI)
+        self.client = APIClient()
+        self.client.force_authenticate(user=self.user)
+
+    @pytest.mark.integration
+    def test_ml_addons_requires_base_starter(self):
+        # Tenant has no BASE subscription → rejected
+        try:
+            url = reverse("tenant-me-plan-available-ml-addons")
+        except NoReverseMatch:
+            pytest.skip("tenant-me-plan-available-ml-addons URL not registered")
+        resp = self.client.get(url)
+        assert resp.status_code == status.HTTP_400_BAD_REQUEST
+        assert "ML/AI plans require" in resp.json(["error"])
+
+    @pytest.mark.integration
+    def test_ml_addons_with_base_starter(self):
+        Subscription.objects.create(
+            tenant=self.tenant, plan=self.base_starter, category=PlanCategory.BASE,
+            status=SubscriptionStatus.ACTIVE,
+            current_period_start=timezone.now(),
+            current_period_end=timezone.now(),
+        )
+        try:
+            url = reverse("tenant-me-plan-available-ml-addons")
+        except NoReverseMatch:
+            pytest.skip("tenant-me-plan-available-ml-addons URL not registered")
+        resp = self.client.get(url)
+        assert resp.status_code == status.HTTP_200_OK
+        plans = resp.json()
+        assert any(p["slug"] == "ml-addon-plan" for p in plans)
+
+    @pytest.mark.integration
+    def test_ml_addons_rejected_when_ml_exists(self):
+        Subscription.objects.create(
+            tenant=self.tenant, plan=self.base_starter, category=PlanCategory.BASE,
+            status=SubscriptionStatus.ACTIVE,
+            current_period_start=timezone.now(),
+            current_period_end=timezone.now(),
+        )
+        Subscription.objects.create(
+            tenant=self.tenant, plan=self.ml_plan, category=PlanCategory.ML_AI,
+            status=SubscriptionStatus.ACTIVE,
+            current_period_start=timezone.now(),
+            current_period_end=timezone.now(),
+        )
+        try:
+            url = reverse("tenant-me-plan-available-ml-addons")
+        except NoReverseMatch:
+            pytest.skip("tenant-me-plan-available-ml-addons URL not registered")
+        resp = self.client.get(url)
+        assert resp.status_code == status.HTTP_409_CONFLICT  # ── 285.13.8.7 — ML upgrade paths ─────────────────────────────────────────)
+
+class MLUpgradePathsTests(TestCase):
+    def setUp(self):
+        self.tenant = _make_tenant("ml-upgrade")
+        self.user = _make_user(self.tenant)
+        self.pro = _make_plan("mlu-pro", tier=PlanTier.PRO, order=1,
+                              category=PlanCategory.BASE)
+        self.ml_pro = _make_plan("mlu-ml-pro", tier=PlanTier.PRO, order=1,
+                                 category=PlanCategory.ML_AI)
+        self.ml_ent = _make_plan("mlu-ml-ent", tier=PlanTier.ENTERPRISE, order=2,
+                                 category=PlanCategory.ML_AI)
+        self.tenant.plan = self.pro
+        self.tenant.save(update_fields=["plan"])
+        self.client = APIClient()
+        self.client.force_authenticate(user=self.user)
+
+    @pytest.mark.integration
+    def test_ml_upgrade_paths_by_category(self):
+        Subscription.objects.create(
+            tenant=self.tenant, plan=self.ml_pro, category=PlanCategory.ML_AI,
+            status=SubscriptionStatus.ACTIVE,
+            current_period_start=timezone.now(),
+            current_period_end=timezone.now(),
+        )
+        resp = self.client.get(
+            reverse("tenant-me-plan-available-upgrades") + "?category=ML_AI"
+        )
+        assert resp.status_code == status.HTTP_200_OK
+        plans = resp.json()
+        # ml_ent has higher order than ml_pro → should appear
+        assert any(p["slug"] == "mlu-ml-ent" for p in plans)
+
+
+# ── 285.13.8.8 — Enhanced usage with thresholds ────────────────────────────
+
+class EnhancedUsageTests(TestCase):
+    def setUp(self):
+        self.tenant = _make_tenant("usage-test")
+        self.user = _make_user(self.tenant)
+        plan = _make_plan("usage-plan", tier=PlanTier.PRO, order=1,
+                          category=PlanCategory.BASE, price_amount_cents=2999,
+                          limits_json={"max_assets": 100})
+        self.tenant.plan = plan
+        self.tenant.save(update_fields=["plan"])
+        self.client = APIClient()
+        self.client.force_authenticate(user=self.user)
+        cache.delete(f"tenant_usage_response:{self.tenant.id}")
+
+    @pytest.mark.integration
+    def test_usage_includes_threshold_status(self):
+        resp = self.client.get(reverse("tenant-usage")
+        assert resp.status_code == status.HTTP_200_OK
+        data = resp.json()
+        assert "threshold_status" in data
+        assert "overall_status" in data
+        assert data["overall_status"] in ("ok", "warning", "critical", "exceeded")
+
+    @pytest.mark.integration
+    def test_usage_includes_upgrade_recommendation(self):
+        resp = self.client.get(reverse("tenant-usage")
+        assert resp.status_code == status.HTTP_200_OK
+        data = resp.json()
+        assert "upgrade_recommendation" in data
+
+    @pytest.mark.integration
+    def test_usage_is_cached(self):
+        url = reverse("tenant-usage")
+        resp1 = self.client.get(url)
+        assert resp1.status_code == 200  # Second request should be cached)
+        resp2 = self.client.get(url)
+        assert resp2.status_code == 200

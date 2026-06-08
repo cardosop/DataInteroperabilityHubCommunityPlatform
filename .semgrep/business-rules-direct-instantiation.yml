@@ -1,0 +1,28 @@
+rules:
+  - id: business-rules-direct-instantiation
+    languages: [python]
+    severity: ERROR
+    message: >
+      Do NOT directly instantiate a `BusinessRules` subclass that has a
+      corresponding `RuleChain`.  Use `execute_chain("<chain_name>", ...)`
+      instead.  Direct instantiation bypasses the chain runner's OTel + audit
+      emission, sequential-ordering guarantees, and health registration.
+      (Phase 274.7 — RuleChain primitive.)
+    patterns:
+      - pattern-either:
+          - pattern: $CLASS(...)
+          - pattern: $CLASS.validate_$METHOD(...)
+    paths:
+      include:
+        - "hub/apps/**/*.py"
+      exclude:
+        - "hub/apps/**/tests/**"
+        - "hub/apps/**/business_rules.py"
+        - "hub/apps/core/business_rules/**"
+    metadata:
+      category: correctness
+      technology:
+        - python
+        - django
+      references:
+        - "openspec/changes/preprod01/specs/business-rules-hardening/spec.md"

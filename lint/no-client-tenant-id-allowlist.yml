@@ -1,0 +1,94 @@
+# Allowlist for `scripts/lint_no_client_tenant_id.py`.
+#
+# Each entry is a (file, line, reason) triple. The lint job at
+# `.github/workflows/ci.yml` (`lint-no-client-tenant-id`) runs the
+# scanner on every PR; any match outside this allowlist fails the
+# build.
+#
+# An entry is allowed ONLY for one of these reasons:
+#
+#   1. Cross-tenant rejection guard (defence-in-depth). The site
+#      reads the client-supplied tenant_id solely to compare it
+#      against the request's authenticated tenant and reject on
+#      mismatch (per Phase 260.A.{1,2,3,4} pattern). Tenant SCOPE
+#      still comes from `get_request_tenant_id(request)`.
+#   2. Pre-auth SSO flow. The login-URL endpoint reads tenant_id from
+#      a query parameter to look up the tenant's SSO configuration
+#      BEFORE any session exists; there is no authenticated tenant
+#      to cross-check against. The signed `state` token (per
+#      `hub/apps/auth/sso_state.py`) carries the tenant identity
+#      forward into the callback, where it is consumed (not the
+#      client-supplied value).
+#   3. Explicit tenant switch. The user is choosing a tenant from
+#      their membership list (`switch_tenant`); the value is
+#      validated against the user's memberships, not used as scope.
+#
+# Adding an entry without a written reason is a CI failure.
+# Removing a guard from the source code requires removing the
+# matching entry here too — keep them in sync.
+
+version: 1
+entries:
+  - file: hub/apps/contracts/views_security.py
+    line: 154
+    reason: |
+      Cross-tenant rejection guard for SecurityAuditLogViewSet
+      (Phase 260.A.4). Read is followed by a strict mismatch check;
+      `cross_tenant_denied()` fires + 403 returns on divergence.
+      Test: hub/apps/contracts/tests/test_security_audit_log_tenant_isolation.py.
+
+  - file: hub/apps/baas/views.py
+    line: 51
+    reason: |
+      Cross-tenant rejection guard for BaaS query-param sites
+      (Phase 260.A.4). `_resolve_tenant_id_from_query` rejects with
+      403 + cross_tenant_denied counter on mismatch. Tenant scope
+      still uses `get_request_tenant_id(request)`.
+      Test: hub/apps/baas/tests/test_views.py.
+
+  - file: hub/apps/auth/views.py
+    line: 1665
+    reason: |
+      Explicit tenant-switch flow (`switch_tenant` view). The user
+      is actively choosing a target tenant from their membership
+      list; the value is validated against
+      `UserTenantMembershipService` before any tenant context is
+      switched. This is intentional client-supplied input, not
+      tenant scoping.
+
+  - file: hub/apps/auth/sso_views.py
+    line: 77
+    reason: |
+      SSO callback cross-tenant rejection guard (Phase 260.A.2).
+      `_resolve_callback_tenant_id` rejects body tenant_id that
+      does not match the signed-state-bound tenant; `cross_tenant_denied()`
+      fires with 400 SSO_STATE_TENANT_MISMATCH.
+      Test: hub/apps/auth/tests/test_sso_state_binding.py.
+
+  - file: hub/apps/auth/sso_views.py
+    line: 93
+    reason: |
+      Pre-auth SSO login-URL flow. The query param identifies which
+      tenant's SSO configuration to use BEFORE any session exists;
+      there is no authenticated tenant to cross-check against. The
+      signed `state` token (sso_state.issue_state) carries this
+      forward to the callback, where it is consumed (260.A.2).
+
+  - file: hub/apps/mesh/views.py
+    line: 275
+    reason: |
+      Cross-tenant rejection guard for mesh DomainViewSet.create
+      — reads body tenant_id solely to reject divergence from the
+      authenticated tenant. Tenant scope comes from
+      `self.get_tenant_id_from_request()`. The DRFValidationError
+      raised here is the rejection signal.
+
+  - file: hub/apps/semantic/views.py
+    line: 693
+    reason: |
+      Cross-tenant rejection guard for semantic.ingest_rdf
+      (Phase 260.A.1). Read followed by strict mismatch check;
+      `cross_tenant_denied()` fires + 403 CROSS_TENANT_FORBIDDEN
+      returns on divergence. Tenant scope from
+      `get_request_tenant_id(request)`.
+      Test: hub/apps/semantic/tests/test_ingest_rdf_tenant_isolation.py.

@@ -1,0 +1,22 @@
+# 280.C.3.4 — Conventional commit lint configuration
+# Enforced by CI via commitlint.
+# Valid prefixes: feat, fix, chore, docs, test, refactor, perf, ci, build, revert
+
+extends:
+  - "@commitlint/config-conventional"
+
+rules:
+  type-enum:
+    - 2
+    - always
+    - [feat, fix, chore, docs, test, refactor, perf, ci, build, revert, style]
+  subject-case:
+    - 0  # Disable — allow any case in subject
+  body-max-line-length:
+    - 1
+    - always
+    - 100
+  header-max-length:
+    - 1
+    - always
+    - 72

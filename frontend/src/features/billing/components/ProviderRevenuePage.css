@@ -1,0 +1,82 @@
+/* Phase 271.4.3 — Provider Revenue Page styles */
+.provider-revenue-page {
+  max-width: 900px;
+  margin: 0 auto;
+  padding: 24px;
+}
+
+.provider-revenue-page h1 {
+  margin-bottom: 16px;
+}
+
+.revenue-total {
+  font-size: 0.9rem;
+  color: var(--text-secondary, #666);
+  margin-bottom: 16px;
+}
+
+.payout-failed-banner {
+  background: var(--color-warning-bg);
+  border: 1px solid var(--color-warning-500);
+  border-radius: 6px;
+  padding: 12px 16px;
+  margin-bottom: 20px;
+}
+
+.payout-failed-banner h3 {
+  margin: 0 0 4px;
+  font-size: 1rem;
+}
+
+.payout-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-bottom: 20px;
+}
+
+.payout-table th,
+.payout-table td {
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--color-neutral-300);
+  text-align: left;
+  font-size: 0.9rem;
+}
+
+.payout-table th {
+  font-weight: 600;
+  background: var(--color-neutral-50);
+}
+
+.payout-table code {
+  font-size: 0.8rem;
+}
+
+.payout-status {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-size: 0.8rem;
+  font-weight: 500;
+}
+
+.payout-status-paid { background: var(--color-success-subtle); color: var(--color-success-900); }
+.payout-status-pending { background: var(--color-neutral-200); color: var(--color-neutral-700); }
+.payout-status-failed { background: var(--color-error-subtle); color: var(--color-error-900); }
+.payout-status-in_transit { background: var(--color-info-subtle); color: var(--color-primary-800); }
+.payout-status-cancelled { background: var(--color-warning-bg); color: var(--color-warning-800); }
+
+.payout-failure-code {
+  font-size: 0.8rem;
+  color: var(--color-error);
+}
+
+.payout-pagination {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  justify-content: center;
+}
+
+.payout-pagination span {
+  font-size: 0.9rem;
+}

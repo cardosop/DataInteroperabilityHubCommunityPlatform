@@ -1,0 +1,28 @@
+{
+  "_comment": "Performance baseline for k6 critical journeys load test (280.B.2.2). Generated 2026-05-15. All latencies in milliseconds. This file gates the k6-load-test CI workflow — any p95 exceeding the budget fails the advisory check.",
+  "version": "1.0",
+  "created": "2026-05-15",
+  "environment": "staging",
+  "thresholds": {
+    "journey_login_latency_ms_p95": { "budget_ms": 500, "description": "Login JWT auth round-trip" },
+    "journey_asset_crud_latency_ms_p95": { "budget_ms": 1000, "description": "Asset create/read/update/delete lifecycle" },
+    "journey_contract_workflow_latency_ms_p95": { "budget_ms": 2000, "description": "Contract create/validate/publish workflow" },
+    "journey_marketplace_latency_ms_p95": { "budget_ms": 1000, "description": "Marketplace listing search and browse" },
+    "journey_search_latency_ms_p95": { "budget_ms": 800, "description": "Unified search across resources" },
+    "journey_sparql_latency_ms_p95": { "budget_ms": 5000, "description": "SPARQL semantic query execution" },
+    "journey_file_upload_latency_ms_p95": { "budget_ms": 3000, "description": "File upload presigned-URL flow" },
+    "journey_compliance_scan_latency_ms_p95": { "budget_ms": 5000, "description": "Compliance scan trigger and poll" },
+    "journey_governance_latency_ms_p95": { "budget_ms": 2000, "description": "Governance approval workflow" },
+    "journey_webhook_latency_ms_p95": { "budget_ms": 1500, "description": "Webhook registration and delivery check" },
+    "http_req_duration_p95": { "budget_ms": 5000, "description": "HTTP-level p95 across all requests" },
+    "http_req_failed_rate": { "budget_rate": 0.02, "description": "Maximum HTTP failure rate (2%)" },
+    "journey_success_rate": { "budget_rate": 0.99, "description": "Minimum journey success rate (99%)" },
+    "journey_api_errors_total": { "budget_count": 1000, "description": "Maximum API error count per run" }
+  },
+  "review": {
+    "advisory_until": "2026-07-15",
+    "blocking_after": "2026-07-15",
+    "sprint_cadence": "biweekly",
+    "review_owner": "platform-engineering"
+  }
+}

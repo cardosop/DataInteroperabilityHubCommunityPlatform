@@ -1,0 +1,27 @@
+# Phase 278.T.4 audit — pre-existing tables that shipped without RLS
+# policies in earlier phases.  Each entry includes the owning phase
+# so the exception is traceable.  When creating RLS migrations for
+# these tables in their respective phase-cleanup work, remove the
+# entry from this list.
+tables:
+  # Phase 278.B.4 — form drafts (auto-save), per-user + per-tenant via
+  # composite unique constraint, RLS migration tracked as 278.RLS.1.
+  - form_drafts
+
+  # Phase 278.J — Marketplace data contract SFTP sync, dead-letter and
+  # inbound event tables.  RLS migration tracked as 278.RLS.2.
+  - openlineage_dead_letter
+  - openlineage_inbound_event
+  - marketplace_saved_search
+
+  # Phase 271.2 — Connect webhook capability and Stripe onboarding.
+  # RLS migration tracked as 271.RLS.1.
+  - openlineage_ingest_api_key
+
+  # Phase 278.M — UX v2 feature flag flip approvals.
+  # RLS migration tracked as 278.RLS.3.
+  - feature_flag_flip_approvals
+
+  # Phase 278.G — admin impersonation sessions for support tooling.
+  # RLS migration tracked as 278.RLS.4.
+  - impersonation_sessions

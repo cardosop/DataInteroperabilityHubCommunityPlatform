@@ -1,0 +1,44 @@
+.dataset-drift-banner {
+  padding: var(--spacing-sm) var(--spacing-md);
+  border-radius: var(--border-radius-md);
+  margin-bottom: var(--spacing-md);
+  border-left: 4px solid transparent;
+  background: var(--color-background-secondary);
+  color: var(--color-text-primary);
+}
+
+.dataset-drift-banner-info {
+  border-left-color: var(--color-text-secondary, #6c757d);
+  background: var(--color-background-secondary);
+}
+
+.dataset-drift-banner-clean {
+  border-left-color: var(--color-success, #2e7d32);
+  background: var(--color-success-light, #e8f5e9);
+}
+
+.dataset-drift-banner-warn {
+  border-left-color: var(--color-warning, #ed6c02);
+  background: var(--color-warning-bg, #fff8e1);
+}
+
+.dataset-drift-banner-fail {
+  border-left-color: var(--color-danger, #c62828);
+  background: var(--color-danger-light, #ffebee);
+}
+
+.dataset-drift-section {
+  margin-top: var(--spacing-xs);
+  font-size: var(--font-size-sm);
+}
+
+.dataset-drift-section ul {
+  margin: var(--spacing-xs) 0 0;
+  padding-left: var(--spacing-md);
+}
+
+.dataset-drift-section code {
+  background: rgba(0, 0, 0, 0.05);
+  padding: 0 var(--spacing-xs);
+  border-radius: var(--border-radius-sm);
+}

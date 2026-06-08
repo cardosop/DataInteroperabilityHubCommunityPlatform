@@ -1,0 +1,15 @@
+{% extends "notifications/emails/base.html" %}
+
+{% block title %}API Key Expired{% endblock %}
+
+{% block content %}
+<h2>API Key Expired</h2>
+<p>Hello{% if user.display_name %} {{ user.display_name }}{% endif %},</p>
+<p>Your API key <strong>{{ api_key_name }}</strong>{% if tenant_name %} for tenant <strong>{{ tenant_name }}</strong>{% endif %} has <strong>expired</strong>.</p>
+<p><strong>Expired at:</strong> {{ expires_at }}</p>
+<p>This key is no longer valid. API requests using this key will receive HTTP 401 responses.</p>
+<p>To restore service, please create a new API key via the Meshant dashboard or API.</p>
+<p style="text-align: center;">
+    <a href="{{ frontend_url }}/settings/api-keys" class="button">Create New API Key</a>
+</p>
+{% endblock %}

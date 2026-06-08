@@ -1,0 +1,109 @@
+{
+  "models": {
+    "list": {
+      "title": "ML Models",
+      "create": "Register Model",
+      "empty": "No models registered yet.",
+      "filter": { "all": "All models", "active": "Active", "inactive": "Inactive" }
+    },
+    "detail": {
+      "title": "Model Details",
+      "overview": "Overview",
+      "deployments": "Deployments",
+      "trainingJobs": "Training Jobs",
+      "inferences": "Inferences",
+      "versionHistory": "Version History",
+      "rollback": "Rollback",
+      "rollbackConfirm": "Are you sure you want to rollback to this version?"
+    },
+    "create": {
+      "title": "Register ML Model",
+      "odhModelId": "ODH Model ID",
+      "odhModelVersion": "ODH Model Version",
+      "assetId": "Asset ID",
+      "modelType": "Model Type",
+      "contractId": "Contract ID (optional)",
+      "submit": "Register Model"
+    },
+    "versionHistory": {
+      "title": "Version History",
+      "version": "Version",
+      "deployedAt": "Deployed At",
+      "status": "Status"
+    },
+    "rollback": {
+      "success": "Model rolled back successfully.",
+      "error": "Rollback failed."
+    }
+  },
+  "training": {
+    "submit": {
+      "title": "Submit Training Job",
+      "modelId": "Model ID",
+      "config": "Training Config",
+      "priority": "Priority",
+      "gpuRequired": "GPU Required",
+      "gpuCount": "GPU Count",
+      "submit": "Submit Job"
+    },
+    "status": {
+      "title": "Training Job Status",
+      "queued": "Queued",
+      "running": "Running",
+      "completed": "Completed",
+      "failed": "Failed",
+      "cancelled": "Cancelled"
+    },
+    "logs": {
+      "title": "Training Logs",
+      "empty": "No logs available."
+    },
+    "cancel": {
+      "button": "Cancel Job",
+      "confirm": "Cancel this training job?"
+    }
+  },
+  "inference": {
+    "deploy": {
+      "title": "Deploy Model",
+      "modelId": "Model ID",
+      "replicas": "Replicas",
+      "gpuRequired": "GPU Required",
+      "submit": "Deploy"
+    },
+    "predict": {
+      "title": "Run Inference",
+      "deploymentId": "Deployment ID",
+      "input": "Input Data (JSON)",
+      "submit": "Predict",
+      "result": "Prediction Result"
+    },
+    "predictAsync": {
+      "title": "Async Inference",
+      "enqueued": "Job enqueued successfully.",
+      "jobId": "Job ID",
+      "status": "Status",
+      "pending": "PENDING"
+    },
+    "metrics": {
+      "title": "Inference Metrics",
+      "requestsTotal": "Total Requests",
+      "errorsTotal": "Total Errors",
+      "latencyP50": "P50 Latency",
+      "latencyP95": "P95 Latency",
+      "latencyP99": "P99 Latency",
+      "throughput": "Throughput"
+    },
+    "undeploy": {
+      "button": "Undeploy",
+      "confirm": "Are you sure you want to undeploy this model?",
+      "success": "Model undeployed successfully."
+    }
+  },
+  "errors": {
+    "odhUnavailable": "ODH Inference Scheduler is not available. Try again later.",
+    "deploymentFailed": "Model deployment failed. Check the deployment logs.",
+    "gpuAllocationFailed": "No GPUs available. Try again later or reduce GPU count.",
+    "contractRequired": "A contract is required for model registration."
+  }
+}

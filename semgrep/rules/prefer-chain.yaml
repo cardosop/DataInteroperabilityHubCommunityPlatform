@@ -1,0 +1,19 @@
+# Phase 274.7.12 — Semgrep rule flagging direct XxxBusinessRules(...).validate_*()
+# in services when a registered chain exists for the same operation.
+# Whitelist via ``# noqa: prefer-chain`` on the call site line.
+rules:
+  - id: prefer-chain
+    patterns:
+      - pattern-either:
+          - pattern: $RB = $RULE(...); ... $RB.validate_$METHOD(...)
+          - pattern: $RULE(...).validate_$METHOD(...)
+    message: >
+      Direct BusinessRules.validate_*() call when a registered chain exists.
+      Use execute_chain("chain.name", ctx) instead, or add '# noqa: prefer-chain'
+      if the direct call is intentional (e.g. chain not yet migrated per Phase 274.7).
+    languages: [python]
+    severity: WARNING
+    paths:
+      include:
+        - "hub/apps/*/services.py"
+        - "hub/apps/*/views.py"

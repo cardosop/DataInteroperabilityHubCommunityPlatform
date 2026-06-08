@@ -1,0 +1,98 @@
+.dataset-schedule-modal {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-md);
+}
+
+.dataset-schedule-explainer {
+  margin: 0;
+  color: var(--color-text-secondary);
+  font-size: var(--font-size-sm);
+}
+
+.dataset-schedule-empty-state {
+  padding: var(--spacing-md);
+  background: var(--color-background-secondary);
+  border: 1px dashed var(--color-border);
+  border-radius: var(--border-radius-md);
+  text-align: center;
+}
+
+.dataset-schedule-create-link {
+  display: inline-block;
+  margin-top: var(--spacing-sm);
+  color: var(--color-link);
+  text-decoration: none;
+  font-weight: var(--font-weight-semibold);
+}
+
+.dataset-schedule-create-link:hover {
+  text-decoration: underline;
+}
+
+.dataset-schedule-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-sm);
+}
+
+.dataset-schedule-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: var(--spacing-sm) var(--spacing-md);
+  background: var(--color-background-secondary);
+  border: 1px solid var(--color-border);
+  border-radius: var(--border-radius-sm);
+  gap: var(--spacing-md);
+}
+
+.dataset-schedule-row-summary {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-xs);
+}
+
+.dataset-schedule-row-cadence {
+  color: var(--color-text-secondary);
+  font-size: var(--font-size-sm);
+}
+
+.dataset-schedule-row-status {
+  display: inline-block;
+  padding: 0 var(--spacing-sm);
+  border-radius: var(--border-radius-sm);
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-semibold);
+  text-transform: uppercase;
+  width: fit-content;
+}
+
+.dataset-schedule-row-status-active {
+  background: var(--color-success-light, #e8f5e9);
+  color: var(--color-success, #2e7d32);
+}
+
+.dataset-schedule-row-status-paused {
+  background: var(--color-warning-bg, #fff8e1);
+  color: var(--color-warning, #ed6c02);
+}
+
+.dataset-schedule-edit-link {
+  color: var(--color-link);
+  text-decoration: none;
+  font-weight: var(--font-weight-semibold);
+  white-space: nowrap;
+}
+
+.dataset-schedule-edit-link:hover {
+  text-decoration: underline;
+}
+
+.dataset-schedule-actions {
+  display: flex;
+  justify-content: flex-end;
+}

@@ -1,0 +1,34 @@
+{
+  "description": "TR.N.6 — A11y violation allowlist for pre-existing violations. Each entry must carry a remediation_date. Entries past their remediation_date are treated as new violations and block CI.",
+  "last_reviewed": "2026-05-21",
+  "violations": [
+    {
+      "id": "color-contrast",
+      "selector": ".legacy-sidebar .nav-label",
+      "impact": "serious",
+      "description": "Legacy sidebar navigation labels have insufficient contrast. Redesign in Phase 312.",
+      "remediation_date": "2026-08-01"
+    },
+    {
+      "id": "heading-order",
+      "selector": ".deprecated-dashboard-widget h3",
+      "impact": "moderate",
+      "description": "Deprecated dashboard widget skips heading level h3 after h1. Widget removed in Phase 311.",
+      "remediation_date": "2026-07-15"
+    },
+    {
+      "id": "aria-roles",
+      "selector": ".phase7-legacy-table [role='grid']",
+      "impact": "serious",
+      "description": "Pre-Phase-226 table uses implicit ARIA grid role without required child roles. Migrated to Phase 226 DataGrid.",
+      "remediation_date": "2026-07-01"
+    },
+    {
+      "id": "link-name",
+      "selector": ".icon-only-button:not([aria-label])",
+      "impact": "serious",
+      "description": "Icon-only buttons in file-upload toolbar lack aria-label. Fix in Phase 260.4",
+      "remediation_date": "2026-06-15"
+    }
+  ]
+}

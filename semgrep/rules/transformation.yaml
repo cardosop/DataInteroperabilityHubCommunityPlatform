@@ -1,0 +1,41 @@
+rules:
+  - id: transformation-no-sync-execution
+    pattern: _execute_pipeline_sync
+    message: >
+      _execute_pipeline_sync is deprecated (Phase 285.9).
+      All transformation execution must use the dbt-native async path.
+    severity: ERROR
+    languages: [python]
+    paths:
+      include:
+        - hub/apps/transformation/
+
+  - id: transformation-no-duckdb-polar-imports
+    patterns:
+      - pattern-either:
+          - pattern: import duckdb
+          - pattern: from duckdb import ...
+          - pattern: import polars
+          - pattern: from polars import ...
+    message: >
+      DuckDB and Polars imports are forbidden in the transformation app
+      (Phase 285.9 dbt-native migration). Use dbt Core instead.
+    severity: ERROR
+    languages: [python]
+    paths:
+      include:
+        - hub/apps/transformation/
+
+  - id: transformation-profiles-yml-tmpfs
+    patterns:
+      - pattern: open(..., "profiles.yml")
+      - pattern-not:
+          pattern-regex: "/tmp/meshant_dbt_.*/profiles\\.yml"
+    message: >
+      profiles.yml must be written under /tmp/meshant_dbt_{id}/ (tmpfs),
+      never to the current working directory.  Use self.work_dir.
+    severity: WARNING
+    languages: [python]
+    paths:
+      include:
+        - hub/apps/transformation/

@@ -1,0 +1,15 @@
+{% extends "notifications/emails/base.html" %}
+
+{% block title %}API Key Expiring Soon{% endblock %}
+
+{% block content %}
+<h2>API Key Expiring Soon</h2>
+<p>Hello{% if user.display_name %} {{ user.display_name }}{% endif %},</p>
+<p>Your API key <strong>{{ api_key_name }}</strong>{% if tenant_name %} for tenant <strong>{{ tenant_name }}</strong>{% endif %} will expire in <strong>{{ days_remaining }} day(s)</strong>.</p>
+<p><strong>Expires at:</strong> {{ expires_at }}</p>
+<p>To avoid service disruption, please rotate this key before it expires. You can create a new API key via the Meshant dashboard or API.</p>
+<p style="text-align: center;">
+    <a href="{{ frontend_url }}/settings/api-keys" class="button">Manage API Keys</a>
+</p>
+<p>If you no longer need this API key, you can safely ignore this message — the key will be automatically disabled upon expiry.</p>
+{% endblock %}

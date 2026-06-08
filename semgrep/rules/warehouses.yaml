@@ -1,0 +1,56 @@
+rules:
+  - id: warehouses-no-tls-verify-false
+    patterns:
+      - pattern-either:
+          - pattern: |
+              verify=False
+          - pattern: |
+              ssl_verify=False
+          - pattern: |
+              verify_ssl=False
+    message: >
+      TLS certificate verification must not be disabled in warehouse
+      connector code. All warehouse connections require min TLS 1.2.
+    severity: ERROR
+    languages: [python]
+    paths:
+      include:
+        - hub/apps/warehouses/connectors/
+
+  - id: warehouses-no-string-interpolation-sql
+    patterns:
+      - pattern-either:
+          - pattern-regex: "f\"SELECT"
+          - pattern-regex: "f'SELECT"
+          - pattern-regex: 'f"SELECT'
+          - pattern-regex: "\"SELECT.*\" %"
+          - pattern-regex: "'SELECT.*' %"
+      - pattern-not:
+          pattern-regex: "COUNT\\(\\*\\)"
+    message: >
+      SQL queries in warehouse connector code must use parameterized
+      binding, never string interpolation or f-strings. Use the
+      connector's native parameter binding (:%s, @param, %(name)s).
+    severity: ERROR
+    languages: [python]
+    paths:
+      include:
+        - hub/apps/warehouses/
+        - hub/apps/dq/
+        - hub/apps/compliance/
+
+  - id: warehouses-no-credential-logging
+    patterns:
+      - pattern-either:
+          - pattern-regex: "logger\\.(info|debug|warning|error)\\(.*password"
+          - pattern-regex: "logger\\.(info|debug|warning|error)\\(.*private_key"
+          - pattern-regex: "logger\\.(info|debug|warning|error)\\(.*pat_token"
+          - pattern-regex: "logger\\.(info|debug|warning|error)\\(.*secret"
+    message: >
+      Warehouse credentials must never appear in log messages.
+      Use log_helpers._redact() or log credential ARNs instead.
+    severity: ERROR
+    languages: [python]
+    paths:
+      include:
+        - hub/apps/warehouses/

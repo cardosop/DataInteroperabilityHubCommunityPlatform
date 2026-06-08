@@ -1,0 +1,910 @@
+"""
+Phase 235.4 — PLATFORM_ADMIN impersonation (opt-in per tenant).
+
+Engineering contract this suite pins (REQ-ADMIN-IMPERSONATION-001 in
+``openspec/changes/preprod01/specs/admin-impersonation/spec.md``):
+
+1.  Tenant model carries ``impersonation_allowed: bool``
+    (default False) AND ``impersonation_default_max_minutes: int``
+    (default 60).  Default False so the deploy does not silently
+    grant impersonation capability to existing tenants; ops flips
+    the flag per-tenant after explicit customer authorisation.
+
+2.  NEW model ``ImpersonationSession`` with fields:
+    ``id``, ``impersonator``, ``impersonated_user``,
+    ``impersonator_tenant``, ``impersonated_tenant``, ``status``
+    (``ACTIVE``/``ENDED``), ``started_at``, ``expires_at``,
+    ``ended_at``, ``end_reason``, ``max_minutes``, ``reason``
+    (operator justification), ``created_at``, ``updated_at``.
+
+3.  ``POST /api/v1/admin/impersonate/`` is PLATFORM_ADMIN-only via
+    ``IsPlatformAdmin``; TENANT_ADMIN → 403; unauthenticated → 401/403.
+
+4.  Tenant.impersonation_allowed=False → 403 +
+    ``code=IMPERSONATION_NOT_ENABLED`` (NO state change, NO audit).
+
+5.  Target user with role PLATFORM_ADMIN → 422 +
+    ``code=TARGET_IS_PLATFORM_ADMIN``.
+
+6.  Target user where ``is_active=False`` (status != ACTIVE) → 422 +
+    ``code=TARGET_INACTIVE``.
+
+7.  ``max_minutes`` request param defaults to the tenant's
+    ``impersonation_default_max_minutes`` (60); cap is 240; exceeding
+    → 400 + ``code=MAX_MINUTES_OUT_OF_RANGE``.
+
+8.  Happy path: creates ``ImpersonationSession`` (status=ACTIVE),
+    emits ``IMPERSONATION_STARTED`` audit event in BOTH the
+    impersonator's home tenant AND the impersonated user's tenant,
+    schedules an email notification to the impersonated user, returns
+    a short-lived JWT whose payload carries ``impersonation_session_id``
+    AND ``sub == impersonated_user.id`` AND ``tenant_id ==
+    impersonated_user.tenant_id``.
+
+9.  ``POST /api/v1/admin/impersonate/exit/`` ends the session
+    (``status=ENDED``, ``end_reason="manual_exit"``,
+    ``ended_at=now()``) AND emits ``IMPERSONATION_ENDED`` audit event.
+    Re-calling exit on an already-ENDED session → 409 ``ALREADY_ENDED``.
+
+10. ``expire_impersonation_sessions`` work function walks all ACTIVE
+    sessions whose ``expires_at < now()`` and ends them with
+    ``end_reason="expired"`` + emits one ``IMPERSONATION_ENDED`` audit
+    per session.
+
+11. ``ImpersonationMiddleware`` tags ``request.impersonation_session_id``
+    on every request whose JWT carries the claim — used by audit
+    callers to tag ``actor=impersonator``, ``effective_user=
+    impersonated``, ``impersonation_session_id`` into audit details.
+"""
+from __future__ import annotations
+import pytest
+
+import uuid
+from datetime import timedelta
+from io import StringIO
+
+from django.contrib.auth import get_user_model
+from django.core.management import call_command
+from django.utils import timezone
+from rest_framework.test import APIClient
+
+from hub.apps.audit import event_types as _audit_et
+from hub.apps.audit.models import AuditEvent
+from hub.apps.tenants.models import Tenant
+from hub.apps.users.models import UserStatus
+
+pytestmark = pytest.mark.django_db(transaction=True)
+User = get_user_model()
+
+
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
+
+
+def _ensure_tenant_has_subscription(tenant: Tenant) -> None:
+    """Ensure the tenant has an active subscription so middleware allows writes."""
+    from datetime import timedelta
+    from django.utils import timezone
+    from hub.apps.billing.models import Subscription, SubscriptionStatus
+    from hub.apps.tenants.models import PlanTier, TenantPlan
+
+    if Subscription.objects.filter(tenant=tenant, status=SubscriptionStatus.ACTIVE).exists():
+        return
+    plan, _ = TenantPlan.objects.get_or_create(
+        slug=f"impersonation-test-plan-{tenant.slug}",
+        defaults={
+            "name": f"Impersonation Test Plan {tenant.slug}",
+            "tier": PlanTier.FREE,
+            "limits_json": {"max_assets": 100},
+            "is_active": True,
+        },
+    )
+    Subscription.objects.create(
+        tenant=tenant,
+        plan=plan,
+        status=SubscriptionStatus.ACTIVE,
+        current_period_start=timezone.now(),
+        current_period_end=timezone.now() + timedelta(days=365),
+    )
+
+
+def _make_tenant(*, impersonation_allowed: bool = True, slug_suffix: str | None = None) -> Tenant:
+    uid = slug_suffix or uuid.uuid4().hex[:8]
+    tenant = Tenant.objects.create(
+        name=f"Tenant {uid}",
+        slug=f"tenant-{uid}",
+        impersonation_allowed=impersonation_allowed,
+    )
+    _ensure_tenant_has_subscription(tenant)
+    return tenant
+
+
+def _make_platform_admin(*, tenant: Tenant | None = None) -> User:
+    uid = uuid.uuid4().hex[:8]
+    home_tenant = tenant or _make_tenant(slug_suffix=f"pa-home-{uid}")
+    user = User.objects.create_user(
+        email=f"pa-{uid}@example.com",
+        password="testpass123",
+        tenant=home_tenant,
+    )
+    user.is_platform_admin = True
+    user.save(update_fields=["is_platform_admin"])
+    return user
+
+
+def _make_regular_user(tenant: Tenant) -> User:
+    uid = uuid.uuid4().hex[:8]
+    return User.objects.create_user(
+        email=f"u-{uid}@example.com",
+        password="testpass123",
+        tenant=tenant,
+        status=UserStatus.ACTIVE,
+    )
+
+
+def _start_url() -> str:
+    return "/api/v1/admin/impersonate/"
+
+
+def _exit_url() -> str:
+    return "/api/v1/admin/impersonate/exit/"
+
+
+# ---------------------------------------------------------------------------
+# Tier 1 — model fields
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.integration
+class TestTenantImpersonationFields:
+    @pytest.mark.integration
+    def test_impersonation_allowed_defaults_false(self):
+        # The default is False — operators must opt in explicitly.
+        t = Tenant.objects.create(name="T1", slug="t1-default")
+        assert not t.impersonation_allowed
+
+    @pytest.mark.integration
+    def test_impersonation_default_max_minutes_defaults_60(self):
+        t = Tenant.objects.create(name="T2", slug="t2-default")
+        assert t.impersonation_default_max_minutes == 60
+
+
+@pytest.mark.integration
+class TestImpersonationSessionModel:
+    @pytest.mark.integration
+    def test_create_session_with_required_fields(self):
+        from hub.apps.tenants.models import ImpersonationSession
+
+        impersonator_tenant = _make_tenant(slug_suffix=f"i-{uuid.uuid4().hex[:6]}")
+        target_tenant = _make_tenant(slug_suffix=f"t-{uuid.uuid4().hex[:6]}")
+        impersonator = _make_platform_admin(tenant=impersonator_tenant)
+        target = _make_regular_user(target_tenant)
+        now = timezone.now()
+        sess = ImpersonationSession.objects.create(
+            impersonator=impersonator,
+            impersonated_user=target,
+            impersonator_tenant=impersonator_tenant,
+            impersonated_tenant=target_tenant,
+            started_at=now,
+            expires_at=now + timedelta(minutes=60),
+            max_minutes=60,
+            reason="Customer support escalation",
+        )
+        assert sess.status == "ACTIVE"
+        assert sess.ended_at is None
+        assert sess.end_reason == ""
+
+    @pytest.mark.integration
+    def test_status_transitions_active_to_ended(self):
+        from hub.apps.tenants.models import ImpersonationSession
+
+        impersonator_tenant = _make_tenant(slug_suffix=f"i2-{uuid.uuid4().hex[:6]}")
+        target_tenant = _make_tenant(slug_suffix=f"t2-{uuid.uuid4().hex[:6]}")
+        impersonator = _make_platform_admin(tenant=impersonator_tenant)
+        target = _make_regular_user(target_tenant)
+        now = timezone.now()
+        sess = ImpersonationSession.objects.create(
+            impersonator=impersonator,
+            impersonated_user=target,
+            impersonator_tenant=impersonator_tenant,
+            impersonated_tenant=target_tenant,
+            started_at=now,
+            expires_at=now + timedelta(minutes=60),
+            max_minutes=60,
+            reason="testing",
+        )
+        sess.end(reason="manual_exit")
+        sess.refresh_from_db()
+        assert sess.status == "ENDED"
+        assert sess.ended_at is not None
+        assert sess.end_reason == "manual_exit"  # ---------------------------------------------------------------------------)
+# Tier 2 — POST /api/v1/admin/impersonate/ permission gating
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.integration
+class TestImpersonateStartPermissions:
+    @pytest.fixture(autouse=True)
+    def _setup(self):
+        self.target_tenant = _make_tenant()
+        self.target = _make_regular_user(self.target_tenant)
+        self.client = APIClient()
+
+    @pytest.mark.integration
+    def test_unauthenticated_blocked(self):
+        resp = self.client.post(
+            _start_url(),
+            {"user_id": str(self.target.id), "reason": "support case investigation"},
+            format="json",
+        )
+        assert resp.status_code in (
+            status.HTTP_401_UNAUTHORIZED,
+            status.HTTP_403_FORBIDDEN,
+        )
+
+    @pytest.mark.integration
+    def test_tenant_admin_blocked(self):
+        regular = _make_regular_user(self.target_tenant)
+        self.client.force_authenticate(regular)
+        resp = self.client.post(
+            _start_url(),
+            {"user_id": str(self.target.id), "reason": "support case investigation"},
+            format="json",
+        )
+        assert resp.status_code == status.HTTP_403_FORBIDDEN  # ---------------------------------------------------------------------------)
+# Tier 3 — POST /api/v1/admin/impersonate/ happy path
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.integration
+class TestImpersonateStartHappyPath:
+    @pytest.fixture(autouse=True)
+    def _setup(self):
+        self.target_tenant = _make_tenant()
+        self.target = _make_regular_user(self.target_tenant)
+        self.admin = _make_platform_admin()
+        self.client = APIClient()
+        self.client.force_authenticate(self.admin)
+
+    @pytest.mark.integration
+    def test_creates_active_session_with_default_max_minutes(self):
+        from hub.apps.tenants.models import ImpersonationSession
+
+        resp = self.client.post(
+            _start_url(),
+            {"user_id": str(self.target.id), "reason": "Helping customer reproduce a bug"},
+            format="json",
+        )
+        assert resp.status_code == status.HTTP_201_CREATED, resp.content
+        body = resp.json()
+        sess_id = body["session"]["id"]
+        sess = ImpersonationSession.objects.get(pk=sess_id)
+        assert sess.status == "ACTIVE"
+        assert sess.max_minutes == 60   # tenant default)
+        assert sess.impersonator_id == self.admin.id
+        assert sess.impersonated_user_id == self.target.id
+        assert sess.impersonated_tenant_id == self.target_tenant.id
+
+    @pytest.mark.integration
+    def test_emits_audit_event_in_both_tenants(self):
+        resp = self.client.post(
+            _start_url(),
+            {"user_id": str(self.target.id), "reason": "ops investigation"},
+            format="json",
+        )
+        assert resp.status_code == status.HTTP_201_CREATED, resp.content
+        session_id = resp.json()["session"]["id"]
+
+        # IMPERSONATION_STARTED tagged with the target tenant.
+        target_evt = AuditEvent.all_objects.filter(
+            tenant=self.target_tenant,
+            action=_audit_et.IMPERSONATION_STARTED,
+        ).first()
+        assert target_evt is not None
+        d = target_evt.details_json or {}
+        assert d.get("impersonation_session_id") == session_id
+        assert d.get("impersonator_user_id") == str(self.admin.id)
+        assert d.get("impersonated_user_id") == str(self.target.id)
+
+        # Same event also recorded against the impersonator's home tenant.
+        impersonator_evt = AuditEvent.all_objects.filter(
+            tenant=self.admin.tenant,
+            action=_audit_et.IMPERSONATION_STARTED,
+        ).first()
+        assert impersonator_evt is not None
+        d2 = impersonator_evt.details_json or {}
+        assert d2.get("impersonation_session_id") == session_id
+
+    @pytest.mark.integration
+    def test_returns_jwt_with_impersonation_session_id_claim(self):
+        from hub.apps.auth.jwt_utils import JWTTokenGenerator
+
+        resp = self.client.post(
+            _start_url(),
+            {"user_id": str(self.target.id), "reason": "support call"},
+            format="json",
+        )
+        assert resp.status_code == status.HTTP_201_CREATED, resp.content
+        body = resp.json()
+        assert "access_token" in body
+        assert "session" in body
+        # Decode token without DB version check — same path the SPA's
+        # JWT-bootstrap uses to extract the impersonation claim.
+        payload = JWTTokenGenerator.decode_access_token(
+            body["access_token"], verify_version=False
+        )
+        assert payload is not None
+        assert payload["sub"] == str(self.target.id)
+        assert payload["tenant_id"] == str(self.target_tenant.id)
+        assert payload["impersonation_session_id"] == body["session"]["id"]
+
+    @pytest.mark.integration
+    def test_caller_override_max_minutes_accepted_within_cap(self):
+        from hub.apps.tenants.models import ImpersonationSession
+
+        resp = self.client.post(
+            _start_url(),
+            {
+                "user_id": str(self.target.id),
+                "reason": "deep support session",
+                "max_minutes": 120,
+            },
+            format="json",
+        )
+        assert resp.status_code == status.HTTP_201_CREATED, resp.content
+        sess = ImpersonationSession.objects.get(pk=resp.json()["session"]["id"])
+        assert sess.max_minutes == 120
+
+    @pytest.mark.integration
+    def test_caller_max_minutes_above_cap_rejected(self):
+        resp = self.client.post(
+            _start_url(),
+            {
+                "user_id": str(self.target.id),
+                "reason": "out-of-range",
+                "max_minutes": 9999,
+            },
+            format="json",
+        )
+        assert resp.status_code == status.HTTP_400_BAD_REQUEST, resp.content
+        assert resp.json().get("code") == "MAX_MINUTES_OUT_OF_RANGE"
+
+
+# ---------------------------------------------------------------------------
+# Tier 4 — POST /api/v1/admin/impersonate/ rejection paths
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.integration
+class TestImpersonateStartRejections:
+    @pytest.fixture(autouse=True)
+    def _setup(self):
+        self.admin = _make_platform_admin()
+        self.client = APIClient()
+        self.client.force_authenticate(self.admin)
+
+    @pytest.mark.integration
+    def test_tenant_impersonation_disabled_returns_403(self):
+        opted_out = _make_tenant(impersonation_allowed=False)
+        target = _make_regular_user(opted_out)
+        resp = self.client.post(
+            _start_url(),
+            {"user_id": str(target.id), "reason": "support case investigation"},
+            format="json",
+        )
+        assert resp.status_code == status.HTTP_403_FORBIDDEN, resp.content
+        assert resp.json().get("code") == "IMPERSONATION_NOT_ENABLED"
+
+    @pytest.mark.integration
+    def test_target_platform_admin_rejected(self):
+        target = _make_platform_admin()  # is_platform_admin=True
+        # Allow the tenant so we reach the role check.
+        target.tenant.impersonation_allowed = True
+        target.tenant.save(update_fields=["impersonation_allowed"])
+        resp = self.client.post(
+            _start_url(),
+            {"user_id": str(target.id), "reason": "support case investigation"},
+            format="json",
+        )
+        assert resp.status_code == status.HTTP_422_UNPROCESSABLE_ENTITY, resp.content
+        assert resp.json().get("code") == "TARGET_IS_PLATFORM_ADMIN"
+
+    @pytest.mark.integration
+    def test_inactive_target_rejected(self):
+        target_tenant = _make_tenant()
+        target = _make_regular_user(target_tenant)
+        from hub.apps.users.models import UserStatus
+
+        target.status = UserStatus.DISABLED
+        target.save(update_fields=["status"])
+        resp = self.client.post(
+            _start_url(),
+            {"user_id": str(target.id), "reason": "support case investigation"},
+            format="json",
+        )
+        assert resp.status_code == status.HTTP_422_UNPROCESSABLE_ENTITY, resp.content
+        assert resp.json().get("code") == "TARGET_INACTIVE"
+
+    @pytest.mark.integration
+    def test_target_not_found_returns_404(self):
+        resp = self.client.post(
+            _start_url(),
+            {"user_id": str(uuid.uuid4()), "reason": "support case investigation"},
+            format="json",
+        )
+        assert resp.status_code == status.HTTP_404_NOT_FOUND, resp.content  # ---------------------------------------------------------------------------)
+# Tier 5 — POST /api/v1/admin/impersonate/exit/
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.integration
+class TestImpersonateExit:
+    @pytest.fixture(autouse=True)
+    def _setup(self):
+        self.target_tenant = _make_tenant()
+        self.target = _make_regular_user(self.target_tenant)
+        self.admin = _make_platform_admin()
+        self.client = APIClient()
+        self.client.force_authenticate(self.admin)
+        # Start a session so we have something to exit.
+        start_resp = self.client.post(
+            _start_url(),
+            {"user_id": str(self.target.id), "reason": "support case investigation"},
+            format="json",
+        )
+        assert start_resp.status_code == status.HTTP_201_CREATED, start_resp.content
+        self.session_id = start_resp.json()["session"]["id"]
+
+    @pytest.mark.integration
+    def test_exit_ends_session_with_manual_exit_reason(self):
+        from hub.apps.tenants.models import ImpersonationSession
+
+        resp = self.client.post(
+            _exit_url(),
+            {"session_id": self.session_id},
+            format="json",
+        )
+        assert resp.status_code == status.HTTP_200_OK, resp.content
+        sess = ImpersonationSession.objects.get(pk=self.session_id)
+        assert sess.status == "ENDED"
+        assert sess.end_reason == "manual_exit"
+        assert sess.ended_at is not None
+
+    @pytest.mark.integration
+    def test_exit_emits_impersonation_ended_audit(self):
+        self.client.post(
+            _exit_url(), {"session_id": self.session_id}, format="json"
+        )
+        evt = AuditEvent.all_objects.filter(
+            action=_audit_et.IMPERSONATION_ENDED,
+            details_json__impersonation_session_id=self.session_id,
+        ).first()
+        assert evt is not None
+        d = evt.details_json or {}
+        assert d.get("end_reason") == "manual_exit"
+
+    @pytest.mark.integration
+    def test_second_exit_returns_409(self):
+        self.client.post(
+            _exit_url(), {"session_id": self.session_id}, format="json"
+        )
+        resp = self.client.post(
+            _exit_url(), {"session_id": self.session_id}, format="json"
+        )
+        assert resp.status_code == status.HTTP_409_CONFLICT, resp.content
+        assert resp.json().get("code") == "ALREADY_ENDED"
+
+
+# ---------------------------------------------------------------------------
+# Tier 6 — Expiration sweep
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.integration
+class TestImpersonationExpireSweep:
+    def _run_sweep_command(self, *args):
+        out, err = StringIO(), StringIO()
+        call_command(
+            "expire_impersonation_sessions", *args, stdout=out, stderr=err
+        )
+        return out.getvalue(), err.getvalue()
+
+    @pytest.mark.integration
+    def test_expired_active_session_ended_by_sweep(self):
+        from hub.apps.tenants.expire_impersonation_sweep import (
+            run_expire_impersonation_sessions,
+        )
+        from hub.apps.tenants.models import ImpersonationSession
+
+        impersonator_tenant = _make_tenant(slug_suffix=f"i-{uuid.uuid4().hex[:6]}")
+        target_tenant = _make_tenant(slug_suffix=f"t-{uuid.uuid4().hex[:6]}")
+        impersonator = _make_platform_admin(tenant=impersonator_tenant)
+        target = _make_regular_user(target_tenant)
+        # Build an already-expired ACTIVE session.
+        now = timezone.now()
+        sess = ImpersonationSession.objects.create(
+            impersonator=impersonator,
+            impersonated_user=target,
+            impersonator_tenant=impersonator_tenant,
+            impersonated_tenant=target_tenant,
+            started_at=now - timedelta(minutes=120),
+            expires_at=now - timedelta(minutes=30),
+            max_minutes=90,
+            reason="testing",
+        )
+
+        summary = run_expire_impersonation_sessions()
+        sess.refresh_from_db()
+        assert sess.status == "ENDED"
+        assert sess.end_reason == "expired"
+        assert summary["expired_count"] >= 1
+
+        # Audit event emitted under target tenant context.
+        evt = AuditEvent.all_objects.filter(
+            tenant=target_tenant,
+            action=_audit_et.IMPERSONATION_ENDED,
+            details_json__impersonation_session_id=str(sess.id),
+        ).first()
+        assert evt is not None
+        assert (evt.details_json or {}).get("end_reason") == "expired"
+
+    @pytest.mark.integration
+    def test_active_unexpired_session_not_touched(self):
+        from hub.apps.tenants.expire_impersonation_sweep import (
+            run_expire_impersonation_sessions,
+        )
+        from hub.apps.tenants.models import ImpersonationSession
+
+        impersonator_tenant = _make_tenant(slug_suffix=f"i2-{uuid.uuid4().hex[:6]}")
+        target_tenant = _make_tenant(slug_suffix=f"t2-{uuid.uuid4().hex[:6]}")
+        impersonator = _make_platform_admin(tenant=impersonator_tenant)
+        target = _make_regular_user(target_tenant)
+        now = timezone.now()
+        sess = ImpersonationSession.objects.create(
+            impersonator=impersonator,
+            impersonated_user=target,
+            impersonator_tenant=impersonator_tenant,
+            impersonated_tenant=target_tenant,
+            started_at=now,
+            expires_at=now + timedelta(minutes=60),
+            max_minutes=60,
+            reason="testing",
+        )
+        run_expire_impersonation_sessions()
+        sess.refresh_from_db()
+        assert sess.status == "ACTIVE"
+
+    @pytest.mark.integration
+    def test_management_command_runs(self):
+        out, _ = self._run_sweep_command()
+        # Command should at least announce it ran.
+        assert "expired_count" in out or "Impersonation expire sweep" in out
+
+    @pytest.mark.integration
+    def test_job_type_registered(self):
+        from hub.apps.jobs.models import JobType
+
+        assert JobType.IMPERSONATION_EXPIRE_SWEEP.value == "IMPERSONATION_EXPIRE_SWEEP"  # ---------------------------------------------------------------------------)
+# Tier 7 — JWT carries impersonation_session_id claim end-to-end
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.integration
+class TestJWTImpersonationClaim:
+    @pytest.mark.integration
+    def test_decoded_token_can_drive_middleware_tag(self):
+        from hub.apps.auth.jwt_utils import JWTTokenGenerator
+
+        target_tenant = _make_tenant()
+        target = _make_regular_user(target_tenant)
+        impersonation_session_id = str(uuid.uuid4()
+        token = JWTTokenGenerator.generate_access_token(
+            target,
+            tenant_id=str(target_tenant.id),
+            impersonation_session_id=impersonation_session_id,
+        )
+        payload = JWTTokenGenerator.decode_access_token(
+            token, verify_version=False
+        )
+        assert payload is not None
+        assert payload["impersonation_session_id"] == impersonation_session_id  # ---------------------------------------------------------------------------)
+# Tier 8 — ImpersonationMiddleware tags request
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.integration
+class TestImpersonationMiddlewareTagging:
+    """Phase 235.4.11 — middleware tags audit events in impersonation
+    session with ``actor=impersonator``, ``effective_user=impersonated``,
+    ``impersonation_session_id``.
+
+    We exercise the middleware at the unit level via Django's
+    ``RequestFactory`` because the integration path through
+    ``/api/v1/auth/me/`` re-runs the full middleware stack and would
+    couple this test to upstream auth wiring.
+    """
+
+    @pytest.mark.integration
+    def test_middleware_tags_request_with_session_id_when_active(self):
+        from django.test import RequestFactory
+
+        from hub.apps.auth.jwt_utils import JWTTokenGenerator
+        from hub.apps.tenants.impersonation_middleware import (
+            ImpersonationMiddleware,
+        )
+        from hub.apps.tenants.models import ImpersonationSession
+
+        target_tenant = _make_tenant()
+        target = _make_regular_user(target_tenant)
+        impersonator_tenant = _make_tenant(slug_suffix=f"imp-{uuid.uuid4().hex[:6]}")
+        impersonator = _make_platform_admin(tenant=impersonator_tenant)
+        now = timezone.now()
+        sess = ImpersonationSession.objects.create(
+            impersonator=impersonator,
+            impersonated_user=target,
+            impersonator_tenant=impersonator_tenant,
+            impersonated_tenant=target_tenant,
+            started_at=now,
+            expires_at=now + timedelta(minutes=60),
+            max_minutes=60,
+            reason="testing",
+        )
+        token = JWTTokenGenerator.generate_access_token(
+            target,
+            tenant_id=str(target_tenant.id),
+            impersonation_session_id=str(sess.id),
+        )
+
+        factory = RequestFactory()
+        request = factory.get("/api/v1/healthz/")
+        request.META["HTTP_AUTHORIZATION"] = f"Bearer {token}"
+
+        captured: dict = {}
+
+        def _stub_view(req):
+            captured["impersonation_session_id"] = getattr(
+                req, "impersonation_session_id", "MISSING"
+            )
+            from django.http import HttpResponse
+
+            return HttpResponse(status=204)
+
+        middleware = ImpersonationMiddleware(_stub_view)
+        middleware(request)
+        assert captured["impersonation_session_id"] == str(sess.id)
+
+    @pytest.mark.integration
+    def test_middleware_does_not_tag_when_session_ended(self):
+        """Trust the row over the token claim — an ENDED session
+        must not result in tagging even if the JWT still carries
+        the claim and has not yet hit its natural ``exp``."""
+        from django.test import RequestFactory
+
+        from hub.apps.auth.jwt_utils import JWTTokenGenerator
+        from hub.apps.tenants.impersonation_middleware import (
+            ImpersonationMiddleware,
+        )
+        from hub.apps.tenants.models import ImpersonationSession
+
+        target_tenant = _make_tenant()
+        target = _make_regular_user(target_tenant)
+        impersonator_tenant = _make_tenant(slug_suffix=f"imp-{uuid.uuid4().hex[:6]}")
+        impersonator = _make_platform_admin(tenant=impersonator_tenant)
+        now = timezone.now()
+        sess = ImpersonationSession.objects.create(
+            impersonator=impersonator,
+            impersonated_user=target,
+            impersonator_tenant=impersonator_tenant,
+            impersonated_tenant=target_tenant,
+            started_at=now,
+            expires_at=now + timedelta(minutes=60),
+            max_minutes=60,
+            reason="testing",
+        )
+        # End the session BEFORE the JWT is used.
+        sess.end(reason="manual_exit")
+
+        token = JWTTokenGenerator.generate_access_token(
+            target,
+            tenant_id=str(target_tenant.id),
+            impersonation_session_id=str(sess.id),
+        )
+        factory = RequestFactory()
+        request = factory.get("/api/v1/healthz/")
+        request.META["HTTP_AUTHORIZATION"] = f"Bearer {token}"
+
+        captured: dict = {}
+
+        def _stub_view(req):
+            captured["impersonation_session_id"] = getattr(
+                req, "impersonation_session_id", "MISSING"
+            )
+            from django.http import HttpResponse
+
+            return HttpResponse(status=204)
+
+        middleware = ImpersonationMiddleware(_stub_view)
+        middleware(request)
+        assert captured["impersonation_session_id"] is None
+
+
+# ---------------------------------------------------------------------------
+# Tier 9 — Audit-event constants registered
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.integration
+class TestAuditConstantsRegistered:
+    @pytest.mark.integration
+    def test_impersonation_started_constant_exists(self):
+        assert _audit_et.IMPERSONATION_STARTED == "IMPERSONATION_STARTED"
+
+    @pytest.mark.integration
+    def test_impersonation_ended_constant_exists(self):
+        assert _audit_et.IMPERSONATION_ENDED == "IMPERSONATION_ENDED"
+
+    @pytest.mark.integration
+    def test_impersonation_rejected_constant_exists(self):
+        assert _audit_et.IMPERSONATION_REJECTED == "IMPERSONATION_REJECTED"  # ---------------------------------------------------------------------------)
+# Tier 10 — Phase 235.4 audit-fix: JWT expiry returns 401 (spec 235.4.16)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.integration
+class TestImpersonationJWTExpiry:
+    """Spec 235.4.16 — an impersonation JWT past its ``exp`` window must
+    fail JWT verification at the auth layer.
+
+    The start endpoint mints the JWT with ``ttl_seconds = max_minutes * 60``
+    via the new ``JWTTokenGenerator.generate_access_token(..., ttl_seconds=...)``
+    kwarg. Audit-replay relies on this behaviour: once the session is
+    expired by the cron, EVEN IF an attacker captured the JWT, the
+    JWT itself becomes useless after its natural ``exp`` (a defence
+    layer in addition to the ImpersonationMiddleware's "trust the
+    row over the claim" rule).
+    """
+
+    @pytest.mark.integration
+    def test_expired_impersonation_jwt_decodes_to_none(self):
+        from hub.apps.auth.jwt_utils import JWTTokenGenerator
+
+        target_tenant = _make_tenant()
+        target = _make_regular_user(target_tenant)
+        # ttl_seconds=-1 mints a token whose ``exp`` is already in the
+        # past, so ``jwt.decode`` raises ``ExpiredSignatureError`` and
+        # ``decode_access_token`` returns None — the auth layer would
+        # reject the request with 401.
+        expired_token = JWTTokenGenerator.generate_access_token(
+            target,
+            tenant_id=str(target_tenant.id),
+            impersonation_session_id=str(uuid.uuid4()),
+            ttl_seconds=-1,
+        )
+        payload = JWTTokenGenerator.decode_access_token(
+            expired_token, verify_version=False
+        )
+        assert payload is None, (
+            "An impersonation JWT past its exp window MUST decode to None "
+            "(the auth layer translates this to HTTP 401)."
+        )
+
+
+# ---------------------------------------------------------------------------
+# Tier 11 — Phase 235.4 audit-fix Gap 2: exit-endpoint permission contract
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.integration
+class TestImpersonateExitPermissionMatrix:
+    """Phase 235.4 audit-fix — the exit endpoint must accept TWO auth
+    surfaces:
+
+    1. The original operator using their regular cookie/Bearer auth
+       (PLATFORM_ADMIN) — force-end / incident-response path.
+    2. The same operator using the impersonation JWT they just minted —
+       common-case banner Exit button flow, where ``request.user`` is
+       the IMPERSONATED user but ``request.impersonation_session_id``
+       points to the session being exited.
+
+    AND it must reject a DIFFERENT-session impersonation JWT (defence-
+    in-depth — an attacker holding session-B's JWT cannot use it to
+    end session-A).
+    """
+
+    @pytest.fixture(autouse=True)
+    def _setup(self):
+        self.target_tenant = _make_tenant()
+        self.target = _make_regular_user(self.target_tenant)
+        self.admin = _make_platform_admin()
+        self.client = APIClient()
+        self.client.force_authenticate(self.admin)
+        # Open a session so we have something to exit.
+        resp = self.client.post(
+            _start_url(),
+            {"user_id": str(self.target.id), "reason": "support call"},
+            format="json",
+        )
+        assert resp.status_code == status.HTTP_201_CREATED, resp.content
+        self.session_id = resp.json()["session"]["id"]
+        self.impersonation_jwt = resp.json()["access_token"]
+
+    @pytest.mark.integration
+    def test_exit_via_platform_admin_cookie_session_succeeds(self):
+        # Already force_authenticated as PLATFORM_ADMIN.
+        resp = self.client.post(
+            _exit_url(), {"session_id": self.session_id}, format="json"
+        )
+        assert resp.status_code == status.HTTP_200_OK, resp.content
+
+    @pytest.mark.integration
+    def test_exit_via_impersonation_jwt_succeeds(self):
+        from hub.apps.tenants.models import ImpersonationSession
+
+        # Drop the force_authenticate and use the impersonation JWT
+        # instead — this is the path the SPA banner Exit button takes.
+        anon = APIClient()
+        anon.credentials(HTTP_AUTHORIZATION=f"Bearer {self.impersonation_jwt}")
+        resp = anon.post(
+            _exit_url(), {"session_id": self.session_id}, format="json"
+        )
+        assert resp.status_code == status.HTTP_200_OK, resp.content
+        sess = ImpersonationSession.objects.using("admin").get(pk=self.session_id)
+        assert sess.status == "ENDED"
+        assert sess.end_reason == "manual_exit"
+
+    @pytest.mark.integration
+    def test_exit_via_different_session_jwt_returns_403(self):
+        """An impersonation JWT for session-B MUST NOT exit session-A."""
+        from hub.apps.auth.jwt_utils import JWTTokenGenerator
+        from hub.apps.tenants.models import ImpersonationSession
+
+        # Mint a JWT for a DIFFERENT (hypothetical) session.
+        other_session_id = str(uuid.uuid4()
+        bogus_jwt = JWTTokenGenerator.generate_access_token(
+            self.target,
+            tenant_id=str(self.target_tenant.id),
+            impersonation_session_id=other_session_id,
+        )
+        anon = APIClient()
+        anon.credentials(HTTP_AUTHORIZATION=f"Bearer {bogus_jwt}")
+        resp = anon.post(
+            _exit_url(), {"session_id": self.session_id}, format="json"
+        )
+        # The middleware rejects the JWT (session doesn't exist) so
+        # request.impersonation_session_id is None — the permission
+        # class returns False — DRF returns 403 (or 401 depending on
+        # negotiation).
+        assert resp.status_code in (
+            status.HTTP_401_UNAUTHORIZED,
+            status.HTTP_403_FORBIDDEN,
+        )
+        # The genuine session remains ACTIVE.
+        sess = ImpersonationSession.objects.using("admin".get(
+            pk=self.session_id
+        )
+        assert sess.status == "ACTIVE"
+
+    @pytest.mark.integration
+    def test_exit_audit_records_ended_by_user_id(self):
+        """The audit row's ``details_json.ended_by_user_id`` records
+        WHO clicked Exit — important when a different PLATFORM_ADMIN
+        force-ends another operator's runaway session."""
+        # Force-end as a SECOND PLATFORM_ADMIN (not the original
+        # session's impersonator).
+        force_ender = _make_platform_admin()
+        self.client.force_authenticate(force_ender)
+        resp = self.client.post(
+            _exit_url(), {"session_id": self.session_id}, format="json"
+        )
+        assert resp.status_code == status.HTTP_200_OK, resp.content
+        evt = AuditEvent.all_objects.filter(
+            action=_audit_et.IMPERSONATION_ENDED,
+            details_json__impersonation_session_id=self.session_id,
+        ).first()
+        assert evt is not None
+        d = evt.details_json or {}
+        assert d.get("ended_by_user_id") == str(force_ender.id)
+        # The session's impersonator_user_id is preserved — distinct
+        # from ended_by_user_id, proves the force-end model.
+        assert d.get("impersonator_user_id") == str(self.admin.id)

@@ -1,0 +1,81 @@
+{
+  "wizard": {
+    "title": "Pipeline Setup Wizard",
+    "direction": {
+      "title": "Choose Direction",
+      "codeFirst": {
+        "label": "Code First",
+        "description": "Import an existing dbt project. Meshan't will generate a HubContract from your models."
+      },
+      "contractFirst": {
+        "label": "Contract First",
+        "description": "Start from a HubContract. Meshan't will scaffold dbt model files for you."
+      }
+    },
+    "config": {
+      "title": "Configure dbt Project",
+      "gitUrl": "Git Repository URL",
+      "gitUrlHelp": "HTTPS URL of your dbt project repository",
+      "warehouseType": "Warehouse Type",
+      "warehouseTypeHelp": "Target data warehouse for dbt execution",
+      "credentialRef": "Warehouse Credential Reference",
+      "credentialRefHelp": "AWS Secrets Manager ARN for warehouse credentials",
+      "gitCredentialRef": "Git Credential Reference",
+      "gitCredentialRefHelp": "AWS Secrets Manager ARN for git Personal Access Token",
+      "targetName": "Target Name",
+      "targetNameHelp": "dbt target (default: prod)",
+      "timeout": "dbt Timeout (seconds)",
+      "timeoutHelp": "Maximum execution time per dbt command"
+    },
+    "review": {
+      "title": "Review & Execute",
+      "codeFirstReview": "Review the generated HubContract before executing the pipeline.",
+      "contractFirstReview": "Download the scaffolded dbt files and add them to your dbt project.",
+      "execute": "Execute Pipeline",
+      "backToConfig": "Back to Configuration"
+    },
+    "executing": {
+      "title": "Executing...",
+      "description": "Your dbt pipeline is running. This may take several minutes."
+    }
+  },
+  "contract": {
+    "title": "Contract Preview",
+    "noSchema": "No schema fields defined. Run dbt docs generate to populate the contract.",
+    "columns": {
+      "name": "Name",
+      "type": "Type",
+      "description": "Description",
+      "constraints": "Constraints"
+    },
+    "source": "Source",
+    "accept": "Accept Contract"
+  },
+  "scaffold": {
+    "title": "Download Scaffold",
+    "description": "Download the generated dbt model files and add them to your dbt project.",
+    "files": {
+      "modelSql": "Model SQL",
+      "modelYml": "Model YAML Schema",
+      "projectYml": "dbt_project.yml"
+    },
+    "download": "Download All Files"
+  },
+  "validation": {
+    "title": "Validate Output",
+    "form": {
+      "database": "Database / Catalog",
+      "schema": "Schema",
+      "table": "Table Name",
+      "warehouseType": "Warehouse Type",
+      "validate": "Validate"
+    },
+    "match": "Schema matches contract",
+    "mismatch": "Schema drift detected",
+    "added": "Added",
+    "removed": "Removed",
+    "changed": "Changed",
+    "contractName": "Contract",
+    "noChanges": "No schema differences found."
+  }
+}

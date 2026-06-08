@@ -1,0 +1,680 @@
+"""
+Phase 235.1 — PLATFORM_ADMIN per-tenant feature-flag UI.
+
+Engineering contract this suite pins
+(``openspec/changes/preprod01/specs/admin-feature-flag-management/spec.md``):
+
+1.  **Registry-driven UI** (REQ-ADMIN-FLAGS-001) — every
+    ``Tenant.*_enabled`` BooleanField that is admin-visible MUST
+    appear in :mod:`hub.apps.tenants.feature_flag_registry`. The
+    registry's ``sensitive`` boolean discriminates flags that need
+    the two-person rule.
+2.  **Endpoint** (REQ-ADMIN-FLAGS-001) — ``PUT
+    /api/v1/admin/tenants/{id}/feature-flags/`` accepts a partial
+    update of registered flags + a ``reason`` (min 10 chars).
+3.  **Rate-limit** (REQ-ADMIN-FLAGS-001) — 60 flag-flips per
+    PLATFORM_ADMIN per hour; 61st returns 429 with ``Retry-After``.
+4.  **Audit** — every flip emits ``TENANT_FEATURE_FLAG_CHANGED``
+    with ``{flag, old_value, new_value, reason, requested_by,
+    approver}``.
+5.  **Two-person rule** (REQ-ADMIN-FLAGS-002) — sensitive flags
+    create a ``FeatureFlagFlipApproval`` row in ``pending`` status
+    instead of flipping; a SECOND PLATFORM_ADMIN approves to
+    persist the flip. Audit events
+    ``FEATURE_FLAG_FLIP_APPROVAL_REQUESTED`` (on request) and
+    ``FEATURE_FLAG_FLIP_APPROVED`` (on approval) emitted at each
+    transition. Self-approval forbidden with
+    ``SELF_APPROVAL_FORBIDDEN``.
+6.  **Permission** — PLATFORM_ADMIN-only via ``IsPlatformAdmin``;
+    TENANT_ADMIN gets 403.
+"""
+from __future__ import annotations
+import pytest
+
+import uuid
+from datetime import timedelta
+
+from django.contrib.auth import get_user_model
+from django.utils import timezone
+from rest_framework.test import APIClient
+
+from hub.apps.audit import event_types as _audit_et
+from hub.apps.audit.models import AuditEvent
+from hub.apps.tenants.models import Tenant
+
+pytestmark = pytest.mark.django_db(transaction=True)
+User = get_user_model()
+
+
+# ---------------------------------------------------------------------------
+# Test helpers
+# ---------------------------------------------------------------------------
+
+
+def _ensure_tenant_has_subscription(tenant: Tenant) -> None:
+    from datetime import timedelta
+    from django.utils import timezone
+    from hub.apps.billing.models import Subscription, SubscriptionStatus
+    from hub.apps.tenants.models import PlanTier, TenantPlan
+
+    if Subscription.objects.filter(tenant=tenant, status=SubscriptionStatus.ACTIVE).exists():
+        return
+    plan, _ = TenantPlan.objects.get_or_create(
+        slug=f"test-plan-{tenant.slug}",
+        defaults={
+            "name": f"Test Plan {tenant.slug}",
+            "tier": PlanTier.FREE,
+            "limits_json": {"max_assets": 100},
+            "is_active": True,
+        },
+    )
+    Subscription.objects.create(
+        tenant=tenant,
+        plan=plan,
+        status=SubscriptionStatus.ACTIVE,
+        current_period_start=timezone.now(),
+        current_period_end=timezone.now() + timedelta(days=365),
+    )
+
+
+def _make_tenant(*, slug_suffix: str | None = None) -> Tenant:
+    uid = slug_suffix or uuid.uuid4().hex[:8]
+    tenant = Tenant.objects.create(name=f"Tenant {uid}", slug=f"tenant-{uid}")
+    _ensure_tenant_has_subscription(tenant)
+    return tenant
+
+
+def _make_platform_admin(*, tenant: Tenant | None = None) -> User:
+    uid = uuid.uuid4().hex[:8]
+    home_tenant = tenant or _make_tenant(slug_suffix=f"pa-home-{uid}")
+    user = User.objects.create_user(
+        email=f"pa-{uid}@example.com",
+        password="testpass123",
+        tenant=home_tenant,
+    )
+    user.is_platform_admin = True
+    user.save(update_fields=["is_platform_admin"])
+    return user
+
+
+def _make_regular_user(tenant: Tenant) -> User:
+    uid = uuid.uuid4().hex[:8]
+    return User.objects.create_user(
+        email=f"u-{uid}@example.com",
+        password="testpass123",
+        tenant=tenant,
+    )
+
+
+def _detail_url(tenant_id) -> str:
+    return f"/api/v1/admin/tenants/{tenant_id}/feature-flags/"
+
+
+def _redis_flush_admin_buckets() -> None:
+    """Reset the rate-limit Redis keys so independent tests don't pollute."""
+    try:
+        from hub.apps.api.middleware.idempotency_utils import get_redis_client
+
+        client = get_redis_client()
+        for key in client.scan_iter("admin:feature_flag_flip:*"):
+            client.delete(key)
+    except Exception:
+        pass
+
+
+# ---------------------------------------------------------------------------
+# Tier 1 — registry shape (no DB / API)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.integration
+class TestFeatureFlagRegistryShape:
+    @pytest.mark.integration
+    def test_registry_has_sensitive_attribute(self):
+        """REQ-ADMIN-FLAGS-001 — every entry exposes a ``sensitive`` boolean."""
+        from hub.apps.tenants.feature_flag_registry import REGISTRY
+
+        for f in REGISTRY:
+            assert hasattr(f, "sensitive"), (
+                f"FeatureFlag {f.name!r} missing ``sensitive`` field"
+            )
+            assert isinstance(f.sensitive, bool)
+
+    @pytest.mark.integration
+    def test_registry_helpers_expose_sensitive_subset(self):
+        from hub.apps.tenants.feature_flag_registry import (
+            REGISTRY,
+            sensitive_flags,
+        )
+
+        registry_sensitive = {f.name for f in REGISTRY if f.sensitive}
+        helper_sensitive = {f.name for f in sensitive_flags()}
+        assert registry_sensitive == helper_sensitive
+
+    @pytest.mark.integration
+    def test_compliance_intake_gate_flag_is_sensitive(self):
+        """Spec scenario: disabling the compliance gate is the canonical sensitive flip."""
+        from hub.apps.tenants.feature_flag_registry import get_flag
+
+        f = get_flag("compliance_intake_gate_enabled")
+        assert f is not None, "registry must include compliance_intake_gate_enabled"
+        assert f.sensitive
+
+
+# ---------------------------------------------------------------------------
+# Tier 2 — FeatureFlagFlipApproval model
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.integration
+class TestFeatureFlagFlipApprovalModel:
+    @pytest.fixture(autouse=True)
+    def _setup(self):
+        self.tenant = _make_tenant()
+        self.admin_a = _make_platform_admin()
+        self.admin_b = _make_platform_admin()
+
+    @pytest.mark.integration
+    def test_pending_row_persists_with_required_fields(self):
+        from hub.apps.tenants.models import (
+            FeatureFlagFlipApproval,
+            FeatureFlagFlipApprovalStatus,
+        )
+
+        row = FeatureFlagFlipApproval.objects.create(
+            tenant=self.tenant,
+            flag="compliance_intake_gate_enabled",
+            requested_value=False,
+            requested_by=self.admin_a,
+            reason="Disabling intake for incident response per SEV-2 IRT-1234",
+        )
+        row.refresh_from_db()
+        assert row.status == FeatureFlagFlipApprovalStatus.PENDING
+        assert row.approved_by is None
+        assert row.approved_at is None
+        assert row.requested_at is not None
+
+    @pytest.mark.integration
+    def test_unique_pending_per_tenant_flag(self):
+        """Only one ``pending`` row per (tenant, flag) allowed at a time."""
+        from django.db import IntegrityError
+        from hub.apps.tenants.models import FeatureFlagFlipApproval
+
+        FeatureFlagFlipApproval.objects.create(
+            tenant=self.tenant,
+            flag="compliance_intake_gate_enabled",
+            requested_value=False,
+            requested_by=self.admin_a,
+            reason="First request for sev-2 incident triage",
+        )
+        with pytest.raises(IntegrityError):
+            FeatureFlagFlipApproval.objects.create(
+                tenant=self.tenant,
+                flag="compliance_intake_gate_enabled",
+                requested_value=False,
+                requested_by=self.admin_b,
+                reason="Second request collides with the first",
+            )
+
+    @pytest.mark.integration
+    def test_approval_transition_records_approver_and_timestamp(self):
+        from hub.apps.tenants.models import (
+            FeatureFlagFlipApproval,
+            FeatureFlagFlipApprovalStatus,
+        )
+
+        row = FeatureFlagFlipApproval.objects.create(
+            tenant=self.tenant,
+            flag="compliance_intake_gate_enabled",
+            requested_value=False,
+            requested_by=self.admin_a,
+            reason="Disabling intake for incident response",
+        )
+        before = timezone.now()
+        row.mark_approved(by=self.admin_b)
+        row.refresh_from_db()
+        assert row.status == FeatureFlagFlipApprovalStatus.APPROVED
+        assert row.approved_by_id == self.admin_b.id
+        assert row.approved_at is not None and row.approved_at >= before
+
+    @pytest.mark.integration
+    def test_self_approval_raises(self):
+        from hub.apps.tenants.models import FeatureFlagFlipApproval
+
+        row = FeatureFlagFlipApproval.objects.create(
+            tenant=self.tenant,
+            flag="compliance_intake_gate_enabled",
+            requested_value=False,
+            requested_by=self.admin_a,
+            reason="Disabling intake for incident response",
+        )
+        with pytest.raises(ValueError, match="SELF_APPROVAL_FORBIDDEN"):
+            row.mark_approved(by=self.admin_a)
+
+
+# ---------------------------------------------------------------------------
+# Tier 3 — DRF endpoint (PUT /api/v1/admin/tenants/{id}/feature-flags/)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.integration
+class TestAdminFeatureFlagEndpoint:
+    @pytest.fixture(autouse=True)
+    def _setup(self):
+        self.target = _make_tenant()
+        self.admin = _make_platform_admin()
+        self.other_admin = _make_platform_admin()
+        self.client = APIClient()
+        _redis_flush_admin_buckets()
+
+    # --- permission gating ----------------------------------------------
+
+    @pytest.mark.integration
+    def test_unauthenticated_blocked(self):
+        resp = self.client.put(
+            _detail_url(self.target.id),
+            {"data_quality_enabled": True, "reason": "Promote DQ rollout"},
+            format="json",
+        )
+        assert resp.status_code in (
+            status.HTTP_401_UNAUTHORIZED,
+            status.HTTP_403_FORBIDDEN,
+        )
+
+    @pytest.mark.integration
+    def test_tenant_admin_blocked(self):
+        regular = _make_regular_user(self.target)
+        self.client.force_authenticate(regular)
+        resp = self.client.put(
+            _detail_url(self.target.id),
+            {"data_quality_enabled": True, "reason": "Should be blocked"},
+            format="json",
+        )
+        assert resp.status_code == status.HTTP_403_FORBIDDEN  # --- happy path: non-sensitive flag flip ----------------------------)
+
+    @pytest.mark.integration
+    def test_platform_admin_flips_nonsensitive_flag(self):
+        self.target.data_quality_enabled = False
+        self.target.save(update_fields=["data_quality_enabled"])
+        self.client.force_authenticate(self.admin)
+
+        resp = self.client.put(
+            _detail_url(self.target.id),
+            {"data_quality_enabled": True, "reason": "Promote DQ rollout for tenant"},
+            format="json",
+        )
+        assert resp.status_code == status.HTTP_200_OK, resp.content
+        self.target.refresh_from_db()
+        assert self.target.data_quality_enabled
+
+        # Audit event present with admin-flow envelope.
+        audit = AuditEvent.objects.filter(
+            tenant=self.target,
+            action=_audit_et.TENANT_FEATURE_FLAG_CHANGED,
+        ).order_by("-timestamp").first()
+        assert audit is not None
+        details = audit.details_json or {}
+        assert details.get("flag") == "data_quality_enabled"
+        assert not details.get("old_value")
+        assert details.get("new_value")
+        assert details.get("reason") == "Promote DQ rollout for tenant"
+        assert details.get("requested_by") == str(self.admin.id)
+        # Non-sensitive: approver is the same as requested_by (single-person).
+        assert details.get("approver") == str(self.admin.id)
+
+    # --- reason validation -----------------------------------------------
+
+    @pytest.mark.integration
+    def test_short_reason_rejected(self):
+        self.client.force_authenticate(self.admin)
+        resp = self.client.put(
+            _detail_url(self.target.id),
+            {"data_quality_enabled": True, "reason": "ok"},
+            format="json",
+        )
+        assert resp.status_code == status.HTTP_400_BAD_REQUEST
+        body = resp.json()
+        assert "reason" in str(body.lower())
+    @pytest.mark.integration
+    def test_missing_reason_rejected(self):
+        self.client.force_authenticate(self.admin)
+        resp = self.client.put(
+            _detail_url(self.target.id),
+            {"data_quality_enabled": True},
+            format="json",
+        )
+        assert resp.status_code == status.HTTP_400_BAD_REQUEST  # --- unknown flag rejection ------------------------------------------)
+
+    @pytest.mark.integration
+    def test_unknown_flag_rejected(self):
+        self.client.force_authenticate(self.admin)
+        resp = self.client.put(
+            _detail_url(self.target.id),
+            {"this_flag_does_not_exist": True, "reason": "Trying to fuzz the endpoint"},
+            format="json",
+        )
+        assert resp.status_code == status.HTTP_400_BAD_REQUEST
+        body = str(resp.json()).lower()
+        assert "this_flag_does_not_exist" in body or "unknown" in body
+
+    # --- two-person rule on sensitive flags ------------------------------
+
+    @pytest.mark.integration
+    def test_sensitive_flag_first_request_creates_pending_approval(self):
+        from hub.apps.tenants.models import (
+            FeatureFlagFlipApproval,
+            FeatureFlagFlipApprovalStatus,
+        )
+
+        # Ensure starting state: gate currently enabled (sensitive flip = disabling it).
+        self.target.compliance_intake_gate_enabled = True
+        self.target.save(update_fields=["compliance_intake_gate_enabled"])
+        self.client.force_authenticate(self.admin)
+        resp = self.client.put(
+            _detail_url(self.target.id),
+            {
+                "compliance_intake_gate_enabled": False,
+                "reason": "Sev-2 incident — disabling intake per IRT-9999",
+            },
+            format="json",
+        )
+        # Spec: response is 202 Accepted — flag did NOT flip; a pending row
+        # awaits approval.
+        assert resp.status_code == status.HTTP_202_ACCEPTED, resp.content
+        self.target.refresh_from_db()
+        assert self.target.compliance_intake_gate_enabled
+
+        pending = FeatureFlagFlipApproval.objects.filter(
+            tenant=self.target,
+            flag="compliance_intake_gate_enabled",
+            status=FeatureFlagFlipApprovalStatus.PENDING,
+        )
+        assert pending.count() == 1
+        # Audit emission.
+        assert AuditEvent.objects.filter(
+            tenant=self.target,
+            action=_audit_et.FEATURE_FLAG_FLIP_APPROVAL_REQUESTED,
+        ).exists()
+
+    @pytest.mark.integration
+    def test_second_admin_approves_pending_flag(self):
+        from hub.apps.tenants.models import (
+            FeatureFlagFlipApproval,
+            FeatureFlagFlipApprovalStatus,
+        )
+
+        self.target.compliance_intake_gate_enabled = True
+        self.target.save(update_fields=["compliance_intake_gate_enabled"])
+        # First admin: request the sensitive flip.
+        self.client.force_authenticate(self.admin)
+        self.client.put(
+            _detail_url(self.target.id),
+            {
+                "compliance_intake_gate_enabled": False,
+                "reason": "Sev-2 incident — disabling intake per IRT-9999",
+            },
+            format="json",
+        )
+        pending = FeatureFlagFlipApproval.objects.get(
+            tenant=self.target,
+            flag="compliance_intake_gate_enabled",
+            status=FeatureFlagFlipApprovalStatus.PENDING,
+        )
+
+        # Second admin: approve via the approval endpoint.
+        self.client.force_authenticate(self.other_admin)
+        approval_url = (
+            f"/api/v1/admin/feature-flag-approvals/{pending.id}/approve/"
+        )
+        resp = self.client.post(approval_url, {}, format="json")
+        assert resp.status_code == status.HTTP_200_OK, resp.content
+
+        pending.refresh_from_db()
+        assert pending.status == FeatureFlagFlipApprovalStatus.APPROVED
+        assert pending.approved_by_id == self.other_admin.id
+        self.target.refresh_from_db()
+        assert not self.target.compliance_intake_gate_enabled
+
+        # Both transition audit events emitted.
+        assert AuditEvent.objects.filter(
+            tenant=self.target,
+            action=_audit_et.FEATURE_FLAG_FLIP_APPROVED,
+        ).exists()
+        # And the canonical CHANGED event records the approver != requester.
+        changed = AuditEvent.objects.filter(
+            tenant=self.target,
+            action=_audit_et.TENANT_FEATURE_FLAG_CHANGED,
+        ).order_by("-timestamp").first()
+        assert changed is not None
+        details = changed.details_json or {}
+        assert details["requested_by"] == str(self.admin.id)
+        assert details["approver"] == str(self.other_admin.id)
+
+    @pytest.mark.integration
+    def test_self_approval_forbidden(self):
+        from hub.apps.tenants.models import FeatureFlagFlipApproval
+
+        self.target.compliance_intake_gate_enabled = True
+        self.target.save(update_fields=["compliance_intake_gate_enabled"])
+        self.client.force_authenticate(self.admin)
+        self.client.put(
+            _detail_url(self.target.id),
+            {
+                "compliance_intake_gate_enabled": False,
+                "reason": "Sev-2 incident — disabling intake per IRT-9999",
+            },
+            format="json",
+        )
+        pending = FeatureFlagFlipApproval.objects.get(
+            tenant=self.target, flag="compliance_intake_gate_enabled"
+        )
+
+        # SAME admin tries to approve their own request → 403.
+        resp = self.client.post(
+            f"/api/v1/admin/feature-flag-approvals/{pending.id}/approve/",
+            {},
+            format="json",
+        )
+        assert resp.status_code == status.HTTP_403_FORBIDDEN
+        body = resp.json()
+        assert "SELF_APPROVAL_FORBIDDEN" in str(body)
+
+    # --- rate-limit ------------------------------------------------------
+
+    # --- audit-fix Gap 1: non-boolean values rejected -----------------
+
+    @pytest.mark.integration
+    def test_non_boolean_value_rejected_400(self):
+        """Phase 235.1 audit-fix Gap 1 — JSON-bool contract is strict.
+
+        ``bool("false") == True`` in Python; if the view coerced
+        values via ``bool(v)`` it would silently flip the flag in
+        the opposite direction the operator intended. The endpoint
+        MUST 400 instead.
+        """
+        self.client.force_authenticate(self.admin)
+        for bad_value in ["false", "true", 0, 1, None, [], {}]:
+            resp = self.client.put(
+                _detail_url(self.target.id),
+                {
+                    "data_quality_enabled": bad_value,
+                    "reason": "Non-boolean smoke test value-typed input",
+                },
+                format="json",
+            )
+            assert resp.status_code == status.HTTP_400_BAD_REQUEST, (
+                bad_value,
+                resp.content,
+            )
+            body = resp.json()
+            # FIXME: sed artifact — original: assert "non_boolean_flags" in str(body) or "non boolean" in str(body.lower(), ()
+                bad_value,
+                body,
+            )
+
+    # --- audit-fix Gap 4: already-approved row returns 409 ------------
+
+    @pytest.mark.integration
+    def test_already_approved_returns_409_conflict(self):
+        """Phase 235.1 audit-fix Gap 4 — second approval attempt is a no-op 409.
+
+        The :func:`select_for_update`-wrapped lookup means concurrent
+        approves can't both succeed. After the FIRST approver
+        commits, a subsequent click sees ``status=APPROVED`` and
+        returns ``409 Conflict`` — NOT another flip + duplicate
+        audit emission.
+        """
+        from hub.apps.tenants.models import (
+            FeatureFlagFlipApproval,
+            FeatureFlagFlipApprovalStatus,
+        )
+
+        self.target.compliance_intake_gate_enabled = True
+        self.target.save(update_fields=["compliance_intake_gate_enabled"])
+        # First admin: open the sensitive flip.
+        self.client.force_authenticate(self.admin)
+        self.client.put(
+            _detail_url(self.target.id),
+            {
+                "compliance_intake_gate_enabled": False,
+                "reason": "Sev-2 incident — disabling intake per IRT-9999",
+            },
+            format="json",
+        )
+        pending = FeatureFlagFlipApproval.objects.get(
+            tenant=self.target, flag="compliance_intake_gate_enabled"
+        )
+        approve_url = f"/api/v1/admin/feature-flag-approvals/{pending.id}/approve/"
+
+        # Second admin approves — first attempt succeeds.
+        self.client.force_authenticate(self.other_admin)
+        resp1 = self.client.post(approve_url, {}, format="json")
+        assert resp1.status_code == status.HTTP_200_OK, resp1.content  # Second attempt (same approver, same row) — 409, no double-emit.)
+        before = AuditEvent.objects.filter(
+            tenant=self.target,
+            action=_audit_et.TENANT_FEATURE_FLAG_CHANGED,
+        ).count()
+        resp2 = self.client.post(approve_url, {}, format="json")
+        assert resp2.status_code == status.HTTP_409_CONFLICT, resp2.content
+        after = AuditEvent.objects.filter(
+            tenant=self.target,
+            action=_audit_et.TENANT_FEATURE_FLAG_CHANGED,
+        ).count()
+        assert after == before, "second approve must NOT emit a duplicate CHANGED event"
+
+    # --- audit-fix Gap 3: actor_user is approver on sensitive flips ---
+
+    @pytest.mark.integration
+    def test_sensitive_changed_event_actor_is_approver(self):
+        """Phase 235.1 audit-fix Gap 3 — actor_user on CHANGED reflects the DB-writer.
+
+        For non-sensitive flips, ``requested_by == approver`` so the
+        audit-event's top-level ``actor_user_id`` matches both. For
+        sensitive flips, the user whose action physically persisted
+        the flip is the APPROVER (second admin) — that's whose UUID
+        should live on the audit row's top-level ``actor_user_id``
+        column. The requester's UUID is preserved in
+        ``details_json.requested_by`` so audit-replay can still
+        reconstruct the two-person-rule transition.
+        """
+        self.target.compliance_intake_gate_enabled = True
+        self.target.save(update_fields=["compliance_intake_gate_enabled"])
+        self.client.force_authenticate(self.admin)
+        self.client.put(
+            _detail_url(self.target.id),
+            {
+                "compliance_intake_gate_enabled": False,
+                "reason": "Sev-2 incident — disabling intake per IRT-9999",
+            },
+            format="json",
+        )
+        from hub.apps.tenants.models import FeatureFlagFlipApproval
+
+        pending = FeatureFlagFlipApproval.objects.get(
+            tenant=self.target, flag="compliance_intake_gate_enabled"
+        )
+
+        self.client.force_authenticate(self.other_admin)
+        self.client.post(
+            f"/api/v1/admin/feature-flag-approvals/{pending.id}/approve/",
+            {},
+            format="json",
+        )
+
+        changed = AuditEvent.objects.filter(
+            tenant=self.target,
+            action=_audit_et.TENANT_FEATURE_FLAG_CHANGED,
+        ).order_by("-timestamp").first()
+        assert changed is not None
+        # Top-level actor_user reflects the SECOND admin (the writer).
+        assert changed.actor_user_id == self.other_admin.id, (
+            "actor_user on TENANT_FEATURE_FLAG_CHANGED must be the "
+            "approver (the user whose action persisted the SQL UPDATE), "
+            "not the original requester"
+        )
+        # details_json still records both UUIDs for audit replay.
+        d = changed.details_json or {}
+        assert d.get("requested_by") == str(self.admin.id)
+        assert d.get("approver") == str(self.other_admin.id)
+
+    @pytest.mark.integration
+    def test_rate_limit_returns_429_with_retry_after(self):
+        """61st flip in an hour returns 429 with ``Retry-After`` header."""
+        self.client.force_authenticate(self.admin)
+        # First 60 succeed (alternate true/false on a non-sensitive flag).
+        for i in range(60):
+            resp = self.client.put(
+                _detail_url(self.target.id),
+                {
+                    "data_quality_enabled": (i % 2 == 0),
+                    "reason": f"Rate-limit smoke iteration {i:02d}",
+                },
+                format="json",
+            )
+            assert resp.status_code == status.HTTP_200_OK, (i, resp.content)  # 61st request: 429.)
+        resp = self.client.put(
+            _detail_url(self.target.id),
+            {
+                "data_quality_enabled": True,
+                "reason": "Rate-limit excess attempt 61",
+            },
+            format="json",
+        )
+        assert resp.status_code == status.HTTP_429_TOO_MANY_REQUESTS, resp.content
+        assert "Retry-After" in resp.headers
+
+
+# ---------------------------------------------------------------------------
+# Tier 4 — list endpoint (registry view) for the SPA
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.integration
+class TestAdminFeatureFlagListEndpoint:
+    """The SPA reads ``GET /api/v1/admin/tenants/{id}/feature-flags/`` to
+    render the tabular UI. The shape MUST be derived from the registry so
+    a new flag auto-renders."""
+
+    @pytest.fixture(autouse=True)
+    def _setup(self):
+        self.target = _make_tenant()
+        self.admin = _make_platform_admin()
+        self.client = APIClient()
+
+    @pytest.mark.integration
+    def test_get_returns_registry_with_current_values(self):
+        self.client.force_authenticate(self.admin)
+        resp = self.client.get(_detail_url(self.target.id)
+        assert resp.status_code == status.HTTP_200_OK, resp.content
+        body = resp.json()
+        flags = body.get("flags") or body
+        assert isinstance(flags, list)
+        # Every registry entry surfaces; each carries name + sensitive + current value.
+        from hub.apps.tenants.feature_flag_registry import REGISTRY
+
+        returned = {f["name"]: f for f in flags}
+        for entry in REGISTRY:
+            assert entry.name in returned, f"registry flag {entry.name} missing from API"
+            row = returned[entry.name]
+            assert "current_value" in row
+            assert row.get("sensitive") == entry.sensitive

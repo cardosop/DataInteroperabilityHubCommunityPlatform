@@ -1,0 +1,31 @@
+rules:
+  - id: warehouse-dq-no-select-star
+    patterns:
+      - pattern-regex: "SELECT\\s+\\*\\s+FROM"
+      - pattern-not:
+          pattern-regex: "SELECT\\s+COUNT\\(\\*\\)"
+    message: >
+      Warehouse-native DQ and Compliance SQL must only generate
+      SELECT COUNT(*) queries — never SELECT * that would extract
+      raw customer data from the warehouse.
+    severity: ERROR
+    languages: [python]
+    paths:
+      include:
+        - hub/apps/dq/warehouse_sql_compiler.py
+        - hub/apps/compliance/warehouse_sql_compiler.py
+
+  - id: warehouse-dq-no-data-extraction
+    patterns:
+      - pattern-either:
+          - pattern-regex: "SELECT\\s+(?!COUNT\\()"
+    message: >
+      Generated SQL should only produce aggregate results (COUNT).
+      Data-extracting queries that return row values are forbidden
+      for warehouse-native DQ/Compliance.
+    severity: ERROR
+    languages: [python]
+    paths:
+      include:
+        - hub/apps/dq/warehouse_sql_compiler.py
+        - hub/apps/compliance/warehouse_sql_compiler.py
