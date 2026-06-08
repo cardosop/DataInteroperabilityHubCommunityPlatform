@@ -85,7 +85,8 @@ def create_api_key(name: str, tier: str, expires_at: Optional[str], output_forma
     }
     if parsed_expires_at:
         # Convert back to ISO format string
-        data['expires_at'] = parsed_expires_at.isoformat()
+        # Replace +00:00 with Z for backend compatibility
+        data['expires_at'] = parsed_expires_at.isoformat().replace('+00:00', 'Z')
 
     try:
         # API endpoint: POST /api/v1/baas/api-keys/
@@ -115,7 +116,7 @@ def create_api_key(name: str, tier: str, expires_at: Optional[str], output_forma
         if isinstance(e, BaaSCLIError):
             raise
         # Check if it's an API error response
-        if hasattr(e, 'response') and hasattr(e.response, 'text'):
+        if hasattr(e, 'response') and hasattr(e.response, 'text') and hasattr(e.response, 'status_code'):
             raise handle_baas_api_error(e.response.text, e.response.status_code, 'baas/api-keys/')
         raise BaaSCLIError(
             message=f"Failed to create API key: {str(e)}",
@@ -197,7 +198,7 @@ def list_api_keys(tier: Optional[str], limit: int, offset: int, output_format: s
         if isinstance(e, BaaSCLIError):
             raise
         # Check if it's an API error response
-        if hasattr(e, 'response') and hasattr(e.response, 'text'):
+        if hasattr(e, 'response') and hasattr(e.response, 'text') and hasattr(e.response, 'status_code'):
             raise handle_baas_api_error(e.response.text, e.response.status_code, 'baas/api-keys/')
         raise BaaSCLIError(
             message=f"Failed to list API keys: {str(e)}",
@@ -227,6 +228,8 @@ def get_api_key(api_key_id: str, output_format: str):
     try:
         # API endpoint: GET /api/v1/baas/api-keys/{id}/
         data = api_client.get(f'baas/api-keys/{api_key_id.strip()}/')
+        if not isinstance(data, dict):
+            raise click.ClickException(f"Unexpected API response type: {type(data).__name__}")
 
         # Security: Ensure API key value is not in response
         if 'api_key' in data:
@@ -259,7 +262,7 @@ def get_api_key(api_key_id: str, output_format: str):
         if isinstance(e, BaaSCLIError):
             raise
         # Check if it's an API error response
-        if hasattr(e, 'response') and hasattr(e.response, 'text'):
+        if hasattr(e, 'response') and hasattr(e.response, 'text') and hasattr(e.response, 'status_code'):
             raise handle_baas_api_error(e.response.text, e.response.status_code, f'baas/api-keys/{api_key_id}/')
         # Check for 404 specifically
         if '404' in str(e) or 'not found' in str(e).lower():
@@ -330,7 +333,7 @@ def update_api_key(api_key_id: str, name: Optional[str], tier: Optional[str], ex
                     context={'expires_at': expires_at},
                     suggestion="Provide a future date in ISO format (e.g., 2025-12-31T23:59:59Z)"
                 )
-            data['expires_at'] = parsed_expires_at.isoformat()
+            data['expires_at'] = parsed_expires_at.isoformat().replace('+00:00', 'Z')
         except ValueError as e:
             raise BaaSValidationError(
                 message=f"Invalid expiration date format: {expires_at}",
@@ -341,7 +344,7 @@ def update_api_key(api_key_id: str, name: Optional[str], tier: Optional[str], ex
             )
 
     try:
-        # API endpoint: PUT /api/v1/baas/api-keys/{id}/
+        # API endpoint: PATCH /api/v1/baas/api-keys/{id}/
         result = api_client.patch(f'baas/api-keys/{api_key_id.strip()}/', json_data=data)
 
         if output_format == 'json':
@@ -364,7 +367,7 @@ def update_api_key(api_key_id: str, name: Optional[str], tier: Optional[str], ex
         if isinstance(e, BaaSCLIError):
             raise
         # Check if it's an API error response
-        if hasattr(e, 'response') and hasattr(e.response, 'text'):
+        if hasattr(e, 'response') and hasattr(e.response, 'text') and hasattr(e.response, 'status_code'):
             raise handle_baas_api_error(e.response.text, e.response.status_code, f'baas/api-keys/{api_key_id}/')
         # Check for 404 specifically
         if '404' in str(e) or 'not found' in str(e).lower():
@@ -412,7 +415,7 @@ def revoke_api_key(api_key_id: str, output_format: str):
         if isinstance(e, BaaSCLIError):
             raise
         # Check if it's an API error response
-        if hasattr(e, 'response') and hasattr(e.response, 'text'):
+        if hasattr(e, 'response') and hasattr(e.response, 'text') and hasattr(e.response, 'status_code'):
             raise handle_baas_api_error(e.response.text, e.response.status_code, f'baas/api-keys/{api_key_id}/')
         # Check for 404 specifically
         if '404' in str(e) or 'not found' in str(e).lower():
@@ -547,6 +550,8 @@ def usage_stats(api_key_id: Optional[str], start_date: Optional[str], end_date: 
     try:
         # API endpoint: GET /api/v1/baas/usage/stats/
         data = api_client.get('baas/usage/stats/', params=params)
+        if not isinstance(data, dict):
+            data = {}
 
         if output_format == 'json':
             click.echo(json.dumps(data, indent=2, default=str))
@@ -577,7 +582,7 @@ def usage_stats(api_key_id: Optional[str], start_date: Optional[str], end_date: 
         if isinstance(e, BaaSCLIError):
             raise
         # Check if it's an API error response
-        if hasattr(e, 'response') and hasattr(e.response, 'text'):
+        if hasattr(e, 'response') and hasattr(e.response, 'text') and hasattr(e.response, 'status_code'):
             raise handle_baas_api_error(e.response.text, e.response.status_code, 'baas/usage/stats/')
         raise BaaSCLIError(
             message=f"Failed to get usage statistics: {str(e)}",
@@ -674,7 +679,7 @@ def usage_by_endpoint(api_key_id: Optional[str], start_date: Optional[str], end_
         if isinstance(e, BaaSCLIError):
             raise
         # Check if it's an API error response
-        if hasattr(e, 'response') and hasattr(e.response, 'text'):
+        if hasattr(e, 'response') and hasattr(e.response, 'text') and hasattr(e.response, 'status_code'):
             raise handle_baas_api_error(e.response.text, e.response.status_code, 'baas/usage/by-endpoint/')
         raise BaaSCLIError(
             message=f"Failed to get usage by endpoint: {str(e)}",
@@ -765,7 +770,7 @@ def usage_by_tenant(start_date: Optional[str], end_date: Optional[str], output_f
         if isinstance(e, BaaSCLIError):
             raise
         # Check if it's an API error response
-        if hasattr(e, 'response') and hasattr(e.response, 'text'):
+        if hasattr(e, 'response') and hasattr(e.response, 'text') and hasattr(e.response, 'status_code'):
             raise handle_baas_api_error(e.response.text, e.response.status_code, 'baas/usage/by-tenant/')
         raise BaaSCLIError(
             message=f"Failed to get usage by tenant: {str(e)}",
@@ -904,7 +909,7 @@ def show_docs(output_format: str):
         if isinstance(e, BaaSCLIError):
             raise
         # Check if it's an API error response
-        if hasattr(e, 'response') and hasattr(e.response, 'text'):
+        if hasattr(e, 'response') and hasattr(e.response, 'text') and hasattr(e.response, 'status_code'):
             raise handle_baas_api_error(e.response.text, e.response.status_code, 'baas/docs/')
         raise BaaSCLIError(
             message=f"Failed to get API documentation: {str(e)}",
@@ -931,7 +936,7 @@ def show_openapi(output_format: str):
             # First try the YAML endpoint: /api-docs/openapi.yaml
             try:
                 response = api_client.request('GET', 'api-docs/openapi.yaml')
-                if response.status_code == 200:
+                if 200 <= response.status_code < 300:
                     click.echo(response.text)
                 else:
                     # Fallback: get JSON and convert to YAML
@@ -963,15 +968,8 @@ def show_openapi(output_format: str):
                         error_code="YAML_CONVERSION_FAILED",
                         original_error=conv_error
                     )
-            except ImportError:
-                # yaml module not available for conversion
-                raise BaaSCLIError(
-                    message="YAML format requires PyYAML. Please install it with: pip install pyyaml",
-                    error_code="YAML_FORMAT_UNAVAILABLE",
-                    suggestion="Install PyYAML or use JSON format"
-                )
-            except Exception as yaml_error:
-                # If YAML endpoint fails, try to convert JSON to YAML
+            except Exception:
+                # YAML endpoint request failed for another reason; fall back to JSON→YAML
                 try:
                     import yaml
                     data = api_client.get('baas/docs/openapi.json/')
@@ -996,7 +994,7 @@ def show_openapi(output_format: str):
         if isinstance(e, BaaSCLIError):
             raise
         # Check if it's an API error response
-        if hasattr(e, 'response') and hasattr(e.response, 'text'):
+        if hasattr(e, 'response') and hasattr(e.response, 'text') and hasattr(e.response, 'status_code'):
             raise handle_baas_api_error(e.response.text, e.response.status_code, 'baas/docs/openapi.json/')
         raise BaaSCLIError(
             message=f"Failed to get OpenAPI schema: {str(e)}",
@@ -1029,6 +1027,9 @@ def show_sdks(output_format: str):
             click.echo("-" * 140)
 
             # SDKs are returned as a dict with language keys
+            if not isinstance(data, dict):
+                click.echo(json.dumps(data, indent=2, default=str))
+                return
             for language_key, sdk_info in data.items():
                 language = sdk_info.get('language', language_key)
                 name = sdk_info.get('name', 'N/A')
@@ -1058,7 +1059,7 @@ def show_sdks(output_format: str):
         if isinstance(e, BaaSCLIError):
             raise
         # Check if it's an API error response
-        if hasattr(e, 'response') and hasattr(e.response, 'text'):
+        if hasattr(e, 'response') and hasattr(e.response, 'text') and hasattr(e.response, 'status_code'):
             raise handle_baas_api_error(e.response.text, e.response.status_code, 'baas/docs/sdks/')
         raise BaaSCLIError(
             message=f"Failed to get SDK links: {str(e)}",
@@ -1335,9 +1336,12 @@ def export_billing_report(
             f"/export/",
             json_data={"format": export_fmt},
         )
-        url = data.get("download_url")
-        if url:
-            click.echo(f"Download URL: {url}")
+        if isinstance(data, dict):
+            url = data.get("download_url")
+            if url:
+                click.echo(f"Download URL: {url}")
+            else:
+                click.echo(json.dumps(data, indent=2))
         else:
             click.echo(json.dumps(data, indent=2))
     except click.ClickException:

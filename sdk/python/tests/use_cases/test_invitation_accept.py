@@ -36,6 +36,20 @@ def _e2e_token() -> str:
     return _os.environ.get("E2E_TEST_SECRET", "e2e-test-secret-for-local-dev")
 
 
+def _safe_provision(role: str) -> "PersonaCredentials | None":
+    """Provision a persona without letting pytest.skip propagate.
+
+    ``provision_persona`` can call ``pytest.skip`` when the login is
+    rate-limited or the self-heal fails.  This wrapper catches that
+    skip and returns None so the caller can retry instead of being
+    skipped immediately.
+    """
+    try:
+        return provision_persona(role)
+    except BaseException:
+        return None
+
+
 def _unique_email() -> str:
     uid = fresh_id("invite")
     return f"{uid}@meshant-internal.example.com"
@@ -73,7 +87,7 @@ def _get_e2e_invitation_token(
                 import glob as _glob, pathlib as _pl
                 for _f in _glob.glob(str(_cdir / f"*{role}*.json")):
                     _pl.Path(_f).unlink(missing_ok=True)
-                current = provision_persona(role)
+                current = _safe_provision(role)
                 # fall through to the request (attempt is still 0, but
                 # current is now a fresh persona)
 
@@ -83,7 +97,7 @@ def _get_e2e_invitation_token(
             import glob as _glob, pathlib as _pl
             for _f in _glob.glob(str(_cdir / f"*{role}*.json")):
                 _pl.Path(_f).unlink(missing_ok=True)
-            current = provision_persona(role)
+            current = _safe_provision(role)
 
         resp = _requests.post(
             f"{base}/test/ensure-e2e-invitation-token/",
@@ -102,8 +116,6 @@ def _get_e2e_invitation_token(
             continue
 
         if resp.status_code == 404:
-            import sys as _s2
-            print(f"\n[DIAG] E2E invitation endpoint returned 404 on attempt {attempt}", file=_s2.stderr, flush=True)
             return None  # endpoint genuinely not deployed
 
         # 401 / TOKEN_INVALIDATED — purge cache + re-provision on
@@ -113,7 +125,10 @@ def _get_e2e_invitation_token(
             import glob as _glob, pathlib as _pl
             for _f in _glob.glob(str(_cdir / f"*{role}*.json")):
                 _pl.Path(_f).unlink(missing_ok=True)
-            current = provision_persona(role)
+            fresh = _safe_provision(role)
+            if fresh is None:
+                continue
+            current = fresh
             continue
 
         # Any other non-success — retry with fresh creds
@@ -146,8 +161,6 @@ def _get_e2e_invitation_token(
     except Exception:
         pass
 
-    import sys as _s3
-    print(f"\n[DIAG] _get_e2e_invitation_token ALL RETRIES + LAST-RESORT EXHAUSTED", file=_s3.stderr, flush=True)
     return None
 
 
@@ -210,11 +223,17 @@ def test_tenant_admin_invites_user():
         f"{resp.text[:500]}"
     )
     body = resp.json()
-    assert (
-        "id" in body
-        or "email" in body
-        or "status" in body
-    ), f"Invitation response missing id/email/status: {body}"
+    assert "id" in body, f"Invitation response missing id: {body}"
+    assert "email" in body, f"Invitation response missing email: {body}"
+    # The invited user must have INVITED status (not ACTIVE, not null).
+    status_value = body.get("status")
+    assert status_value is not None, (
+        f"Invitation response missing status field: {body}"
+    )
+    # Accept "INVITED" or its lower/upper variants.
+    assert "invited" in str(status_value).lower(), (
+        f"Invited user status is not INVITED: {status_value}"
+    )
 
 
 def test_invited_user_accepts():

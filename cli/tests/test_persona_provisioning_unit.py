@@ -23,10 +23,10 @@ from tests._persona_provisioning import (
 )
 
 
-def test_xdist_worker_id_default():
-    with patch.dict(os.environ, {}, clear=False):
-        os.environ.pop("PYTEST_XDIST_WORKER", None)
-        assert _xdist_worker_id() == "master"
+def test_xdist_worker_id_default(monkeypatch):
+    """When PYTEST_XDIST_WORKER is absent, _xdist_worker_id returns 'master'."""
+    monkeypatch.delenv("PYTEST_XDIST_WORKER", raising=False)
+    assert _xdist_worker_id() == "master"
 
 
 def test_xdist_worker_id_from_env():

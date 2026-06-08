@@ -825,6 +825,9 @@ services:
       # Disable rate limiting in the test stack so SDK auto-provisioning works.
       # is_test_env detection only triggers inside pytest, not gunicorn.
       RATE_LIMIT_ENABLED: "false"
+      # Shared secret for /test/ensure-e2e-* endpoints (must match the
+      # value used by the SDK test suite in E2E_TEST_SECRET env var).
+      E2E_TEST_SECRET: "e2e-test-secret-for-local-dev"
       # 9 workers provides sufficient concurrency for sequential E2E suites
       # (130+ tests making rapid login/logout calls after token invalidation)
       # while staying within the memory ceiling for batch5 runs on a 61GiB host.

@@ -24,6 +24,14 @@ from tests.fixtures.test_data import fresh_id
 from tests.use_cases._api_helpers import api_base_url
 
 
+def _safe_provision(role: str):
+    """Provision a persona without letting pytest.skip propagate."""
+    try:
+        return provision_persona(role)
+    except BaseException:
+        return None
+
+
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
@@ -74,7 +82,7 @@ def _setup_two_tenants(creds: PersonaCredentials):
                 import glob as _glob, pathlib as _pl
                 for _f in _glob.glob(str(_cdir / f"*{role}*.json")):
                     _pl.Path(_f).unlink(missing_ok=True)
-                current = provision_persona(role)
+                current = _safe_provision(role)
 
         # ── Purge cache + re-provision on subsequent attempts ──────
         if attempt > 0:
@@ -82,7 +90,7 @@ def _setup_two_tenants(creds: PersonaCredentials):
             import glob as _glob, pathlib as _pl
             for _f in _glob.glob(str(_cdir / f"*{role}*.json")):
                 _pl.Path(_f).unlink(missing_ok=True)
-            current = provision_persona(role)
+            current = _safe_provision(role)
 
         base = api_base_url()
         resp = requests.post(
@@ -112,7 +120,9 @@ def _setup_two_tenants(creds: PersonaCredentials):
             import glob as _glob, pathlib as _pl
             for _f in _glob.glob(str(_cdir / f"*{role}*.json")):
                 _pl.Path(_f).unlink(missing_ok=True)
-            current = provision_persona(role)
+            fresh = _safe_provision(role)
+            if fresh is not None:
+                current = fresh
             continue
 
         # Any other error — retry with fresh credentials
@@ -194,20 +204,24 @@ def test_switch_tenant_header_changes_context():
         timeout=15,
     )
 
-    if tenants_resp.status_code == 200:
-        tenants_body = tenants_resp.json()
-        tenant_list = (
-            tenants_body
-            if isinstance(tenants_body, list)
-            else tenants_body.get("results", [])
-        )
-        tenant_ids = [
-            str(t.get("id")) for t in tenant_list
-        ]
-        assert tenant_a in tenant_ids or len(tenant_ids) >= 2, (
-            f"User does not have multi-tenant access. "
-            f"Tenant list: {tenant_ids}"
-        )
+    if tenants_resp.status_code == 404:
+        pytest.skip("/auth/me/tenants/ endpoint not deployed (404)")
+
+    assert tenants_resp.status_code == 200, (
+        f"/auth/me/tenants/ returned {tenants_resp.status_code}: "
+        f"{tenants_resp.text[:300]}"
+    )
+    tenants_body = tenants_resp.json()
+    tenant_list = (
+        tenants_body
+        if isinstance(tenants_body, list)
+        else tenants_body.get("results", [])
+    )
+    tenant_ids = [str(t.get("id")) for t in tenant_list]
+    assert tenant_a in tenant_ids, (
+        f"User's tenant list does not contain primary tenant "
+        f"{tenant_a}. Tenant list: {tenant_ids}"
+    )
 
     # Step 2: Create asset in tenant A context
     asset_name = fresh_id("switch-test")
@@ -284,13 +298,15 @@ def test_no_tenant_header_uses_default():
     )
 
     body = resp.json()
-    tenant_info = (
-        body.get("tenant_id")  # noqa: PHASE216-STATIC-ID
-        or body.get("tenant")
-        or body.get("tenants")
+    returned_tenant_id = body.get("tenant_id") or (
+        body.get("tenant", {}).get("id") if isinstance(body.get("tenant"), dict) else None
     )
-    assert tenant_info, (
+    assert returned_tenant_id is not None, (
         f"/auth/me/ response has no tenant information: {body}"
+    )
+    assert str(returned_tenant_id) == str(creds.tenant_id), (
+        f"/auth/me/ default tenant {returned_tenant_id} does not match "
+        f"expected home tenant {creds.tenant_id}"
     )
 
 
@@ -310,9 +326,10 @@ def test_tenant_header_with_empty_value_returns_error():
         timeout=15,
     )
 
-    # Empty tenant header should either be ignored (200 with
-    # default) or rejected (400).  Must NOT cause a 500.
-    assert resp.status_code < 500, (
-        f"Empty X-Tenant-Id caused server error "
+    # Empty tenant header must be rejected (400) or, at minimum,
+    # silently ignored (200).  Must NOT cause a 500 or any other
+    # unexpected response.
+    assert resp.status_code in (200, 400), (
+        f"Empty X-Tenant-Id returned unexpected "
         f"{resp.status_code}: {resp.text[:300]}"
     )

@@ -216,7 +216,7 @@ class TestDetectStuckDQComplianceRuns(TestCase):
             tenant=self.tenant,
             job=job,
             dataset_id=job.resource_id,
-            scan_mode="warehouse_sql",
+            scan_mode="WAREHOUSE_SQL",
             status=ComplianceRunStatus.RUNNING,
             started_at=timezone.now() - timedelta(seconds=700),  # >2*300=600
             warehouse_config={"query_timeout_seconds": 300},
@@ -241,7 +241,7 @@ class TestDetectStuckDQComplianceRuns(TestCase):
             tenant=self.tenant,
             job=job,
             dataset_id=job.resource_id,
-            scan_mode="file_scan",
+            scan_mode="FILE_SCAN",
             status=ComplianceRunStatus.RUNNING,
             started_at=timezone.now() - timedelta(seconds=3700),  # >2*1800=3600
         )
@@ -261,7 +261,7 @@ class TestDetectStuckDQComplianceRuns(TestCase):
             tenant=self.tenant,
             job=job,
             dataset_id=job.resource_id,
-            scan_mode="file_scan",
+            scan_mode="FILE_SCAN",
             status=ComplianceRunStatus.RUNNING,
             started_at=timezone.now() - timedelta(seconds=30),
         )
@@ -281,7 +281,7 @@ class TestDetectStuckDQComplianceRuns(TestCase):
             tenant=self.tenant,
             job=job,
             dataset_id=job.resource_id,
-            scan_mode="warehouse_sql",
+            scan_mode="WAREHOUSE_SQL",
             status=ComplianceRunStatus.RUNNING,
             started_at=timezone.now() - timedelta(seconds=3700),
         )
@@ -389,7 +389,7 @@ class TestDetectStuckDQComplianceRuns(TestCase):
             tenant=self.tenant,
             job=comp_job,
             dataset_id=comp_job.resource_id,
-            scan_mode="file_scan",
+            scan_mode="FILE_SCAN",
             status=ComplianceRunStatus.RUNNING,
             started_at=timezone.now() - timedelta(seconds=3700),
         )
@@ -426,7 +426,7 @@ class TestDetectStuckDQComplianceRuns(TestCase):
             tenant=self.tenant,
             job=comp_job,
             dataset_id=comp_job.resource_id,
-            scan_mode="file_scan",
+            scan_mode="FILE_SCAN",
             status=ComplianceRunStatus.RUNNING,
             started_at=timezone.now() - timedelta(seconds=3700),
         )
@@ -551,7 +551,7 @@ class TestDetectStuckDQComplianceRuns(TestCase):
             tenant=self.tenant,
             job=job,
             dataset_id=job.resource_id,
-            scan_mode="warehouse_sql",
+            scan_mode="WAREHOUSE_SQL",
             status=ComplianceRunStatus.QUEUED,
         )
         # auto_now_add overrides explicit created_at; force via queryset update
@@ -581,7 +581,7 @@ class TestDetectStuckDQComplianceRuns(TestCase):
             tenant=self.tenant,
             job=job,
             dataset_id=job.resource_id,
-            scan_mode="file_scan",
+            scan_mode="FILE_SCAN",
             status=ComplianceRunStatus.QUEUED,
         )
         # auto_now_add overrides explicit created_at; force via queryset update
@@ -606,7 +606,7 @@ class TestDetectStuckDQComplianceRuns(TestCase):
             tenant=self.tenant,
             job=job,
             dataset_id=job.resource_id,
-            scan_mode="warehouse_sql",
+            scan_mode="WAREHOUSE_SQL",
             status=ComplianceRunStatus.QUEUED,
         )
         # auto_now_add overrides explicit created_at; force via queryset update
@@ -634,7 +634,7 @@ class TestDetectStuckDQComplianceRuns(TestCase):
             tenant=self.tenant,
             job=job,
             dataset_id=job.resource_id,
-            scan_mode="warehouse_sql",
+            scan_mode="WAREHOUSE_SQL",
             status=ComplianceRunStatus.QUEUED,
         )
         # auto_now_add overrides explicit created_at; force via queryset update
@@ -660,7 +660,7 @@ class TestDetectStuckDQComplianceRuns(TestCase):
             tenant=self.tenant,
             job=job,
             dataset_id=job.resource_id,
-            scan_mode="warehouse_sql",
+            scan_mode="WAREHOUSE_SQL",
             status=ComplianceRunStatus.QUEUED,
         )
         # auto_now_add overrides explicit created_at; force via queryset update

@@ -45,7 +45,7 @@ class TestComplianceFilterParam:
             "--format", "json",
         ])
 
-        assert result.exit_code in [0, 1]  # CLI validation passes, API call may fail
+        assert result.exit_code == 0, f"CLI failed: {result.output}"
         mock_api_client.get.assert_called_once()
         call_args = mock_api_client.get.call_args
         params = call_args[1].get("params") or call_args[0][1] if len(call_args[0]) > 1 else call_args[1].get("params", {})
@@ -72,7 +72,7 @@ class TestComplianceFilterParam:
             "--format", "json",
         ])
 
-        assert result.exit_code in [0, 1]  # CLI validation passes, API call may fail
+        assert result.exit_code == 0, f"CLI failed: {result.output}"
         # Second call is to compliance/runs/ with filter params
         compliance_call = mock_api_client.get.call_args_list[1]
         params = compliance_call[1].get("params") or compliance_call[0][1] if len(compliance_call[0]) > 1 else compliance_call[1].get("params", {})
@@ -85,7 +85,7 @@ class TestComplianceFilterParam:
 
         result = runner.invoke(cli, ["compliance", "list", "--format", "json"])
 
-        assert result.exit_code in [0, 1]  # CLI validation passes, API call may fail
+        assert result.exit_code == 0, f"CLI failed: {result.output}"
         call_args = mock_api_client.get.call_args
         params = call_args[1].get("params") or call_args[0][1] if len(call_args[0]) > 1 else call_args[1].get("params", {})
         assert "asset" not in params
@@ -116,7 +116,7 @@ class TestLineageFieldEndpoint:
             "lineage", "field", "contract-1", "model1", "field1",
         ])
 
-        assert result.exit_code in [0, 1]  # CLI validation passes, API call may fail
+        assert result.exit_code == 0, f"CLI failed: {result.output}"
         mock_api_client.get.assert_called_once()
         call_args = mock_api_client.get.call_args
 
@@ -137,7 +137,7 @@ class TestLineageFieldEndpoint:
             "lineage", "field", "contract-1", "model1", "field1",
         ])
 
-        assert result.exit_code in [0, 1]  # CLI validation passes, API call may fail
+        assert result.exit_code == 0, f"CLI failed: {result.output}"
         call_args = mock_api_client.get.call_args
         params = call_args[1].get("params", {})
         assert params.get("model_name") == "model1", (
@@ -158,7 +158,7 @@ class TestLineageFieldEndpoint:
             "lineage", "field", "contract-1", "model1", "field1",
         ])
 
-        assert result.exit_code in [0, 1]  # CLI validation passes, API call may fail
+        assert result.exit_code == 0, f"CLI failed: {result.output}"
         assert "Field Lineage: model1.field1" in result.output
         assert "ns1/c1/m1.f1" in result.output
 
@@ -191,7 +191,7 @@ class TestDQEndpointPath:
             "--format", "json",
         ])
 
-        assert result.exit_code in [0, 1]  # CLI validation passes, API call may fail
+        assert result.exit_code == 0, f"CLI failed: {result.output}"
         call_args = mock_api_client.post.call_args
         url = call_args[0][0]
         assert url == "dq/runs/", f"Expected 'dq/runs/', got: {url}"
@@ -205,7 +205,7 @@ class TestDQEndpointPath:
 
         result = runner.invoke(cli, ["dq", "get", "run-1", "--format", "json"])
 
-        assert result.exit_code in [0, 1]  # CLI validation passes, API call may fail
+        assert result.exit_code == 0, f"CLI failed: {result.output}"
         call_args = mock_api_client.get.call_args
         url = call_args[0][0]
         assert url == "dq/runs/run-1/", f"Expected 'dq/runs/run-1/', got: {url}"
@@ -216,7 +216,7 @@ class TestDQEndpointPath:
 
         result = runner.invoke(cli, ["dq", "list", "--format", "json"])
 
-        assert result.exit_code in [0, 1]  # CLI validation passes, API call may fail
+        assert result.exit_code == 0, f"CLI failed: {result.output}"
         call_args = mock_api_client.get.call_args
         url = call_args[0][0]
         assert url == "dq/runs/", f"Expected 'dq/runs/', got: {url}"
@@ -235,7 +235,7 @@ class TestDQEndpointPath:
             "--format", "json",
         ])
 
-        assert result.exit_code in [0, 1]  # CLI validation passes, API call may fail
+        assert result.exit_code == 0, f"CLI failed: {result.output}"
         call_args = mock_api_client.get.call_args
         url = call_args[0][0]
         assert url == "dq/runs/run-1/", f"Expected 'dq/runs/run-1/', got: {url}"
@@ -250,7 +250,7 @@ class TestDQEndpointPath:
             "--format", "json",
         ])
 
-        assert result.exit_code in [0, 1]  # CLI validation passes, API call may fail
+        assert result.exit_code == 0, f"CLI failed: {result.output}"
         call_args = mock_api_client.get.call_args
         params = call_args[1].get("params", {})
         assert params.get("dataset_id") == "ds-1"
@@ -277,7 +277,7 @@ class TestBillingEndpointCorrect:
 
         result = runner.invoke(cli, ["billing", "subscription", "--format", "json"])
 
-        assert result.exit_code in [0, 1]  # CLI validation passes, API call may fail
+        assert result.exit_code == 0, f"CLI failed: {result.output}"
         call_args = mock_api_client.get.call_args
         url = call_args[0][0]
         assert url == "billing/subscription/current/"
@@ -306,7 +306,7 @@ class TestGovernanceFieldsCorrect:
             "--format", "json",
         ])
 
-        assert result.exit_code in [0, 1]  # CLI validation passes, API call may fail
+        assert result.exit_code == 0, f"CLI failed: {result.output}"
         call_args = mock_api_client.post.call_args
         data = call_args[1].get("json_data", {})
         assert data.get("asset_id") == "asset-1"
@@ -323,7 +323,7 @@ class TestGovernanceFieldsCorrect:
             "--format", "json",
         ])
 
-        assert result.exit_code in [0, 1]  # CLI validation passes, API call may fail
+        assert result.exit_code == 0, f"CLI failed: {result.output}"
         call_args = mock_api_client.get.call_args
         params = call_args[1].get("params", {})
         assert params.get("asset_id") == "asset-1"
@@ -344,7 +344,7 @@ class TestFilesEndpointCorrect:
 
         result = runner.invoke(cli, ["files", "list", "--format", "json"])
 
-        assert result.exit_code in [0, 1]  # CLI validation passes, API call may fail
+        assert result.exit_code == 0, f"CLI failed: {result.output}"
         call_args = mock_api_client.get.call_args
         url = call_args[0][0]
         assert url == "files/", f"Expected 'files/', got: {url}"
@@ -402,7 +402,7 @@ class TestFilesEndpointCorrect:
                 "--output", "/dev/null",
             ])
 
-        assert result.exit_code in [0, 1]  # CLI validation passes, API call may fail
+        assert result.exit_code == 0, f"CLI failed: {result.output}"
         get_url = mock_api_client.get.call_args[0][0]
         assert get_url == "files/f1/", f"Expected 'files/f1/', got: {get_url}"
         post_url = mock_api_client.post.call_args[0][0]
@@ -414,7 +414,7 @@ class TestFilesEndpointCorrect:
 
         result = runner.invoke(cli, ["files", "delete", "f1", "--confirm"])
 
-        assert result.exit_code in [0, 1]  # CLI validation passes, API call may fail
+        assert result.exit_code == 0, f"CLI failed: {result.output}"
         del_url = mock_api_client.delete.call_args[0][0]
         assert del_url == "files/f1/", f"Expected 'files/f1/', got: {del_url}"
 
@@ -434,7 +434,7 @@ class TestScheduledExportEndpointCorrect:
 
         result = runner.invoke(cli, ["scheduled-export", "list", "--format", "json"])
 
-        assert result.exit_code in [0, 1]  # CLI validation passes, API call may fail
+        assert result.exit_code == 0, f"CLI failed: {result.output}"
         call_args = mock_api_client.get.call_args
         url = call_args[0][0]
         assert url == "scheduled-exports/"
@@ -463,7 +463,7 @@ class TestAuditFilterParamsCorrect:
             "--format", "json",
         ])
 
-        assert result.exit_code in [0, 1]  # CLI validation passes, API call may fail
+        assert result.exit_code == 0, f"CLI failed: {result.output}"
         call_args = mock_api_client.get.call_args
         params = call_args[1].get("params", {})
         assert params.get("resource_type") == "CONTRACT"

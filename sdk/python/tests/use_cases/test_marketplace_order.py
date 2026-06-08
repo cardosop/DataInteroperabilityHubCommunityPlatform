@@ -277,21 +277,26 @@ def test_subscribe_to_listing():
 
 
 def test_subscriber_can_access_asset():
-    """After subscribing to a listing, the data_consumer should be able to
-    GET the underlying asset (200).
-    """
-    dpo = _dpo_creds()
-    dc = _dc_creds()
-    base = api_base_url()
+    """After subscribing to a cross-tenant marketplace listing, the
+    data_consumer must be able to GET the underlying asset (200).
 
-    # Publisher: create activated asset + listing
+    Uses cross-tenant personas so the entitlement check is meaningful:
+    the provider publishes from tenant-b and the consumer subscribes
+    from the default tenant.  Verifies that the consumer is DENIED
+    before subscribing and GRANTED after.
+    """
+    # Provider in tenant-b, consumer in default tenant
+    dpo = provision_persona("data_mesh_domain_owner", tenant_slug="tenant-b")
+    dc = _dc_creds()  # auditor in default tenant
+
+    # Publisher: create activated asset + listing in tenant-b
     asset = _create_and_activate_asset(dpo)
     asset_id = asset.get("id") or asset.get("key")
 
     listing_resp = api_post("/marketplace/listings/", dpo, json={
             "title": fresh_id("access-listing"),
             "short_description": "Test listing for access verification",
-            "asset_id": asset_id,  # noqa: PHASE216-STATIC-ID
+            "asset_id": asset_id,
             "pricing_model": "FREE",
         }, timeout=15)
 
@@ -304,7 +309,14 @@ def test_subscriber_can_access_asset():
     # Publish the listing (must be PUBLISHED before ordering)
     _publish_listing(listing_id, dpo)
 
-    # Consumer: create order
+    # ── Step 1: Consumer is DENIED before subscribing ────────────────
+    pre_sub_resp = api_get(f"/assets/{asset_id}/", dc, timeout=15)
+    assert pre_sub_resp.status_code in (403, 404), (
+        f"Unsubscribed consumer should NOT be able to access "
+        f"cross-tenant asset, but got {pre_sub_resp.status_code}"
+    )
+
+    # ── Step 2: Consumer subscribes ──────────────────────────────────
     sub_resp = api_post("/marketplace/orders/", dc, json={"listing_id": listing_id}, timeout=15)
 
     if sub_resp.status_code == 404:
@@ -314,14 +326,14 @@ def test_subscriber_can_access_asset():
         f"Subscription failed: {sub_resp.status_code}: {sub_resp.text[:300]}"
     )
 
-    # Consumer: access the asset
-    asset_resp = api_get(f"/assets/{asset_id}/", dc, timeout=15)
+    # ── Step 3: Consumer IS granted access after subscribing ─────────
+    post_sub_resp = api_get(f"/assets/{asset_id}/", dc, timeout=15)
 
-    assert asset_resp.status_code == 200, (
+    assert post_sub_resp.status_code == 200, (
         f"Subscriber cannot access asset after subscription: "
-        f"{asset_resp.status_code}: {asset_resp.text[:300]}"
+        f"{post_sub_resp.status_code}: {post_sub_resp.text[:300]}"
     )
-    asset_body = asset_resp.json()
+    asset_body = post_sub_resp.json()
     fetched_id = asset_body.get("id") or asset_body.get("key")
     assert str(fetched_id) == str(asset_id), (
         f"Fetched asset id mismatch: {fetched_id} != {asset_id}"

@@ -201,7 +201,7 @@ class TestAPIKeyCreate:
         ])
 
         assert result.exit_code != 0
-        assert 'Failed to create API key' in result.output or 'API error' in result.output
+        assert 'API error: Connection failed' in result.output
 
 
 class TestAPIKeyList:
@@ -335,7 +335,7 @@ class TestAPIKeyList:
         result = runner.invoke(cli, ['baas', 'api-keys', 'list'])
 
         assert result.exit_code != 0
-        assert 'Failed to list API keys' in result.output or 'API error' in result.output
+        assert 'API error: Connection failed' in result.output
 
 
 class TestAPIKeyGet:
@@ -698,7 +698,86 @@ class TestAPIKeyRevoke:
         result = runner.invoke(cli, ['baas', 'api-keys', 'revoke', api_key_id])
 
         assert result.exit_code != 0
-        assert 'Failed to revoke API key' in result.output or 'API error' in result.output
+        assert 'API error: Connection failed' in result.output
+
+
+class TestAPIKeyRotate:
+    """Test API key rotate command"""
+
+    def test_rotate_api_key_success_table_format(self, runner, mock_api_client):
+        """Test rotating API key in table format"""
+        mock_api_client.post.return_value = {
+            'api_key': 'new-rotated-key-value-xyz',
+            'id': 'key-1',
+            'status': 'ACTIVE'
+        }
+
+        result = runner.invoke(cli, [
+            'baas', 'api-keys', 'rotate', 'key-1',
+            '--grace-hours', '48'
+        ])
+
+        assert result.exit_code == 0
+        assert 'API key rotated!' in result.output
+        assert 'New Key: new-rotated-key-value-xyz' in result.output
+        assert 'Grace Period: 48h' in result.output
+        assert 'Save the new key' in result.output
+        mock_api_client.post.assert_called_once_with(
+            'baas/api-keys/key-1/rotate/',
+            json_data={'grace_period_hours': 48}
+        )
+
+    def test_rotate_api_key_success_json_format(self, runner, mock_api_client):
+        """Test rotating API key in JSON format"""
+        mock_api_client.post.return_value = {
+            'api_key': 'rotated-key-json',
+            'id': 'key-1',
+            'status': 'ACTIVE'
+        }
+
+        result = runner.invoke(cli, [
+            'baas', 'api-keys', 'rotate', 'key-1',
+            '--grace-hours', '24',
+            '--format', 'json'
+        ])
+
+        assert result.exit_code == 0
+        output_data = json.loads(result.output)
+        assert output_data['api_key'] == 'rotated-key-json'
+        assert output_data['status'] == 'ACTIVE'
+
+    def test_rotate_api_key_default_grace_hours(self, runner, mock_api_client):
+        """Test rotating API key with default grace period"""
+        mock_api_client.post.return_value = {
+            'api_key': 'new-key-default',
+            'id': 'key-1'
+        }
+
+        result = runner.invoke(cli, [
+            'baas', 'api-keys', 'rotate', 'key-1'
+        ])
+
+        assert result.exit_code == 0
+        # Default grace-hours is 24
+        mock_api_client.post.assert_called_once_with(
+            'baas/api-keys/key-1/rotate/',
+            json_data={'grace_period_hours': 24}
+        )
+
+    def test_rotate_api_key_api_error(self, runner, mock_api_client):
+        """Test rotating API key when API returns error"""
+        from click import ClickException
+        mock_api_client.post.side_effect = ClickException(
+            "API error: Key not found (404)"
+        )
+
+        result = runner.invoke(cli, [
+            'baas', 'api-keys', 'rotate', 'nonexistent-key',
+            '--grace-hours', '24'
+        ])
+
+        assert result.exit_code != 0
+        assert 'Key not found' in result.output
 
 
 class TestUsageCommandGroup:
@@ -872,7 +951,7 @@ class TestUsageStats:
         result = runner.invoke(cli, ['baas', 'usage', 'stats'])
 
         assert result.exit_code != 0
-        assert 'Failed to get usage statistics' in result.output or 'API error' in result.output
+        assert 'API error: Connection failed' in result.output
 
 
 class TestUsageByEndpoint:
@@ -988,7 +1067,7 @@ class TestUsageByEndpoint:
         result = runner.invoke(cli, ['baas', 'usage', 'by-endpoint'])
 
         assert result.exit_code != 0
-        assert 'Failed to get usage by endpoint' in result.output or 'API error' in result.output
+        assert 'API error: Connection failed' in result.output
 
 
 class TestUsageByTenant:
@@ -1099,4 +1178,4 @@ class TestUsageByTenant:
         result = runner.invoke(cli, ['baas', 'usage', 'by-tenant'])
 
         assert result.exit_code != 0
-        assert 'Failed to get usage by tenant' in result.output or 'API error' in result.output
+        assert 'API error: Connection failed' in result.output

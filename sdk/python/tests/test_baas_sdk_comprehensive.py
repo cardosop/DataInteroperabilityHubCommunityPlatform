@@ -155,6 +155,13 @@ try:
         key_hash=api_key_hash
     )
 
+    from hub.apps.billing.models import Subscription, SubscriptionStatus
+    from hub.apps.tenants.models import TenantPlan
+    plan = TenantPlan.objects.first()
+    if plan:
+        Subscription.objects.get_or_create(tenant=tenant, category='BASE', defaults={'plan': plan, 'status': SubscriptionStatus.ACTIVE})
+        Subscription.objects.get_or_create(tenant=tenant, category='ML_AI', defaults={'plan': plan, 'status': SubscriptionStatus.ACTIVE})
+
     print('API_KEY_START', file=sys.stdout, flush=True)
     print(api_key_value, file=sys.stdout, flush=True)
     print('API_KEY_END', file=sys.stdout, flush=True)
@@ -418,14 +425,20 @@ class TestBaaSSDKComprehensive:
         # Revoke it
         await baas_api.revoke_api_key(api_key_id)
 
-        # Verify it's revoked
+        # Verify revocation: key must have revoked_at set or be deleted.
+        revoked = False
         try:
             result = await baas_api.get_api_key(api_key_id)
-            if "revoked_at" in result:
-                assert result["revoked_at"] is not None
+            assert "revoked_at" in result, (
+                "Revoked API key returned without 'revoked_at' field."
+            )
+            assert result["revoked_at"] is not None, (
+                "Revoked API key has revoked_at=None."
+            )
+            revoked = True
         except NotFoundError:
-            # API might delete revoked keys
-            pass
+            revoked = True
+        assert revoked, "Failed to verify revocation"
 
     async def test_revoke_api_key_validation_errors(self, baas_api):
         """Test revoke API key validation errors"""

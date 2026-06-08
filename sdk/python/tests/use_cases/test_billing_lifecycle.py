@@ -10,6 +10,7 @@ Tests cover the happy paths (GET plans, GET current subscription) and
 the plan-change path (POST change-plan).
 """
 
+import os
 import requests
 from tests._persona_provisioning import provision_persona, PersonaCredentials
 from tests.fixtures.test_data import fresh_id
@@ -63,6 +64,10 @@ def test_get_current_plan():
 
     body = resp.json()
     assert body, "Billing subscription response is empty"
+    # Must include a plan identifier
+    assert "plan" in body or "plan_id" in body or "plan_name" in body, (
+        f"Subscription response missing plan information: {list(body.keys())}"
+    )
 
 
 def test_get_current_plan_contains_limits():
@@ -88,17 +93,17 @@ def test_get_current_plan_contains_limits():
     assert len(results) > 0, "No billing plans returned"
 
     # At least one plan should contain limit/quota fields
-    body_str = str(results).lower()
-    has_limits = any(
-        keyword in body_str
-        for keyword in [
-            "limit", "quota", "max", "allowance",
-            "seats", "storage", "limits_json",
-        ]
+    # Verify at least one plan has a structured limit field (not just
+    # a keyword appearing in a description or name).
+    limit_keys = {"max_assets", "max_datasets", "max_storage_gb",
+                  "limits_json", "max_api_calls_per_month"}
+    has_structured_limit = any(
+        any(key in plan for key in limit_keys)
+        for plan in results
     )
-    assert has_limits, (
-        f"Billing plans contain no limit/quota information: "
-        f"{str(results)[:500]}"
+    assert has_structured_limit, (
+        f"No billing plan contains recognised limit keys "
+        f"({limit_keys}). Plans: {str(results)[:500]}"
     )
 
 
@@ -158,60 +163,69 @@ def test_list_invoices_returns_data():
     body = resp.json()
     # Invoices may be empty for new tenants — just verify the shape
     if isinstance(body, dict):
-        assert "results" in body or len(body) >= 0
-    # list is also valid
+        assert "results" in body, (
+            f"Invoice response missing 'results' key: {list(body.keys())}"
+        )
+        assert isinstance(body["results"], list), (
+            f"Invoice 'results' is not a list: {type(body['results'])}"
+        )
+    elif isinstance(body, list):
+        pass  # list format is also valid
+    else:
+        pytest.fail(
+            f"Unexpected invoice response type {type(body)}: "
+            f"{str(body)[:200]}"
+        )
 
 
 def test_quota_exceeded_returns_error():
-    """Attempt to exceed a plan limit and verify the API returns an
-    appropriate error (403 Forbidden with ``code="plan_limit_exceeded"``,
-    402 Payment Required, 429 Too Many Requests, or 413 Payload Too Large).
+    """Verify that the API rejects asset creation when the plan's
+    ``max_assets`` limit is exceeded.
 
-    The server's ``PlanLimitService.check_limit()`` raises a
-    ``ValidationError`` with ``http_status=403`` and
-    ``code="plan_limit_exceeded"`` when a plan's ``max_assets`` limit is
-    exceeded (e.g. the Free plan allows 10 assets).  The test accepts any
-    of 400/402/403/413/422/429 so it remains future-proof when alternate
-    quota mechanisms are introduced.
+    Uses the ``/test/ensure-e2e-free-plan-tenant/`` E2E helper to
+    obtain a tenant with the standard Free plan (max_assets=10).
+    Assets are created in that tenant via ``X-Tenant-Id`` until the
+    server returns a quota-exhausted error (403 with
+    ``code="plan_limit_exceeded"``).
 
-    Strategy: check the current plan's ``max_assets`` limit, then create
-    assets in a tight loop until the API rejects one.  If the plan has no
-    asset limit or the limit is very high, the test skips gracefully.
+    This avoids the unlimited-plan E2E tenant which deliberately
+    bypasses all limits for general test convenience.
     """
     creds = provision_persona("data_mesh_domain_owner")
     base = api_base_url()
+    e2e_token = os.environ.get("E2E_TEST_SECRET", "e2e-test-secret-for-local-dev")
 
-    MAX_ATTEMPTS = 50
-
-    # ── Pre-check: does the tenant plan have a finite max_assets limit? ──
-    plan_resp = requests.get(
-        f"{base}/billing/subscription/current/",
-        headers=_auth_headers(creds.api_key),
+    # ── Obtain a Free-plan tenant ────────────────────────────────────
+    free_plan_resp = requests.post(
+        f"{base}/test/ensure-e2e-free-plan-tenant/",
+        headers={
+            "Authorization": f"Bearer {creds.api_key}",
+            "X-E2E-Token": e2e_token,
+        },
+        json={},
         timeout=15,
     )
-    if plan_resp.status_code == 200:
-        plan_body = plan_resp.json()
-        limits = plan_body.get("limits", {})
-        max_assets = limits.get("max_assets")
-        if max_assets is None:
-            pytest.skip(
-                "Tenant plan has no max_assets limit (unlimited) — "
-                "quota enforcement cannot be tested"
-            )
-        # If the limit is unreasonably high, skip as well
-        if isinstance(max_assets, (int, float)) and max_assets > MAX_ATTEMPTS:
-            pytest.skip(
-                f"Tenant plan max_assets={max_assets} exceeds test "
-                f"budget of {MAX_ATTEMPTS} — quota enforcement cannot "
-                f"be reached"
-            )
+    if free_plan_resp.status_code == 404:
+        pytest.skip(
+            "ensure-e2e-free-plan-tenant endpoint not deployed (404)"
+        )
+    assert free_plan_resp.status_code == 200, (
+        f"Free-plan tenant setup failed: "
+        f"{free_plan_resp.status_code}: {free_plan_resp.text[:300]}"
+    )
+    free_tenant_id = free_plan_resp.json()["tenant_id"]
 
+    MAX_ATTEMPTS = 50
     hit_limit = False
 
     for i in range(MAX_ATTEMPTS):
         resp = requests.post(
             f"{base}/assets/",
-            headers=_auth_headers(creds.api_key),
+            headers={
+                "Authorization": f"Bearer {creds.api_key}",
+                "X-Tenant-Id": str(free_tenant_id),
+                "Content-Type": "application/json",
+            },
             json={
                 "name": fresh_id("quota-test"),
                 "key": fresh_id("quota-key"),
@@ -222,21 +236,17 @@ def test_quota_exceeded_returns_error():
 
         # Server returns 403 with code="plan_limit_exceeded" from
         # PlanLimitService.check_limit() when max_assets is exceeded.
-        # Also accept 402/429/413 for alternate quota mechanisms.
         if resp.status_code in (400, 402, 403, 413, 422, 429):
-            # Check whether this is a genuine quota/limit response rather
-            # than an unrelated validation error (e.g. duplicate key).
             body = (
                 resp.json()
-                if resp.headers.get(
-                    "content-type", ""
-                ).startswith("application/json")
+                if resp.headers.get("content-type", "").startswith(
+                    "application/json"
+                )
                 else {}
             )
             body_str = str(body).lower()
+            error_code = body.get("code", "") if isinstance(body, dict) else ""
 
-            # Server uses code="plan_limit_exceeded" (403).
-            # Also detect message-based limit indicators.
             has_limit_marker = any(
                 keyword in body_str
                 for keyword in [
@@ -244,19 +254,9 @@ def test_quota_exceeded_returns_error():
                     "plan_limit",
                 ]
             )
-            # Check for the canonical DRF error code as well
-            error_code = (
-                body.get("code", "")
-                if isinstance(body, dict)
-                else ""
-            )
-
             if has_limit_marker or "plan_limit_exceeded" in error_code:
                 hit_limit = True
                 break
-            # If this is an unrelated 4xx (e.g. duplicate key), don't
-            # treat it as a quota hit — continue and let the loop
-            # eventually skip or hit a real limit.
             if resp.status_code not in (200, 201):
                 break
         elif resp.status_code not in (200, 201):
@@ -265,7 +265,8 @@ def test_quota_exceeded_returns_error():
     if not hit_limit:
         pytest.skip(
             f"Plan limit not reached after {MAX_ATTEMPTS} assets "
-            f"-- quota enforcement may not apply or limit is very high"
+            f"— quota enforcement may not apply or the Free plan "
+            f"was not correctly assigned"
         )
 
 
@@ -287,11 +288,14 @@ def test_billing_unauthenticated_returns_401():
     sub_resp = requests.get(
         f"{base}/billing/subscription/current/", timeout=15,
     )
-    if sub_resp.status_code != 404:
-        assert sub_resp.status_code == 401, (
-            f"Unauthenticated billing/subscription returned "
-            f"{sub_resp.status_code}"
+    if sub_resp.status_code == 404:
+        pytest.skip(
+            "Billing subscription endpoint not implemented (404)"
         )
+    assert sub_resp.status_code == 401, (
+        f"Unauthenticated billing/subscription returned "
+        f"{sub_resp.status_code}"
+    )
 
 
 def test_non_admin_can_view_subscription():
@@ -312,9 +316,9 @@ def test_non_admin_can_view_subscription():
             "Billing subscription endpoint not implemented (404)"
         )
 
-    # Regular users should get 200 (read-only) or 403 (admin-only)
-    assert resp.status_code in (200, 403), (
-        f"Data analyst billing/subscription returned "
+    # Non-admin users must be able to view their own subscription.
+    assert resp.status_code == 200, (
+        f"Auditor billing/subscription returned "
         f"{resp.status_code}: {resp.text[:300]}"
     )
 
@@ -341,9 +345,10 @@ def test_billing_plan_change_endpoint_exists():
             "Billing plan change endpoint not implemented (404)"
         )
 
-    # The endpoint exists -- it should return 400 (invalid plan)
-    # or 200 (upgraded). It should NOT be a 5xx.
-    assert resp.status_code < 500, (
-        f"Billing plan change returned server error "
+    # The endpoint exists — with an invalid plan slug it must return
+    # 400 (validation error) or 404 (endpoint not deployed).  It must
+    # NOT return 200 (accepting a non-existent plan) or 5xx.
+    assert resp.status_code in (400, 404), (
+        f"Billing plan change with invalid slug returned unexpected "
         f"{resp.status_code}: {resp.text[:300]}"
     )

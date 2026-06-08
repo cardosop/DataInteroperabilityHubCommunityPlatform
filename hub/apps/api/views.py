@@ -555,8 +555,12 @@ def ensure_e2e_tenant_switch_setup(request):
     POST /api/v1/test/ensure-e2e-tenant-switch-setup/
     Creates a second tenant and UserTenantMembership. Returns {tenant_ids, secondary_tenant_id}.
     Only when ENVIRONMENT=test or DEBUG. For E2E test users.
+
+    Runs inside ``transaction.atomic()`` so concurrent calls cannot create
+    duplicate tenants or violate the membership unique constraint.
     """
     import uuid
+    from django.db import IntegrityError, transaction
 
     from hub.apps.tenants.models import Tenant
     from hub.apps.users.models import UserTenantMembership
@@ -576,48 +580,161 @@ def ensure_e2e_tenant_switch_setup(request):
     if not request.user.tenant_id:
         return Response({"error": "no tenant"}, status=400)
 
-    primary = request.user.tenant
-    # Ensure primary tenant membership exists (E2E users may have tenant_id but no UserTenantMembership)
-    UserTenantMembershipService().add_membership(
-        request.user,
-        primary,
-    )
-    memberships = list(
-        UserTenantMembership.objects.filter(user=request.user)
-        .values_list("tenant_id", flat=True)
-        .order_by("created_at")
-    )
-    if len(memberships) >= 2:
-        secondary_id = next((t for t in memberships if str(t) != str(primary.id)), memberships[1])
-        secondary_tenant = Tenant.objects.get(id=secondary_id)
+    # ── Resolve primary tenant ───────────────────────────────────────
+    # request.user.tenant uses the FK manager which may filter soft-deleted
+    # rows.  Fall back to the raw tenant_id + unfiltered queryset so a
+    # soft-deleted primary tenant does not crash the endpoint with 500.
+    try:
+        primary = request.user.tenant
+    except Tenant.DoesNotExist:
+        primary = Tenant.all_objects.filter(id=request.user.tenant_id).first()
+        if primary is None:
+            return Response({"error": "primary tenant not found"}, status=400)
+
+    with transaction.atomic():
+        # Ensure primary tenant membership exists (E2E users may have
+        # tenant_id but no UserTenantMembership).
+        UserTenantMembershipService().add_membership(request.user, primary)
+
+        # ── Look for an existing secondary tenant ────────────────────
+        # Only consider memberships whose tenants are NOT soft-deleted.
+        memberships = list(
+            UserTenantMembership.objects.filter(user=request.user)
+            .select_related("tenant")
+            .order_by("created_at")
+        )
+        active_memberships = [
+            m for m in memberships
+            if m.tenant_id is not None and m.tenant.deleted_at is None
+        ]
+
+        # Find a secondary tenant that differs from the primary.
+        for m in active_memberships:
+            if str(m.tenant_id) != str(primary.id):
+                return Response(
+                    {
+                        "tenant_ids": [str(primary.id), str(m.tenant_id)],
+                        "primary_tenant_id": str(primary.id),
+                        "primary_tenant_name": primary.name,
+                        "secondary_tenant_id": str(m.tenant_id),
+                        "secondary_tenant_name": m.tenant.name,
+                    },
+                    status=200,
+                )
+
+        # ── Create a new secondary tenant ───────────────────────────
+        # Retry on slug collision (extremely rare with uuid4, but safe).
+        for _retry in range(3):
+            uid = uuid.uuid4().hex[:8]
+            try:
+                secondary = Tenant.objects.create(
+                    name=f"E2E Switch Tenant {uid}",
+                    slug=f"e2e-switch-{uid}",
+                )
+                break
+            except IntegrityError:
+                if _retry == 2:
+                    raise
+                continue
+
+        UserTenantMembershipService().add_membership(request.user, secondary)
         return Response(
             {
-                "tenant_ids": [str(primary.id), str(secondary_id)],
+                "tenant_ids": [str(primary.id), str(secondary.id)],
                 "primary_tenant_id": str(primary.id),
                 "primary_tenant_name": primary.name,
-                "secondary_tenant_id": str(secondary_id),
-                "secondary_tenant_name": secondary_tenant.name,
+                "secondary_tenant_id": str(secondary.id),
+                "secondary_tenant_name": secondary.name,
             },
             status=200,
         )
 
+
+@extend_schema(exclude=True, tags=["API"])
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+@require_e2e_token
+def ensure_e2e_free_plan_tenant(request):
+    """
+    E2E-only: Create or return a tenant with the standard Free plan
+    (max_assets=10) for quota-enforcement testing.
+
+    POST /api/v1/test/ensure-e2e-free-plan-tenant/
+
+    Returns ``{"tenant_id": "<uuid>", "tenant_name": "..."}``.  The
+    caller uses ``X-Tenant-Id`` to scope asset creation to this tenant
+    and verify that ``plan_limit_exceeded`` fires when the limit is hit.
+
+    The endpoint is idempotent: subsequent calls return the same tenant.
+    Old free-plan tenants (> 24 h) are cleaned up before creation.
+    """
+    import uuid
+    from datetime import timedelta
+    from django.utils import timezone as _tz
+
+    from hub.apps.tenants.models import Tenant
+    from hub.apps.users.services import UserTenantMembershipService
+    from hub.apps.tenants.models import TenantPlan
+
+    # ── Safety gates ─────────────────────────────────────────────────
+    if not (
+        getattr(settings, "ENVIRONMENT", "") in ("test", "staging") or settings.DEBUG
+    ):
+        raise NotFound("Resource not found")
+    if request.user.email not in E2E_EMAILS:
+        raise NotFound("Resource not found")
+
+    # ── Clean up old free-plan tenants (> 24 h) ─────────────────────
+    _old_cutoff = _tz.now() - timedelta(hours=24)
+    Tenant.objects.filter(
+        slug__startswith="e2e-free-plan-",
+        created_at__lt=_old_cutoff,
+    ).delete()
+
+    # ── Return existing free-plan tenant if user already has one ─────
+    from hub.apps.users.models import UserTenantMembership
+    existing = (
+        UserTenantMembership.objects
+        .filter(user=request.user, tenant__slug__startswith="e2e-free-plan-")
+        .select_related("tenant")
+        .order_by("created_at")
+        .first()
+    )
+    if existing is not None:
+        return Response(
+            {"tenant_id": str(existing.tenant_id), "tenant_name": existing.tenant.name},
+            status=200,
+        )
+
+    # ── Create a new tenant + assign Free plan ──────────────────────
+    # Look up the standard Free plan (slug="free") from seed data.
+    free_plan = TenantPlan.objects.filter(slug="free").first()
     uid = uuid.uuid4().hex[:8]
-    secondary = Tenant.objects.create(
-        name=f"E2E Switch Tenant {uid}",
-        slug=f"e2e-switch-{uid}",
+    tenant = Tenant.objects.create(
+        name=f"E2E Free Plan Tenant {uid}",
+        slug=f"e2e-free-plan-{uid}",
     )
-    UserTenantMembershipService().add_membership(
-        request.user,
-        secondary,
-    )
+    if free_plan is not None:
+        tenant.plan = free_plan
+        tenant.save(update_fields=["plan"])
+
+    UserTenantMembershipService().add_membership(request.user, tenant)
+
+    # Use the existing E2E helper to create an active subscription
+    # (handles Stripe IDs, period dates, and all required fields),
+    # then override the plan to the standard Free plan so quota
+    # enforcement is testable.
+    from hub.apps.testing.billing_support import ensure_tenant_has_active_subscription
+    ensure_tenant_has_active_subscription(tenant)
+
+    # Override: the helper assigns e2e-unlimited; we need the Free plan
+    # for quota testing (max_assets=10).
+    if free_plan is not None:
+        tenant.plan = free_plan
+        tenant.save(update_fields=["plan"])
+
     return Response(
-        {
-            "tenant_ids": [str(primary.id), str(secondary.id)],
-            "primary_tenant_id": str(primary.id),
-            "primary_tenant_name": primary.name,
-            "secondary_tenant_id": str(secondary.id),
-            "secondary_tenant_name": secondary.name,
-        },
+        {"tenant_id": str(tenant.id), "tenant_name": tenant.name},
         status=200,
     )
 

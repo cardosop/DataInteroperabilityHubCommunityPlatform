@@ -122,11 +122,20 @@ class TestContractsList:
         result = runner.invoke(cli, ['contracts', 'list'])
 
         assert result.exit_code != 0
-        assert 'Failed to list contracts' in result.output or 'API error' in result.output
+        assert 'API error: Connection failed' in result.output
 
 
 class TestContractsGet:
     """Test contracts get command"""
+
+    def test_get_contract_empty_id(self, runner, mock_api_client):
+        """Test getting a contract with empty ID is rejected before API call"""
+        result = runner.invoke(cli, ['contracts', 'get', ''])
+
+        assert result.exit_code != 0
+        assert 'cannot be empty' in result.output.lower()
+        # Must not call the API with an empty ID
+        mock_api_client.get.assert_not_called()
 
     def test_get_contract_success_table_format(self, runner, mock_api_client):
         """Test getting a contract in table format"""
@@ -191,7 +200,7 @@ class TestContractsGet:
         result = runner.invoke(cli, ['contracts', 'get', 'contract-1'])
 
         assert result.exit_code != 0
-        assert 'Failed to get contract' in result.output or 'API error' in result.output
+        assert 'API error: Not found' in result.output
 
 
 class TestContractsCreate:
@@ -318,7 +327,7 @@ class TestContractsCreate:
 
         assert result.exit_code != 0
         # Click validates file path before command execution
-        assert 'does not exist' in result.output or 'Failed to read file' in result.output or 'No such file' in result.output
+        assert 'does not exist' in result.output.lower()
 
     def test_create_contract_api_error(self, runner, mock_api_client, temp_file):
         """Test handling API errors when creating a contract"""
@@ -330,7 +339,7 @@ class TestContractsCreate:
         result = runner.invoke(cli, ['contracts', 'create', '--file', file_path])
 
         assert result.exit_code != 0
-        assert 'Failed to create contract' in result.output or 'API error' in result.output
+        assert 'API error: Validation failed' in result.output
 
 
 class TestContractsValidate:
@@ -406,7 +415,7 @@ class TestContractsValidate:
         result = runner.invoke(cli, ['contracts', 'validate', 'contract-1'])
 
         assert result.exit_code != 0
-        assert 'Failed to validate contract' in result.output or 'API error' in result.output
+        assert 'API error: Not found' in result.output
 
 
 class TestContractsLint:
@@ -477,7 +486,7 @@ class TestContractsLint:
         result = runner.invoke(cli, ['contracts', 'lint', 'contract-1'])
 
         assert result.exit_code != 0
-        assert 'Failed to lint contract' in result.output or 'API error' in result.output
+        assert 'API error: Not found' in result.output
 
 
 class TestContractsCreateODPS:
@@ -787,7 +796,7 @@ product:
         ])
 
         assert result.exit_code != 0
-        assert 'Cannot use both' in result.output or 'mutually exclusive' in result.output.lower()
+        assert 'Cannot use both' in result.output
 
     def test_create_odps_missing_flow_option(self, runner, temp_file):
         """Test that either --extract-odcs or --link-odcs must be specified"""
@@ -799,7 +808,7 @@ product:
         ])
 
         assert result.exit_code != 0
-        assert 'Must specify either' in result.output or 'required' in result.output.lower()
+        assert 'Must specify either' in result.output
 
     def test_create_odps_file_not_found(self, runner):
         """Test creating ODPS with non-existent file"""
@@ -810,14 +819,16 @@ product:
         ])
 
         assert result.exit_code != 0
-        assert 'does not exist' in result.output or 'Failed to read file' in result.output or 'No such file' in result.output
+        assert 'does not exist' in result.output.lower()
 
     def test_create_odps_api_error_extract_odcs(self, runner, mock_api_client, temp_file):
         """Test handling API errors when creating ODPS with --extract-odcs"""
         file_path, content = temp_file('.json', '{"schema": "https://opendataproducts.org/schema/v4.1"}')
 
         from click import ClickException
-        mock_api_client.post.side_effect = ClickException("API error: Validation failed")
+        # FIX: The --extract-odcs path calls api_client.request(), NOT api_client.post().
+        # Mocking .post was a false positive — the exception was never raised.
+        mock_api_client.request.side_effect = ClickException("API error: Validation failed")
 
         result = runner.invoke(cli, [
             'contracts', 'create-odps',
@@ -826,7 +837,10 @@ product:
         ])
 
         assert result.exit_code != 0
-        assert 'Failed to create ODPS contract' in result.output or 'API error' in result.output
+        assert 'API error: Validation failed' in result.output
+        # Verify the correct API method was called (not .post)
+        mock_api_client.request.assert_called_once()
+        mock_api_client.post.assert_not_called()
 
     def test_create_odps_api_error_link_odcs(self, runner, mock_api_client, temp_file):
         """Test handling API errors when creating ODPS with --link-odcs"""
@@ -842,11 +856,7 @@ product:
         ])
 
         assert result.exit_code != 0
-        # Error message can be "Failed to create ODPS contract" or "API error" or validation error
-        assert ('Failed to create ODPS contract' in result.output or
-                'API error' in result.output or
-                'Must specify either' in result.output or
-                'Contract not found' in result.output)
+        assert 'Contract not found' in result.output
 
     def test_create_odps_format_auto_detection_json(self, runner, mock_api_client, temp_file):
         """Test format auto-detection for JSON content"""
@@ -946,6 +956,120 @@ product:
 
         assert result.exit_code == 0
         assert 'ODPS Normalization Errors: 2' in result.output
+
+
+class TestContractsCreateODPSAsyncWorkflow:
+    """Test async workflow polling for create-odps --extract-odcs (202 Accepted)"""
+
+    def test_create_odps_extract_async_completed(self, runner, mock_api_client, temp_file):
+        """Test 202 async workflow that transitions to COMPLETED"""
+        file_path, content = temp_file('.json', '{"schema": "https://opendataproducts.org/schema/v4.1"}')
+
+        from unittest.mock import MagicMock as _MM
+        # Initial POST returns 202
+        _resp_202 = _MM()
+        _resp_202.status_code = 202
+        mock_api_client.request.return_value = _resp_202
+        mock_api_client._handle_response.return_value = {
+            'workflow_instance_id': 'workflow-abc'
+        }
+
+        # Polling GET returns COMPLETED
+        mock_api_client.get.return_value = {
+            'status': 'COMPLETED',
+            'odps_contract': {'id': 'odps-1', 'version': 1, 'status': 'DRAFT'},
+            'odcs_contract': {'id': 'odcs-1', 'version': 1, 'status': 'DRAFT'}
+        }
+
+        result = runner.invoke(cli, [
+            'contracts', 'create-odps',
+            '--file', file_path,
+            '--extract-odcs'
+        ])
+
+        assert result.exit_code == 0
+        assert 'ODPS product created successfully' in result.output
+        assert 'odps-1' in result.output
+        assert 'odcs-1' in result.output
+
+    def test_create_odps_extract_async_failed(self, runner, mock_api_client, temp_file):
+        """Test 202 async workflow that transitions to FAILED"""
+        file_path, content = temp_file('.json', '{"schema": "https://opendataproducts.org/schema/v4.1"}')
+
+        from unittest.mock import MagicMock as _MM
+        _resp_202 = _MM()
+        _resp_202.status_code = 202
+        mock_api_client.request.return_value = _resp_202
+        mock_api_client._handle_response.return_value = {
+            'workflow_instance_id': 'workflow-abc'
+        }
+
+        # Polling GET returns FAILED
+        mock_api_client.get.return_value = {
+            'status': 'FAILED',
+            'message': 'Normalization step failed: invalid schema'
+        }
+
+        result = runner.invoke(cli, [
+            'contracts', 'create-odps',
+            '--file', file_path,
+            '--extract-odcs'
+        ])
+
+        assert result.exit_code != 0
+        assert 'failed' in result.output.lower()
+
+    def test_create_odps_extract_async_cancelled(self, runner, mock_api_client, temp_file):
+        """Test 202 async workflow that transitions to CANCELLED"""
+        file_path, content = temp_file('.json', '{"schema": "https://opendataproducts.org/schema/v4.1"}')
+
+        from unittest.mock import MagicMock as _MM
+        _resp_202 = _MM()
+        _resp_202.status_code = 202
+        mock_api_client.request.return_value = _resp_202
+        mock_api_client._handle_response.return_value = {
+            'workflow_instance_id': 'workflow-abc'
+        }
+
+        mock_api_client.get.return_value = {
+            'status': 'CANCELLED',
+            'message': 'Workflow was cancelled by user'
+        }
+
+        result = runner.invoke(cli, [
+            'contracts', 'create-odps',
+            '--file', file_path,
+            '--extract-odcs'
+        ])
+
+        assert result.exit_code != 0
+        assert 'cancelled' in result.output.lower()
+
+    def test_create_odps_extract_async_rolled_back(self, runner, mock_api_client, temp_file):
+        """Test 202 async workflow that transitions to ROLLED_BACK"""
+        file_path, content = temp_file('.json', '{"schema": "https://opendataproducts.org/schema/v4.1"}')
+
+        from unittest.mock import MagicMock as _MM
+        _resp_202 = _MM()
+        _resp_202.status_code = 202
+        mock_api_client.request.return_value = _resp_202
+        mock_api_client._handle_response.return_value = {
+            'workflow_instance_id': 'workflow-abc'
+        }
+
+        mock_api_client.get.return_value = {
+            'status': 'ROLLED_BACK',
+            'message': 'Workflow rolled back due to error'
+        }
+
+        result = runner.invoke(cli, [
+            'contracts', 'create-odps',
+            '--file', file_path,
+            '--extract-odcs'
+        ])
+
+        assert result.exit_code != 0
+        assert 'rolled' in result.output.lower()
 
 
 class TestContractsExport:
@@ -1072,8 +1196,7 @@ class TestContractsExport:
         result = runner.invoke(cli, ['contracts', 'export', 'contract-1'])
 
         assert result.exit_code != 0
-        # Enhanced error handling provides better formatted messages
-        assert 'Contract not found' in result.output or 'Failed to export' in result.output or 'error' in result.output.lower()
+        assert 'Contract not found' in result.output
 
     def test_export_contract_odcs_with_version(self, runner, mock_api_client):
         """Test exporting contract as ODCS format with version"""
@@ -1124,7 +1247,7 @@ class TestContractsExport:
         ])
 
         assert result.exit_code != 0
-        assert 'Invalid ODCS version format' in result.output or 'invalid' in result.output.lower()
+        assert 'Invalid ODCS version format' in result.output
 
     def test_export_contract_odcs_unsupported_version(self, runner):
         """Test exporting contract as ODCS with unsupported version"""
@@ -1296,7 +1419,7 @@ class TestContractsExport:
         ])
 
         assert result.exit_code != 0
-        assert 'error' in result.output.lower() or 'failed' in result.output.lower()
+        assert 'error' in result.output.lower()
 
     def test_export_contract_odcs_error_handling_invalid_json_response(self, runner, mock_api_client):
         """Test error handling for invalid JSON response from ODCS export"""
@@ -1359,7 +1482,7 @@ class TestContractsExport:
         ])
 
         assert result.exit_code != 0
-        assert 'not found' in result.output.lower() or 'error' in result.output.lower()
+        assert 'not found' in result.output.lower()
 
     def test_export_contract_odcs_error_handling_500_server_error(self, runner, mock_api_client):
         """Test error handling for 500 Server Error when exporting ODCS"""
@@ -1381,7 +1504,7 @@ class TestContractsExport:
         ])
 
         assert result.exit_code != 0
-        assert 'error' in result.output.lower() or 'failed' in result.output.lower()
+        assert 'error' in result.output.lower()
 
     def test_export_contract_odcs_with_version_table_output(self, runner, mock_api_client):
         """Test ODCS export with version showing table output format"""
@@ -1409,6 +1532,26 @@ class TestContractsExport:
         assert 'ODCS Version: 3.0.2' in result.output
         assert 'Format: odcs' in result.output
         assert 'Output Format: json' in result.output
+
+    def test_export_contract_content_truncation(self, runner, mock_api_client):
+        """Test export truncates content longer than 500 characters"""
+        # Generate content > 500 chars
+        long_content = 'X' * 600
+        mock_response = Mock()
+        mock_response.status_code = 200
+        mock_response.headers = {'Content-Type': 'application/json'}
+        mock_response.text = json.dumps({"data": long_content})
+        mock_api_client.request.return_value = mock_response
+
+        result = runner.invoke(cli, [
+            'contracts', 'export', 'contract-1',
+            '--format', 'hubcontract',
+            '--cli-format', 'table'
+        ])
+
+        assert result.exit_code == 0
+        assert '...' in result.output
+        assert 'more characters' in result.output
 
 
 class TestContractsDownload:
@@ -1486,6 +1629,17 @@ class TestContractsDownload:
         call_args = mock_api_client.request.call_args
         assert call_args[1]['params'].get('version') == '4.1'
 
+    def test_download_contract_odcs_invalid_version(self, runner):
+        """Test downloading contract as ODCS with invalid version is rejected"""
+        result = runner.invoke(cli, [
+            'contracts', 'download', 'contract-1',
+            '--format', 'odcs',
+            '--version', '99.99.99'
+        ])
+
+        assert result.exit_code != 0
+        assert 'not supported' in result.output.lower()
+
     def test_download_contract_auto_filename(self, runner, mock_api_client, tmp_path):
         """Test downloading contract with auto-generated filename"""
         mock_response = Mock()
@@ -1527,6 +1681,28 @@ class TestContractsDownload:
             assert '.odps.json' in result.output
         finally:
             os.chdir(old_cwd)
+
+    def test_download_contract_malformed_content_disposition(self, runner, mock_api_client, tmp_path):
+        """Test download when Content-Disposition header has unusual format"""
+        mock_response = Mock()
+        mock_response.status_code = 200
+        # Malformed Content-Disposition: no quotes, unusual characters
+        mock_response.headers = {
+            'Content-Disposition': 'attachment; filename=contract.data.json; extra=value'
+        }
+        mock_response.content = b'{"schema": "test"}'
+        mock_api_client.request.return_value = mock_response
+
+        output_file = tmp_path / 'malformed.json'
+        result = runner.invoke(cli, [
+            'contracts', 'download', 'contract-1',
+            '--format', 'odps',
+            '--output', str(output_file)
+        ])
+
+        assert result.exit_code == 0
+        assert 'downloaded successfully' in result.output.lower()
+        assert output_file.exists()
 
     def test_download_contract_odcs_format(self, runner, mock_api_client, tmp_path):
         """Test downloading contract as ODCS format"""
@@ -1576,7 +1752,7 @@ class TestContractsDownload:
         result = runner.invoke(cli, ['contracts', 'download', 'contract-1'])
 
         assert result.exit_code != 0
-        assert 'Failed to download contract' in result.output or 'API error' in result.output
+        assert 'API error (NOT_FOUND): Contract not found' in result.output
 
     def test_download_contract_file_size_info(self, runner, mock_api_client, tmp_path):
         """Test that download command shows file size"""
@@ -1793,7 +1969,7 @@ class TestContractsGetPricing:
         result = runner.invoke(cli, ['contracts', 'get-pricing', 'contract-1'])
 
         assert result.exit_code != 0
-        assert 'Failed to get pricing' in result.output or 'API error' in result.output
+        assert 'API error: Not found' in result.output
 
 
 class TestContractsGetAccessMethods:
@@ -1931,7 +2107,7 @@ class TestContractsGetAccessMethods:
         result = runner.invoke(cli, ['contracts', 'get-access-methods', 'contract-1'])
 
         assert result.exit_code != 0
-        assert 'Failed to get access methods' in result.output or 'API error' in result.output
+        assert 'API error: Not found' in result.output
 
 
 class TestContractsFormatDetection:
@@ -2061,8 +2237,9 @@ class TestContractsCreateWithDetection:
 
         assert result.exit_code == 0
         call_args = mock_api_client.post.call_args
-        # Should detect ODCS (may not show message if default)
-        assert call_args[1]['json_data'].get('original_spec_type') == 'ODCS' or 'original_spec_type' not in call_args[1]['json_data']
+        # Must detect ODCS — the OR-clause fallback was removed because it
+        # would pass even if spec-type detection silently returned None.
+        assert call_args[1]['json_data']['original_spec_type'] == 'ODCS'
 
     def test_create_contract_with_spec_type_override(self, runner, mock_api_client, temp_file):
         """Test creating contract with spec type override"""
@@ -2233,7 +2410,7 @@ class TestContractsLinkODPS:
         result = runner.invoke(cli, ['contracts', 'link-odps', 'odcs-1', 'odps-1'])
 
         assert result.exit_code != 0
-        assert 'Failed to link ODPS contract' in result.output or 'API error' in result.output
+        assert 'API error: Contract not found' in result.output
 
 
 class TestContractsUnlinkODPS:
@@ -2276,7 +2453,7 @@ class TestContractsUnlinkODPS:
         result = runner.invoke(cli, ['contracts', 'unlink-odps', 'odcs-1'])
 
         assert result.exit_code != 0
-        assert 'Failed to unlink ODPS contract' in result.output or 'API error' in result.output
+        assert 'API error: Contract not found' in result.output
 
 
 class TestContractsListLinks:
@@ -2397,7 +2574,7 @@ class TestContractsListLinks:
         result = runner.invoke(cli, ['contracts', 'list-links', 'contract-1'])
 
         assert result.exit_code != 0
-        assert 'Failed to list contract links' in result.output or 'API error' in result.output
+        assert 'API error: Contract not found' in result.output
 
 
 class TestContractsGetPaymentGateways:
@@ -2510,12 +2687,17 @@ class TestContractsGetPaymentGateways:
         assert 'stripe' in result.output
         assert 'N/A' in result.output  # Should show N/A for missing fields
 
-    def test_get_payment_gateways_invalid_contract_id(self, runner):
-        """Test getting payment gateways with invalid contract ID"""
-        result = runner.invoke(cli, ['contracts', 'get-payment-gateways', 'invalid-id'])
+    def test_get_payment_gateways_invalid_contract_id(self, runner, mock_api_client):
+        """Test getting payment gateways with a non-existent contract ID"""
+        from click import ClickException
+        # validate_contract_id only checks empty/whitespace, so a non-UUID
+        # string passes validation and the error comes from the API (404).
+        mock_api_client.get.side_effect = ClickException("API error: Contract not found (404)")
+
+        result = runner.invoke(cli, ['contracts', 'get-payment-gateways', 'nonexistent-id'])
 
         assert result.exit_code != 0
-        assert 'uuid' in result.output.lower() or 'invalid' in result.output.lower() or 'not found' in result.output.lower() or 'resource not found' in result.output.lower()
+        assert 'Contract not found' in result.output
 
     def test_get_payment_gateways_empty_contract_id(self, runner):
         """Test getting payment gateways with empty contract ID"""
@@ -2532,7 +2714,7 @@ class TestContractsGetPaymentGateways:
         result = runner.invoke(cli, ['contracts', 'get-payment-gateways', contract_id])
 
         assert result.exit_code != 0
-        assert 'not found' in result.output.lower() or '404' in result.output or 'error' in result.output.lower()
+        assert 'Contract not found' in result.output
 
     def test_get_payment_gateways_api_error_400(self, runner, mock_api_client):
         """Test getting payment gateways when contract is not ODPS"""
@@ -2543,7 +2725,7 @@ class TestContractsGetPaymentGateways:
         result = runner.invoke(cli, ['contracts', 'get-payment-gateways', contract_id])
 
         assert result.exit_code != 0
-        assert 'error' in result.output.lower() or 'validation' in result.output.lower() or 'odps' in result.output.lower()
+        assert 'Contract is not an ODPS contract' in result.output
 
     def test_get_payment_gateways_api_error_500(self, runner, mock_api_client):
         """Test getting payment gateways when API returns server error"""
@@ -2553,7 +2735,7 @@ class TestContractsGetPaymentGateways:
         result = runner.invoke(cli, ['contracts', 'get-payment-gateways', contract_id])
 
         assert result.exit_code != 0
-        assert 'error' in result.output.lower() or 'failed' in result.output.lower()
+        assert 'error' in result.output.lower()
 
 
 class TestContractsGetProductStrategy:
@@ -2642,12 +2824,15 @@ class TestContractsGetProductStrategy:
         assert 'Single objective' in result.output
         # Should not error if other sections are missing
 
-    def test_get_product_strategy_invalid_contract_id(self, runner):
-        """Test getting product strategy with invalid contract ID"""
-        result = runner.invoke(cli, ['contracts', 'get-product-strategy', 'invalid-id'])
+    def test_get_product_strategy_invalid_contract_id(self, runner, mock_api_client):
+        """Test getting product strategy with a non-existent contract ID"""
+        from click import ClickException
+        mock_api_client.get.side_effect = ClickException("API error: Contract not found (404)")
+
+        result = runner.invoke(cli, ['contracts', 'get-product-strategy', 'nonexistent-id'])
 
         assert result.exit_code != 0
-        assert 'uuid' in result.output.lower() or 'invalid' in result.output.lower() or 'not found' in result.output.lower()
+        assert 'Contract not found' in result.output
 
     def test_get_product_strategy_empty_contract_id(self, runner):
         """Test getting product strategy with empty contract ID"""
@@ -2664,7 +2849,7 @@ class TestContractsGetProductStrategy:
         result = runner.invoke(cli, ['contracts', 'get-product-strategy', contract_id])
 
         assert result.exit_code != 0
-        assert 'not found' in result.output.lower() or '404' in result.output or 'error' in result.output.lower()
+        assert 'Contract not found' in result.output
 
     def test_get_product_strategy_api_error_400_not_odps(self, runner, mock_api_client):
         """Test getting product strategy when contract is not ODPS"""
@@ -2675,7 +2860,7 @@ class TestContractsGetProductStrategy:
         result = runner.invoke(cli, ['contracts', 'get-product-strategy', contract_id])
 
         assert result.exit_code != 0
-        assert 'error' in result.output.lower() or 'odps' in result.output.lower()
+        assert 'Contract is not an ODPS contract' in result.output
 
     def test_get_product_strategy_api_error_400_version(self, runner, mock_api_client):
         """Test getting product strategy when contract is not ODPS 4.1+"""
@@ -2686,7 +2871,7 @@ class TestContractsGetProductStrategy:
         result = runner.invoke(cli, ['contracts', 'get-product-strategy', contract_id])
 
         assert result.exit_code != 0
-        assert 'error' in result.output.lower() or '4.1' in result.output.lower()
+        assert 'Product strategy is only available for ODPS 4.1+' in result.output
 
     def test_get_product_strategy_api_error_500(self, runner, mock_api_client):
         """Test getting product strategy when API returns server error"""
@@ -2696,7 +2881,7 @@ class TestContractsGetProductStrategy:
         result = runner.invoke(cli, ['contracts', 'get-product-strategy', contract_id])
 
         assert result.exit_code != 0
-        assert 'error' in result.output.lower() or 'failed' in result.output.lower()
+        assert 'error' in result.output.lower()
 
     def test_get_product_strategy_complex_data(self, runner, mock_api_client):
         """Test getting product strategy with complex nested data"""
@@ -2834,12 +3019,15 @@ class TestContractsGetProductDetails:
         assert 'Product ID: test-product' in result.output
         assert 'Name: Test Product' in result.output
 
-    def test_get_product_details_invalid_contract_id(self, runner):
-        """Test getting product details with invalid contract ID"""
-        result = runner.invoke(cli, ['contracts', 'get-product-details', 'invalid-id'])
+    def test_get_product_details_invalid_contract_id(self, runner, mock_api_client):
+        """Test getting product details with a non-existent contract ID"""
+        from click import ClickException
+        mock_api_client.get.side_effect = ClickException("API error: Contract not found (404)")
+
+        result = runner.invoke(cli, ['contracts', 'get-product-details', 'nonexistent-id'])
 
         assert result.exit_code != 0
-        assert 'uuid' in result.output.lower() or 'invalid' in result.output.lower() or 'not found' in result.output.lower()
+        assert 'Contract not found' in result.output
 
     def test_get_product_details_empty_contract_id(self, runner):
         """Test getting product details with empty contract ID"""
@@ -2861,7 +3049,7 @@ class TestContractsGetProductDetails:
         result = runner.invoke(cli, ['contracts', 'get-product-details', contract_id, '--lang', 'eng'])
 
         assert result.exit_code != 0
-        assert 'language code' in result.output.lower() or '2 characters' in result.output.lower()
+        assert 'language code' in result.output.lower()
 
     def test_get_product_details_api_error_404(self, runner, mock_api_client):
         """Test getting product details when contract not found"""
@@ -2872,7 +3060,7 @@ class TestContractsGetProductDetails:
         result = runner.invoke(cli, ['contracts', 'get-product-details', contract_id])
 
         assert result.exit_code != 0
-        assert 'not found' in result.output.lower() or '404' in result.output or 'error' in result.output.lower()
+        assert 'Contract not found' in result.output
 
     def test_get_product_details_api_error_400_not_odps(self, runner, mock_api_client):
         """Test getting product details when contract is not ODPS"""
@@ -2883,7 +3071,7 @@ class TestContractsGetProductDetails:
         result = runner.invoke(cli, ['contracts', 'get-product-details', contract_id])
 
         assert result.exit_code != 0
-        assert 'error' in result.output.lower() or 'odps' in result.output.lower()
+        assert 'Contract is not an ODPS contract' in result.output
 
     def test_get_product_details_api_error_500(self, runner, mock_api_client):
         """Test getting product details when API returns server error"""
@@ -2893,7 +3081,7 @@ class TestContractsGetProductDetails:
         result = runner.invoke(cli, ['contracts', 'get-product-details', contract_id])
 
         assert result.exit_code != 0
-        assert 'error' in result.output.lower() or 'failed' in result.output.lower()
+        assert 'error' in result.output.lower()
 
     def test_get_product_details_multilingual_support(self, runner, mock_api_client):
         """Test getting product details with different languages"""

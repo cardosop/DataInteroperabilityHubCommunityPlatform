@@ -152,181 +152,116 @@ def create_valid_odps_json(
 
 
 class TestMethodNameConsistency:
-    """Tests for method name consistency between Python and JavaScript SDKs"""
+    """Verify ODPS helper methods exist in the ContractsAPI with expected names.
 
-    def test_create_odps_method_name(self):
-        """Test that create_odps method name is consistent"""
-        # Python: create_odps
-        # JavaScript: createOdps (camelCase)
-        python_name = "create_odps"
-        js_name = "createOdps"
+    Uses ``inspect.getmembers`` to introspect the actual SDK at runtime,
+    so renames or removals are caught immediately.
+    """
 
-        # Verify naming convention
-        assert python_name.replace("_", "") == js_name.lower().replace("o", "o"), \
-            "Method names should follow language conventions (snake_case vs camelCase)"
+    EXPECTED_METHODS: tuple[str, ...] = (
+        "create_odps",
+        "export_odps",
+        "download_odps",
+        "link_odps_to_odcs",
+        "unlink_odps_from_odcs",
+        "get_linked_contracts",
+        "get_pricing_plans",
+        "get_access_methods",
+        "get_payment_gateways",
+        "get_product_strategy",
+        "get_product_details",
+        "is_odps_contract",
+        "get_odps_version",
+    )
 
-    def test_export_odps_method_name(self):
-        """Test that export_odps method name is consistent"""
-        python_name = "export_odps"
-        js_name = "exportOdps"
-        assert python_name.replace("_", "") == js_name.lower().replace("o", "o")
+    @pytest.fixture(scope="class")
+    def sdk_methods(self) -> frozenset[str]:
+        """Return frozenset of public ContractsAPI method names."""
+        import inspect as _inspect
+        from datahub_interoperability.contracts import ContractsAPI
 
-    def test_download_odps_method_name(self):
-        """Test that download_odps method name is consistent"""
-        python_name = "download_odps"
-        js_name = "downloadOdps"
-        assert python_name.replace("_", "") == js_name.lower().replace("o", "o")
+        return frozenset(
+            name
+            for name, _ in _inspect.getmembers(ContractsAPI, _inspect.isfunction)
+            if not name.startswith("_")
+        )
 
-    def test_link_odps_to_odcs_method_name(self):
-        """Test that link_odps_to_odcs method name is consistent"""
-        python_name = "link_odps_to_odcs"
-        js_name = "linkOdpsToOdcs"
-        assert python_name.replace("_", "") == js_name.lower().replace("to", "to")
-
-    def test_unlink_odps_from_odcs_method_name(self):
-        """Test that unlink_odps_from_odcs method name is consistent"""
-        python_name = "unlink_odps_from_odcs"
-        js_name = "unlinkOdpsFromOdcs"
-        assert python_name.replace("_", "") == js_name.lower().replace("from", "from")
-
-    def test_get_linked_contracts_method_name(self):
-        """Test that get_linked_contracts method name is consistent"""
-        python_name = "get_linked_contracts"
-        js_name = "getLinkedContracts"
-        assert python_name.replace("_", "") == js_name.lower().replace("linked", "linked")
-
-    def test_get_pricing_plans_method_name(self):
-        """Test that get_pricing_plans method name is consistent"""
-        python_name = "get_pricing_plans"
-        js_name = "getPricingPlans"
-        assert python_name.replace("_", "") == js_name.lower().replace("pricing", "pricing")
-
-    def test_get_access_methods_method_name(self):
-        """Test that get_access_methods method name is consistent"""
-        python_name = "get_access_methods"
-        js_name = "getAccessMethods"
-        assert python_name.replace("_", "") == js_name.lower().replace("access", "access")
-
-    def test_get_payment_gateways_method_name(self):
-        """Test that get_payment_gateways method name is consistent"""
-        python_name = "get_payment_gateways"
-        js_name = "getPaymentGateways"
-        assert python_name.replace("_", "") == js_name.lower().replace("payment", "payment")
-
-    def test_get_product_strategy_method_name(self):
-        """Test that get_product_strategy method name is consistent"""
-        python_name = "get_product_strategy"
-        js_name = "getProductStrategy"
-        assert python_name.replace("_", "") == js_name.lower().replace("product", "product")
-
-    def test_get_product_details_method_name(self):
-        """Test that get_product_details method name is consistent"""
-        python_name = "get_product_details"
-        js_name = "getProductDetails"
-        assert python_name.replace("_", "") == js_name.lower().replace("product", "product")
-
-    def test_is_odps_contract_method_name(self):
-        """Test that is_odps_contract method name is consistent"""
-        python_name = "is_odps_contract"
-        js_name = "isOdpsContract"
-        assert python_name.replace("_", "") == js_name.lower().replace("odps", "odps")
-
-    def test_get_odps_version_method_name(self):
-        """Test that get_odps_version method name is consistent"""
-        python_name = "get_odps_version"
-        js_name = "getOdpsVersion"
-        assert python_name.replace("_", "") == js_name.lower().replace("odps", "odps")
+    def test_all_expected_odps_methods_present(self, sdk_methods):
+        """Every expected ODPS helper is actually callable on ContractsAPI."""
+        missing = [m for m in self.EXPECTED_METHODS if m not in sdk_methods]
+        assert not missing, (
+            f"ODPS methods missing from ContractsAPI: {missing}. "
+            f"Either the method was renamed/removed or this list needs updating."
+        )
 
 
 class TestParameterConsistency:
-    """Tests for parameter name and type consistency"""
+    """Verify ODPS method signatures match expected parameters via introspection."""
 
-    def test_create_odps_parameters(self):
-        """Test that create_odps parameters are consistent"""
-        # Python parameters
-        python_params = {
-            "original_raw": str,
-            "extract_odcs": bool,
-            "link_odcs_id": str,
-            "original_format": str,
-            "odps_version": str,
-            "resolve_external_refs": bool,
-            "asset_id": str,
-        }
+    # Canonical snake_case parameter names for each method.
+    # Keys are method names, values are the expected parameter names.
+    EXPECTED_PARAMS: dict[str, tuple[str, ...]] = {
+        "create_odps": (
+            "original_raw", "extract_odcs", "link_odcs_id",
+            "original_format", "odps_version", "resolve_external_refs", "asset_id",
+        ),
+        "export_odps": ("contract_id", "version", "format"),
+        "download_odps": ("contract_id", "version", "format"),
+        "link_odps_to_odcs": (
+            "odcs_contract_id", "odps_contract_id",
+            "odps_raw", "odps_format", "resolve_external_refs",
+        ),
+    }
 
-        # JavaScript parameters (camelCase)
-        js_params = {
-            "originalRaw": str,
-            "extractOdcs": bool,
-            "linkOdcsId": str,
-            "originalFormat": str,
-            "odpsVersion": str,
-            "resolveExternalRefs": bool,
-            "assetId": str,
-        }
+    @pytest.fixture(scope="class")
+    def sdk_signatures(self) -> dict[str, tuple[str, ...]]:
+        """Return {method_name: (parameter_names, ...)} for ContractsAPI."""
+        import inspect as _inspect
+        from datahub_interoperability.contracts import ContractsAPI
 
-        # Verify parameter names follow naming conventions
-        assert len(python_params) == len(js_params), "Parameter counts should match"
+        result: dict[str, tuple[str, ...]] = {}
+        for name, fn in _inspect.getmembers(ContractsAPI, _inspect.isfunction):
+            if name.startswith("_"):
+                continue
+            try:
+                sig = _inspect.signature(fn)
+            except (ValueError, TypeError):
+                continue
+            params = tuple(
+                p.name for p in sig.parameters.values()
+                if p.name not in ("self",)
+                and p.kind not in (
+                    _inspect.Parameter.VAR_POSITIONAL,
+                    _inspect.Parameter.VAR_KEYWORD,
+                )
+            )
+            result[name] = params
+        return result
 
-        # Verify parameter types match
-        python_types = list(python_params.values())
-        js_types = list(js_params.values())
-        assert python_types == js_types, "Parameter types should match"
+    def test_create_odps_parameters_match_sdk(self, sdk_signatures):
+        assert "create_odps" in sdk_signatures, "create_odps not found in ContractsAPI"
+        actual = sdk_signatures["create_odps"]
+        expected = self.EXPECTED_PARAMS["create_odps"]
+        assert set(expected).issubset(set(actual)), (
+            f"create_odps is missing parameters: {set(expected) - set(actual)}. "
+            f"Actual signature: {actual}"
+        )
 
-    def test_export_odps_parameters(self):
-        """Test that export_odps parameters are consistent"""
-        python_params = {
-            "contract_id": str,
-            "version": str,
-            "format": str,
-        }
+    def test_export_odps_parameters_match_sdk(self, sdk_signatures):
+        assert "export_odps" in sdk_signatures
+        actual = sdk_signatures["export_odps"]
+        expected = self.EXPECTED_PARAMS["export_odps"]
+        assert set(expected).issubset(set(actual)), (
+            f"export_odps missing: {set(expected) - set(actual)}. Actual: {actual}"
+        )
 
-        js_params = {
-            "contractId": str,
-            "version": str,
-            "format": str,
-        }
-
-        assert len(python_params) == len(js_params)
-        assert list(python_params.values()) == list(js_params.values())
-
-    def test_download_odps_parameters(self):
-        """Test that download_odps parameters are consistent"""
-        python_params = {
-            "contract_id": str,
-            "version": str,
-            "format": str,
-        }
-
-        js_params = {
-            "contractId": str,
-            "version": str,
-            "format": str,
-        }
-
-        assert len(python_params) == len(js_params)
-        assert list(python_params.values()) == list(js_params.values())
-
-    def test_link_odps_to_odcs_parameters(self):
-        """Test that link_odps_to_odcs parameters are consistent"""
-        python_params = {
-            "odcs_contract_id": str,
-            "odps_contract_id": str,
-            "odps_raw": str,
-            "odps_format": str,
-            "resolve_external_refs": bool,
-        }
-
-        js_params = {
-            "odcsContractId": str,
-            "odpsContractId": str,
-            "odpsRaw": str,
-            "odpsFormat": str,
-            "resolveExternalRefs": bool,
-        }
-
-        assert len(python_params) == len(js_params)
-        assert list(python_params.values()) == list(js_params.values())
+    def test_link_odps_to_odcs_parameters_match_sdk(self, sdk_signatures):
+        assert "link_odps_to_odcs" in sdk_signatures
+        actual = sdk_signatures["link_odps_to_odcs"]
+        expected = self.EXPECTED_PARAMS["link_odps_to_odcs"]
+        assert set(expected).issubset(set(actual)), (
+            f"link_odps_to_odcs missing: {set(expected) - set(actual)}. Actual: {actual}"
+        )
 
 
 class TestResponseFormatConsistency:

@@ -88,6 +88,7 @@ def list_contracts(status: Optional[str], asset_id: Optional[str], limit: int, o
 def get_contract(contract_id: str, output_format: str, show_odps: bool):
     """Get contract details"""
     try:
+        validate_contract_id(contract_id)
         # API endpoint: GET /api/v1/contracts/{id}/
         data = api_client.get(f'contracts/{contract_id}/')
 
@@ -418,13 +419,6 @@ def create_odps(
             # Check if async workflow (202 Accepted)
             if workflow_instance_id:
                 # Async workflow - poll for completion
-                if not workflow_instance_id:
-                    raise ODPSExportError(
-                        message="Workflow started but no workflow_instance_id returned",
-                        error_code="MISSING_WORKFLOW_ID",
-                        context={'response': response_obj.json() if hasattr(response_obj, 'json') else str(response_obj)}
-                    )
-
                 if output_format == 'table':
                     click.echo(f"Product creation workflow started (async)")
                     click.echo(f"Workflow Instance ID: {workflow_instance_id}")
@@ -469,8 +463,9 @@ def create_odps(
                         suggestion=f"Check workflow status manually: contracts/products/workflows/{workflow_instance_id}/status/"
                     )
             else:
-                # Synchronous response (shouldn't happen with new async API, but handle for compatibility)
-                result = api_client._handle_response(response_obj)
+                # Synchronous response path - result was already set above in status code checks
+                # No need to call _handle_response again on the same response object
+                pass
 
             if output_format == 'json':
                 click.echo(json.dumps(result, indent=2))
@@ -555,7 +550,7 @@ def create_odps(
 @click.argument('contract_id')
 @click.option('--format', 'format_type', type=click.Choice(['odps', 'odcs', 'hubcontract']), default='hubcontract', help='Export format (default: hubcontract)')
 @click.option('--output-format', 'output_format', type=click.Choice(['json', 'yaml']), default='json', help='Output format: json or yaml (default: json)')
-@click.option('--version', 'version_param', type=str, help='ODPS or ODCS version for export (e.g., 4.1 for ODPS, 3.0.2 for ODCS). Required when --format=odps or --format=odcs')
+@click.option('--version', 'version_param', type=str, help='ODPS or ODCS version for export (e.g., 4.1 for ODPS, 3.0.2 for ODCS). Recommended when --format=odps or --format=odcs')
 @click.option('--cli-format', 'output_format_cli', type=click.Choice(['json', 'table']), default='table', help='CLI output format (default: table)')
 def export_contract(contract_id: str, format_type: str, output_format: str, version_param: Optional[str], output_format_cli: str):
     """
@@ -572,7 +567,7 @@ def export_contract(contract_id: str, format_type: str, output_format: str, vers
         # Validate parameters
         validate_contract_id(contract_id)
 
-        # Validate version based on format type
+        # Validate version if provided for odps/odcs formats
         if format_type == 'odps' and version_param:
             validate_odps_version(version_param)
         elif format_type == 'odcs' and version_param:
@@ -725,7 +720,10 @@ def get_pricing(contract_id: str, output_format: str):
 
         # Extract ODPS pricing plans
         hub_contract = data.get('hub_contract_json', {})
-        marketplace = hub_contract.get('marketplace', {})
+        if isinstance(hub_contract, str):
+            import json as _json
+            hub_contract = _json.loads(hub_contract)
+        marketplace = hub_contract.get('marketplace', {}) if isinstance(hub_contract, dict) else {}
         x_odps = marketplace.get('x_odps', {})
         pricing_plans = x_odps.get('pricing_plans', [])
 
@@ -777,7 +775,10 @@ def get_access_methods(contract_id: str, output_format: str):
 
         # Extract ODPS access methods
         hub_contract = data.get('hub_contract_json', {})
-        marketplace = hub_contract.get('marketplace', {})
+        if isinstance(hub_contract, str):
+            import json as _json
+            hub_contract = _json.loads(hub_contract)
+        marketplace = hub_contract.get('marketplace', {}) if isinstance(hub_contract, dict) else {}
         x_odps = marketplace.get('x_odps', {})
         access_methods = x_odps.get('access_methods', {})
 
@@ -815,7 +816,10 @@ def get_access_methods(contract_id: str, output_format: str):
 def _display_odps_fields(data: dict):
     """Display ODPS-specific fields from contract data"""
     hub_contract = data.get('hub_contract_json', {})
-    marketplace = hub_contract.get('marketplace', {})
+    if isinstance(hub_contract, str):
+        import json as _json
+        hub_contract = _json.loads(hub_contract)
+    marketplace = hub_contract.get('marketplace', {}) if isinstance(hub_contract, dict) else {}
     x_odps = marketplace.get('x_odps', {})
 
     if not x_odps:
@@ -892,8 +896,11 @@ def download_contract(contract_id: str, format_type: str, output_format: str, od
     try:
         # Validate parameters
         validate_contract_id(contract_id)
-        if odps_version and format_type == 'odps':
-            validate_odps_version(odps_version)
+        if format_type in ('odps', 'odcs') and odps_version:
+            if format_type == 'odps':
+                validate_odps_version(odps_version)
+            else:
+                validate_odcs_version(odps_version)
         # Build query parameters
         params = {
             'format': format_type,

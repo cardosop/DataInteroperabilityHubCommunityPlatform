@@ -154,6 +154,14 @@ api_key_obj = AuthAPIKey.objects.create(
     key_hash=api_key_hash
 )
 
+# Create subscriptions so billing middleware doesn't block writes
+from hub.apps.billing.models import Subscription, SubscriptionStatus
+from hub.apps.tenants.models import TenantPlan
+plan = TenantPlan.objects.first()
+if plan:
+    Subscription.objects.get_or_create(tenant=tenant, category='BASE', defaults={'plan': plan, 'status': SubscriptionStatus.ACTIVE})
+    Subscription.objects.get_or_create(tenant=tenant, category='ML_AI', defaults={'plan': plan, 'status': SubscriptionStatus.ACTIVE})
+
 # Print the plaintext key (it's only available at creation time)
 print('API_KEY_START')
 print(api_key_value)
@@ -333,16 +341,23 @@ class TestBaaSAPIIntegration:
         # Then revoke it
         await baas_api.revoke_api_key(api_key_id)
 
-        # Verify it's revoked (should raise NotFoundError or return revoked status)
-        # The exact behavior depends on API implementation
+        # Verify revocation: the key must either return with revoked_at set,
+        # or be inaccessible (NotFoundError).  Either behaviour is valid,
+        # but a response WITHOUT revoked_at is a bug.
+        revoked = False
         try:
             result = await baas_api.get_api_key(api_key_id)
-            # If it returns, check if it's marked as revoked
-            if "revoked_at" in result:
-                assert result["revoked_at"] is not None
+            assert "revoked_at" in result, (
+                "Revoked API key returned without 'revoked_at' field. "
+                "The key was not properly revoked."
+            )
+            assert result["revoked_at"] is not None, (
+                "Revoked API key has revoked_at=None — expected a timestamp."
+            )
+            revoked = True
         except NotFoundError:
-            # API might delete revoked keys
-            pass
+            revoked = True  # API deleted the key after revocation
+        assert revoked, "Failed to verify revocation — unexpected response"
 
     async def test_get_usage_stats_integration(self, baas_api):
         """Test getting usage stats via SDK with real API"""

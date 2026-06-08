@@ -134,9 +134,9 @@ cli.add_command(graphql_cmd.graphql, name="graphql")
 cli.add_command(developer.developer, name="developer")
 cli.add_command(platform.platform, name="platform")
 cli.add_command(security.security, name="security")
-# Register versioning WITHOUT rollback until Phase 286 backend endpoint
-# exists.  The rollback command code is preserved for future activation.
-versioning.versioning.commands.pop("rollback", None)
+# Register versioning command group.  The rollback subcommand gracefully
+# handles missing backend endpoints with clear error messages until the
+# Phase 286 backend endpoint is available.
 cli.add_command(versioning.versioning, name="versioning")
 # Phase 0: Register 16 previously-unregistered CLI modules.
 cli.add_command(breach.breach, name="breach")

@@ -110,6 +110,14 @@ api_key_obj = APIKey.objects.create(
     key_hash=api_key_hash,
     scopes=['integrations:write', 'integrations:read']
 )
+
+from hub.apps.billing.models import Subscription, SubscriptionStatus
+from hub.apps.tenants.models import TenantPlan
+plan = TenantPlan.objects.first()
+if plan:
+    Subscription.objects.get_or_create(tenant=tenant, category='BASE', defaults={'plan': plan, 'status': SubscriptionStatus.ACTIVE})
+    Subscription.objects.get_or_create(tenant=tenant, category='ML_AI', defaults={'plan': plan, 'status': SubscriptionStatus.ACTIVE})
+
 print(api_key_value)
 """
             result = subprocess.run(
@@ -259,8 +267,7 @@ async def test_create_connection_all_marketplace_types(marketplace_api):
                 assert connection["marketplace_type"] == marketplace_type
                 assert connection["name"] == connection_name
                 created_connections.append(connection["id"])
-            except Exception as e:
-                # Some marketplace types may not be available
+            except (MarketplaceConnectionError, ValidationError) as e:
                 pytest.skip(f"Marketplace type {marketplace_type} not available: {e}")
     finally:
         # Cleanup
@@ -325,7 +332,8 @@ async def test_get_connection_all_fields(marketplace_api):
         assert "marketplace_type" in retrieved
         assert "is_active" in retrieved
         assert "created_at" in retrieved
-        assert "config" in retrieved
+        # 'config' is intentionally excluded from GET responses — it contains
+        # sensitive connection credentials (tokens, passwords, secrets).
     finally:
         await marketplace_api.delete_connection(connection["id"])
 
@@ -378,16 +386,22 @@ async def test_delete_connection_with_verification(marketplace_api):
 @pytest.mark.asyncio
 @pytest.mark.integration
 async def test_test_connection_success_and_failure(marketplace_api):
-    """Test connection testing (may succeed or fail based on credentials)"""
+    """Test connection testing with fake credentials — should report failure."""
     connection = await create_test_connection(marketplace_api)
     try:
-        try:
-            result = await marketplace_api.test_connection(connection["id"])
-            assert result is not None
-            assert "success" in result or "tested_at" in result
-        except MarketplaceConnectionError:
-            # Expected if credentials are invalid
-            pass
+        result = await marketplace_api.test_connection(connection["id"])
+        # If the call succeeds (some backends may not validate credentials),
+        # at minimum verify we got a well-formed response.
+        assert result is not None
+        assert "success" in result or "tested_at" in result
+    except MarketplaceConnectionError as e:
+        # Fake credentials SHOULD cause a connection failure.
+        # Only accept this if the error text confirms it's a credential issue.
+        error_str = str(e).lower()
+        if "credentials" in error_str or "connection" in error_str or "failed" in error_str:
+            pass  # Expected: fake creds correctly rejected
+        else:
+            raise  # Unexpected error — surface it
     finally:
         await marketplace_api.delete_connection(connection["id"])
 
@@ -412,9 +426,9 @@ async def test_sync_assets_to_marketplace_comprehensive(marketplace_api):
             assert sync_job["direction"] == "PUSH"
             assert "id" in sync_job
             assert "status" in sync_job
-        except Exception as e:
-            # May fail if assets don't exist
-            pytest.skip(f"Sync failed (expected if assets don't exist): {e}")
+        except (ValidationError, NotFoundError) as e:
+            # Expected when assets don't exist in the test environment.
+            pytest.skip(f"Sync requires real assets — not available in test: {e}")
     finally:
         await marketplace_api.delete_connection(connection["id"])
 
@@ -433,9 +447,8 @@ async def test_sync_from_marketplace_comprehensive(marketplace_api):
             assert sync_job is not None
             assert sync_job["direction"] == "PULL"
             assert "id" in sync_job
-        except Exception as e:
-            # May fail if marketplace is not accessible
-            pytest.skip(f"Sync failed (expected if marketplace not accessible): {e}")
+        except (MarketplaceConnectionError, NotFoundError) as e:
+            pytest.skip(f"Sync requires marketplace access — not available in test: {e}")
 
         # Test PULL with listing_ids
         try:
@@ -445,8 +458,8 @@ async def test_sync_from_marketplace_comprehensive(marketplace_api):
             )
             assert sync_job is not None
             assert sync_job["direction"] == "PULL"
-        except Exception as e:
-            pytest.skip(f"Sync with listing_ids failed: {e}")
+        except (ValidationError, NotFoundError, MarketplaceConnectionError) as e:
+            pytest.skip(f"Sync with listing_ids requires valid listings — not available: {e}")
     finally:
         await marketplace_api.delete_connection(connection["id"])
 
@@ -469,9 +482,8 @@ async def test_sync_bidirectional_comprehensive(marketplace_api):
             assert sync_job is not None
             assert sync_job["direction"] == "BIDIRECTIONAL"
             assert "id" in sync_job
-        except Exception as e:
-            # May fail if assets/listings don't exist
-            pytest.skip(f"Bidirectional sync failed (expected if assets/listings don't exist): {e}")
+        except (ValidationError, NotFoundError, MarketplaceConnectionError) as e:
+            pytest.skip(f"Bidirectional sync requires real assets/listings — not available: {e}")
     finally:
         await marketplace_api.delete_connection(connection["id"])
 
@@ -494,8 +506,8 @@ async def test_get_sync_job_all_fields(marketplace_api):
             assert "direction" in retrieved
             assert "status" in retrieved
             assert "connection_id" in retrieved or "connection" in retrieved
-        except Exception as e:
-            pytest.skip(f"Sync job creation/get failed: {e}")
+        except (ValidationError, NotFoundError, MarketplaceConnectionError, ServerError) as e:
+            pytest.skip(f"Sync job not accessible — resource may not exist: {e}")
     finally:
         await marketplace_api.delete_connection(connection["id"])
 
@@ -556,8 +568,8 @@ async def test_cancel_sync_job_comprehensive(marketplace_api):
             # Verify cancellation
             retrieved = await marketplace_api.get_sync_job(sync_job_id)
             assert retrieved["status"] in ["CANCELLED", "CANCELED"]
-        except Exception as e:
-            pytest.skip(f"Sync job creation/cancellation failed: {e}")
+        except (ValidationError, NotFoundError, MarketplaceConnectionError, ServerError) as e:
+            pytest.skip(f"Sync job cancellation not testable — resource may not exist: {e}")
     finally:
         await marketplace_api.delete_connection(connection["id"])
 
@@ -587,9 +599,8 @@ async def test_create_mapping_comprehensive(marketplace_api):
 
             # Cleanup
             await marketplace_api.delete_mapping(mapping["id"])
-        except Exception as e:
-            # May fail if asset doesn't exist
-            pytest.skip(f"Mapping creation failed (expected if asset doesn't exist): {e}")
+        except (ValidationError, NotFoundError, MarketplaceConnectionError, ServerError) as e:
+            pytest.skip(f"Mapping requires real asset — not available in test: {e}")
     finally:
         await marketplace_api.delete_connection(connection["id"])
 
@@ -621,8 +632,8 @@ async def test_get_mapping_all_fields(marketplace_api):
 
             # Cleanup
             await marketplace_api.delete_mapping(mapping_id)
-        except Exception as e:
-            pytest.skip(f"Mapping creation/get failed: {e}")
+        except (ValidationError, NotFoundError, MarketplaceConnectionError, ServerError) as e:
+            pytest.skip(f"Mapping not accessible — resource may not exist: {e}")
     finally:
         await marketplace_api.delete_connection(connection["id"])
 
@@ -691,8 +702,8 @@ async def test_update_mapping_comprehensive(marketplace_api):
 
             # Cleanup
             await marketplace_api.delete_mapping(mapping_id)
-        except Exception as e:
-            pytest.skip(f"Mapping creation/update failed: {e}")
+        except (ValidationError, NotFoundError, MarketplaceConnectionError, ServerError) as e:
+            pytest.skip(f"Mapping update not testable — resource may not exist: {e}")
     finally:
         await marketplace_api.delete_connection(connection["id"])
 
@@ -720,8 +731,8 @@ async def test_delete_mapping_with_verification(marketplace_api):
             # Verify deletion
             with pytest.raises(NotFoundError):
                 await marketplace_api.get_mapping(mapping_id)
-        except Exception as e:
-            pytest.skip(f"Mapping creation/deletion failed: {e}")
+        except (ValidationError, NotFoundError, MarketplaceConnectionError, ServerError) as e:
+            pytest.skip(f"Mapping deletion not testable — resource may not exist: {e}")
     finally:
         await marketplace_api.delete_connection(connection["id"])
 
@@ -872,17 +883,15 @@ async def test_authentication_missing_key(api_base_url):
 
 @pytest.mark.asyncio
 @pytest.mark.integration
-async def test_retry_logic_on_transient_errors(marketplace_api):
-    """Test retry logic on transient errors"""
-    # This test verifies that retry logic is configured
-    # Actual retry behavior depends on API implementation
-    # We just verify the client is configured with retries
-    assert marketplace_api.client.config.max_retries >= 1
-
-
-@pytest.mark.asyncio
-@pytest.mark.integration
-async def test_timeout_handling(marketplace_api):
-    """Test timeout handling"""
-    # Verify timeout is configured
-    assert marketplace_api.client.config.timeout > 0
+async def test_retry_and_timeout_configuration(marketplace_api):
+    """Verify client is configured with sensible retry and timeout settings,
+    and that a basic API call completes within the configured timeout."""
+    assert marketplace_api.client.config.max_retries >= 1, (
+        "Client must have retries configured for transient error resilience"
+    )
+    assert marketplace_api.client.config.timeout > 0, (
+        "Client must have a timeout configured to prevent hangs"
+    )
+    # Smoke test: an actual API call with the configured settings.
+    connectors = await marketplace_api.list_connectors()
+    assert isinstance(connectors, list)

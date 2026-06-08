@@ -1,7 +1,3 @@
-from tests.pytest_mvp_skip import skip_if_mvp_mode
-
-pytestmark = skip_if_mvp_mode
-
 """
 Unit tests for ML training CLI commands.
 
@@ -16,9 +12,13 @@ import json
 import os
 import tempfile
 from click.testing import CliRunner
-from unittest.mock import Mock, patch, MagicMock
+from unittest.mock import Mock, patch
 from datahub_cli.main import cli
 from datahub_cli.api_client import api_client
+
+from tests.pytest_mvp_skip import skip_if_mvp_mode
+
+pytestmark = skip_if_mvp_mode
 
 
 class TestMLTrainingCommands:
@@ -112,8 +112,9 @@ class TestMLTrainingCommands:
         finally:
             os.unlink(config_file)
 
-    def test_training_submit_invalid_uuid(self, runner):
+    def test_training_submit_invalid_uuid(self, runner, mock_api_client):
         """Test training submit with invalid UUID"""
+        mock_api_client['post'].return_value = {'job_id': 'unreachable'}
         result = runner.invoke(cli, [
             'ml', 'training', 'submit',
             '--model-id', 'invalid-uuid',
@@ -124,8 +125,9 @@ class TestMLTrainingCommands:
         assert result.exit_code != 0, "Should fail with invalid UUID"
         assert 'Invalid' in result.output or 'UUID' in result.output
 
-    def test_training_submit_invalid_json(self, runner):
+    def test_training_submit_invalid_json(self, runner, mock_api_client):
         """Test training submit with invalid JSON"""
+        mock_api_client['post'].return_value = {'job_id': 'unreachable'}
         result = runner.invoke(cli, [
             'ml', 'training', 'submit',
             '--model-id', '123e4567-e89b-12d3-a456-426614174000',
@@ -375,3 +377,145 @@ class TestMLTrainingCommands:
         assert 'submitted successfully' in result.output.lower()
         assert 'Job ID:' in result.output
         assert 'Status:' in result.output
+
+    # ------------------------------------------------------------------
+    # Error handling — API failures
+    # ------------------------------------------------------------------
+
+    def test_training_list_api_error(self, runner, mock_api_client):
+        """Training list surfaces API errors when the HTTPError lacks a response.
+
+        When ``HTTPError.response`` is None (e.g. a connection-level error
+        wrapped as HTTPError), ``hasattr(response, 'text')`` is False so
+        ``handle_ml_api_error`` is skipped and the command wraps the
+        exception in a ``click.ClickException`` with its own prefix.
+        """
+        from requests.exceptions import HTTPError
+        mock_api_client['get'].side_effect = HTTPError("500 Server Error")
+
+        result = runner.invoke(cli, ['ml', 'training', 'list', '--format', 'json'])
+
+        assert result.exit_code != 0, "Should fail on API error"
+        assert 'Failed to list training jobs' in result.output
+
+    def test_training_get_api_error(self, runner, mock_api_client):
+        """Training get surfaces API errors to the user via handle_ml_api_error.
+
+        When the API returns an error response, ``handle_ml_api_error()``
+        (called from the command's except-block) formats a user-friendly
+        error with a suggestion.  The command must fail (non-zero exit).
+        """
+        from requests.exceptions import HTTPError
+        mock_response = Mock()
+        mock_response.status_code = 500
+        mock_response.text = '{"error": "Internal server error"}'
+        mock_api_client['get'].side_effect = HTTPError(
+            "500 Server Error", response=mock_response
+        )
+
+        result = runner.invoke(cli, ['ml', 'training', 'get', 'test-job-123', '--format', 'json'])
+
+        assert result.exit_code != 0, "Should fail on API error"
+        # Error is formatted by handle_ml_api_error — user-friendly message
+        assert 'Error' in result.output
+        assert 'Internal server error' in result.output
+
+    def test_training_submit_api_error(self, runner, mock_api_client):
+        """Training submit surfaces API errors via handle_ml_api_error."""
+        from requests.exceptions import HTTPError
+        mock_response = Mock()
+        mock_response.status_code = 500
+        mock_response.text = '{"error": "Internal server error"}'
+        mock_api_client['post'].side_effect = HTTPError(
+            "500 Server Error", response=mock_response
+        )
+
+        result = runner.invoke(cli, [
+            'ml', 'training', 'submit',
+            '--model-id', '123e4567-e89b-12d3-a456-426614174000',
+            '--dataset-id', '123e4567-e89b-12d3-a456-426614174001',
+            '--config', '{"epochs": 10}',
+            '--format', 'json',
+        ])
+
+        assert result.exit_code != 0, "Should fail on API error"
+        assert 'Error' in result.output
+        assert 'Internal server error' in result.output
+
+    # ------------------------------------------------------------------
+    # Parameter validation
+    # ------------------------------------------------------------------
+
+    def test_training_list_negative_limit(self, runner, mock_api_client):
+        """Training list with negative --limit: CLI passes it through (gap).
+
+        ``list_training_jobs`` does NOT currently validate negative limits
+        (unlike ``list_models`` which raises ``ClickException`` at ml.py:43).
+        The negative value is sent to the API as-is.  This test documents
+        the gap — when the validation is added, change the assertion to
+        ``result.exit_code != 0`` and verify the error message.
+        """
+        mock_api_client['get'].return_value = {'results': [], 'count': 0}
+
+        result = runner.invoke(cli, [
+            'ml', 'training', 'list',
+            '--limit', '-1',
+            '--format', 'json',
+        ])
+
+        # Current behaviour: CLI passes -1 through to the API (mock returns ok).
+        # A future fix should validate limit >= 1 and return exit_code != 0.
+        assert result.exit_code == 0, f"CLI failed: {result.output}"
+        call_args = mock_api_client['get'].call_args
+        assert call_args[1]['params']['limit'] == -1, (
+            f"Expected limit=-1 to be passed through, got: {call_args[1]['params']}"
+        )
+
+    # ------------------------------------------------------------------
+    # Default format behaviour
+    # ------------------------------------------------------------------
+
+    def test_training_list_default_format_is_table(self, runner, mock_api_client):
+        """Training list defaults to table format when --format is omitted."""
+        mock_api_client['get'].return_value = {
+            'results': [
+                {
+                    'job_id': 'job-1',
+                    'model_id': 'model-1',
+                    'status': 'RUNNING',
+                    'progress': 0.5,
+                    'submitted_at': '2024-01-01T00:00:00Z'
+                }
+            ],
+            'count': 1,
+        }
+
+        result = runner.invoke(cli, ['ml', 'training', 'list'])
+
+        assert result.exit_code == 0, f"Command failed: {result.output}"
+        # Table format includes column headers, not JSON
+        assert 'Job ID' in result.output
+        assert 'Model ID' in result.output
+        assert 'Status' in result.output
+
+    def test_training_submit_default_format_is_table(self, runner, mock_api_client):
+        """Training submit defaults to table format when --format is omitted."""
+        mock_api_client['post'].return_value = {
+            'job_id': 'test-job-123',
+            'hub_job_id': 'hub-job-456',
+            'status': 'SUBMITTED',
+            'model_id': 'model-uuid',
+            'dataset_id': 'dataset-uuid',
+            'submitted_at': '2024-01-01T00:00:00Z'
+        }
+
+        result = runner.invoke(cli, [
+            'ml', 'training', 'submit',
+            '--model-id', '123e4567-e89b-12d3-a456-426614174000',
+            '--dataset-id', '123e4567-e89b-12d3-a456-426614174001',
+            '--config', '{"epochs": 10}',
+        ])
+
+        assert result.exit_code == 0, f"Command failed: {result.output}"
+        assert 'submitted successfully' in result.output.lower()
+        assert 'Job ID:' in result.output

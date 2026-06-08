@@ -54,6 +54,15 @@ MVP_GATED_RELATIVE_PREFIXES: Final[tuple[str, ...]] = (
     # are mounted).  They are classified as MVP-core below.
     "dpia/",
     "ropa/",
+    # Phase 278 new apps — mounted in urls.py but not yet classified.
+    # These are backend compliance/privacy features gated behind MVP.
+    "breach/",
+    "consent/",
+    "data-movement/",
+    "dsar/",
+    "gdpr/",
+    "processor-agreements/",
+    "warehouses/",
 )
 
 API_V1_PREFIX: Final[str] = "/api/v1/"

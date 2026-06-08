@@ -306,6 +306,18 @@ class TestMLCommandArgumentValidation:
         # Click should validate the choice and show error
         assert result.exit_code != 0
 
+    def test_ml_models_list_with_negative_limit(self, runner):
+        """Test ML models list rejects --limit < 1"""
+        result = runner.invoke(cli, ['ml', 'models', 'list', '--limit', '0'])
+        assert result.exit_code != 0
+        assert 'limit must be at least 1' in result.output.lower()
+
+    def test_ml_models_list_with_negative_limit_value(self, runner):
+        """Test ML models list rejects negative --limit"""
+        result = runner.invoke(cli, ['ml', 'models', 'list', '--limit', '-1'])
+        assert result.exit_code != 0
+        assert 'limit must be at least 1' in result.output.lower()
+
 
 class TestMLInferenceCommandGroup:
     """Test ML inference command group"""
@@ -741,4 +753,158 @@ class TestMLServingABTestParameterValidation:
             '--format', 'json'
         ])
         assert result.exit_code != 0
-        assert 'Invalid model-id format' in result.output or 'Invalid UUID' in result.output
+        assert 'Invalid model-id format' in result.output
+
+
+class TestMLModelsAPI:
+    """API-mock tests for ml models commands — validates API calls, payloads,
+    response parsing, and output formatting."""
+
+    @pytest.fixture
+    def runner(self):
+        return CliRunner()
+
+    @pytest.fixture
+    def mock_api(self, monkeypatch):
+        from unittest.mock import Mock
+        mock_client = Mock()
+        monkeypatch.setattr('datahub_cli.commands.ml.api_client', mock_client)
+        return mock_client
+
+    def test_list_models_success_table(self, runner, mock_api):
+        """Test list_models with paginated API response in table format"""
+        mock_api.get.return_value = {
+            'results': [
+                {
+                    'id': '123e4567-e89b-12d3-a456-426614174000',
+                    'odh_model_name': 'bert-classifier',
+                    'odh_model_version': '1.0.0',
+                    'model_type': 'CLASSIFICATION',
+                    'status': 'DEPLOYED',
+                    'asset_id': '223e4567-e89b-12d3-a456-426614174000'
+                }
+            ]
+        }
+
+        result = runner.invoke(cli, ['ml', 'models', 'list'])
+
+        assert result.exit_code == 0
+        assert 'bert-classifier' in result.output
+        assert 'CLASSIFICATION' in result.output
+        assert 'DEPLOYED' in result.output
+        mock_api.get.assert_called_once_with(
+            'ml/models/',
+            params={'limit': 20, 'offset': 0}
+        )
+
+    def test_list_models_success_json(self, runner, mock_api):
+        """Test list_models with paginated API response in JSON format"""
+        mock_api.get.return_value = {
+            'results': [
+                {
+                    'id': '123e4567-e89b-12d3-a456-426614174000',
+                    'odh_model_name': 'gpt-finetuned',
+                    'odh_model_version': '2.0.0',
+                    'model_type': 'NLP',
+                    'status': 'TRAINED',
+                    'asset_id': None
+                }
+            ]
+        }
+
+        result = runner.invoke(cli, ['ml', 'models', 'list', '--format', 'json'])
+
+        assert result.exit_code == 0
+        output_data = json.loads(result.output)
+        assert isinstance(output_data, list)
+        assert len(output_data) == 1
+        assert output_data[0]['odh_model_name'] == 'gpt-finetuned'
+
+    def test_list_models_empty(self, runner, mock_api):
+        """Test list_models with empty results"""
+        mock_api.get.return_value = {'results': []}
+
+        result = runner.invoke(cli, ['ml', 'models', 'list'])
+
+        assert result.exit_code == 0
+        assert 'No models found' in result.output
+
+    def test_list_models_with_filters(self, runner, mock_api):
+        """Test list_models with status and limit filters"""
+        mock_api.get.return_value = {'results': []}
+
+        result = runner.invoke(cli, [
+            'ml', 'models', 'list',
+            '--status', 'DEPLOYED',
+            '--limit', '10',
+            '--offset', '5'
+        ])
+
+        assert result.exit_code == 0
+        mock_api.get.assert_called_once_with(
+            'ml/models/',
+            params={'limit': 10, 'offset': 5, 'status': 'DEPLOYED'}
+        )
+
+    def test_list_models_direct_list_response(self, runner, mock_api):
+        """Test list_models when API returns a direct list (not paginated)"""
+        mock_api.get.return_value = [
+            {
+                'id': 'direct-list-model-id',
+                'odh_model_name': 'sklearn-classifier',
+                'odh_model_version': '1.0.0',
+                'model_type': 'CLASSIFICATION',
+                'status': 'DEPLOYED'
+            }
+        ]
+
+        result = runner.invoke(cli, ['ml', 'models', 'list'])
+
+        assert result.exit_code == 0
+        assert 'sklearn-classifier' in result.output
+
+    def test_get_model_success_table(self, runner, mock_api):
+        """Test get_model in table format"""
+        mock_api.get.return_value = {
+            'id': '123e4567-e89b-12d3-a456-426614174000',
+            'odh_model_id': 'odh-model-abc',
+            'odh_model_name': 'bert-classifier',
+            'odh_model_version': '1.0.0',
+            'model_type': 'CLASSIFICATION',
+            'status': 'DEPLOYED',
+            'asset_id': '223e4567-e89b-12d3-a456-426614174000',
+            'contract_id': '323e4567-e89b-12d3-a456-426614174000',
+            'created_at': '2025-01-01T00:00:00Z',
+            'updated_at': '2025-01-01T00:00:00Z'
+        }
+
+        result = runner.invoke(cli, [
+            'ml', 'models', 'get', '123e4567-e89b-12d3-a456-426614174000'
+        ])
+
+        assert result.exit_code == 0
+        assert 'bert-classifier' in result.output
+        assert 'CLASSIFICATION' in result.output
+        assert 'DEPLOYED' in result.output
+        mock_api.get.assert_called_once_with(
+            'ml/models/123e4567-e89b-12d3-a456-426614174000/'
+        )
+
+    def test_get_model_success_json(self, runner, mock_api):
+        """Test get_model in JSON format"""
+        mock_api.get.return_value = {
+            'id': '123e4567-e89b-12d3-a456-426614174000',
+            'odh_model_name': 'bert-classifier',
+            'odh_model_version': '1.0.0',
+            'model_type': 'CLASSIFICATION',
+            'status': 'DEPLOYED'
+        }
+
+        result = runner.invoke(cli, [
+            'ml', 'models', 'get', '123e4567-e89b-12d3-a456-426614174000',
+            '--format', 'json'
+        ])
+
+        assert result.exit_code == 0
+        output_data = json.loads(result.output)
+        assert output_data['odh_model_name'] == 'bert-classifier'

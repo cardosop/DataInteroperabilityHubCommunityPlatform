@@ -53,10 +53,9 @@ class TestScheduledExportSDK:
         # Should have results or be empty
         assert "results" in result or isinstance(result.get("results"), list)
 
-    async def test_get_scheduled_export(self, client):
-        """Test getting scheduled export"""
-        # Requires existing export ID
-        pytest.skip("Requires test data setup")
+    # test_get_scheduled_export removed — it was a placeholder that always
+    # skipped.  To test scheduled exports, create an export via the API first
+    # and then verify it is returned by list() and get().
 
 
 @pytest.mark.asyncio

@@ -27,6 +27,7 @@ from datahub_interoperability.errors import (
     UnauthorizedError,
     ServerError,
     ConflictError,
+    NetworkError,
 )
 
 
@@ -116,6 +117,14 @@ api_key_obj = AuthAPIKey.objects.create(
     name='ODH SDK Test Key',
     key_hash=api_key_hash
 )
+
+# Create subscriptions so billing middleware doesn't block writes
+from hub.apps.billing.models import Subscription, SubscriptionStatus
+from hub.apps.tenants.models import TenantPlan
+plan = TenantPlan.objects.first()
+if plan:
+    Subscription.objects.get_or_create(tenant=tenant, category='BASE', defaults={'plan': plan, 'status': SubscriptionStatus.ACTIVE})
+    Subscription.objects.get_or_create(tenant=tenant, category='ML_AI', defaults={'plan': plan, 'status': SubscriptionStatus.ACTIVE})
 
 # Print the plaintext key (it's only available at creation time)
 print('API_KEY_START')
@@ -322,8 +331,9 @@ async def test_dataset(client):
         # For now, we'll use a placeholder UUID
         dataset_id = str(uuid.uuid4())
         yield dataset_id
-    except Exception as e:
-        pytest.skip(f"Failed to create test dataset: {e}")
+    except (ServerError, NetworkError, ValidationError, NotFoundError) as e:
+        pytest.skip(f"Failed to create test dataset — service unavailable: {e}")
+    # Unexpected exceptions propagate — they are real bugs, not service issues.
 
 
 class TestODHIntegrationAPIComprehensive:
@@ -561,20 +571,14 @@ class TestODHIntegrationAPIComprehensive:
                 await invalid_client.ml.list_models()
 
     @pytest.mark.asyncio
-    async def test_odh_api_retry_logic(self, odh_api):
-
-
-        """Test ODH API retry logic"""
-
-
-        # This test verifies retry logic is implemented
-        # Actual retry behavior depends on API responses
-        try:
-            models = await odh_api.list_models()
-            assert isinstance(models, list), "Should return a list even after retries"
-        except Exception:
-            # If API is unavailable, that's OK - we're testing retry logic exists
-            pass
+    async def test_odh_api_retry_configured(self, odh_api):
+        """Verify ODH API client has retry logic configured and can make calls."""
+        assert odh_api.client.config.max_retries >= 1, (
+            "Client must have retry logic configured for resilience"
+        )
+        # Smoke test: actual API call exercises the retry path if needed.
+        models = await odh_api.list_models()
+        assert isinstance(models, list)
 
 
 class TestTrainingAPIComprehensive:
@@ -718,18 +722,11 @@ class TestTrainingAPIComprehensive:
                 await invalid_client.training.list_training_jobs()
 
     @pytest.mark.asyncio
-    async def test_training_api_retry_logic(self, training_api):
-
-
-        """Test Training API retry logic"""
-
-
-        try:
-            jobs = await training_api.list_training_jobs()
-            assert isinstance(jobs, list), "Should return a list even after retries"
-        except Exception:
-            # If API is unavailable, that's OK - we're testing retry logic exists
-            pass
+    async def test_training_api_retry_configured(self, training_api):
+        """Verify Training API client has retry configured and can make calls."""
+        assert training_api.client.config.max_retries >= 1
+        jobs = await training_api.list_training_jobs()
+        assert isinstance(jobs, list)
 
 
 class TestInferenceAPIComprehensive:
@@ -937,51 +934,29 @@ class TestInferenceAPIComprehensive:
                 await invalid_client.inference.list_deployments()
 
     @pytest.mark.asyncio
-    async def test_inference_api_retry_logic(self, inference_api):
-
-
-        """Test Inference API retry logic"""
-
-
-        try:
-            deployments = await inference_api.list_deployments()
-            assert isinstance(deployments, list), "Should return a list even after retries"
-        except Exception:
-            # If API is unavailable, that's OK - we're testing retry logic exists
-            pass
+    async def test_inference_api_retry_configured(self, inference_api):
+        """Verify Inference API client has retry configured and can make calls."""
+        assert inference_api.client.config.max_retries >= 1
+        deployments = await inference_api.list_deployments()
+        assert isinstance(deployments, list)
 
 
 class TestODHSDKProgressTracking:
     """Test SDK progress tracking and consistency"""
 
     @pytest.mark.asyncio
-    async def test_odh_api_progress_tracking(self, odh_api):
-
-
-        """Test ODH API progress tracking"""
-
-
-        # Test that methods return consistent structure
-        try:
-            models = await odh_api.list_models()
-            assert isinstance(models, list), "Should return consistent list structure"
-        except Exception:
-            # If API is unavailable, that's OK - we're testing progress tracking structure exists
-            pass
+    async def test_odh_api_response_structure_consistency(self, odh_api):
+        """Verify ODH API list methods return consistent list structures."""
+        models = await odh_api.list_models()
+        assert isinstance(models, list), "list_models should return a list"
+        if models:
+            assert isinstance(models[0], dict), "Model entries should be dicts"
 
     @pytest.mark.asyncio
-    async def test_training_api_progress_tracking(self, training_api):
-
-
-        """Test Training API progress tracking"""
-
-
-        try:
-            jobs = await training_api.list_training_jobs()
-            assert isinstance(jobs, list), "Should return consistent list structure"
-        except Exception:
-            # If API is unavailable, that's OK - we're testing progress tracking structure exists
-            pass
+    async def test_training_api_response_structure_consistency(self, training_api):
+        """Verify Training API list methods return consistent list structures."""
+        jobs = await training_api.list_training_jobs()
+        assert isinstance(jobs, list), "list_training_jobs should return a list"
 
     @pytest.mark.asyncio
     async def test_inference_api_progress_tracking(self, inference_api, odh_inference_scheduler_available):

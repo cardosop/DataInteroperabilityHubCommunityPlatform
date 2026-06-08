@@ -40,6 +40,8 @@ def models():
 @click.option('--format', 'output_format', type=click.Choice(['json', 'table']), default='table', help='Output format')
 def list_models(asset_id: Optional[str], status: Optional[str], limit: int, offset: int, output_format: str):
     """List ML models"""
+    if limit < 1:
+        raise click.ClickException("--limit must be at least 1")
     from typing import Dict, Any
     params: Dict[str, Any] = {'limit': limit, 'offset': offset}
     if status:
@@ -153,7 +155,7 @@ def get_model(model_id: str, output_format: str):
 
 @models.command('create')
 @click.option('--odh-model-id', required=True, help='ODH Model Registry model ID')
-@click.option('--odh-model-name', required=True, help='ODH Model Registry model name')
+@click.option('--odh-model-name', help='ODH Model Registry model name (validated but not sent to API)')
 @click.option('--odh-model-version', required=True, help='ODH Model Registry model version')
 @click.option('--asset-id', help='Hub asset ID to link (optional)')
 @click.option('--contract-id', help='Hub contract ID to link (optional)')
@@ -706,8 +708,6 @@ def training():
 @click.option('--format', 'output_format', type=click.Choice(['json', 'table']), default='table', help='Output format')
 def submit_training(model_id: str, dataset_id: str, config: str, output_format: str):
     """Submit a training job"""
-    import os
-
     # Validate UUIDs
     try:
         validate_uuid(model_id, 'model-id')
@@ -720,15 +720,13 @@ def submit_training(model_id: str, dataset_id: str, config: str, output_format: 
     if os.path.exists(config):
         # Read from file
         try:
-            with open(config, 'r') as f:
-                import json
+            with open(config, 'r', encoding='utf-8') as f:
                 training_config = json.load(f)
         except Exception as e:
             raise click.ClickException(f"Failed to read config file: {e}")
     else:
         # Try to parse as JSON string
         try:
-            import json
             training_config = json.loads(config)
         except json.JSONDecodeError:
             raise click.ClickException(f"Invalid JSON in config: {config}")
@@ -999,7 +997,7 @@ def deploy_model_serving(model_id: str, endpoint: Optional[str], output_format: 
             click.echo(json.dumps(result, indent=2))
         else:
             click.echo("Model deployed for serving successfully!")
-            click.echo(f"Serving ID: {result.get('serving_id')}")
+            click.echo(f"Serving ID: {result.get('deployment_id', result.get('serving_id'))}")
             click.echo(f"Model ID: {result.get('model_id')}")
             click.echo(f"Status: {result.get('status')}")
             if result.get('endpoint'):
@@ -1021,9 +1019,9 @@ def deploy_model_serving(model_id: str, endpoint: Optional[str], output_format: 
 
 @serving.command('predict')
 @click.option('--model-id', required=True, help='ML model ID')
-@click.option('--input', required=True, help='Input data (JSON string or file path)')
+@click.option('--input', 'input_data', required=True, help='Input data (JSON string or file path)')
 @click.option('--format', 'output_format', type=click.Choice(['json', 'table']), default='table', help='Output format')
-def predict_serving(model_id: str, input: str, output_format: str):
+def predict_serving(model_id: str, input_data: str, output_format: str):
     """Run inference prediction on a served model"""
     # Validate parameters
     try:
@@ -1033,17 +1031,17 @@ def predict_serving(model_id: str, input: str, output_format: str):
 
     # Parse input data
     input_json = None
-    if os.path.exists(input):
+    if os.path.exists(input_data):
         # Input is a file path
         try:
-            with open(input, 'r', encoding='utf-8') as f:
+            with open(input_data, 'r', encoding='utf-8') as f:
                 input_json = json.load(f)
         except Exception as e:
             raise click.ClickException(f"Failed to read input file: {e}")
     else:
         # Try to parse as JSON string
         try:
-            input_json = validate_json(input, 'input')
+            input_json = validate_json(input_data, 'input')
         except ODHMLModelParameterError as e:
             raise click.ClickException(str(e))
 
@@ -1068,8 +1066,12 @@ def predict_serving(model_id: str, input: str, output_format: str):
             results = deps.get('results', []) if isinstance(deps, dict) else deps
             if results:
                 deployment_id = results[0].get('deployment_id')
+    except (click.ClickException, ODHMLModelError):
+        raise
     except Exception:
-        pass  # Will fail below with a clear message
+        # Deployment resolution failed for non-Click reasons (e.g., network error);
+        # let the check below produce a clear user-facing message
+        pass
 
     if not deployment_id:
         raise click.ClickException(f"No deployment found for model {model_id}")
@@ -1150,7 +1152,7 @@ def list_serving(model_id: Optional[str], status: Optional[str], limit: int, off
             click.echo(f"{'Serving ID':<40} {'Model ID':<40} {'Status':<20} {'Endpoint':<50}")
             click.echo("-" * 150)
             for serving in results:
-                serving_id = str(serving.get('serving_id', ''))[:38]
+                serving_id = str(serving.get('deployment_id', serving.get('serving_id', '')))[:38]
                 model_id_display = str(serving.get('model_id', ''))[:38]
                 status_str = str(serving.get('status', ''))[:18]
                 endpoint = str(serving.get('endpoint', ''))[:48] if serving.get('endpoint') else 'N/A'
@@ -1188,7 +1190,7 @@ def get_serving(serving_id: str, output_format: str):
             click.echo(json.dumps(data, indent=2))
         else:
             # Table format
-            click.echo(f"Serving ID: {data.get('serving_id')}")
+            click.echo(f"Serving ID: {data.get('deployment_id', data.get('serving_id'))}")
             click.echo(f"Model ID: {data.get('model_id')}")
             click.echo(f"Status: {data.get('status')}")
             if data.get('endpoint'):
@@ -1518,10 +1520,10 @@ def deploy_model(
 ):
     """Deploy an ML model"""
     payload = {}
-    if config_file:
-        with open(config_file, "r") as f:
-            payload = json.loads(f.read())
     try:
+        if config_file:
+            with open(config_file, "r", encoding="utf-8") as f:
+                payload = json.loads(f.read())
         data = api_client.post(
             f"ml/models/{model_id}/deploy/",
             json_data=payload,
@@ -1543,13 +1545,19 @@ def deploy_model(
 
 @ml.command("undeploy")
 @click.argument("model_id")
-def undeploy_model(model_id: str):
+@click.option('--format', 'output_format', type=click.Choice(['json', 'table']), default='table', help='Output format')
+def undeploy_model(model_id: str, output_format: str = 'table'):
     """Undeploy an ML model"""
     try:
-        api_client.post(
+        result = api_client.post(
             f"ml/models/{model_id}/undeploy/",
         )
-        click.echo(f"Model {model_id} undeployed.")
+        if output_format == 'json':
+            click.echo(json.dumps(result if result else {'status': 'undeployed', 'model_id': model_id}, indent=2))
+        else:
+            click.echo(f"Model {model_id} undeployed.")
+            if result and result.get('status'):
+                click.echo(f"Status: {result.get('status')}")
     except click.ClickException:
         raise
     except Exception as e:
@@ -1565,8 +1573,9 @@ def undeploy_model(model_id: str):
     required=True,
     help="Version to rollback to",
 )
+@click.option('--format', 'output_format', type=click.Choice(['json', 'table']), default='table', help='Output format')
 def rollback_model(
-    model_odh_id: str, target_version: str,
+    model_odh_id: str, target_version: str, output_format: str = 'table',
 ):
     """Rollback an ML model to a previous version"""
     try:
@@ -1574,11 +1583,14 @@ def rollback_model(
             f"ml/models/{model_odh_id}/rollback/",
             json_data={"version": target_version},
         )
-        click.echo(
-            f"Model rolled back to version "
-            f"{target_version}."
-        )
-        click.echo(f"Status: {data.get('status')}")
+        if output_format == 'json':
+            click.echo(json.dumps(data, indent=2))
+        else:
+            click.echo(
+                f"Model rolled back to version "
+                f"{target_version}."
+            )
+            click.echo(f"Status: {data.get('status')}")
     except click.ClickException:
         raise
     except Exception as e:

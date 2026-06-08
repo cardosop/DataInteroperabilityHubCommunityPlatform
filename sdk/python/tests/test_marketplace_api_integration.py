@@ -144,6 +144,14 @@ api_key_obj = APIKey.objects.create(
     key_hash=api_key_hash,
     scopes=['integrations:write', 'integrations:read']
 )
+
+from hub.apps.billing.models import Subscription, SubscriptionStatus
+from hub.apps.tenants.models import TenantPlan
+plan = TenantPlan.objects.first()
+if plan:
+    Subscription.objects.get_or_create(tenant=tenant, category='BASE', defaults={'plan': plan, 'status': SubscriptionStatus.ACTIVE})
+    Subscription.objects.get_or_create(tenant=tenant, category='ML_AI', defaults={'plan': plan, 'status': SubscriptionStatus.ACTIVE})
+
 print(api_key_value)
 """
             result = subprocess.run(
@@ -231,6 +239,14 @@ api_key_obj = APIKey.objects.create(
     key_hash=api_key_hash,
     scopes=['integrations:write', 'integrations:read']
 )
+
+from hub.apps.billing.models import Subscription, SubscriptionStatus
+from hub.apps.tenants.models import TenantPlan
+plan = TenantPlan.objects.first()
+if plan:
+    Subscription.objects.get_or_create(tenant=tenant, category='BASE', defaults={'plan': plan, 'status': SubscriptionStatus.ACTIVE})
+    Subscription.objects.get_or_create(tenant=tenant, category='ML_AI', defaults={'plan': plan, 'status': SubscriptionStatus.ACTIVE})
+
 print(api_key_value)
 """
         result = subprocess.run(

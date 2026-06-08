@@ -8,10 +8,11 @@ Uses JWT Bearer token authentication.
 import unittest
 import os
 
+import httpx
 import pytest
 from django.test import TestCase
 
-from hub.apps.core.services.base import NotFoundError
+from hub.apps.core.services.base import ConnectionError as HubConnectionError, NotFoundError
 from hub.apps.integrations.base import MarketplaceType, SyncDirection
 from hub.apps.integrations.config.marketplace_instances import get_marketplace_instance_config
 from hub.apps.integrations.connectors.dados_gov_br_client import DadosGovBrAPIClient
@@ -107,7 +108,7 @@ class TestDadosGovBrConnectorIntegration(TestCase):
             assert result is True
         except unittest.SkipTest:
             raise
-        except (ValueError, ConnectionError) as e:
+        except (ValueError, ConnectionError, HubConnectionError, httpx.HTTPStatusError) as e:
             handle_auth_failure(e)
             pytest.fail(f"Connection test failed: {e}")
         except Exception as e:
@@ -128,7 +129,7 @@ class TestDadosGovBrConnectorIntegration(TestCase):
                 assert listing.marketplace_type == MarketplaceType.CKAN_INSTANCE
         except unittest.SkipTest:
             raise
-        except (ValueError, ConnectionError) as e:
+        except (ValueError, ConnectionError, HubConnectionError, httpx.HTTPStatusError) as e:
             handle_auth_failure(e)
             pytest.fail(f"list_listings failed: {e}")
         except Exception as e:
@@ -205,7 +206,7 @@ class TestDadosGovBrConnectorIntegration(TestCase):
         try:
             with pytest.raises(NotFoundError):
                 self.connector.get_listing("non-existent-dataset-id-12345")
-        except (ValueError, ConnectionError) as e:
+        except (ValueError, ConnectionError, HubConnectionError, httpx.HTTPStatusError) as e:
             # If authentication fails, skip this test
             handle_auth_failure(e)
             raise unittest.SkipTest(f"Cannot test NotFoundError due to authentication failure: {e}")
@@ -320,7 +321,7 @@ class TestDadosGovBrConnectorIntegration(TestCase):
             # Try to list listings - should work with valid token
             listings = self.connector.list_listings(limit=1)
             assert isinstance(listings, list)
-        except (ValueError, ConnectionError) as e:
+        except (ValueError, ConnectionError, HubConnectionError, httpx.HTTPStatusError) as e:
             handle_auth_failure(e)
             pytest.fail(f"JWT token authentication failed: {e}")
         except Exception as e:
@@ -338,7 +339,7 @@ class TestDadosGovBrConnectorIntegration(TestCase):
             if listings:
                 listing = self.connector.get_listing(listings[0].marketplace_id)
                 assert listing is not None
-        except (ValueError, ConnectionError) as e:
+        except (ValueError, ConnectionError, HubConnectionError, httpx.HTTPStatusError) as e:
             handle_auth_failure(e)
             pytest.fail(f"Endpoint resolution failed: {e}")
         except Exception as e:
@@ -474,7 +475,7 @@ class TestDadosGovBrAPIClientIntegration(TestCase):
             response = self.api_client.search_datasets(page=1)
             # API returns direct array according to Swagger spec
             assert isinstance(response, list)
-        except (ValueError, ConnectionError) as e:
+        except (ValueError, ConnectionError, HubConnectionError, httpx.HTTPStatusError) as e:
             # If we get authentication failure, token wasn't sent or was invalid
             handle_auth_failure(e)
             raise unittest.SkipTest("Bearer token authentication failed - cannot test headers")

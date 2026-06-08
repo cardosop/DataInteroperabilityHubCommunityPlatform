@@ -80,3 +80,51 @@ def _refresh_test_token_if_stale():
     elif not token:
         get_api_key()
     yield
+
+
+# ── Proactive E2E user self-heal ─────────────────────────────────────────
+# The auth lifecycle tests (test_auth_lifecycle.py) invalidate ALL cached
+# JWT tokens by calling POST /auth/logout/ for every persona.  This forces
+# every subsequent provision_persona() call to re-login.  If the re-login
+# finds the E2E user's password out of sync (common after container
+# restarts), the self-heal runs mid-suite under load and occasionally fails
+# (timeout, connection refused), causing provision_persona to skip.
+#
+# This session-scoped fixture runs ONCE before any use-case test and
+# proactively heals the three most critical E2E users (tenant_admin,
+# data_mesh_domain_owner, auditor).  If their logins succeed, the
+# passwords are correct and subsequent provision_persona calls won't
+# need mid-suite self-heal.
+
+@pytest.fixture(scope="session", autouse=True)
+def _proactively_heal_e2e_users():
+    """Ensure critical E2E users have correct passwords before test suite."""
+    import requests as _rq
+
+    port = os.environ.get("API_TEST_PORT", "8000")
+    base = os.environ.get("MESHANT_API_URL", f"http://localhost:{port}/api/v1")
+    e2e_secret = os.environ.get("E2E_TEST_SECRET", "e2e-test-secret-for-local-dev")
+
+    # Only heal if the API is reachable (skip during collection on
+    # machines where the test stack isn't running).
+    try:
+        _rq.get(base.rsplit("/api/v1", 1)[0] + "/health/", timeout=3)
+    except _rq.RequestException:
+        return  # API not available — tests will skip via collection hook
+
+    for email in (
+        "e2e_admin@example.com",         # used by invitation + tenant-switch tests
+        "e2e_dmo@example.com",           # used by quota + marketplace tests
+        "e2e_auditor@example.com",       # used by authz enforcement tests
+    ):
+        try:
+            resp = _rq.post(
+                f"{base}/test/ensure-e2e-users/",
+                json={"email": email},
+                headers={"X-E2E-Token": e2e_secret},
+                timeout=15,
+            )
+        except _rq.RequestException:
+            continue  # best-effort; don't fail collection
+
+    yield

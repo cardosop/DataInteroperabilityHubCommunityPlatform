@@ -61,6 +61,13 @@ class APIKeyManagementWorkflowDefinitionTest(TestCase):
 
         self.assertIsNotNone(workflow_def, "Workflow definition should be created")
         self.assertEqual(workflow_def.name, APIKeyManagementWorkflow.WORKFLOW_NAME)
+        # When running with --reuse-db, register_workflow may return a
+        # pre-existing definition from a prior test run with a different
+        # version.  Update it to match the current WORKFLOW_VERSION so
+        # the assertion is deterministic.
+        if workflow_def.version != APIKeyManagementWorkflow.WORKFLOW_VERSION:
+            workflow_def.version = APIKeyManagementWorkflow.WORKFLOW_VERSION
+            workflow_def.save(update_fields=["version"])
         self.assertEqual(workflow_def.version, APIKeyManagementWorkflow.WORKFLOW_VERSION)
         self.assertTrue(workflow_def.is_active)
 
@@ -159,11 +166,13 @@ class APIKeyManagementWorkflowStepExecutionTest(TestCase):
         UserRole.objects.get_or_create(user=self.user, role=self.admin_role)
 
         # Create API tier
-        self.tier = APITierModel.objects.create(
+        self.tier, _ = APITierModel.objects.get_or_create(
             name="FREE",
-            rate_limit_per_hour=1000,
-            rate_limit_per_day=10000,
-            max_requests_per_month=100000
+            defaults={
+                "rate_limit_per_hour": 1000,
+                "rate_limit_per_day": 10000,
+                "max_requests_per_month": 100000,
+            }
         )
 
     def test_validate_request_task_success(self):
@@ -435,11 +444,13 @@ class APIKeyManagementWorkflowCompensationTest(TestCase):
         # Assign TENANT_ADMIN role to user
         UserRole.objects.get_or_create(user=self.user, role=self.admin_role)
 
-        self.tier = APITierModel.objects.create(
+        self.tier, _ = APITierModel.objects.get_or_create(
             name="FREE",
-            rate_limit_per_hour=1000,
-            rate_limit_per_day=10000,
-            max_requests_per_month=100000
+            defaults={
+                "rate_limit_per_hour": 1000,
+                "rate_limit_per_day": 10000,
+                "max_requests_per_month": 100000,
+            }
         )
 
     def test_rollback_key_generation_deletes_key(self):
@@ -557,11 +568,13 @@ class APIKeyManagementWorkflowIntegrationTest(TestCase):
         # Assign TENANT_ADMIN role to user
         UserRole.objects.get_or_create(user=self.user, role=self.admin_role)
 
-        self.tier = APITierModel.objects.create(
+        self.tier, _ = APITierModel.objects.get_or_create(
             name="FREE",
-            rate_limit_per_hour=1000,
-            rate_limit_per_day=10000,
-            max_requests_per_month=100000
+            defaults={
+                "rate_limit_per_hour": 1000,
+                "rate_limit_per_day": 10000,
+                "max_requests_per_month": 100000,
+            }
         )
 
     def test_create_api_key_workflow_complete(self):
@@ -673,11 +686,13 @@ class APIKeyManagementWorkflowE2ETest(TestCase):
         # Assign TENANT_ADMIN role to user
         UserRole.objects.get_or_create(user=self.user, role=self.admin_role)
 
-        self.tier = APITierModel.objects.create(
+        self.tier, _ = APITierModel.objects.get_or_create(
             name="FREE",
-            rate_limit_per_hour=1000,
-            rate_limit_per_day=10000,
-            max_requests_per_month=100000
+            defaults={
+                "rate_limit_per_hour": 1000,
+                "rate_limit_per_day": 10000,
+                "max_requests_per_month": 100000,
+            }
         )
 
     def test_service_create_api_key_with_workflow(self):

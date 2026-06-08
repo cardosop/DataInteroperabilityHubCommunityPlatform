@@ -140,11 +140,9 @@ class TestVersioningDiff:
 
 
 class TestVersioningRollback:
-    # Rollback is intentionally de-registered in main.py (line 139) until
-    # the Phase 286 backend endpoint is available.  The command code is
-    # preserved in versioning.py for future activation.
+    # Rollback command is registered in main.py and gracefully handles
+    # missing backend endpoints until the Phase 286 backend is available.
     @pytest.mark.unit
-    @pytest.mark.skip(reason="Rollback de-registered in main.py until Phase 286 backend endpoint")
     def test_rollback_confirm(self, runner, mock_api_client):
         mock_resp = Mock()
         mock_resp.ok = True
@@ -160,7 +158,6 @@ class TestVersioningRollback:
         assert "v3" in result.output
 
     @pytest.mark.unit
-    @pytest.mark.skip(reason="Rollback de-registered in main.py until Phase 286 backend endpoint")
     def test_rollback_aborted(self, runner, mock_api_client):
         result = runner.invoke(
             cli,
@@ -171,7 +168,6 @@ class TestVersioningRollback:
         assert "Aborted" in result.output
 
     @pytest.mark.unit
-    @pytest.mark.skip(reason="Rollback de-registered in main.py until Phase 286 backend endpoint")
     def test_rollback_json(self, runner, mock_api_client):
         mock_resp = Mock()
         mock_resp.ok = True
@@ -189,7 +185,6 @@ class TestVersioningRollback:
         assert json.loads(result.output)["new_version_id"] == "v3"
 
     @pytest.mark.unit
-    @pytest.mark.skip(reason="Rollback de-registered in main.py until Phase 286 backend endpoint")
     def test_rollback_api_error(self, runner, mock_api_client):
         mock_resp = Mock()
         mock_resp.ok = False
@@ -205,7 +200,6 @@ class TestVersioningRollback:
         assert "409" in result.output
 
     @pytest.mark.unit
-    @pytest.mark.skip(reason="Rollback de-registered in main.py until Phase 286 backend endpoint")
     def test_rollback_missing_reason(self, runner):
         result = runner.invoke(cli, ["versioning", "rollback", "datasets", "abc", "v1"])
         assert result.exit_code != 0

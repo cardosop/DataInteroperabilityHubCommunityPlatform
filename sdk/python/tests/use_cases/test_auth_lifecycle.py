@@ -10,6 +10,26 @@ personas (every D145 role except visitor). Each test is a standalone
 function that hits the live staging API.
 """
 
+
+@pytest.fixture(scope="module", autouse=True)
+def _purge_persona_cache_after_auth_tests():
+    """Purge all persona caches after the auth lifecycle module completes.
+
+    The logout tests invalidate cached JWT tokens for all 12 personas.
+    By proactively purging the cache, subsequent tests get a clean
+    login path instead of having to detect stale tokens, evict, and
+    re-login under full-suite load — a cascade that can cause
+    intermittent skips in invitation and tenant-switching tests.
+    """
+    yield
+    import glob as _g, pathlib as _pl, time as _t
+    from tests._persona_provisioning import _CACHE_DIR as _cdir
+    for _f in _g.glob(str(_cdir / "*.json")):
+        _pl.Path(_f).unlink(missing_ok=True)
+    # Brief cooldown — let gunicorn workers finish processing
+    # the logout requests before the next test module starts.
+    _t.sleep(2)
+
 import time
 import base64
 import json
@@ -216,11 +236,16 @@ def test_invalid_bearer_returns_401():
 def test_logout_invalidates_session(persona_role: str):
     """POST /auth/logout/ invalidates the session. A subsequent
     GET /auth/me/ with the same access_token must return 401.
-    """
-    # Get a fresh login so we have a token that is definitely active
-    _provision(persona_role)
-    email = _persona_email(persona_role)
 
+    Uses ``_login_with_retry`` directly (NOT ``_provision``) to avoid
+    polluting the shared persona cache with credentials that will be
+    invalidated by the logout call.  Other tests that call
+    ``provision_persona(role)`` for the same role depend on valid
+    cached tokens — if the logout test cached a token and then
+    invalidated it, the next test would have to re-login under suite
+    load, potentially exhausting retries.
+    """
+    email = _persona_email(persona_role)
     login_resp = _login_with_retry(email, PERSONA_PASSWORD)
     if login_resp.status_code == 429:
         pytest.skip(f"Rate-limited during logout test for {persona_role}")
@@ -253,28 +278,21 @@ def test_logout_invalidates_session(persona_role: str):
         f"{logout_resp.text[:300]}"
     )
 
-    # After logout, the access_token may or may not be immediately
-    # invalidated depending on the auth implementation:
-    #
-    # - Stateless JWT: the access_token remains valid until expiry.
-    #   Logout only blacklists the refresh_token. /auth/me/ still
-    #   returns 200 with the old access_token — this is by design.
-    # - Stateful sessions / token blacklist: /auth/me/ returns 401.
-    #
-    # We verify the REFRESH token is invalidated (the security-critical
-    # part) rather than the access token (which is short-lived anyway).
+    # ── Verify refresh token is invalidated ─────────────────────────
+    # Logout MUST blacklist the refresh token so it cannot be used to
+    # obtain a new access token.  The access token itself may remain
+    # valid until expiry (stateless JWT), but the refresh token is
+    # the long-lived credential — blacklisting it is the security-
+    # critical part of the logout operation.
     refresh_resp = requests.post(
         f"{base}/auth/refresh/",
         json={"refresh_token": tokens.get("refresh_token", "")},
         timeout=15,
     )
-    # 401 = refresh token correctly blacklisted after logout.
-    # 200 = refresh token NOT blacklisted (acceptable for stateless
-    #   JWT implementations where logout is advisory).
-    # Both are valid — the test documents actual behavior.
-    assert refresh_resp.status_code in (200, 401), (
-        f"Post-logout refresh for {persona_role} returned unexpected "
-        f"{refresh_resp.status_code}: {refresh_resp.text[:200]}"
+    assert refresh_resp.status_code == 401, (
+        f"Post-logout refresh for {persona_role} was NOT rejected — "
+        f"refresh token was not blacklisted by logout! "
+        f"Got {refresh_resp.status_code}: {refresh_resp.text[:200]}"
     )
 
 
@@ -306,6 +324,12 @@ def test_me_returns_correct_role(persona_role: str):
     # Multiple personas map to the same seeded account (see _ROLE_TO_SEEDED_EMAIL).
     assert "email" in body, f"Profile for {persona_role} missing 'email': {body}"
     assert "roles" in body, f"Profile for {persona_role} missing 'roles': {body}"
+    assert isinstance(body["roles"], list), (
+        f"Profile roles is not a list for {persona_role}: {type(body['roles'])}"
+    )
+    assert len(body["roles"]) > 0, (
+        f"Profile roles is empty for {persona_role}"
+    )
     email = _persona_email(persona_role)
     assert body["email"] == email, (
         f"Profile email mismatch for {persona_role}: "

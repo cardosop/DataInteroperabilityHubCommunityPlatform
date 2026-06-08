@@ -110,6 +110,13 @@ api_key_obj = AuthAPIKey.objects.create(
     key_hash=api_key_hash
 )
 
+from hub.apps.billing.models import Subscription, SubscriptionStatus
+from hub.apps.tenants.models import TenantPlan
+plan = TenantPlan.objects.first()
+if plan:
+    Subscription.objects.get_or_create(tenant=tenant, category='BASE', defaults={'plan': plan, 'status': SubscriptionStatus.ACTIVE})
+    Subscription.objects.get_or_create(tenant=tenant, category='ML_AI', defaults={'plan': plan, 'status': SubscriptionStatus.ACTIVE})
+
 print('API_KEY_START')
 print(api_key_value)
 print('API_KEY_END')
