@@ -16,6 +16,7 @@ from rest_framework.test import APIClient
 
 from hub.apps.tenants.models import Tenant
 from hub.apps.testing.billing_support import ensure_tenant_has_active_subscription
+from hub.apps.testing.role_support import ensure_user_has_data_provider_role
 from hub.apps.users.models import Role, UserRole, UserStatus
 
 User = get_user_model()
@@ -42,6 +43,7 @@ class TestUsersAPIsComprehensiveIntegration:
             status=UserStatus.ACTIVE,
         )
         self.client.force_authenticate(user=self.user)
+        ensure_user_has_data_provider_role(self.user)
 
     def test_auth_me_returns_current_user(self):
         """GET /api/v1/auth/me/ returns 200 and current user info."""

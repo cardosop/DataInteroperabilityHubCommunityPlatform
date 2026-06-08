@@ -72,6 +72,19 @@ def _create_ingest_key(tenant, *, label: str = "init", expires_at=None):
 class TestRotateOpenLineageKeysCommand(TransactionTestCase):
     """Pins REQ-LIN-F4-003 — 7-day grace window on rotation."""
 
+    def setUp(self):
+        from django.db import connection
+        if not hasattr(connection.ensure_connection, '__self__'):
+            from types import MethodType
+            from django.db.backends.base.base import BaseDatabaseWrapper
+            connection.ensure_connection = MethodType(
+                BaseDatabaseWrapper.ensure_connection, connection,
+            )
+        connection.close()
+        connection.savepoint_ids = []
+        connection.needs_rollback = False
+        connection.ensure_connection()
+
     def test_rotate_issues_successor_and_graces_outgoing(self):
         from hub.apps.integrations.openlineage.models import (
             OpenLineageIngestApiKey,
@@ -239,6 +252,12 @@ class TestReplayOpenLineageDlqCommand(TransactionTestCase):
     """Pins ``replay_openlineage_dlq`` argparse + dry-run + sweep
     delegation."""
 
+    def setUp(self):
+        from hub.apps.integrations.openlineage.models import OpenLineageDeadLetter
+        from django.db import connection
+        connection.ensure_connection()
+        OpenLineageDeadLetter.objects.all().delete()
+
     def test_dry_run_lists_pending_without_mutation(self):
         from hub.apps.integrations.openlineage.adapter import DeliveryOutcome
 
@@ -255,7 +274,7 @@ class TestReplayOpenLineageDlqCommand(TransactionTestCase):
         # Patch the sweep's adapter so a non-dry-run wouldn't actually
         # POST. (Dry-run shouldn't reach it; the patch is paranoia.)
         with mock.patch(
-            "hub.apps.integrations.openlineage.tasks.OpenLineageAdapter"
+            "hub.apps.integrations.openlineage.adapter.OpenLineageAdapter"
         ) as adapter_cls:
             adapter_cls.return_value.deliver.return_value = DeliveryOutcome.DELIVERED
             call_command(
@@ -285,8 +304,7 @@ class TestReplayOpenLineageDlqCommand(TransactionTestCase):
 
         out = StringIO()
         with mock.patch(
-            "hub.apps.integrations.management.commands.replay_openlineage_dlq."
-            "openlineage_dlq_replay_sweep"
+            "hub.apps.integrations.openlineage.tasks.openlineage_dlq_replay_sweep"
         ) as sweep:
             sweep.return_value = {
                 "processed": 2,
@@ -318,6 +336,12 @@ class TestOpenLineageDlqReplaySweep(TransactionTestCase):
     """Pins the sweep's contract: idempotent, threshold-based
     permafail, fail-soft on poisoned rows."""
 
+    def setUp(self):
+        from hub.apps.integrations.openlineage.models import OpenLineageDeadLetter
+        from django.db import connection
+        connection.ensure_connection()
+        OpenLineageDeadLetter.objects.all().delete()
+
     def test_sweep_replays_pending_and_deletes_row(self):
         """Phase 228 F4 (REQ-LIN-F4-004 spec scenario "DLQ retry
         succeeds") — the spec says "the row is deleted" on a
@@ -335,7 +359,7 @@ class TestOpenLineageDlqReplaySweep(TransactionTestCase):
         pending_id = pending.id
 
         with mock.patch(
-            "hub.apps.integrations.openlineage.tasks.OpenLineageAdapter"
+            "hub.apps.integrations.openlineage.adapter.OpenLineageAdapter"
         ) as adapter_cls:
             adapter_cls.return_value.deliver.return_value = DeliveryOutcome.DELIVERED
             result = openlineage_dlq_replay_sweep(max_rows=10)
@@ -364,7 +388,7 @@ class TestOpenLineageDlqReplaySweep(TransactionTestCase):
         )
 
         with mock.patch(
-            "hub.apps.integrations.openlineage.tasks.OpenLineageAdapter"
+            "hub.apps.integrations.openlineage.adapter.OpenLineageAdapter"
         ) as adapter_cls:
             adapter_cls.return_value.deliver.return_value = DeliveryOutcome.DELIVERED
             result = openlineage_dlq_replay_sweep(max_rows=10)
@@ -387,7 +411,7 @@ class TestOpenLineageDlqReplaySweep(TransactionTestCase):
         row = _create_dlq_row(tenant, replay_attempts=9)
 
         with mock.patch(
-            "hub.apps.integrations.openlineage.tasks.OpenLineageAdapter"
+            "hub.apps.integrations.openlineage.adapter.OpenLineageAdapter"
         ) as adapter_cls:
             adapter_cls.return_value.deliver.return_value = DeliveryOutcome.DEAD_LETTERED
             result = openlineage_dlq_replay_sweep(max_rows=10)
@@ -418,7 +442,7 @@ class TestOpenLineageDlqReplaySweep(TransactionTestCase):
         _create_dlq_row(tenant)
 
         with mock.patch(
-            "hub.apps.integrations.openlineage.tasks.OpenLineageAdapter"
+            "hub.apps.integrations.openlineage.adapter.OpenLineageAdapter"
         ) as adapter_cls:
             adapter_cls.return_value.deliver.return_value = DeliveryOutcome.DELIVERED
             result_first = openlineage_dlq_replay_sweep(max_rows=10)
@@ -454,7 +478,7 @@ class TestOpenLineageDlqReplaySweep(TransactionTestCase):
         clean_id = clean.id
         poisoned_id = poisoned.id
         with mock.patch(
-            "hub.apps.integrations.openlineage.tasks.OpenLineageAdapter"
+            "hub.apps.integrations.openlineage.adapter.OpenLineageAdapter"
         ) as adapter_cls:
             adapter_cls.return_value.deliver.return_value = DeliveryOutcome.DELIVERED
             result = openlineage_dlq_replay_sweep(max_rows=10)

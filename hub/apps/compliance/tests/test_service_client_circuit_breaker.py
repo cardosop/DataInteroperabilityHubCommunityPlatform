@@ -160,7 +160,7 @@ class TestComplianceServiceClientCircuitBreaker(TestCase):
             for i in range(5):
                 try:
                     self.service_client.scan_file(file_content=file_content, file_format="csv")
-                except Exception:
+                except httpx.RequestError:
                     pass
 
             # Circuit should be open now
@@ -196,12 +196,10 @@ class TestComplianceServiceClientCircuitBreaker(TestCase):
         )
 
         try:
-            # Trigger 3 failures
-            for i in range(3):
-                try:
-                    self.service_client.scan_file(file_content=file_content, file_format="csv")
-                except Exception:
-                    pass
+            # Trigger 3 failures — scan_file always returns a dict
+            # (never raises) thanks to the circuit breaker fallback.
+            for _i in range(3):
+                self.service_client.scan_file(file_content=file_content, file_format="csv")
 
             # Circuit should still be closed (threshold is 5)
             self.assertEqual(
@@ -209,11 +207,8 @@ class TestComplianceServiceClientCircuitBreaker(TestCase):
             )
 
             # Trigger 2 more failures
-            for i in range(2):
-                try:
-                    self.service_client.scan_file(file_content=file_content, file_format="csv")
-                except Exception:
-                    pass
+            for _i in range(2):
+                self.service_client.scan_file(file_content=file_content, file_format="csv")
 
             # Circuit should now be open
             self.assertEqual(

@@ -113,13 +113,13 @@ class PrometheusMetricsExposureE2ETest(TestCase):
 
         # Increment job metrics
         jobs_started_total.labels(
-            job_type=JobType.DQ_RUN,
+            type=JobType.DQ_RUN,
             tenant_id=str(self.tenant.id),
         ).inc()
 
         # Also record completed metric
         jobs_completed_total.labels(
-            job_type=JobType.DQ_RUN,
+            type=JobType.DQ_RUN,
             status='COMPLETED',
             tenant_id=str(self.tenant.id),
         ).inc()

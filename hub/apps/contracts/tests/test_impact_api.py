@@ -144,38 +144,25 @@ class ImpactAPITest(ContractsAPITestBase):
         """Test impact analysis with invalid depth parameter."""
         url = reverse("contract-get-impact-analysis", kwargs={"id": self.contract.id})
 
-        # Test with negative depth — view may treat as default or reject
+        # Negative depth must be rejected with 400
         response = self.client.get(url, {"depth": -1})
-        self.assertIn(
-            response.status_code,
-            [status.HTTP_200_OK, status.HTTP_400_BAD_REQUEST],
-        )
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
 
-        # Test with very large depth
+        # Very large depth is a valid positive integer — must be accepted
         response = self.client.get(url, {"depth": 10000})
-        self.assertIn(
-            response.status_code,
-            [status.HTTP_200_OK, status.HTTP_400_BAD_REQUEST],
-        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
 
-        # Non-numeric depth — view may return 400 or 500 (unhandled ValueError)
+        # Non-numeric depth must be rejected with 400 (fixed in prior round)
         response = self.client.get(url, {"depth": "invalid"})
-        self.assertIn(
-            response.status_code,
-            [
-                status.HTTP_200_OK,
-                status.HTTP_400_BAD_REQUEST,
-                status.HTTP_500_INTERNAL_SERVER_ERROR,
-            ],
-        )
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
 
     def test_impact_analysis_with_invalid_format(self):
         """Test impact analysis with invalid format parameter."""
         url = reverse("contract-get-impact-analysis", kwargs={"id": self.contract.id})
         response = self.client.get(url, {"output": "invalid-format"})
 
-        # May return 200 with default format or 400 for bad request
-        self.assertIn(response.status_code, [status.HTTP_200_OK, status.HTTP_400_BAD_REQUEST])
+        # Unknown output format must be rejected with 400
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
 
     def test_impact_analysis_with_missing_contract_hub_json(self):
         """Test impact analysis with contract missing hub_contract_json."""
@@ -192,15 +179,9 @@ class ImpactAPITest(ContractsAPITestBase):
         url = reverse("contract-get-impact-analysis", kwargs={"id": contract_no_hub.id})
         response = self.client.get(url)
 
-        # Should handle gracefully - may return 200 with empty result or 400/500
-        self.assertIn(
-            response.status_code,
-            [
-                status.HTTP_200_OK,
-                status.HTTP_400_BAD_REQUEST,
-                status.HTTP_500_INTERNAL_SERVER_ERROR,
-            ],
-        )
+        # ImpactAnalyzer.analyze_impact handles None hub_contract_json gracefully
+        # and returns a valid result without an "error" key, so the view returns 200.
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
 
     def test_impact_analysis_json_format_structure(self):
         """Test that JSON format returns proper structure."""

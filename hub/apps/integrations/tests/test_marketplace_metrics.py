@@ -238,7 +238,7 @@ class MarketplaceMetricsTest(TestCase):
                     self.assertGreater(len(parts), 1, f"Metric line should have value: {line}")
 
     def test_metrics_collectable_by_prometheus(self):
-        """Test that metrics can be collected by Prometheus"""
+        """Test that metrics endpoint returns valid Prometheus-formatted data"""
         # Generate some metrics
         service = MarketplaceIntegrationService(
             tenant_id=str(self.tenant.id),

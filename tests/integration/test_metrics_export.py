@@ -115,9 +115,9 @@ class MetricsExportTest(TestCase):
         )
         
         tenant_id = str(self.tenant.id)
-        jobs_started_total.labels(job_type='DQ_RUN', tenant_id=tenant_id).inc()
-        jobs_completed_total.labels(job_type='DQ_RUN', status='COMPLETED', tenant_id=tenant_id).inc()
-        jobs_failed_total.labels(job_type='DQ_RUN', error_code='TIMEOUT', tenant_id=tenant_id).inc()
+        jobs_started_total.labels(type='DQ_RUN', tenant_id=tenant_id).inc()
+        jobs_completed_total.labels(type='DQ_RUN', status='COMPLETED', tenant_id=tenant_id).inc()
+        jobs_failed_total.labels(type='DQ_RUN', error_code='TIMEOUT', tenant_id=tenant_id).inc()
         
         response = self.client.get('/metrics/')
         if response.status_code == 200:

@@ -356,10 +356,8 @@ class LineageEditConcurrencyAndRbacTests(TestCase):
         )
         # Cross-tenant access is bound by the queryset's tenant
         # filter — the contract isn't visible at all to tenant B,
-        # so the response is 404.  Either 403 or 404 satisfies the
-        # F2.10 spec ("cross-tenant edits are not permitted") since
-        # neither permits the edit.
-        self.assertIn(response.status_code, (403, 404))
+        # so the response is 404 per DRF's default get_object behaviour.
+        self.assertEqual(response.status_code, 404)
 
     def test_non_admin_in_same_tenant_forbidden(self):
         tenant = _make_tenant("rbac-noadmin")

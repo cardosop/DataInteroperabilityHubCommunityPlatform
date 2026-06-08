@@ -11,6 +11,8 @@ import uuid
 from contextlib import contextmanager
 from typing import Optional, Type, Any, Callable, Dict, List
 from django.core.exceptions import ObjectDoesNotExist, ValidationError as DjangoValidationError
+from django.core.paginator import InvalidPage as DjangoInvalidPage
+from django.db import IntegrityError as DjangoIntegrityError
 from django.db import models
 
 logger = logging.getLogger(__name__)
@@ -187,7 +189,20 @@ class BaseService:
         self, operation: str, error: Exception,
         duration_ms: float = 0, **kwargs
     ):
-        self._logger.error(
+        # Business-rule rejections (plan limits, validation, not-found,
+        # conflict/duplicate, permission denials) and client-input errors
+        # (bad pagination, division-by-zero from page_size=0) are normal
+        # operation, not system faults.  Log at WARNING so on-call pages
+        # don't fire on expected throttling or routine business rejections.
+        if isinstance(error, (ValidationError, ConflictError, NotFoundError,
+                              PermissionError,
+                              ValueError, ZeroDivisionError, DjangoInvalidPage,
+                              DjangoIntegrityError)):
+            log_level = logging.WARNING
+        else:
+            log_level = logging.ERROR
+        self._logger.log(
+            log_level,
             "Operation %s failed in %.2fms: %s",
             operation,
             duration_ms,
@@ -296,6 +311,15 @@ class BaseService:
         except ObjectDoesNotExist:
             raise NotFoundError(
                 f"{resource_type} with id {resource_id} not found",
+                details={"resource_type": resource_type, "resource_id": resource_id},
+            )
+        except DjangoValidationError as e:
+            # Invalid UUID / bad field value — a client input error, not a
+            # server fault.  Convert to our own ValidationError so callers
+            # (and _log_operation_error) treat it as a routine rejection.
+            raise ValidationError(
+                str(e),
+                code="VALIDATION_ERROR",
                 details={"resource_type": resource_type, "resource_id": resource_id},
             )
         except Exception as e:

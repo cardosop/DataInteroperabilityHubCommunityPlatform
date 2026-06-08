@@ -123,3 +123,84 @@ export function usePlatformTenantUsage(options?: { enabled?: boolean }) {
     enabled: options?.enabled !== false,
   });
 }
+
+// ── Feature flags ────────────────────────────────────────────
+
+export function useAdminTenantFeatureFlags(tenantId: string | null) {
+  return useQuery({
+    queryKey: ['admin', 'tenants', 'feature-flags', tenantId],
+    queryFn: () => adminService.getTenantFeatureFlags(tenantId!),
+    enabled: !!tenantId,
+  });
+}
+
+export function useUpdateAdminTenantFeatureFlags() {
+  const queryClient = useQueryClient();
+  return useMutationWithNotification({
+    mutationFn: ({ tenantId, flags, reason }: { tenantId: string; flags: Record<string, boolean>; reason?: string }) =>
+      adminService.updateTenantFeatureFlags(tenantId, flags, reason),
+    successMessage: 'Feature flags updated',
+    errorMessage: 'Failed to update feature flags',
+    onSuccess: (_data, variables) => {
+      queryClient.invalidateQueries({ queryKey: ['admin', 'tenants', 'feature-flags', variables.tenantId] });
+    },
+  });
+}
+
+export function useApproveFeatureFlagFlip() {
+  const queryClient = useQueryClient();
+  return useMutationWithNotification({
+    mutationFn: ({ tenantId, flagId }: { tenantId: string; flagId: string }) =>
+      adminService.approveFeatureFlagFlip(tenantId, flagId),
+    successMessage: 'Feature flag change approved',
+    errorMessage: 'Failed to approve feature flag change',
+    onSuccess: (_data, variables) => {
+      queryClient.invalidateQueries({ queryKey: ['admin', 'tenants', 'feature-flags', variables.tenantId] });
+    },
+  });
+}
+
+// ── Dashboard ─────────────────────────────────────────────────
+
+export function useAdminDashboardSummary(options?: { enabled?: boolean }) {
+  return useQuery({
+    queryKey: ['admin', 'dashboard', 'summary'],
+    queryFn: () => adminService.getDashboardSummary(),
+    enabled: options?.enabled !== false,
+  });
+}
+
+export function useRefreshAdminDashboardSummary() {
+  const queryClient = useQueryClient();
+  return useMutationWithNotification({
+    mutationFn: () => adminService.refreshDashboardSummary(),
+    successMessage: 'Dashboard refreshed',
+    errorMessage: 'Failed to refresh dashboard',
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['admin', 'dashboard'] });
+    },
+  });
+}
+
+// ── Impersonation ─────────────────────────────────────────────
+
+export function useAdminImpersonateStart() {
+  return useMutationWithNotification({
+    mutationFn: ({ tenantId, userId }: { tenantId: string; userId: string }) =>
+      adminService.startImpersonation(tenantId, userId),
+    successMessage: 'Impersonation started',
+    errorMessage: 'Failed to start impersonation',
+  });
+}
+
+export function useAdminImpersonateExit() {
+  const queryClient = useQueryClient();
+  return useMutationWithNotification({
+    mutationFn: () => adminService.exitImpersonation(),
+    successMessage: 'Impersonation ended',
+    errorMessage: 'Failed to exit impersonation',
+    onSuccess: () => {
+      queryClient.invalidateQueries();
+    },
+  });
+}

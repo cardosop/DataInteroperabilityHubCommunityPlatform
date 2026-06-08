@@ -417,7 +417,7 @@ class TestComplianceReporting:
         ])
 
         assert result.exit_code != 0
-        assert 'required' in result.output.lower() or 'asset-id' in result.output.lower()
+        assert 'required' in result.output.lower() or 'asset-id' in result.output.lower()  # noqa: PHASE216-STATIC-ID
 
 
 class TestAccessRequests:

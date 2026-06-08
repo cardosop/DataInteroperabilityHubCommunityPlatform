@@ -30,23 +30,7 @@ class ODPSGeneratorInitializationTest(SimpleTestCase):
             "schema": {"fields": []},
         }
 
-        # Should not raise an error for valid input structure
-        try:
-            result = generate_odps_from_hubcontract(hub_contract)
-            # If it succeeds, result should be a dict
-            self.assertIsInstance(result, dict)
-        except ODPSExportError:
-            # If it fails, it should be ODPSExportError with context
-            pass
-
-    def test_generate_odps_from_hubcontract_returns_dict(self):
-        """Test that function returns a dictionary"""
-        hub_contract = {
-            "id": "test-product",
-            "info": {"name": "Test Product"},
-            "schema": {"fields": []},
-        }
-
+        # Valid input must succeed — result must be a dict
         result = generate_odps_from_hubcontract(hub_contract)
         self.assertIsInstance(result, dict)
 
@@ -860,35 +844,22 @@ class ODPSGeneratorInfoMappingTest(TestCase):
             "schema": {"fields": []},
         }
 
-        # Should handle large documents gracefully
-        try:
-            result = generate_odps_from_hubcontract(hub_contract)
-            # If generation succeeds, verify structure
-            self.assertIn("product", result)
-        except Exception as e:
-            # If generation fails, it should fail gracefully
-            self.assertIsInstance(
-                e, ODPSExportError, "Should raise ODPSExportError for very large documents"
-            )
+        # Valid data (large description) must succeed — must include "product"
+        result = generate_odps_from_hubcontract(hub_contract)
+        self.assertIn("product", result)
 
     def test_generate_odps_handles_none_values(self):
-        """Test that ODPS generation handles None values correctly."""
+        """ODPS generation with None field values must not crash — returns result."""
         hub_contract = {
             "id": "test-product",
             "info": {"name": "Test Product", "description": None, "version": None},  # None value
             "schema": {"fields": []},
         }
 
-        # Should handle None values gracefully
-        try:
-            result = generate_odps_from_hubcontract(hub_contract)
-            # If generation succeeds, None values may be omitted or handled
-            self.assertIsNotNone(result)
-        except Exception as e:
-            # If generation fails, it should fail gracefully
-            self.assertIsInstance(
-                e, ODPSExportError, "Should raise ODPSExportError for None values"
-            )
+        result = generate_odps_from_hubcontract(hub_contract)
+        self.assertIsNotNone(result)
+        # None values should be omitted or handled — must include product structure
+        self.assertIn("product", result)
 
     def test_generate_odps_handles_nested_structures(self):
         """Test that ODPS generation handles nested structures correctly."""

@@ -221,20 +221,16 @@ class DatasetVersioningTest(DatasetsAPITestBase):
         self.assertEqual(new_version.semantic_version, "1.0.1")
 
     def test_semantic_versioning_invalid_format(self):
-        """Test semantic versioning with invalid format (edge case)"""
-        # Invalid semantic version should either be rejected or accepted
-        try:
-            new_version = self.versioning_service.create_version(
-                dataset_id=str(self.base_dataset.id),
-                tenant_id=str(self.tenant.id),
-                semantic_version="invalid-version",
-                is_current=True,
-            )
-            # If succeeds, verify it was set
-            self.assertEqual(new_version.semantic_version, "invalid-version")
-        except Exception:
-            # If fails, that's also acceptable
-            pass
+        """Invalid semantic versions are accepted and stored as-is (no validation)."""
+        new_version = self.versioning_service.create_version(
+            dataset_id=str(self.base_dataset.id),
+            tenant_id=str(self.tenant.id),
+            semantic_version="invalid-version",
+            is_current=True,
+        )
+        self.assertIsNotNone(new_version)
+        self.assertEqual(new_version.semantic_version, "invalid-version",
+            "Service must store invalid semantic versions as-is")
 
     # ========== VERSION TAGS TESTS ==========
 
@@ -378,7 +374,7 @@ class DatasetVersioningTest(DatasetsAPITestBase):
 
     # ========== ERROR HANDLING ==========
 
-    def test_create_version_database_error_handling(self):
+    def test_create_version_with_nonexistent_tenant(self):
         """Test error handling when version creation fails"""
         # Use valid dataset ID but invalid tenant ID
         fake_tenant_id = str(uuid.uuid4())
@@ -393,14 +389,11 @@ class DatasetVersioningTest(DatasetsAPITestBase):
         self.assertEqual(cm.exception.code, "NOT_FOUND")
 
     def test_get_version_history_nonexistent_dataset(self):
-        """Test getting version history for non-existent dataset (error handling)"""
-        fake_dataset = Dataset(id=uuid.uuid4())
+        """Test getting version history for non-existent dataset returns result."""
+        fake_dataset = Dataset(id=uuid.uuid4(), tenant=self.tenant)
 
-        # Should handle gracefully
-        try:
-            history = VersionHistoryManager.get_version_tree(fake_dataset)
-            # If succeeds, should return empty or handle gracefully
-            self.assertIsNotNone(history)
-        except Exception:
-            # If fails, that's acceptable for non-existent dataset
-            pass
+        # get_version_tree must handle a non-persisted dataset gracefully —
+        # returning a result (even if empty), not raising.
+        history = VersionHistoryManager.get_version_tree(fake_dataset)
+        self.assertIsNotNone(history,
+            "get_version_tree must return a result even for non-existent dataset")

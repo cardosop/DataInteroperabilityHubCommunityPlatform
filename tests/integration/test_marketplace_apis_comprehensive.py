@@ -29,6 +29,7 @@ from hub.apps.marketplace.models import Listing, ListingStatus, PricingModel, Or
 from hub.apps.tenants.models import Tenant, TenantStatus, KYCStatus
 from hub.apps.users.models import UserStatus
 from hub.apps.testing.billing_support import ensure_tenant_has_active_subscription
+from hub.apps.testing.role_support import ensure_user_has_data_provider_role
 from hub.apps.assets.models import AssetStatus
 from hub.apps.audit.models import AuditEvent
 from tests.fixtures.test_data_factories import TenantFactory, AssetFactoryEnhanced, ListingFactory
@@ -60,6 +61,7 @@ class TestMarketplaceListListingsAPI(TestCase):
             status=UserStatus.ACTIVE.value,
         )
         self.client.force_authenticate(user=self.user)
+        ensure_user_has_data_provider_role(self.user)
 
         # Create test listings
         self.listing1 = ListingFactory.create_listing(
@@ -251,6 +253,7 @@ class TestMarketplaceCreateListingAPI(TestCase):
             status=UserStatus.ACTIVE.value,
         )
         self.client.force_authenticate(user=self.user)
+        ensure_user_has_data_provider_role(self.user)
         ensure_tenant_has_active_subscription(self.tenant)
 
         # Note: Each test should create its own asset to avoid unique constraint issues
@@ -658,6 +661,7 @@ class TestMarketplaceGetListingAPI(TestCase):
             status=UserStatus.ACTIVE.value,
         )
         self.client.force_authenticate(user=self.user)
+        ensure_user_has_data_provider_role(self.user)
 
         self.listing = ListingFactory.create_listing(
             tenant=self.tenant,

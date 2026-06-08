@@ -177,6 +177,18 @@ interface QuotaWarning {
 
 export interface TenantUsage {
   tenant_id: string;
+  storage_bytes: number;
+  storage_gb: number;
+  api_calls_this_month: number;
+  asset_count: number;
+  dataset_count: number;
+  scheduled_ingestion_count: number;
+  scheduled_export_count: number;
+  period_start: string | null;
+  period_end: string | null;
+  threshold_status: string;
+  overall_status: string;
+  upgrade_recommendation: string[];
   /** Phase 277.B.106 — dynamic usage keys: {limit_key}_usage for every KNOWN_LIMIT_KEY */
   [key: `${string}_usage`]: number | string;
   plan_limits: Record<string, number | null>;
@@ -186,4 +198,11 @@ export interface TenantUsage {
   plan_slug?: string;
   plan_tier?: string;
   plan_compliance_pro_pack?: boolean;
+}
+
+export interface TenantTaxIdResponse {
+  tax_id: string | null;
+  tax_id_type: string | null;
+  tax_id_verified: boolean;
+  tax_address: string | null;
 }

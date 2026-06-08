@@ -199,43 +199,79 @@ class TenantSuspensionMiddleware:
             return JsonResponse({"error": "Tenant is deleted. All access is blocked."}, status=403)
 
         # Check subscription status (Phase 25.2.4)
-        # Block write operations if no subscription or subscription is inactive
+        # Block write operations if no subscription or subscription is inactive.
+        # Results are cached with a short TTL (30 s) to avoid a
+        # per-write-request DB round-trip while still responding to
+        # subscription status changes (e.g. payment processed) within a
+        # reasonable window.
         if request.method in self.WRITE_METHODS:
             try:
+                from django.core.cache import cache as _cache
+
                 from hub.apps.billing.models import Subscription, SubscriptionStatus
 
-                subscription = (
-                    Subscription.objects.filter(tenant_id=tenant_id).order_by("-created_at").first()
-                )
-
-                if not subscription:
-                    return JsonResponse(
-                        {
-                            "error": "No active subscription",
-                            "code": "subscription_inactive",
-                            "details": {"tenant_id": str(tenant_id)},
-                        },
-                        status=403,
-                    )
-
-                if subscription.status in [
+                _BLOCKED_STATUSES = frozenset({
                     SubscriptionStatus.PAST_DUE,
                     SubscriptionStatus.UNPAID,
                     SubscriptionStatus.CANCELED,
                     SubscriptionStatus.INCOMPLETE,
                     SubscriptionStatus.INCOMPLETE_EXPIRED,
-                ]:
-                    return JsonResponse(
-                        {
-                            "error": "Subscription is inactive. Write operations are not allowed.",
-                            "code": "subscription_inactive",
-                            "details": {
-                                "subscription_id": str(subscription.id),
-                                "status": subscription.status,
+                })
+                _cache_key = f"tenant_sub_check:{tenant_id}"
+
+                # Try the cache first (fail gracefully if cache is down).
+                try:
+                    cached = _cache.get(_cache_key)
+                except Exception:
+                    cached = None
+
+                if cached is not None:
+                    # cached is either "active" or one of the blocked statuses
+                    if cached in _BLOCKED_STATUSES:
+                        return JsonResponse(
+                            {
+                                "error": "Subscription is inactive. Write operations are not allowed.",
+                                "code": "subscription_inactive",
+                                "details": {"status": cached},
                             },
-                        },
-                        status=403,
+                            status=403,
+                        )
+                    # "active" → allow
+                else:
+                    subscription = (
+                        Subscription.objects.filter(tenant_id=tenant_id)
+                        .order_by("-created_at")
+                        .first()
                     )
+
+                    if not subscription:
+                        return JsonResponse(
+                            {
+                                "error": "No active subscription",
+                                "code": "subscription_inactive",
+                                "details": {"tenant_id": str(tenant_id)},
+                            },
+                            status=403,
+                        )
+
+                    # Cache the status string for 30 seconds.
+                    try:
+                        _cache.set(_cache_key, subscription.status, 30)
+                    except Exception:
+                        pass
+
+                    if subscription.status in _BLOCKED_STATUSES:
+                        return JsonResponse(
+                            {
+                                "error": "Subscription is inactive. Write operations are not allowed.",
+                                "code": "subscription_inactive",
+                                "details": {
+                                    "subscription_id": str(subscription.id),
+                                    "status": subscription.status,
+                                },
+                            },
+                            status=403,
+                        )
             except Exception:
                 # Don't block on subscription check errors - allow request to proceed
                 pass

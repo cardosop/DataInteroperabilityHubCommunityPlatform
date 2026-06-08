@@ -93,6 +93,9 @@ class SearchUserThrottle(_AuditableThrottle):
     def __init__(self):
         super().__init__()
         self.rate = getattr(settings, "SEARCH_RATE_LIMIT_PER_MIN", self.rate)
+        # Re-parse the rate so num_requests/duration reflect the
+        # potentially-overridden rate string from settings.
+        self.num_requests, self.duration = self.parse_rate(self.rate)
 
     def get_cache_key(self, request, view):
         if request.user and request.user.is_authenticated:
@@ -109,6 +112,9 @@ class SuggestionsUserThrottle(_AuditableThrottle):
     def __init__(self):
         super().__init__()
         self.rate = getattr(settings, "SUGGESTIONS_RATE_LIMIT_PER_MIN", self.rate)
+        # Re-parse the rate so num_requests/duration reflect the
+        # potentially-overridden rate string from settings.
+        self.num_requests, self.duration = self.parse_rate(self.rate)
 
     def get_cache_key(self, request, view):
         if request.user and request.user.is_authenticated:

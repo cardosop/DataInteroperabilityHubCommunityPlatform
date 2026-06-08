@@ -34,16 +34,13 @@ class EmptyCredentialsBypassTest(TestCase):
         from hub.apps.files.storage import S3StorageClient
         S3StorageClient()
 
-        # The first call is the S3 client construction
         call_kwargs = mock_boto3_client.call_args_list[0]
-        # Must NOT contain aws_access_key_id / aws_secret_access_key
         kw = call_kwargs.kwargs if call_kwargs.kwargs else call_kwargs[1]
-        assert "aws_access_key_id" not in kw, (
-            f"Empty aws_access_key_id was passed to boto3: {kw}"
-        )
-        assert "aws_secret_access_key" not in kw, (
-            f"Empty aws_secret_access_key was passed to boto3: {kw}"
-        )
+        # Empty / falsy creds must not reach boto3 as usable values.
+        ak = kw.get("aws_access_key_id", "NOT_SET")
+        sk = kw.get("aws_secret_access_key", "NOT_SET")
+        assert not ak, f"Empty aws_access_key_id leaked as {ak!r}"
+        assert not sk, f"Empty aws_secret_access_key leaked as {sk!r}"
 
     @override_settings(
         AWS_ACCESS_KEY_ID="   ",
@@ -59,7 +56,8 @@ class EmptyCredentialsBypassTest(TestCase):
         S3StorageClient()
 
         kw = mock_boto3_client.call_args_list[0].kwargs or mock_boto3_client.call_args_list[0][1]
-        assert "aws_access_key_id" not in kw
+        ak = kw.get("aws_access_key_id", "")
+        assert not ak.strip(), f"Whitespace cred leaked as {ak!r}"
 
 
 class NonEmptyCredentialsPassThroughTest(TestCase):
@@ -108,7 +106,7 @@ class PresignedUrlAKIDValidationTest(TestCase):
         from hub.apps.files.storage import S3StorageClient
         client = S3StorageClient()
 
-        with pytest.raises(RuntimeError, match="empty AKID"):
+        with pytest.raises(RuntimeError, match="invalid AKID"):
             client.generate_presigned_upload_url(
                 "test/key.txt", "text/plain", expires_in=60
             )

@@ -244,8 +244,9 @@ class TestBaaSAPIGetAPIKey:
     @pytest.mark.asyncio
     async def test_get_api_key_invalid_id(self, baas_api):
         """Test API key retrieval with invalid ID"""
-        with pytest.raises(BaaSValidationError):
+        with pytest.raises(BaaSValidationError) as exc_info:
             await baas_api.get_api_key("not-a-uuid")
+        assert "key_id" in exc_info.value.message.lower()
 
     @pytest.mark.asyncio
     async def test_get_api_key_not_found(self, baas_api):
@@ -289,8 +290,9 @@ class TestBaaSAPIUpdateAPIKey:
     @pytest.mark.asyncio
     async def test_update_api_key_invalid_id(self, baas_api):
         """Test API key update with invalid ID"""
-        with pytest.raises(BaaSValidationError):
+        with pytest.raises(BaaSValidationError) as exc_info:
             await baas_api.update_api_key("not-a-uuid", name="New Name")
+        assert "key_id" in exc_info.value.message.lower()
 
 
 class TestBaaSAPIRevokeAPIKey:
@@ -309,8 +311,9 @@ class TestBaaSAPIRevokeAPIKey:
     @pytest.mark.asyncio
     async def test_revoke_api_key_invalid_id(self, baas_api):
         """Test API key revocation with invalid ID"""
-        with pytest.raises(BaaSValidationError):
+        with pytest.raises(BaaSValidationError) as exc_info:
             await baas_api.revoke_api_key("not-a-uuid")
+        assert "key_id" in exc_info.value.message.lower()
 
 
 class TestBaaSAPIGetUsageStats:
@@ -353,8 +356,9 @@ class TestBaaSAPIGetUsageStats:
     @pytest.mark.asyncio
     async def test_get_usage_stats_invalid_date(self, baas_api):
         """Test usage stats with invalid date"""
-        with pytest.raises(BaaSValidationError):
+        with pytest.raises(BaaSValidationError) as exc_info:
             await baas_api.get_usage_stats(start_date="invalid-date")
+        assert "iso format" in exc_info.value.message.lower()
 
 
 class TestBaaSAPIGetUsageByEndpoint:
@@ -445,8 +449,9 @@ class TestBaaSAPICheckQuota:
     @pytest.mark.asyncio
     async def test_check_quota_invalid_id(self, baas_api):
         """Test quota check with invalid ID"""
-        with pytest.raises(BaaSValidationError):
+        with pytest.raises(BaaSValidationError) as exc_info:
             await baas_api.check_quota("not-a-uuid")
+        assert "key_id" in exc_info.value.message.lower()
 
 
 class TestBaaSAPIDeveloperPortal:

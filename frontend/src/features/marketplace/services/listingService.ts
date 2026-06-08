@@ -14,6 +14,7 @@ import type {
   ListingCreateRequest,
   ListingUpdateRequest,
   ListingListFilters,
+  ListingPreview,
 } from '../../../shared/types/marketplace';
 
 const LISTINGS_BASE_PATH = 'marketplace/listings';
@@ -110,6 +111,14 @@ export const listingService = {
     const response = await apiClient.getClient().get<Blob>(url, {
       responseType: 'blob',
     });
+    return response.data;
+  },
+
+  /**
+   * Preview listing as JSON (structured data)
+   */
+  async previewJson(id: string): Promise<ListingPreview> {
+    const response = await apiClient.getClient().get<ListingPreview>(`${LISTINGS_BASE_PATH}/${id}/preview/`);
     return response.data;
   },
 

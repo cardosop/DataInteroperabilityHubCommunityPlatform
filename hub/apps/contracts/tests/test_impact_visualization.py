@@ -108,12 +108,15 @@ class ImpactVisualizerTest(TestCase):
         paths = ImpactVisualizer.generate_impact_paths(self.impact_result)
 
         self.assertIsInstance(paths, list)
-        if paths:
-            path = paths[0]
-            self.assertIn("path", path)
-            self.assertIn("length", path)
-            self.assertIn("max_severity", path)
-            self.assertIn("total_impact_score", path)
+        self.assertGreater(
+            len(paths), 0,
+            "Impact result with a populated impact_graph must produce at least one path",
+        )
+        path = paths[0]
+        self.assertIn("path", path)
+        self.assertIn("length", path)
+        self.assertIn("max_severity", path)
+        self.assertIn("total_impact_score", path)
 
     # Edge cases and error handling tests
     def test_generate_impact_json_with_empty_result(self):
@@ -265,8 +268,8 @@ class ImpactVisualizerTest(TestCase):
         paths = ImpactVisualizer.generate_impact_paths(empty_result)
 
         self.assertIsInstance(paths, list)
-        # May be empty if no paths exist
-        self.assertGreaterEqual(len(paths), 0)
+        self.assertEqual(len(paths), 0,
+            "Empty impact graph must produce zero paths")
 
     def test_generate_impact_paths_with_deep_nesting(self):
         """Test impact paths generation with deeply nested impact graph."""
@@ -307,9 +310,8 @@ class ImpactVisualizerTest(TestCase):
         paths = ImpactVisualizer.generate_impact_paths(deep_result)
 
         self.assertIsInstance(paths, list)
-        # Should handle deep nesting
-        if paths:
-            self.assertGreater(len(paths), 0)
+        self.assertGreater(len(paths), 0,
+            "Deeply nested result must produce at least one path")
 
     def test_generate_impact_json_structure_consistency(self):
         """Test that JSON format has consistent structure."""

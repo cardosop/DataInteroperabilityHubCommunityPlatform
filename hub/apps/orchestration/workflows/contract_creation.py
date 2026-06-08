@@ -209,7 +209,7 @@ class ContractCreationWorkflow:
             "tenant_id": str(tenant_id),
             "original_raw": original_raw,
             "original_format": original_format,
-            "original_spec_type": input_data.get("original_spec_type", "ODCS"),
+            "original_spec_type": input_data.get("original_spec_type") or "ODCS",
         }
 
         # Validate contract creation
@@ -1456,23 +1456,25 @@ class ContractCreationWorkflow:
             registry = WorkflowRegistry()
             cls.register_workflow(registry)
 
-        # Prepare workflow input
+        # Prepare workflow input (omit None values so dict.get() defaults fire correctly)
         workflow_input = {
-            "original_raw": original_raw,
-            "original_format": original_format,
-            "tenant_id": tenant_id,
-            "user_id": user_id,
-            "asset_id": asset_id,
-            "original_spec_type": original_spec_type,
-            "odps_action": odps_action,
-            "odps_raw": odps_raw,
-            "odps_format": odps_format,
-            "odps_contract_id": odps_contract_id,
-            "file_id": file_id,
-            "asset_key": asset_key,
-            "asset_name": asset_name,
-            "asset_description": asset_description,
-            "asset_domain": asset_domain
+            k: v for k, v in {
+                "original_raw": original_raw,
+                "original_format": original_format,
+                "tenant_id": tenant_id,
+                "user_id": user_id,
+                "asset_id": asset_id,
+                "original_spec_type": original_spec_type,
+                "odps_action": odps_action,
+                "odps_raw": odps_raw,
+                "odps_format": odps_format,
+                "odps_contract_id": odps_contract_id,
+                "file_id": file_id,
+                "asset_key": asset_key,
+                "asset_name": asset_name,
+                "asset_description": asset_description,
+                "asset_domain": asset_domain,
+            }.items() if v is not None
         }
 
         # Create workflow instance

@@ -12,8 +12,6 @@ These tests validate:
 - Metadata extraction (ODPS and ODCS) is correct
 """
 
-import unittest
-from typing import Any, Dict
 from unittest.mock import Mock, patch
 
 from django.test import TestCase
@@ -26,6 +24,7 @@ from hub.apps.integrations.base import (
     MarketplaceResource,
     MarketplaceType,
 )
+from hub.apps.core.resilience.circuit_breaker import reset_circuit_breaker_by_name
 from hub.apps.integrations.connectors.gcp_marketplace_connector import GCPMarketplaceConnector
 
 
@@ -34,6 +33,7 @@ class TestGCPMarketplaceConnectorMetadataMapping(TestCase):
 
     def setUp(self):
         """Set up test fixtures"""
+        reset_circuit_breaker_by_name("gcp-marketplace-connector")
         self.connector = GCPMarketplaceConnector(project_id="test-project", use_adc=True)
 
     @patch(

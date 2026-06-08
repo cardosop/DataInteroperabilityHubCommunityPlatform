@@ -72,7 +72,7 @@ class WorkerServiceIntegrationTest(TestCase):
         job = create_job(
             tenant=self.tenant,
             user=self.user,
-            job_type=JobType.DQ_RUN,
+            type=JobType.DQ_RUN,
             resource_type="DQ_RUN",
             resource_id=str(uuid.uuid4()),
             details_json={'dq_run_id': str(uuid.uuid4())}
@@ -115,7 +115,7 @@ class WorkerServiceIntegrationTest(TestCase):
             create_job(
                 tenant=self.tenant,
                 user=self.user,
-                job_type=JobType.DQ_RUN,
+                type=JobType.DQ_RUN,
                 resource_type="DQ_RUN",
                 resource_id=str(uuid.uuid4())
             )
@@ -140,7 +140,7 @@ class WorkerServiceIntegrationTest(TestCase):
             create_job(
                 tenant=self.tenant,
                 user=self.user,
-                job_type=JobType.DQ_RUN,
+                type=JobType.DQ_RUN,
                 resource_type="DQ_RUN",
                 resource_id=str(uuid.uuid4())
             )
@@ -212,7 +212,7 @@ class WorkerServiceIntegrationTest(TestCase):
         dq_job = create_job(
             tenant=self.tenant,
             user=self.user,
-            job_type=JobType.DQ_RUN,  # HIGH priority
+            type=JobType.DQ_RUN,  # HIGH priority
             resource_type="DQ_RUN",
             resource_id=str(uuid.uuid4())
         )
@@ -220,7 +220,7 @@ class WorkerServiceIntegrationTest(TestCase):
         semantic_job = create_job(
             tenant=self.tenant,
             user=self.user,
-            job_type=JobType.SEMANTIC_MAPPING,  # NORMAL priority
+            type=JobType.SEMANTIC_MAPPING,  # NORMAL priority
             resource_type="CONTRACT",
             resource_id=str(uuid.uuid4()),
             details_json={'resource_type': 'CONTRACT', 'resource_id': str(uuid.uuid4())}
@@ -229,7 +229,7 @@ class WorkerServiceIntegrationTest(TestCase):
         validation_job = create_job(
             tenant=self.tenant,
             user=self.user,
-            job_type=JobType.CONTRACT_VALIDATION,  # LOW priority
+            type=JobType.CONTRACT_VALIDATION,  # LOW priority
             resource_type="CONTRACT",
             resource_id=str(uuid.uuid4())
         )
@@ -283,7 +283,7 @@ class WorkerServiceIntegrationTest(TestCase):
         high_job = create_job(
             tenant=self.tenant,
             user=self.user,
-            job_type=JobType.DQ_RUN,  # HIGH priority
+            type=JobType.DQ_RUN,  # HIGH priority
             resource_type="DQ_RUN",
             resource_id=str(uuid.uuid4())
         )
@@ -291,7 +291,7 @@ class WorkerServiceIntegrationTest(TestCase):
         normal_job = create_job(
             tenant=self.tenant,
             user=self.user,
-            job_type=JobType.SEMANTIC_MAPPING,  # NORMAL priority
+            type=JobType.SEMANTIC_MAPPING,  # NORMAL priority
             resource_type="CONTRACT",
             resource_id=str(uuid.uuid4()),
             details_json={'resource_type': 'CONTRACT', 'resource_id': str(uuid.uuid4())}
@@ -323,7 +323,7 @@ class WorkerServiceIntegrationTest(TestCase):
         job1 = create_job(
             tenant=self.tenant,
             user=self.user,
-            job_type=JobType.DQ_RUN,
+            type=JobType.DQ_RUN,
             resource_type="DQ_RUN",
             resource_id=str(uuid.uuid4())
         )
@@ -339,7 +339,7 @@ class WorkerServiceIntegrationTest(TestCase):
             create_job(
                 tenant=self.tenant,
                 user=self.user,
-                job_type=JobType.DQ_RUN,
+                type=JobType.DQ_RUN,
                 resource_type="DQ_RUN",
                 resource_id=str(uuid.uuid4())
             )
@@ -359,7 +359,7 @@ class WorkerServiceIntegrationTest(TestCase):
         job = create_job(
             tenant=self.tenant,
             user=self.user,
-            job_type=JobType.DQ_RUN,
+            type=JobType.DQ_RUN,
             resource_type="DQ_RUN",
             resource_id=str(uuid.uuid4())
         )
@@ -392,7 +392,7 @@ class WorkerServiceIntegrationTest(TestCase):
         job = create_job(
             tenant=self.tenant,
             user=self.user,
-            job_type=JobType.DQ_RUN,
+            type=JobType.DQ_RUN,
             resource_type="DQ_RUN",
             resource_id=str(uuid.uuid4())
         )
@@ -459,7 +459,7 @@ class WorkerServiceIntegrationTest(TestCase):
         job = create_job(
             tenant=self.tenant,
             user=self.user,
-            job_type=JobType.DQ_RUN,
+            type=JobType.DQ_RUN,
             resource_type="DQ_RUN",
             resource_id=str(uuid.uuid4())
         )
@@ -508,7 +508,7 @@ class WorkerServiceIntegrationTest(TestCase):
         dq_job = create_job(
             tenant=self.tenant,
             user=self.user,
-            job_type=JobType.DQ_RUN,
+            type=JobType.DQ_RUN,
             resource_type="DQ_RUN",
             resource_id=str(uuid.uuid4())
         )
@@ -516,7 +516,7 @@ class WorkerServiceIntegrationTest(TestCase):
         validation_job = create_job(
             tenant=self.tenant,
             user=self.user,
-            job_type=JobType.CONTRACT_VALIDATION,
+            type=JobType.CONTRACT_VALIDATION,
             resource_type="CONTRACT",
             resource_id=str(uuid.uuid4())
         )

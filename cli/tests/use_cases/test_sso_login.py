@@ -42,7 +42,7 @@ def test_sso_initiation_returns_redirect():
     assert me_resp.status_code == 200, (
         f"/auth/me/ failed: {me_resp.status_code}"
     )
-    tenant_id = me_resp.json().get("tenant") or me_resp.json().get("tenant_id")
+    tenant_id = me_resp.json().get("tenant") or me_resp.json().get("tenant_id")  # noqa: PHASE216-STATIC-ID
     assert tenant_id, (
         f"No tenant_id in /auth/me/ response: {me_resp.json()}"
     )
@@ -50,7 +50,7 @@ def test_sso_initiation_returns_redirect():
     resp = requests.get(
         f"{base}/auth/sso/oidc/login-url/",
         params={
-            "tenant_id": tenant_id,
+            "tenant_id": tenant_id,  # noqa: PHASE216-STATIC-ID
             "redirect_uri": "https://meshant-internal.example.com/auth/callback",
         },
         allow_redirects=False,

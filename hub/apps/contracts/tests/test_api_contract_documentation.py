@@ -46,7 +46,7 @@ class APIContractDocumentationTest(ContractsAPITestBase):
 
         if response.status_code == status.HTTP_200_OK:
             try:
-                schema = json.loads(response.content)
+                schema = response.data
                 self.assertIsInstance(schema, dict, "Schema should be a dictionary")
                 self.assertIn("openapi", schema, "Schema should include openapi version")
                 self.assertIn("info", schema, "Schema should include info")
@@ -59,7 +59,7 @@ class APIContractDocumentationTest(ContractsAPITestBase):
         response = self.client.get("/api/v1/openapi.json")
 
         if response.status_code == status.HTTP_200_OK:
-            schema = json.loads(response.content)
+            schema = response.data
             paths = schema.get("paths", {})
 
             # Check for ODPS-related endpoints
@@ -95,7 +95,7 @@ class APIContractDocumentationTest(ContractsAPITestBase):
         response = self.client.get("/api/v1/openapi.json")
 
         if response.status_code == status.HTTP_200_OK:
-            schema = json.loads(response.content)
+            schema = response.data
             paths = schema.get("paths", {})
 
             # Check if any path has examples
@@ -131,7 +131,7 @@ class APIContractDocumentationTest(ContractsAPITestBase):
         response = self.client.get("/api/v1/openapi.json")
 
         if response.status_code == status.HTTP_200_OK:
-            schema = json.loads(response.content)
+            schema = response.data
             paths = schema.get("paths", {})
 
             # Check if error responses (4xx, 5xx) are documented
@@ -162,7 +162,7 @@ class APIContractDocumentationTest(ContractsAPITestBase):
         response = self.client.get("/api/v1/openapi.json")
 
         if response.status_code == status.HTTP_200_OK:
-            schema = json.loads(response.content)
+            schema = response.data
             info = schema.get("info", {})
 
             # Info section should exist
@@ -176,7 +176,7 @@ class APIContractDocumentationTest(ContractsAPITestBase):
         response = self.client.get("/api/v1/openapi.json")
 
         if response.status_code == status.HTTP_200_OK:
-            schema = json.loads(response.content)
+            schema = response.data
             paths = schema.get("paths", {})
 
             # Paths section should exist and be a dictionary
@@ -189,7 +189,7 @@ class APIContractDocumentationTest(ContractsAPITestBase):
         response = self.client.get("/api/v1/openapi.json")
 
         if response.status_code == status.HTTP_200_OK:
-            schema = json.loads(response.content)
+            schema = response.data
             paths = schema.get("paths", {})
 
             # Check if paths have HTTP methods (get, post, put, patch, delete)
@@ -213,7 +213,7 @@ class APIContractDocumentationTest(ContractsAPITestBase):
         response = self.client.get("/api/v1/openapi.json")
 
         if response.status_code == status.HTTP_200_OK:
-            schema = json.loads(response.content)
+            schema = response.data
             paths = schema.get("paths", {})
 
             # Check if responses have status codes
@@ -238,7 +238,7 @@ class APIContractDocumentationTest(ContractsAPITestBase):
         response = self.client.get("/api/v1/openapi.json")
 
         if response.status_code == status.HTTP_200_OK:
-            schema = json.loads(response.content)
+            schema = response.data
             # Components section is optional but recommended
             if "components" in schema:
                 components = schema["components"]
@@ -260,7 +260,7 @@ class APIContractDocumentationTest(ContractsAPITestBase):
         response = self.client.get("/api/v1/openapi.json")
 
         if response.status_code == status.HTTP_200_OK:
-            schema = json.loads(response.content)
+            schema = response.data
             openapi_version = schema.get("openapi", "")
 
             # Should be a valid OpenAPI version (e.g., 3.0.0, 3.0.1, 3.1.0)
@@ -276,7 +276,7 @@ class APIContractDocumentationTest(ContractsAPITestBase):
         response = self.client.get("/api/v1/openapi.json")
 
         if response.status_code == status.HTTP_200_OK:
-            schema = json.loads(response.content)
+            schema = response.data
 
             # Verify schema structure is consistent
             self.assertIsInstance(schema, dict, "Schema should be a dictionary")

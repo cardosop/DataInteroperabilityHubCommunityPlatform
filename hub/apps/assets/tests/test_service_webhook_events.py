@@ -29,10 +29,12 @@ import uuid
 import pytest
 from django.contrib.auth import get_user_model
 from django.test import TestCase, override_settings
+from unittest.mock import patch
 
 from hub.apps.assets.models import Asset, AssetStatus
 from hub.apps.assets.services import AssetService
 from hub.apps.core.events.models import Event
+from hub.apps.core.services.base import ValidationError
 from hub.apps.tenants.models import Tenant
 from hub.apps.testing.billing_support import ensure_tenant_has_active_subscription
 from hub.apps.users.models import UserStatus
@@ -60,11 +62,28 @@ def _seed():
     return tenant, user
 
 
+class _OnCommitImmediateMixin:
+    """Mixin: patches ``transaction.on_commit`` to fire its callback
+    immediately so Event rows are queryable within TestCase."""
+
+    def setUp(self):
+        super().setUp()
+        self.__oc_patch = patch(
+            "hub.apps.assets.services.transaction.on_commit",
+            side_effect=lambda func, *a, **kw: func(),
+        )
+        self.__oc_patch.start()
+
+    def tearDown(self):
+        self.__oc_patch.stop()
+        super().tearDown()
+
+
 @override_settings(
     EVENT_BUS_ENABLE_PERSISTENCE=True,
     EVENT_BUS_ASYNC_PERSISTENCE=False,
 )
-class AssetServiceCreateAssetEventTest(TestCase):
+class AssetServiceCreateAssetEventTest(_OnCommitImmediateMixin, TestCase):
     """``AssetService.create_asset`` MUST fire ``asset.created`` on commit."""
 
     def test_create_asset_fires_asset_created_event(self):
@@ -137,7 +156,7 @@ class AssetServiceCreateAssetEventTest(TestCase):
     EVENT_BUS_ENABLE_PERSISTENCE=True,
     EVENT_BUS_ASYNC_PERSISTENCE=False,
 )
-class AssetServiceUpdateAssetEventTest(TestCase):
+class AssetServiceUpdateAssetEventTest(_OnCommitImmediateMixin, TestCase):
     """``AssetService.update_asset`` MUST fire ``asset.updated`` (and
     ``asset.activated`` on a status→ACTIVE transition)."""
 
@@ -210,19 +229,14 @@ class AssetServiceUpdateAssetEventTest(TestCase):
                 tenant_id=str(tenant.id),
                 status=AssetStatus.ACTIVE,
             )
-        except Exception:
+        except ValidationError:
             # Lifecycle business rules may still reject in the test
             # env if other invariants fail; what matters for THIS
             # test is the event flow when the update DOES succeed.
-            # If the update was rejected, neither event fires —
-            # which is also a valid contract.
             pass
 
-        # If the update succeeded, both events MUST be present in
-        # registration order. The exact assertion here is loose
-        # because the lifecycle-validation may legitimately block
-        # the activation in the test env; we assert ordering only
-        # when both events exist.
+        asset.refresh_from_db()
+
         updated_evs = list(
             Event.objects.filter(
                 event_type="asset.updated",
@@ -237,20 +251,33 @@ class AssetServiceUpdateAssetEventTest(TestCase):
                 data__asset_id=str(asset.id),
             ).order_by("timestamp")
         )
-        if updated_evs and activated_evs:
-            assert updated_evs[-1].timestamp <= activated_evs[-1].timestamp, (
-                "asset.updated MUST fire BEFORE asset.activated"
+
+        if asset.status == AssetStatus.ACTIVE:
+            # Update succeeded — both events MUST be present in registration order.
+            self.assertTrue(updated_evs,
+                "asset.updated event missing after successful activation")
+            self.assertTrue(activated_evs,
+                "asset.activated event missing after successful activation")
+            self.assertLessEqual(
+                updated_evs[-1].timestamp, activated_evs[-1].timestamp,
+                "asset.updated MUST fire BEFORE asset.activated",
             )
             # Activation event should carry the gate snapshot.
-            assert "dq_status" in activated_evs[-1].data
-            assert "compliance_status" in activated_evs[-1].data
+            self.assertIn("dq_status", activated_evs[-1].data)
+            self.assertIn("compliance_status", activated_evs[-1].data)
+        else:
+            # Update was rejected by lifecycle rules — no stray events.
+            self.assertFalse(updated_evs,
+                f"No asset.updated events expected when update rejected (status={asset.status})")
+            self.assertFalse(activated_evs,
+                f"No asset.activated events expected when update rejected (status={asset.status})")
 
 
 @override_settings(
     EVENT_BUS_ENABLE_PERSISTENCE=True,
     EVENT_BUS_ASYNC_PERSISTENCE=False,
 )
-class AssetServiceDeleteAssetEventTest(TestCase):
+class AssetServiceDeleteAssetEventTest(_OnCommitImmediateMixin, TestCase):
     """``AssetService.delete_asset`` (soft-delete to RETIRED) MUST fire
     ``asset.retired`` on commit."""
 
@@ -271,11 +298,7 @@ class AssetServiceDeleteAssetEventTest(TestCase):
                 asset_id=str(asset.id),
                 tenant_id=str(tenant.id),
             )
-        except Exception:
-            # Some lifecycle-business-rules paths reject deletion in
-            # certain configurations; if so, the event MUST also be
-            # absent. Asserting absence here covers BOTH the success
-            # and rejection paths cleanly.
+        except ValidationError:
             pass
 
         after = Event.objects.filter(
@@ -288,12 +311,11 @@ class AssetServiceDeleteAssetEventTest(TestCase):
         # is a bug.
         asset.refresh_from_db()
         if asset.status == AssetStatus.RETIRED:
-            assert after - before == 1, (
+            self.assertEqual(after - before, 1,
                 f"delete succeeded (status=RETIRED) but no asset.retired "
-                f"event; got {after - before} new events"
-            )
+                f"event; got {after - before} new events")
         else:
-            assert after == before, (
+            self.assertEqual(after, before,
                 "delete was rejected (status != RETIRED) but an "
                 "asset.retired event leaked; on_commit registration must "
                 "be discarded when the atomic block aborts."

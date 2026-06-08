@@ -1,6 +1,11 @@
 """
 Unit tests for DataMeshBusinessRules.
 
+.. deprecated::
+    Superseded by ``test_data_mesh_business_rules_refactoring.py`` (956 lines).
+    Keep until the refactored suite reaches full parity in CI.
+    Tests unique to this file (detailed rule-specific logic) should be migrated before removal.
+
 Comprehensive tests without mocks/stubs, following engineering best practices.
 """
 

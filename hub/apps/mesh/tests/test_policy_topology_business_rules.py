@@ -1,4 +1,9 @@
 """
+.. deprecated::
+    Superseded by ``test_policy_topology_business_rules_refactoring.py`` (712 lines).
+    Keep until the refactored suite reaches full parity in CI.
+    Tests that exist *only* in this file should be migrated before removal.
+
 Unit tests for PolicyBusinessRules and TopologyBusinessRules.
 
 Tests verify comprehensive business rules for:
@@ -113,7 +118,7 @@ class PolicyBusinessRulesTest(TestCase):
         )
 
         self.assertFalse(result.is_valid)
-        self.assertGreater(len(result.errors), 0)
+        self.assertEqual(len(result.errors), 1)
         self.assertIn("ACTIVE", result.errors[0])
 
     def test_validate_policy_application_policy_disabled(self):
@@ -127,7 +132,7 @@ class PolicyBusinessRulesTest(TestCase):
         )
 
         self.assertFalse(result.is_valid)
-        self.assertGreater(len(result.errors), 0)
+        self.assertEqual(len(result.errors), 1)
         self.assertIn("disabled", result.errors[0].lower())
 
     def test_validate_policy_application_tenant_mismatch(self):
@@ -151,7 +156,7 @@ class PolicyBusinessRulesTest(TestCase):
         )
 
         self.assertFalse(result.is_valid)
-        self.assertGreater(len(result.errors), 0)
+        self.assertEqual(len(result.errors), 2)
         self.assertIn("tenant", result.errors[0].lower())
 
     def test_validate_policy_application_invalid_overrides(self):
@@ -163,7 +168,7 @@ class PolicyBusinessRulesTest(TestCase):
         )
 
         self.assertFalse(result.is_valid)
-        self.assertGreater(len(result.errors), 0)
+        self.assertEqual(len(result.errors), 1)
 
     def test_validate_policy_application_existing_application_warning(self):
         """Test policy application validation warns about existing application"""
@@ -181,7 +186,7 @@ class PolicyBusinessRulesTest(TestCase):
         )
 
         self.assertTrue(result.is_valid)  # Still valid, just a warning
-        self.assertGreater(len(result.warnings), 0)
+        self.assertEqual(len(result.warnings), 1)
         self.assertIn("already applied", result.warnings[0].lower())
 
     def test_check_compliance_compliant_domain(self):
@@ -199,7 +204,7 @@ class PolicyBusinessRulesTest(TestCase):
         result = self.business_rules.check_compliance(domain=self.domain)
 
         self.assertEqual(result["compliance_status"], MeshComplianceStatus.NON_COMPLIANT)
-        self.assertGreater(len(result["violations"]), 0)
+        self.assertEqual(len(result["violations"]), 1)
         violation_types = [v["type"] for v in result["violations"]]
         self.assertIn("DOMAIN_INACTIVE", violation_types)
 
@@ -268,7 +273,7 @@ class PolicyBusinessRulesTest(TestCase):
 
         violations = self.business_rules.detect_violations(domain=self.domain)
 
-        self.assertGreater(len(violations), 0)
+        self.assertEqual(len(violations), 1)
         violation_types = [v["type"] for v in violations]
         self.assertIn("DOMAIN_INACTIVE", violation_types)
 
@@ -288,7 +293,7 @@ class PolicyBusinessRulesTest(TestCase):
 
         violations = self.business_rules.detect_violations(domain=self.domain)
 
-        self.assertGreater(len(violations), 0)
+        self.assertEqual(len(violations), 1)
         violation_types = [v["type"] for v in violations]
         self.assertIn("POLICY_DISABLED", violation_types)
 
@@ -305,7 +310,7 @@ class PolicyBusinessRulesTest(TestCase):
 
         violations = self.business_rules.detect_violations(domain=self.domain, asset=asset)
 
-        self.assertGreater(len(violations), 0)
+        self.assertEqual(len(violations), 1)
         violation_types = [v["type"] for v in violations]
         self.assertIn("ASSET_COMPLIANCE_FAIL", violation_types)
 
@@ -374,7 +379,7 @@ class TopologyBusinessRulesTest(TestCase):
         domains = [self.domain1, self.domain2]
         relationships = self.business_rules.calculate_relationships(domains)
 
-        self.assertGreater(len(relationships), 0)
+        self.assertEqual(len(relationships), 1)
         relationship = relationships[0]
         self.assertEqual(relationship["type"], "SHARED_POLICY")
         self.assertIn(relationship["source"], [str(self.domain1.id), str(self.domain2.id)])
@@ -424,7 +429,7 @@ class TopologyBusinessRulesTest(TestCase):
         domains = [self.domain1, self.domain2]
         relationships = self.business_rules.calculate_relationships(domains)
 
-        self.assertGreater(len(relationships), 0)
+        self.assertEqual(len(relationships), 1)
         relationship = relationships[0]
         self.assertEqual(relationship["weight"], 2)  # Two shared policies
 

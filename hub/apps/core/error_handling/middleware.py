@@ -58,12 +58,44 @@ class ErrorHandlingMiddleware(MiddlewareMixin):
         tenant_id = getattr(request, 'tenant_id', None) if hasattr(request, 'tenant_id') else None
         user_id = getattr(request.user, 'id', None) if hasattr(request, 'user') and request.user.is_authenticated else None
         
+        # Classify severity: 4xx responses are expected client behaviour
+        # (auth failures, not-found, rate-limiting, validation rejections).
+        # Only 5xx responses indicate an actual server fault worth an
+        # ERROR-level alert.  This keeps the log signal clean so real
+        # faults aren't buried under routine HTTP error noise.
+        #
+        # DRF exceptions carry .status_code directly.  Django exceptions
+        # (Http404, PermissionDenied, SuspiciousOperation) do not — map
+        # them to their known HTTP status here.
+        http_status = getattr(exception, 'status_code', None)
+        if http_status is None:
+            from django.core.exceptions import (
+                PermissionDenied as DjangoPermissionDenied,
+                SuspiciousOperation,
+                ValidationError as DjangoValidationError,
+            )
+            from django.http import Http404 as DjangoHttp404
+            if isinstance(exception, DjangoHttp404):
+                http_status = 404
+            elif isinstance(exception, DjangoPermissionDenied):
+                http_status = 403
+            elif isinstance(exception, SuspiciousOperation):
+                http_status = 400
+            elif isinstance(exception, DjangoValidationError):
+                http_status = 400
+            else:
+                http_status = 500
+        if http_status < 500:
+            log_level = "warning"
+        else:
+            log_level = "error"
+
         # Log error
         self.error_logger.log_error(
             error=exception,
             error_code=getattr(exception, 'code', None),
             message=str(exception),
-            http_status=getattr(exception, 'status_code', 500),
+            http_status=http_status,
             request_id=request_id,
             tenant_id=str(tenant_id) if tenant_id else None,
             user_id=str(user_id) if user_id else None,
@@ -71,15 +103,15 @@ class ErrorHandlingMiddleware(MiddlewareMixin):
                 "path": request.path,
                 "method": request.method,
             },
-            level="error",
+            level=log_level,
         )
-        
+
         # Track error in Sentry
         self.error_tracker.track_error(
             error=exception,
             error_code=getattr(exception, 'code', None),
             message=str(exception),
-            http_status=getattr(exception, 'status_code', 500),
+            http_status=http_status,
             request_id=request_id,
             tenant_id=str(tenant_id) if tenant_id else None,
             user_id=str(user_id) if user_id else None,
@@ -87,7 +119,7 @@ class ErrorHandlingMiddleware(MiddlewareMixin):
                 "path": request.path,
                 "method": request.method,
             },
-            level="error",
+            level=log_level,
         )
         
         # Set user context for Sentry

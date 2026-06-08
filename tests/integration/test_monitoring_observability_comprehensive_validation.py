@@ -156,7 +156,7 @@ class MetricsCollectionVerificationTest(TransactionTestCase):
         tenant_id = str(self.tenant1.id)
 
         # Record job metrics
-        jobs_started_total.labels(job_type="DQ_RUN", tenant_id=tenant_id).inc()
+        jobs_started_total.labels(type="DQ_RUN", tenant_id=tenant_id).inc()
 
         jobs_completed_total.labels(
             job_type="DQ_RUN", status="COMPLETED", tenant_id=tenant_id
@@ -266,7 +266,7 @@ class MetricsCollectionVerificationTest(TransactionTestCase):
         http_requests_total.labels(method="GET", route="/api/", status_class="2xx").inc()
 
         # Job metrics
-        jobs_started_total.labels(job_type="DQ_RUN", tenant_id=tenant_id).inc()
+        jobs_started_total.labels(type="DQ_RUN", tenant_id=tenant_id).inc()
 
         # DQ metrics
         dq_runs_total.labels(
@@ -373,7 +373,7 @@ class MetricsCollectionVerificationTest(TransactionTestCase):
         # Record metrics from multiple "threads" (simulated)
         for i in range(10):
             http_requests_total.labels(method="GET", route=f"/test/{i}/", status_class="2xx").inc()
-            jobs_started_total.labels(job_type="DQ_RUN", tenant_id=tenant_id).inc()
+            jobs_started_total.labels(type="DQ_RUN", tenant_id=tenant_id).inc()
 
         # Metrics should be collectable
         # Root cause fix: Metrics endpoint should return 200 since OpenTelemetry is initialized in setUp
@@ -391,12 +391,12 @@ class MetricsCollectionVerificationTest(TransactionTestCase):
         tenant2_id = str(self.tenant2.id)
 
         # Record metrics for tenant1
-        jobs_started_total.labels(job_type="DQ_RUN", tenant_id=tenant1_id).inc()
+        jobs_started_total.labels(type="DQ_RUN", tenant_id=tenant1_id).inc()
 
         tenant_running_jobs.labels(tenant_id=tenant1_id).set(5)
 
         # Record metrics for tenant2
-        jobs_started_total.labels(job_type="DQ_RUN", tenant_id=tenant2_id).inc()
+        jobs_started_total.labels(type="DQ_RUN", tenant_id=tenant2_id).inc()
 
         tenant_running_jobs.labels(tenant_id=tenant2_id).set(3)
 

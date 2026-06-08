@@ -1279,12 +1279,6 @@ class RefResolver:
             if normalized_ref_path.startswith('./'):
                 normalized_ref_path = normalized_ref_path[2:]
 
-            # Parse file path - handle relative paths starting with ./ or ../
-            # Normalize by removing leading ./ if present
-            normalized_ref_path = ref_path
-            if normalized_ref_path.startswith('./'):
-                normalized_ref_path = normalized_ref_path[2:]
-
             # Build the path before resolving (to check for symlinks)
             path_before_resolve = self.base_path / normalized_ref_path
 

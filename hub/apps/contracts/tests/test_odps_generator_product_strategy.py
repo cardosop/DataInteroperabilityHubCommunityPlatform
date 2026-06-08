@@ -8,7 +8,7 @@ Tests verify:
 4. Version check (only ODPS 4.1+)
 """
 
-from django.test import SimpleTestCase, TestCase
+from django.test import SimpleTestCase
 
 from hub.apps.contracts.odps_errors import ODPSExportError
 from hub.apps.contracts.odps_generator import generate_odps_from_hubcontract
@@ -616,16 +616,9 @@ class ODPSGeneratorProductStrategyIntegrationTest(SimpleTestCase):
             },
         }
 
-        # Should handle large documents gracefully
-        try:
-            result = generate_odps_from_hubcontract(hub_contract, target_version="4.1")
-            # If generation succeeds, verify structure
-            self.assertIn("productStrategy", result)
-        except Exception as e:
-            # If generation fails, it should fail gracefully
-            self.assertIsInstance(
-                e, ODPSExportError, "Should raise ODPSExportError for very large documents"
-            )
+        # Valid data (large strategy text) must succeed — must include productStrategy
+        result = generate_odps_from_hubcontract(hub_contract, target_version="4.1")
+        self.assertIn("productStrategy", result)
 
     def test_product_strategy_generation_handles_none_values(self):
         """Test that product strategy generation handles None values correctly."""
@@ -644,16 +637,10 @@ class ODPSGeneratorProductStrategyIntegrationTest(SimpleTestCase):
             },
         }
 
-        # Should handle None values gracefully
-        try:
-            result = generate_odps_from_hubcontract(hub_contract, target_version="4.1")
-            # If generation succeeds, None values may be omitted or handled
-            self.assertIsNotNone(result)
-        except Exception as e:
-            # If generation fails, it should fail gracefully
-            self.assertIsInstance(
-                e, ODPSExportError, "Should raise ODPSExportError for None values"
-            )
+        # None values should be omitted or handled gracefully
+        result = generate_odps_from_hubcontract(hub_contract, target_version="4.1")
+        self.assertIsNotNone(result)
+        self.assertIn("productStrategy", result)
 
     def test_product_strategy_generation_handles_nested_structures(self):
         """Test that product strategy generation handles nested structures correctly."""

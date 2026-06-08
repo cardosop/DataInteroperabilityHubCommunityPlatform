@@ -6,5 +6,6 @@ class FilesConfig(AppConfig):
     name = 'hub.apps.files'
 
     def ready(self):
-        """Import business rules to register them."""
+        """Import business rules and signals to register them."""
         import hub.apps.files.business_rules  # noqa: F401 - Import to register business rules
+        import hub.apps.files.signals  # noqa: F401 - Register signal handlers

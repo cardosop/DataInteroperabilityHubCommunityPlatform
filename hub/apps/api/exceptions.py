@@ -4,10 +4,14 @@ Custom exception handler for REST API
 Provides standardized error response format across all API endpoints.
 """
 import uuid
-from rest_framework.views import exception_handler
-from rest_framework.response import Response
-from rest_framework import status
+
+from django.core.exceptions import ValidationError as DjangoValidationError
 from django.utils import timezone
+from rest_framework import status
+from rest_framework.exceptions import ValidationError as DRFValidationError
+from rest_framework.response import Response
+from rest_framework.views import exception_handler
+
 import structlog
 
 logger = structlog.get_logger(__name__)
@@ -163,6 +167,16 @@ def custom_exception_handler(exc, context):
         }
     }
     """
+    # DRF 3.16's built-in exception_handler does NOT handle
+    # django.core.exceptions.ValidationError — it falls through,
+    # returns None, and we default to 500.  Wrap it into a DRF
+    # ValidationError so the framework produces a proper 400 with
+    # field-level error detail (e.g. duplicate-constraint failures).
+    if isinstance(exc, DjangoValidationError):
+        exc = DRFValidationError(
+            detail=exc.message_dict if hasattr(exc, 'message_dict') else exc.messages,
+        )
+
     response = exception_handler(exc, context)
     request = context.get('request')
 
@@ -261,6 +275,13 @@ def custom_exception_handler(exc, context):
         if hasattr(request, 'user') and request.user.is_authenticated:
             user_id = str(request.user.id)
 
+    # Classify severity: 4xx responses are expected client behaviour
+    # (auth failures, not-found, rate-limiting, validation rejections).
+    # Only 5xx responses indicate an actual server fault worth an
+    # ERROR-level alert.  This keeps the log signal clean so real
+    # faults aren't buried under routine HTTP error noise.
+    log_level = "warning" if http_status < 500 else "error"
+
     # Log error
     error_logger.log_error(
         error=exc,
@@ -274,7 +295,7 @@ def custom_exception_handler(exc, context):
             "path": request.path if request else None,
             "method": request.method if request else None,
         },
-        level="error",
+        level=log_level,
     )
 
     # Track error in Sentry
@@ -290,7 +311,7 @@ def custom_exception_handler(exc, context):
             "path": request.path if request else None,
             "method": request.method if request else None,
         },
-        level="error",
+        level=log_level,
     )
 
     # Set user context for Sentry

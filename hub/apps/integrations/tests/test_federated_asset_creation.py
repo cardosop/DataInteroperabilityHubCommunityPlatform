@@ -151,7 +151,8 @@ class TestFederatedAssetCreation(TestCase):
         self.assertEqual(asset.domain, "finance")
         # When workflow runs it activates the asset; expect ACTIVE (workflow runs and sets status)
         self.assertEqual(asset.status, AssetStatus.ACTIVE)
-        self.assertEqual(asset.visibility, AssetVisibility.PUBLIC)
+        # Visibility derives from status: ACTIVE → INTERNAL, PUBLIC → PUBLIC
+        self.assertEqual(asset.visibility, AssetVisibility.INTERNAL)
         self.assertEqual(asset.source_type, AssetSourceType.FEDERATED)
         self.assertIsNotNone(asset.source_metadata)
         self.assertEqual(asset.source_metadata["connection_id"], str(self.connection.id))
@@ -599,7 +600,7 @@ class TestFederatedAssetCreation(TestCase):
             Contract.objects.create = original_create
 
     def test_create_federated_asset_missing_name_defaults(self):
-        """Test that missing name defaults to 'Untitled Asset'"""
+        """Test that missing name defaults to a generated name"""
         asset_mapping = MarketplaceAssetMapping(
             asset_data={"description": "Description without name", "key": "no-name-asset-key"},
             source_type=AssetSourceType.FEDERATED,
@@ -1240,7 +1241,8 @@ class TestFederatedAssetCreation(TestCase):
         # Asset is created as DRAFT and workflow is skipped when semantic mapping is skipped
         # So asset should remain DRAFT
         self.assertEqual(asset.status, AssetStatus.DRAFT)
-        self.assertEqual(asset.visibility, AssetVisibility.PUBLIC)
+        # Visibility derives from status: DRAFT → INTERNAL
+        self.assertEqual(asset.visibility, AssetVisibility.INTERNAL)
 
         # STEP 1a: Verify data_strategy is set correctly
         from hub.apps.assets.models import DataStrategy

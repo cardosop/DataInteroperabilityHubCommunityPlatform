@@ -35,8 +35,8 @@ class EmailIntegrationTest(TestCase):
     def setUp(self):
         """Set up test fixtures"""
         self.tenant = Tenant.objects.create(
-            name='Test Tenant',
-            slug='test-tenant'
+            name=f"Test Tenant {uuid.uuid4().hex[:8]}",
+            slug=f"test-tenant-{uuid.uuid4().hex[:8]}"
         )
         self.user = User.objects.create_user(
             email='test@example.com',

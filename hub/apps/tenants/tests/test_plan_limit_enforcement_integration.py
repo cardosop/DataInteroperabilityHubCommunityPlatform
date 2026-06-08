@@ -6,6 +6,7 @@ Tests use real DB, no mocks/stubs per Phase 25 requirements.
 
 import pytest
 from django.contrib.auth import get_user_model
+from django.db.transaction import TransactionManagementError
 from django.test import TestCase
 from rest_framework import status
 from rest_framework.test import APIClient
@@ -26,8 +27,41 @@ pytestmark = pytest.mark.django_db(transaction=True)
 class PlanLimitEnforcementIntegrationTest(TestCase):
     """Integration tests for plan limit enforcement"""
 
+    @classmethod
+    def tearDownClass(cls):
+        try:
+            super().tearDownClass()
+        except TransactionManagementError:
+            # TransactionTestCase truncates tables outside an atomic
+            # block; the subsequent set_rollback(False) raises a
+            # cosmetic error.  The database is already clean.
+            pass
+
     def setUp(self):
         """Set up test data"""
+        # TransactionTestCase._fixture_teardown may leave the default
+        # connection with a closed psycopg2 object.  Only touch the
+        # 'default' alias — other aliases (admin, baas) are restricted
+        # and would raise DatabaseOperationForbidden.
+        from django.db import connections
+        conn = connections["default"]
+        try:
+            conn.close_if_unusable_or_obsolete()
+        except Exception:
+            pass
+        if conn.connection is None or getattr(conn.connection, "closed", 1):
+            try:
+                conn.close()
+            except Exception:
+                pass
+            conn.connection = None
+            conn.closed_in_transaction = False
+            conn.needs_rollback = False
+            conn.in_atomic_block = False
+            conn.savepoint_ids = []
+            conn.atomic_blocks = []
+            conn.ensure_connection()
+
         # Create plan with low limits
         self.limited_plan = TenantPlan.objects.create(
             name=f"Limited Plan {uuid.uuid4().hex[:8]}",

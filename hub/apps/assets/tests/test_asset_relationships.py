@@ -39,7 +39,7 @@ def check_semantic_service_available():
         client = SemanticServiceClient()
         is_healthy, _ = client.health_check()
         return is_healthy
-    except Exception:
+    except (ConnectionError, TimeoutError, OSError):
         return False
 
 
@@ -828,25 +828,27 @@ class AssetRelationshipsTest(TestCase):
         contract.refresh_from_db()
         self.assertEqual(contract.asset, asset)
 
-        # Verify semantic resource was created/updated (using real semantic service)
-        # Wait a moment for async processing if needed
+        # Verify semantic resource was created/updated (using real semantic service).
+        # Retry loop with a 1-second cap to accommodate async processing.
         import time
 
-        time.sleep(0.2)  # INTENTIONAL: test-specific delay  # Small delay for semantic mapping
+        deadline = time.monotonic() + 1.0
+        semantic_resource = None
+        while time.monotonic() < deadline:
+            semantic_resource = SemanticResource.objects.filter(
+                resource_type=ResourceType.CONTRACT, resource_id=contract.id
+            ).first()
+            if semantic_resource:
+                break
+            time.sleep(0.05)
 
-        semantic_resource = SemanticResource.objects.filter(
-            resource_type=ResourceType.CONTRACT, resource_id=contract.id
-        ).first()
-
-        # Semantic resource may not exist yet due to async processing timing.
-        # The core assertion (contract attached successfully) already passed above.
-        if semantic_resource:
-            self.assertIsNotNone(semantic_resource.uri)
-            self.assertIn("contract", semantic_resource.uri.lower())
-        else:
-            # Semantic resource not yet created (async delay) -- skip semantic check
-            # but contract attachment (the core behavior) was already verified above.
-            pass
+        self.assertIsNotNone(
+            semantic_resource,
+            "Semantic resource must be created within 1s of contract attachment; "
+            "it never materialized",
+        )
+        self.assertIsNotNone(semantic_resource.uri)
+        self.assertIn("contract", semantic_resource.uri.lower())
 
     # ========== EDGE CASES ==========
 

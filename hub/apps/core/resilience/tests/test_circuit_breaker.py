@@ -13,6 +13,7 @@ Tests cover:
 """
 import time
 import threading
+import uuid
 from datetime import datetime, timedelta, timezone
 from unittest.mock import Mock, patch, MagicMock
 from unittest import skipIf
@@ -84,7 +85,7 @@ class TestCircuitBreakerBase(TestCase):
         self.redis_client = get_real_redis_client_or_none()
         if self.redis_client is None:
             self.skipTest("Redis not available for integration tests")
-        self.service_name = f"test_service_{int(time.time())}"
+        self.service_name = f"test_service_{uuid.uuid4().hex[:12]}"
         self.circuit_breaker = CircuitBreaker(
             service_name=self.service_name,
             failure_threshold=5,
@@ -260,7 +261,7 @@ class TestRedisBackedState(TestCase):
         self.redis_client = get_real_redis_client_or_none()
         if self.redis_client is None:
             self.skipTest("Redis not available for integration tests")
-        self.service_name = f"test_service_{int(time.time())}"
+        self.service_name = f"test_service_{uuid.uuid4().hex[:12]}"
 
     def tearDown(self):
         """Clean up test fixtures."""
@@ -358,7 +359,7 @@ class TestThreadSafety(TestCase):
         self.redis_client = get_real_redis_client_or_none()
         if self.redis_client is None:
             self.skipTest("Redis not available for integration tests")
-        self.service_name = f"test_service_{int(time.time())}"
+        self.service_name = f"test_service_{uuid.uuid4().hex[:12]}"
         self.circuit_breaker = CircuitBreaker(
             service_name=self.service_name,
             failure_threshold=10,  # Higher threshold for concurrent tests
@@ -443,10 +444,23 @@ class TestCircuitBreakerDecorator(TestCase):
         self.redis_client = get_real_redis_client_or_none()
         if self.redis_client is None:
             self.skipTest("Redis not available for integration tests")
-        self.service_name = f"test_service_{int(time.time())}"
+        # Use UUID-based suffix for unique service names across tests
+        # within the same second, preventing shared-breaker state leakage
+        # (the @circuit_breaker decorator now uses get_shared_circuit_breaker
+        # which maintains a process-wide _STORE cache).
+        self.service_name = f"test_service_{uuid.uuid4().hex[:12]}"
 
     def tearDown(self):
         """Clean up test fixtures."""
+        # Reset shared circuit breaker state so subsequent tests
+        # start with a clean slate (process-wide _STORE cache).
+        from hub.apps.core.resilience.service_breakers import (
+            reset_shared_circuit_breakers_for_service,
+        )
+        try:
+            reset_shared_circuit_breakers_for_service(self.service_name)
+        except Exception:
+            pass
         # Clean up Redis keys
         try:
             pattern = f"circuit_breaker:{self.service_name}:*"
@@ -531,7 +545,7 @@ class TestFallbackMechanism(TestCase):
         self.redis_client = get_real_redis_client_or_none()
         if self.redis_client is None:
             self.skipTest("Redis not available for integration tests")
-        self.service_name = f"test_service_{int(time.time())}"
+        self.service_name = f"test_service_{uuid.uuid4().hex[:12]}"
         self.circuit_breaker = CircuitBreaker(
             service_name=self.service_name,
             failure_threshold=5,
@@ -616,7 +630,7 @@ class TestCircuitBreakerIntegration(TestCase):
         self.redis_client = get_real_redis_client_or_none()
         if self.redis_client is None:
             self.skipTest("Redis not available for integration tests")
-        self.service_name = f"test_service_{int(time.time())}"
+        self.service_name = f"test_service_{uuid.uuid4().hex[:12]}"
 
     def tearDown(self):
         """Clean up test fixtures."""

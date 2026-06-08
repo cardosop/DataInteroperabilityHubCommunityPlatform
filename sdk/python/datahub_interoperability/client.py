@@ -17,6 +17,7 @@ from .errors import (
     DataHubError,
     MVPGatedFeatureError,
     NetworkError,
+    RateLimitError,
     UnauthorizedError,
     parse_error,
 )
@@ -24,18 +25,33 @@ from .errors import (
 logger = logging.getLogger(__name__)
 
 
-def calculate_backoff_delay(attempt: int, base_delay: float = 1.0) -> float:
+def calculate_backoff_delay(
+    attempt: int,
+    base_delay: float = 1.0,
+    error: Optional[Exception] = None,
+) -> float:
     """
-    Calculate exponential backoff delay
+    Calculate exponential backoff delay.
+
+    When *error* is a :class:`RateLimitError` with a ``retry_after`` hint,
+    the delay is at least ``retry_after`` seconds — the server told us how
+    long to wait, and exponential backoff alone is often not enough.
 
     Args:
         attempt: Retry attempt number (0-indexed)
         base_delay: Base delay in seconds
+        error: The error that triggered the retry (optional)
 
     Returns:
         Delay in seconds
     """
-    return base_delay * (2**attempt)
+    base = base_delay * (2 ** attempt)
+    if error is not None and isinstance(error, RateLimitError):
+        retry_after = getattr(error, "retry_after", None)
+        if isinstance(retry_after, (int, float)) and retry_after > 0:
+            # Honour the server's Retry-After hint.
+            return max(base, retry_after)
+    return base
 
 
 def _maybe_raise_mvp_gated(response: httpx.Response) -> None:
@@ -189,6 +205,38 @@ class DataHubClient:
         self.users = UsersAPI(self)
         self.workflows = WorkflowsAPI(self)
 
+        # Phase 5 / 279 API modules — initialised so they are reachable as
+        # client.<attr> (e.g. client.capabilities.list_capabilities()).
+        from .admin import AdminAPI
+        from .capabilities import CapabilitiesAPI
+        from .developer import DeveloperAPI
+        from .dpia import DpiaAPI
+        from .drafts import DraftsAPI
+        from .events import EventsAPI
+        from .integrations import IntegrationsAPI
+        from .lineage_subscriptions import LineageSubscriptionsAPI
+        from .notifications import NotificationAPI
+        from .openlineage import OpenLineageAPI
+        from .platform import PlatformAPI
+        from .public_dsar import PublicDsarAPI
+        from .ropa import RopaAPI
+        from .security import SecurityAPI
+
+        self.admin = AdminAPI(self)
+        self.capabilities = CapabilitiesAPI(self)
+        self.developer = DeveloperAPI(self)
+        self.dpia = DpiaAPI(self)
+        self.drafts = DraftsAPI(self)
+        self.events = EventsAPI(self)
+        self.integrations = IntegrationsAPI(self)
+        self.lineage_subscriptions = LineageSubscriptionsAPI(self)
+        self.notifications = NotificationAPI(self)
+        self.openlineage = OpenLineageAPI(self)
+        self.platform = PlatformAPI(self)
+        self.public_dsar = PublicDsarAPI(self)
+        self.ropa = RopaAPI(self)
+        self.security = SecurityAPI(self)
+
     def set_api_token(self, token: str) -> None:
         """
         Set API token
@@ -215,24 +263,55 @@ class DataHubClient:
         """
         self.token_refresh_callback = callback
 
+    @staticmethod
+    def _is_jwt_expired(token: str) -> bool:
+        """Return True if *token* is a JWT whose ``exp`` claim is in the past.
+
+        Does NOT verify the signature — this is a lightweight client-side
+        check to avoid sending requests with an obviously-expired token.
+        Non-JWT tokens (API keys) always return False.
+        """
+        if "." not in token:
+            return False
+        try:
+            import base64, json
+            payload_b64 = token.split(".")[1]
+            # Add padding if needed
+            payload_b64 += "=" * (4 - len(payload_b64) % 4)
+            payload = json.loads(base64.urlsafe_b64decode(payload_b64))
+            exp = payload.get("exp", 0)
+            return time.time() > exp
+        except Exception:
+            return False
+
     async def _get_headers(self) -> Dict[str, str]:
         """
-        Get request headers with authentication
+        Get request headers with authentication.
 
-        Returns:
-            Request headers
+        If the configured token is an expired JWT and a refresh callback
+        is registered, the callback is invoked to obtain a fresh token
+        before returning headers.  This avoids a guaranteed 401 round-trip
+        on every request that follows token expiry.
         """
         headers = {}
         if self.config.api_token:
-            # Detect if token is an API key (no dots, unlike JWT tokens).
-            # API keys are base64url strings without dots.
-            # JWT tokens have the format: header.payload.signature (three dot-separated parts).
             token = self.config.api_token
+            # Proactive JWT refresh: if the token is expired and we have
+            # a callback, refresh it now rather than waiting for a 401.
+            if (
+                self._is_jwt_expired(token)
+                and self.token_refresh_callback is not None
+            ):
+                try:
+                    new_token = await self.token_refresh_callback()
+                    if new_token:
+                        self.config.api_token = new_token
+                        token = new_token
+                except Exception:
+                    pass  # Fall through — the 401 handler will retry
+
             if "." not in token:
                 # API key — use Authorization: ApiKey header.
-                # This is preferred over X-API-Key because Django's CSRF middleware
-                # exempts requests carrying an Authorization header, which is required
-                # for mutating (POST/PUT/PATCH/DELETE) operations.
                 headers["Authorization"] = f"ApiKey {token}"
             else:
                 # JWT token — use standard Bearer authorization.
@@ -374,7 +453,11 @@ class DataHubClient:
                                 raise parse_odcs_error(error_data)
                             except Exception:
                                 # If ODCS parsing fails, fall back to standard error parsing
-                                pass
+                                logger.debug(
+                                    "[DataHub SDK] ODCS error parsing failed, "
+                                    "falling back to generic parse_error",
+                                    exc_info=True,
+                                )
 
                         # Try ODPS error parsing (for ODPS endpoints)
                         if is_odps_endpoint:
@@ -384,12 +467,27 @@ class DataHubClient:
                                 raise parse_odps_error(error_data)
                             except Exception:
                                 # If ODPS parsing fails, fall back to standard error parsing
-                                pass
+                                logger.debug(
+                                    "[DataHub SDK] ODPS error parsing failed, "
+                                    "falling back to generic parse_error",
+                                    exc_info=True,
+                                )
 
                         # MVP-gated 404 detection runs BEFORE the generic
                         # parse_error fall-through (Phase 215.2 D132).
                         _maybe_raise_mvp_gated(response)
-                        raise parse_error(error_data)
+                        parsed = parse_error(error_data, http_status=response.status_code)
+                        if attempt < max_retries and is_retryable_error(parsed):
+                            last_error = parsed
+                            delay = calculate_backoff_delay(attempt, error=parsed)
+                            if self.config.enable_logging:
+                                logger.info(
+                                    f"[DataHub SDK] Retrying retryable error "
+                                    f"(status={parsed.http_status}) after {delay}s..."
+                                )
+                            await asyncio.sleep(delay)
+                            continue
+                        raise parsed
                     except ValueError:
                         # Not JSON — still check for MVP-gated 404 before
                         # falling back to a bare HTTP_ERROR.
@@ -431,10 +529,25 @@ class DataHubClient:
                             raise parse_odps_error(error_data)
                         except Exception:
                             # If ODPS parsing fails, fall back to standard error parsing
-                            pass
+                            logger.debug(
+                                "[DataHub SDK] ODPS error parsing failed in "
+                                "HTTPStatusError handler, falling back to generic parse_error",
+                                exc_info=True,
+                            )
                     # MVP-gated 404 detection runs BEFORE parse_error here too.
                     _maybe_raise_mvp_gated(e.response)
-                    raise parse_error(error_data)
+                    parsed = parse_error(error_data, http_status=e.response.status_code)
+                    if attempt < max_retries and is_retryable_error(parsed):
+                        last_error = parsed
+                        delay = calculate_backoff_delay(attempt, error=last_error)
+                        if self.config.enable_logging:
+                            logger.info(
+                                f"[DataHub SDK] Retrying retryable error "
+                                f"(status={parsed.http_status}) after {delay}s..."
+                            )
+                        await asyncio.sleep(delay)
+                        continue
+                    raise parsed
                 except ValueError:
                     _maybe_raise_mvp_gated(e.response)
                     raise DataHubError(
@@ -444,14 +557,17 @@ class DataHubClient:
                     )
 
             except httpx.RequestError as e:
-                last_error = NetworkError(str(e))
+                # Preserve the underlying error info — str(e) can be empty
+                # for some httpcore exceptions (ConnectError, ReadError).
+                msg = str(e) or repr(e) or type(e).__name__
+                last_error = NetworkError(msg)
 
                 # Don't retry on last attempt or non-retryable errors
                 if attempt >= max_retries or not is_retryable_error(last_error):
                     raise last_error
 
                 # Calculate backoff delay
-                delay = calculate_backoff_delay(attempt)
+                delay = calculate_backoff_delay(attempt, error=last_error)
 
                 if self.config.enable_logging:
                     logger.info(f"[DataHub SDK] Retrying after {delay}s...")
@@ -472,7 +588,7 @@ class DataHubClient:
                         0,
                     )
 
-                delay = calculate_backoff_delay(attempt)
+                delay = calculate_backoff_delay(attempt, error=last_error)
                 await asyncio.sleep(delay)
 
         # If we get here, all retries failed
@@ -492,6 +608,25 @@ class DataHubClient:
             Response data as dictionary
         """
         response = await self.request("GET", url, **kwargs)
+        return response.json()
+
+    async def check_health(self) -> Dict[str, Any]:
+        """GET /health/ — check API health status.
+
+        The health endpoint lives at the server root (``/health/``), not
+        under ``/api/v1/``.  We construct an absolute URL from the
+        configured base_url so the path is correct regardless of whether
+        the base_url includes a prefix path.
+        """
+        from urllib.parse import urlparse
+
+        parsed = urlparse(self.config.base_url)
+        health_url = f"{parsed.scheme}://{parsed.netloc}/health/"
+        # Use self.client directly (not self.get) because self.get
+        # appends the URL to the configured base_url.
+        response = await self.client.get(health_url)
+        if response.is_error:
+            return response.json() if response.headers.get("content-type", "").startswith("application/json") else {"status": "error", "http_status": response.status_code}
         return response.json()
 
     async def post(

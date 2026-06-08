@@ -136,11 +136,10 @@ class TestDraftSaveDoesNotEnqueue(TestCase):
         with self.captureOnCommitCallbacks(execute=True):
             _seed_draft(tenant, user)
 
-        assert mock_enqueue.call_count == 0, (
+        self.assertEqual(mock_enqueue.call_count, 0,
             "Creating a DRAFT asset MUST NOT enqueue a search-vector "
             "rebuild — vectors are only meaningful for activated "
-            "(non-DRAFT) assets. Phase 250.1.F closes B2-5."
-        )
+            "(non-DRAFT) assets. Phase 250.1.F closes B2-5.")
 
     @patch("hub.apps.search.tasks.enqueue_asset_search_vector_update")
     def test_draft_rename_does_not_enqueue(self, mock_enqueue):
@@ -157,10 +156,9 @@ class TestDraftSaveDoesNotEnqueue(TestCase):
             asset.name = "Renamed Draft"
             asset.save(update_fields=["name", "updated_at"])
 
-        assert mock_enqueue.call_count == 0, (
+        self.assertEqual(mock_enqueue.call_count, 0,
             "Renaming a DRAFT asset MUST NOT enqueue a search-vector "
-            f"rebuild; got {mock_enqueue.call_count} call(s)."
-        )
+            f"rebuild; got {mock_enqueue.call_count} call(s).")
 
     @patch("hub.apps.search.tasks.enqueue_asset_search_vector_update")
     def test_draft_description_edit_does_not_enqueue(self, mock_enqueue):
@@ -175,7 +173,7 @@ class TestDraftSaveDoesNotEnqueue(TestCase):
             asset.description = "Updated description while still DRAFT"
             asset.save(update_fields=["description", "updated_at"])
 
-        assert mock_enqueue.call_count == 0
+        self.assertEqual(mock_enqueue.call_count, 0)
 
 
 @pytest.mark.django_db(transaction=True)
@@ -192,7 +190,7 @@ class TestActivationEnqueues(TestCase):
         # TestDraftSaveDoesNotEnqueue.
         with self.captureOnCommitCallbacks(execute=True):
             asset = _seed_draft(tenant, user)
-        assert mock_enqueue.call_count == 0
+        self.assertEqual(mock_enqueue.call_count, 0)
         mock_enqueue.reset_mock()
 
         # Step 2: activate — flip to ACTIVE on the canonical save path
@@ -304,10 +302,9 @@ class TestSignalConnectivity(TestCase):
         from hub.apps.assets.signals import rebuild_asset_search_vector
 
         receivers = [r[1]() for r in post_save.receivers if r[1]() is not None]
-        assert rebuild_asset_search_vector in receivers, (
+        self.assertIn(rebuild_asset_search_vector, receivers,
             "rebuild_asset_search_vector MUST be connected to "
-            "Asset post_save."
-        )
+            "Asset post_save.")
 
 
 # ---------------------------------------------------------------------------
@@ -331,10 +328,9 @@ class TestSearchVectorExistsIffActivated(TestCase):
         # Re-read from DB; the signal didn't enqueue, so search_vector
         # is still the column default of NULL.
         asset.refresh_from_db()
-        assert asset.search_vector is None, (
+        self.assertIsNone(asset.search_vector,
             "DRAFT asset MUST have search_vector=NULL — Phase 250.1.F "
-            "suppresses the rebuild while in DRAFT."
-        )
+            "suppresses the rebuild while in DRAFT.")
 
     def test_activation_then_task_run_populates_vector(self):
         """Drive the canonical activation flow inline:
@@ -355,7 +351,7 @@ class TestSearchVectorExistsIffActivated(TestCase):
 
         # Pre-activation: vector is null.
         asset.refresh_from_db()
-        assert asset.search_vector is None
+        self.assertIsNone(asset.search_vector)
 
         with self.captureOnCommitCallbacks(execute=True):
             asset.status = AssetStatus.ACTIVE
@@ -369,10 +365,9 @@ class TestSearchVectorExistsIffActivated(TestCase):
         update_asset_search_vector(str(asset.pk))
 
         asset.refresh_from_db()
-        assert asset.search_vector is not None, (
+        self.assertIsNotNone(asset.search_vector,
             "Post-activation, the rebuild task MUST populate "
-            "search_vector with a non-null tsvector."
-        )
+            "search_vector with a non-null tsvector.")
 
     def test_draft_then_active_then_back_to_active_save_keeps_vector(self):
         """Sanity: re-saving an ACTIVE asset with no field changes
@@ -394,7 +389,7 @@ class TestSearchVectorExistsIffActivated(TestCase):
         update_asset_search_vector(str(asset.pk))
         asset.refresh_from_db()
         first_vector = asset.search_vector
-        assert first_vector is not None
+        self.assertIsNotNone(first_vector)
 
         # Re-save (no field changes) and re-run the task — vector
         # remains non-null.
@@ -402,7 +397,7 @@ class TestSearchVectorExistsIffActivated(TestCase):
             asset.save(update_fields=["updated_at"])
         update_asset_search_vector(str(asset.pk))
         asset.refresh_from_db()
-        assert asset.search_vector is not None
+        self.assertIsNotNone(asset.search_vector)
 
 
 # ---------------------------------------------------------------------------
@@ -441,10 +436,9 @@ class TestRollbackToDraftClearsVector(TestCase):
             asset.save(update_fields=["status", "updated_at"])
         update_asset_search_vector(str(asset.pk))
         asset.refresh_from_db()
-        assert asset.search_vector is not None, (
+        self.assertIsNotNone(asset.search_vector,
             "Pre-condition: activation must have populated the "
-            "search_vector before we test the rollback path."
-        )
+            "search_vector before we test the rollback path.")
 
         # Simulate compensate_activation: flip status back to DRAFT
         # using the same save shape as
@@ -454,7 +448,7 @@ class TestRollbackToDraftClearsVector(TestCase):
             asset.save(update_fields=["status", "updated_at"])
 
         asset.refresh_from_db()
-        assert asset.search_vector is None, (
+        self.assertIsNone(asset.search_vector,
             "Phase 250.1.F invariant: rolling back from non-DRAFT "
             "to DRAFT MUST clear the stale search_vector so the "
             "row no longer surfaces from the FTS endpoint at "
@@ -476,17 +470,16 @@ class TestRollbackToDraftClearsVector(TestCase):
             asset.status = AssetStatus.ACTIVE
             asset.save(update_fields=["status", "updated_at"])
         # We expect at least one enqueue from the activation save.
-        assert mock_enqueue.call_count >= 1
+        self.assertGreaterEqual(mock_enqueue.call_count, 1)
         mock_enqueue.reset_mock()
 
         with self.captureOnCommitCallbacks(execute=True):
             asset.status = AssetStatus.DRAFT
             asset.save(update_fields=["status", "updated_at"])
 
-        assert mock_enqueue.call_count == 0, (
+        self.assertEqual(mock_enqueue.call_count, 0,
             "Rollback to DRAFT MUST NOT enqueue a rebuild — the "
-            "vector is being cleared, not rebuilt."
-        )
+            "vector is being cleared, not rebuilt.")
 
     def test_brand_new_draft_does_not_run_clear_update(self):
         """Brand-new DRAFT (no prior status) MUST NOT trigger the
@@ -507,16 +500,11 @@ class TestRollbackToDraftClearsVector(TestCase):
         # — the signal recognises new rows via prior=None.
         from django.db import connection
 
-        before = len(connection.queries) if connection.queries else 0
         with self.captureOnCommitCallbacks(execute=True):
-            _seed_draft(tenant, user)
-        # Post-condition smoke: column is NULL by default; the row
-        # exists; no UPDATE fired against search_vector.
-        # (Direct query-count assertions are flaky across Django
-        # versions / connection settings, so we assert the
-        # observable outcome: the column starts as NULL and stays
-        # that way without a UPDATE statement having to run.)
-        # A meaningful proxy: the test runs cleanly without the
-        # signal warning logger firing — the clear-update only
-        # runs on the rollback path.
-        # (No specific assertion needed beyond no exception.)
+            draft = _seed_draft(tenant, user)
+        # Observable outcome: new DRAFT rows start with NULL search_vector
+        # and NEVER trigger a clear-update UPDATE. The column default +
+        # signal guard (prior_status is not None) enforce this.
+        self.assertIsNone(draft.search_vector,
+            "Brand-new DRAFT must have NULL search_vector; "
+            "a non-NULL value means the clear-update path fired incorrectly")

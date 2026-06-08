@@ -189,7 +189,7 @@ class FileServiceTest(FilesTestBase):
 
         # Refresh from DB
         active_file.refresh_from_db()
-        self.assertEqual(active_file.status, FileStatus.DELETED)
+        self.assertEqual(active_file.status, FileStatus.DELETING)
 
     def test_delete_file_not_found(self):
         """Test deleting non-existent file raises NotFoundError."""
@@ -239,8 +239,8 @@ class FileServiceTest(FilesTestBase):
         CLAMAV_HOST="127.0.0.1",
         CLAMAV_PORT=65444,
     )
-    def test_update_file_completed_with_hash_triggers_scan_job(self):
-        """COMPLETED + content_sha256 enqueues scan; job reads S3 then ClamAV (bad port → UNAVAILABLE)."""
+    def test_update_file_active_with_hash_triggers_scan_job(self):
+        """ACTIVE + content_sha256 enqueues scan; job reads S3 then ClamAV (bad port → UNAVAILABLE)."""
         if not self.storage_available:
             self.skipTest("S3/MinIO storage not available")
         fid = uuid.uuid4()
@@ -264,11 +264,26 @@ class FileServiceTest(FilesTestBase):
                 tenant_id=str(self.tenant.id),
                 user_id=str(self.user.id),
                 content_sha256=content_sha256,
-                new_status=FileStatus.COMPLETED.value,
+                new_status=FileStatus.ACTIVE.value,
             )
         pending_file.refresh_from_db()
-        self.assertEqual(pending_file.status, FileStatus.COMPLETED)
+        self.assertEqual(pending_file.status, FileStatus.ACTIVE)
         self.assertEqual(pending_file.scan_status, FileScanStatus.SCAN_UNAVAILABLE)
+
+        audit = AuditEvent.objects.filter(
+            action="FILE_MALWARE_SCAN_UNAVAILABLE",
+            resource_id=pending_file.id,
+        ).first()
+        self.assertIsNotNone(audit,
+            "FILE_MALWARE_SCAN_UNAVAILABLE audit event must be emitted")
+        self.assertEqual(audit.result, "WARNING")
+        self.assertEqual(
+            audit.details_json.get("reason"),
+            "clamav_unreachable_or_client_error",
+        )
+        self.assertEqual(audit.details_json.get("clamav_host"), "127.0.0.1")
+        self.assertEqual(audit.details_json.get("clamav_port"), 65444)
+        self.assertEqual(audit.tenant, self.tenant)
 
     @override_settings(CLAMAV_ENABLED=False)
     def test_update_file_active_when_clamav_disabled_sets_scan_unavailable(self):
@@ -294,9 +309,12 @@ class FileServiceTest(FilesTestBase):
         updated.refresh_from_db()
         self.assertEqual(updated.scan_status, FileScanStatus.SCAN_UNAVAILABLE)
         self.assertIsNotNone(updated.scanned_at)
-        self.assertTrue(
-            AuditEvent.objects.filter(
-                action="FILE_MALWARE_SCAN_SKIPPED",
-                resource_id=updated.id,
-            ).exists()
-        )
+        audit = AuditEvent.objects.filter(
+            action="FILE_MALWARE_SCAN_SKIPPED",
+            resource_id=updated.id,
+        ).first()
+        self.assertIsNotNone(audit,
+            "FILE_MALWARE_SCAN_SKIPPED audit event must be emitted")
+        self.assertEqual(audit.result, "WARNING")
+        self.assertEqual(audit.details_json.get("reason"), "CLAMAV_DISABLED")
+        self.assertEqual(audit.tenant, self.tenant)

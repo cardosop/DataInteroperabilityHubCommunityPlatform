@@ -62,6 +62,7 @@ class RuleMetadata:
     dependencies: List[str] = field(default_factory=list)
     priority: int = 100  # Default priority
     enabled: bool = True
+    openspec_ref: Optional[str] = None  # Phase 274.15 — conformance metadata backfill
 
     def __post_init__(self):
         """Validate rule metadata."""
@@ -101,7 +102,8 @@ class BusinessRulesRegistry:
         tags: Optional[List[str]] = None,
         depends_on: Optional[List[str]] = None,
         priority: int = 100,
-        enabled: bool = True
+        enabled: bool = True,
+        openspec_ref: Optional[str] = None,
     ) -> Callable:
         """
         Decorator for registering business rules.
@@ -113,6 +115,7 @@ class BusinessRulesRegistry:
             depends_on: Optional list of rule names this rule depends on
             priority: Execution priority (lower = higher priority)
             enabled: Whether the rule is enabled
+            openspec_ref: Optional path to the OpenSpec spec file this rule implements (Phase 274.15)
 
         Returns:
             Decorator function
@@ -123,7 +126,8 @@ class BusinessRulesRegistry:
                 description="Validates domain structure",
                 tags=["domain", "validation"],
                 depends_on=["tenant_validation"],
-                priority=10
+                priority=10,
+                openspec_ref="specs/domain-business-rules/spec.md",
             )
             class DomainBusinessRules(BusinessRules):
                 ...
@@ -159,7 +163,8 @@ class BusinessRulesRegistry:
                 tags=tags or [],
                 dependencies=depends_on or [],
                 priority=priority,
-                enabled=enabled
+                enabled=enabled,
+                openspec_ref=openspec_ref,
             )
 
             # Register rule
@@ -200,7 +205,7 @@ class BusinessRulesRegistry:
         for dep in dependencies:
             self._reverse_dependency_graph[dep].add(rule_name)
 
-    def register_instance(
+    def register_instance(self):
         """Phase 274.6 — removed. Use @register_rule decorator instead."""
         raise NotImplementedError(
             "BusinessRulesRegistry.register_instance() was removed in Phase 274.6. "
@@ -502,12 +507,14 @@ class BusinessRulesRegistry:
     ) -> Dict[str, ValidationResult]:
         raise NotImplementedError(
             "BusinessRulesRegistry.execute_rules() was removed in Phase 274.6. "
+        )
     def enable_rule(self, rule_name: str) -> None:
         """Phase 274.6 — removed."""
         raise NotImplementedError(
             "BusinessRulesRegistry.enable_rule() was removed in Phase 274.6. "
             "Use per-tenant feature flags instead."
         )
+
     def disable_rule(self, rule_name: str) -> None:
         """Phase 274.6 — removed."""
         raise NotImplementedError(
@@ -557,7 +564,8 @@ def register_rule(
     tags: Optional[List[str]] = None,
     depends_on: Optional[List[str]] = None,
     priority: int = 100,
-    enabled: bool = True
+    enabled: bool = True,
+    openspec_ref: Optional[str] = None,
 ) -> Callable:
     """
     Decorator for registering business rules with the global registry.
@@ -569,6 +577,7 @@ def register_rule(
         depends_on: Optional list of rule names this rule depends on
         priority: Execution priority (lower = higher priority)
         enabled: Whether the rule is enabled
+        openspec_ref: Optional path to the OpenSpec spec file this rule implements (Phase 274.15)
 
     Returns:
         Decorator function
@@ -579,7 +588,8 @@ def register_rule(
             description="Validates domain structure",
             tags=["domain", "validation"],
             depends_on=["tenant_validation"],
-            priority=10
+            priority=10,
+            openspec_ref="specs/domain-business-rules/spec.md",
         )
         class DomainBusinessRules(BusinessRules):
             ...
@@ -590,6 +600,7 @@ def register_rule(
         tags=tags,
         depends_on=depends_on,
         priority=priority,
-        enabled=enabled
+        enabled=enabled,
+        openspec_ref=openspec_ref,
     )
 

@@ -121,6 +121,13 @@ export const datasetService = {
     );
     return response.data;
   },
+
+  async refreshFromFile(datasetId: string): Promise<DatasetRefreshFromFileResponse> {
+    const response = await apiClient.getClient().post<DatasetRefreshFromFileResponse>(
+      `${DATASETS_BASE_PATH}/${datasetId}/refresh-from-file/`
+    );
+    return response.data;
+  },
 };
 
 export interface DatasetSampleResponse {
@@ -129,4 +136,27 @@ export interface DatasetSampleResponse {
   row_count: number;
   sample_size: number;
   sample_data: Record<string, unknown>[];
+}
+
+export interface DatasetRefreshFromFileResponse {
+  dataset_id: string;
+  status: string;
+  row_count?: number;
+}
+
+export interface DatasetSchemaDrift {
+  has_contract: boolean;
+  contract_id?: string | null;
+  detected?: boolean;
+  severity: 'NONE' | 'WARN' | 'FAIL';
+  missing_fields: string[];
+  extra_fields: string[];
+  type_mismatches: Array<{
+    field: string;
+    contract_type: string;
+    inferred_type: string;
+    compatible?: boolean;
+  }>;
+  structural_incompatibility?: boolean;
+  skip_reason?: string;
 }

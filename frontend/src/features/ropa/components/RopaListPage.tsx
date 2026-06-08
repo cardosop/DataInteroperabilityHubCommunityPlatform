@@ -66,7 +66,7 @@ export function RopaListPage() {
       </div>
 
       {(!generations || generations.length === 0) ? (
-        <EmptyState title="No processing records yet" description="Generate your first Record of Processing Activities." />
+        <EmptyState title="No processing records yet" message="Generate your first Record of Processing Activities." />
       ) : (
         <table className="ropa-table" data-testid="ropa-table">
           <thead><tr><th>Regulation</th><th>Format</th><th>Status</th><th>Generated</th><th>Actions</th></tr></thead>

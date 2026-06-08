@@ -107,3 +107,93 @@ def get_request_tenant(request: HttpRequest) -> Tuple[Optional[str], Optional["T
         return tenant_id_str, tenant
     except Tenant.DoesNotExist:
         return tenant_id_str, None
+
+
+class tenant_context:
+    """
+    Context manager that activates a tenant scope for the current
+    database session by setting the PostgreSQL ``app.current_tenant_id``
+    run-time parameter.
+
+    Usage::
+
+        with tenant_context(tenant_id):
+            # All RLS policies that reference current_setting('app.current_tenant_id')
+            # will now see *tenant_id* for the duration of this block.
+            do_tenant_scoped_work()
+
+    This is the canonical way for worker/signal code that touches
+    tenant-scoped models to ensure RLS policies are enforced correctly
+    outside of an HTTP request cycle (where the middleware would
+    normally set this).
+    """
+
+    def __init__(self, tenant_id: str):
+        self.tenant_id = str(tenant_id)
+        self._previous = None
+
+    def __enter__(self):
+        from django.db import connection
+        with connection.cursor() as cursor:
+            cursor.execute(
+                "SELECT current_setting('app.current_tenant_id', true)"
+            )
+            row = cursor.fetchone()
+            self._previous = row[0] if row and row[0] else None
+            cursor.execute(
+                "SELECT set_config('app.current_tenant_id', %s, true)",
+                [self.tenant_id],
+            )
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        from django.db import connection
+        with connection.cursor() as cursor:
+            if self._previous:
+                cursor.execute(
+                    "SELECT set_config('app.current_tenant_id', %s, true)",
+                    [self._previous],
+                )
+            else:
+                # Reset the GUC by setting it to NULL (rather than '').
+                # NULL matches the semantics of ``SET LOCAL ... = DEFAULT``
+                # used by the test helper ``set_tenant_context``
+                # (hub/apps/core/tests/test_utils/rls_helpers.py): when no
+                # previous tenant context existed, clear the setting so
+                # ``current_setting('app.current_tenant_id', true)``
+                # returns NULL.
+                #
+                # We use ``set_config(..., true)`` (is_local) so this works
+                # without a wrapping transaction.atomic() block — the
+                # setting is transaction-local and reverts after the
+                # current (possibly implicit) transaction ends, which
+                # matches the documented contract that this context
+                # manager is scoped to the caller's transaction.
+                cursor.execute(
+                    "SELECT set_config('app.current_tenant_id', NULL, true)"
+                )
+        return False  # do not suppress exceptions
+
+
+def with_tenant_context(tenant_id):
+    """Decorator that wraps a function to run inside ``tenant_context(tenant_id)``.
+
+    The GUC (``app.current_tenant_id``) is saved before entering and
+    restored after exiting, even if the decorated function raises an
+    exception.
+
+    Usage::
+
+        @with_tenant_context(my_tenant_id)
+        def do_tenant_scoped_work():
+            # All DB queries here are scoped to my_tenant_id via RLS.
+            return MyModel.objects.count()
+    """
+    import functools
+
+    def decorator(func):
+        @functools.wraps(func)
+        def wrapper(*args, **kwargs):
+            with tenant_context(tenant_id):
+                return func(*args, **kwargs)
+        return wrapper
+    return decorator

@@ -12,6 +12,7 @@ from .views import (
     ensure_e2e_subscription,
     ensure_e2e_tenant_switch_setup,
     ensure_e2e_users,
+    raise_500,
     reset_e2e_auth_rate_limits,
 )
 # Phase 226 G11 — E2E-only webhook sink endpoint.
@@ -55,6 +56,7 @@ urlpatterns = [
     path("marketplace/", include("hub.apps.marketplace.urls")),
     path("scheduled-ingestions/", include("hub.apps.scheduled_ingestion.urls")),
     path("scheduled-exports/", include("hub.apps.scheduled_export.urls")),
+    path("data-movement/", include("hub.data_movement.urls")),
     path("search/", include("hub.apps.search.urls")),
     path("developer/", include("hub.apps.developer.urls")),
     path("webhooks/", include("hub.apps.webhooks.urls")),
@@ -91,10 +93,20 @@ urlpatterns = [
     path("versioning/", include("hub.apps.versioning.urls")),
     path("workflows/", include("hub.apps.orchestration.urls")),
     path("transformation/", include("hub.apps.api.transformation_urls")),
+    path("warehouses/", include("hub.apps.warehouses.urls")),
+    path("breach/", include("hub.apps.breach.urls")),
+    path("gdpr/", include("hub.apps.gdpr.urls")),
+    path("dsar/", include("hub.apps.dsar.urls")),
+    path("consent/", include("hub.apps.consent.urls")),
+    path("processor-agreements/", include("hub.apps.processor_agreements.urls")),
     path("test/ensure-e2e-subscription/", ensure_e2e_subscription, name="ensure-e2e-subscription"),
     path("test/ensure-e2e-invitation-token/", ensure_e2e_invitation_token, name="ensure-e2e-invitation-token"),
     path("test/ensure-e2e-tenant-switch-setup/", ensure_e2e_tenant_switch_setup, name="ensure-e2e-tenant-switch-setup"),
     path("test/ensure-e2e-users/", ensure_e2e_users, name="ensure-e2e-users"),
+    # E2E-only: deliberately raise an unhandled exception so the
+    # test_500_errors_do_not_contain_stack_traces security test can
+    # verify that 500 responses are sanitised (no stack traces).
+    path("test/raise-500/", raise_500, name="raise-500"),
     # Cycle-7 (staging): pre-flight rate-limit reset for long E2E runs.
     # Remote runner equivalent of `manage.py reset_e2e_auth_rate_limits` —
     # required because the per-tenant auth limiter accumulates over the
@@ -137,7 +149,7 @@ urlpatterns = [
         name="mailhog-detail-slash",
     ),
     re_path(
-        r"^(?!admin/|auth/|tenants/|users/|audit/|files/|datasets/|jobs/|contracts/|assets/|dq/|compliance/|semantic/|marketplace/|scheduled-ingestions/|scheduled-exports/|search/|developer/|webhooks/|events/|mesh/|virtualization/|integrations/|baas/|ml/|billing/|platform/|versioning/|workflows/|transformation/|notifications/|governance/|public/|test/|lineage/).*$",
+        r"^(?!admin/|auth/|tenants/|users/|audit/|files/|datasets/|jobs/|contracts/|assets/|dq/|compliance/|semantic/|marketplace/|scheduled-ingestions/|scheduled-exports/|search/|developer/|webhooks/|events/|mesh/|virtualization/|integrations/|baas/|ml/|billing/|platform/|versioning/|workflows/|transformation/|warehouses/|notifications/|governance/|public/|test/|lineage/|breach/|gdpr/|dsar/|consent/|processor-agreements/|ropa/|dpia/).*$",
         api_not_found,
         name="api-not-found",
     ),

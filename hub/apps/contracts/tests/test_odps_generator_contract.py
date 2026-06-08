@@ -8,7 +8,7 @@ Tests verify:
 4. Error handling for invalid contract data
 """
 
-from django.test import SimpleTestCase, TestCase
+from django.test import SimpleTestCase
 
 from hub.apps.contracts.odps_errors import ODPSExportError
 from hub.apps.contracts.odps_generator import generate_odps_from_hubcontract
@@ -491,18 +491,11 @@ class ODPSGeneratorContractIntegrationTest(SimpleTestCase):
             "schema": {"properties": {"id": {"type": "string"}}},
         }
 
-        # Should handle large documents gracefully
-        try:
-            result = generate_odps_from_hubcontract(
-                hub_contract, original_odcs_contract=original_odcs_contract
-            )
-            # If generation succeeds, verify structure
-            self.assertIn("product", result)
-        except Exception as e:
-            # If generation fails, it should fail gracefully
-            self.assertIsInstance(
-                e, ODPSExportError, "Should raise ODPSExportError for very large documents"
-            )
+        # Valid data (large docs) must succeed
+        result = generate_odps_from_hubcontract(
+            hub_contract, original_odcs_contract=original_odcs_contract
+        )
+        self.assertIn("product", result)
 
     def test_contract_generation_handles_none_values(self):
         """Test that contract generation handles None values correctly."""
@@ -521,17 +514,11 @@ class ODPSGeneratorContractIntegrationTest(SimpleTestCase):
         }
 
         # Should handle None values gracefully
-        try:
-            result = generate_odps_from_hubcontract(
-                hub_contract, original_odcs_contract=original_odcs_contract
-            )
-            # If generation succeeds, None values may be omitted or handled
-            self.assertIsNotNone(result)
-        except Exception as e:
-            # If generation fails, it should fail gracefully
-            self.assertIsInstance(
-                e, ODPSExportError, "Should raise ODPSExportError for None values"
-            )
+        result = generate_odps_from_hubcontract(
+            hub_contract, original_odcs_contract=original_odcs_contract
+        )
+        self.assertIsNotNone(result)
+        self.assertIn("product", result)
 
     def test_contract_generation_handles_nested_structures(self):
         """Test that contract generation handles nested structures correctly."""
@@ -576,15 +563,15 @@ class ODPSGeneratorContractIntegrationTest(SimpleTestCase):
         self.assertIn("contract", result["product"])
         self.assertIn("spec", result["product"]["contract"])
         spec = result["product"]["contract"]["spec"]
-        if (
-            "schema" in spec
-            and "properties" in spec["schema"]
-            and "nested" in spec["schema"]["properties"]
-        ):
-            nested = spec["schema"]["properties"]["nested"]
-            if "properties" in nested and "level1" in nested["properties"]:
-                self.assertIn(
-                    "level2",
-                    nested["properties"]["level1"]["properties"],
-                    "Nested structures should be preserved",
-                )
+        self.assertIn("schema", spec)
+        self.assertIn("properties", spec["schema"])
+        self.assertIn("nested", spec["schema"]["properties"],
+            "Nested schema structure must be preserved in contract spec")
+        nested = spec["schema"]["properties"]["nested"]
+        self.assertIn("properties", nested)
+        self.assertIn("level1", nested["properties"])
+        self.assertIn(
+            "level2",
+            nested["properties"]["level1"]["properties"],
+            "Nested structures should be preserved",
+        )

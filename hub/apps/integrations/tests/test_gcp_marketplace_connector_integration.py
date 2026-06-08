@@ -30,38 +30,30 @@ from hub.apps.integrations.connectors.gcp_marketplace_connector import GCPMarket
 
 # Real service account credentials for testing
 # These should be provided via environment variable GCP_SERVICE_ACCOUNT_JSON
-REAL_SERVICE_ACCOUNT_JSON = {
-    "type": "service_account",
-    "project_id": "projzero-441310",
-    "private_key_id": "e2f5c18b5f2495f6e07e8a8a2302d3da3e711c38",
-    "private_key": "-----BEGIN PRIVATE KEY-----\nMIIEvQIBADANBgkqhkiG9w0BAQEFAASCBKcwggSjAgEAAoIBAQC4qnbgFWOgw99L\nQpbw6LLoJHJisAKCpOmNbIBxPTNSlT1yu/Wmd669qC3lNQgSeJL0cTUJ0h9U4j6C\nbSiNvR7HMs+odKCA69J0M+kA6EgAHNl8Uz41e4fPxnJK6LDujjfRHa53UzLuMQHN\nYif/Z70jr6yAvh87u/8nT977q7LFJovtLr7+EkWN/6E5dd9VpmmsW0c+OrKCoWR/\nTgvy/Sht0rB1eazqRowhCe0SbW+8NoFy6qoBWFwnNmm1Azo6DFstChC9OGAy8OK2\nBUMYWnjKonAFhllr85IYWIF7v3X68NGJcBnswYBv5VFqZsP6P+pJZFxFEF5WMm8R\nwSdIaLQDAgMBAAECggEASU/Tdc7ICLD6WwSKrAWV0Td2+drqhDc4SV8D9vDXCTga\ndwxLz9S/2KeF4PMWy052+PhgmA+FRMu1CU6QxQSJzYdMjZIPjl8Q4/Uf0a5ltzW8\n2fCqR81M853TDg4m/+4SFsDz3Id5NrrZ/lGzk1/55Mr/bvULrUlLWK4K1lsp0752\nLLuTd8TTP3peApaoZAJ5mih7tZwcYfgeMPC9PMUJBlb1BFDdxuECaYg3uYoGIRYt\nkNYZ0YmWDGq/yRnPUFwslqcDtomrW56t0v5lHbqibmFy3T2y4VFpXQL9wGlRhA7J\n2/GgRPM6N0y9Bn4GFbPaIAAUekHUTFmErKNcrrLgcQKBgQDypufx+LACKMLtr0F6\nFiVaFcWjKopGignWAatHaU/FP1XdxVvT8YCWJOcUmEX+Jh04bMHsCyB7vK6ZPx+0\nD/ZuejkrXose7DzfAswgHrIjDhjqrhgBsZB9bWx/7bWxXK5XctseaWPwWWNnRKCY\nHJrCtVRpHgz43MyXKQhmuHLdVQKBgQDC0vtKsg+4iih6B4MPrbdHjFTC+LYg73nS\nDpRwnPCmtI8DLvJlZr/tLuai2uqo1Ui0V3R/n48n2Ye2wvliDWYvQ2s7d+48Kq4s\n5As5pNNApo6qGDKn8rRd3kKVs6xGe+XPkLF5oM9LTkR5fqH6ALGIwM9C4xlfO/uC\nZ1V/5ciL9wKBgA7VEPyDfQ7EuxWYTuJNlD7rccdFhGpHac6BD50v3MZr1q3VsIVG\nD9wdqVpi7HRalBKs4zWwgG3P3MRVTXTOPPwH0JLMFqjvO9FN9HhKKA1ogTFnLuR7\nnB9unuE7AI404htKVAaJ3qgEbsUTNtXVechJGT3LrnNP29mpkm/k+nB5AoGALIdS\nXjEyfKg/NhzvbK70vAqr+OAlqINzoXopnU+RhVixczXQuzJv3YMhvckxZyNQeb+f\nZegPLTl/1lrb6vhLCbRsFuyDbAcJRkNc+XDdw+INq3zaXx6O8QFy0Ip/bqC01uso\nVTdXCcw6xFYYKW7tJOeEt7H2Q5kPFDAQD6pyWuMCgYEA6XiSeJeBEJTmIAnWwX/D\nsgYW5e1VLilFxfJpn4QtiogUMDugPCKDTHatfq984VS0tBWH7cyTKgI/l4fr/i9+\nOEQu+bn7n78t8cTCdzWlc3Upt9JKxvC7P4UTfAHV7YAmeCUNd3X1Y/1587wqaIe5\nBAYqnsxHdTUK5DfrMcgTPYw=\n-----END PRIVATE KEY-----\n",
-    "client_email": "dih-786@projzero-441310.iam.gserviceaccount.com",
-    "client_id": "106741124606177610543",
-    "auth_uri": "https://accounts.google.com/o/oauth2/auth",
-    "token_uri": "https://oauth2.googleapis.com/token",
-    "auth_provider_x509_cert_url": "https://www.googleapis.com/oauth2/v1/certs",
-    "client_x509_cert_url": "https://www.googleapis.com/robot/v1/metadata/x509/dih-786%40projzero-441310.iam.gserviceaccount.com",
-    "universe_domain": "googleapis.com",
-}
+# REAL_SERVICE_ACCOUNT_JSON removed — use get_test_credentials() below
 
 
 def get_test_credentials():
-    """Get test credentials from environment or use default.
+    """Get GCP test credentials from environment.
 
-    If GCP_SERVICE_ACCOUNT_JSON is set but not valid JSON (e.g. corrupted by
-    shell when sourcing .env), fall back to REAL_SERVICE_ACCOUNT_JSON so tests
-    run instead of skipping.
+    Requires GCP_SERVICE_ACCOUNT_JSON env var (set via .env.test and
+    the Makefile test-batch-6-2 target).  Raises SkipTest when the
+    env var is not available so the test suite can run without GCP
+    credentials in environments where they are not configured.
     """
+    import unittest
+    import json
     env_json = os.environ.get("GCP_SERVICE_ACCOUNT_JSON")
-    if env_json:
-        try:
-            return json.loads(env_json)
-        except json.JSONDecodeError:
-            return REAL_SERVICE_ACCOUNT_JSON
-    return REAL_SERVICE_ACCOUNT_JSON
-
-
-@pytest.mark.integration
+    if not env_json:
+        raise unittest.SkipTest(
+            "GCP_SERVICE_ACCOUNT_JSON not set — skipping"
+        )
+    try:
+        return json.loads(env_json)
+    except json.JSONDecodeError:
+        raise unittest.SkipTest(
+            "GCP_SERVICE_ACCOUNT_JSON is not valid JSON — skipping"
+        )
 class TestGCPMarketplaceConnectorIntegration(TestCase):
     """Integration tests for GCP Marketplace connector using real credentials"""
 

@@ -62,7 +62,6 @@ class ScheduledIngestionWorkflowUnitTest(TestCase):
         ScheduledIngestionWorkflow.register_tasks(self.engine)
         
         # Create scheduled ingestion (use unique name to avoid conflicts)
-        import uuid
         unique_name = f"Test Ingestion {uuid.uuid4().hex[:8]}"
         self.scheduled_ingestion = ScheduledIngestion.objects.create(
             tenant=self.tenant,
@@ -229,8 +228,10 @@ class ScheduledIngestionWorkflowUnitTest(TestCase):
         )
         
         task_func = self.engine.task_registry.get("scheduled_ingestion.connect_to_source")
-        
-        with self.assertRaises(ConnectionError):
+
+        from hub.apps.orchestration.workflow_engine import WorkflowStepValueError
+
+        with self.assertRaises(WorkflowStepValueError):
             task_func(instance.input_data, instance, step)
 
     def test_connect_to_source_fails_fast_when_connector_not_registered(self):
@@ -251,8 +252,12 @@ class ScheduledIngestionWorkflowUnitTest(TestCase):
             status=ScheduledIngestionStatus.ACTIVE,
             created_by=self.user,
         )
-        ingestion.source_type = "UNSUPPORTED_SOURCE_TYPE"
-        ingestion.save(update_fields=["source_type"])
+        # Use queryset update() to bypass model full_clean() validation
+        # (source_type choices don't include UNSUPPORTED_SOURCE_TYPE).
+        ScheduledIngestion.objects.filter(pk=ingestion.pk).update(
+            source_type="UNSUPPORTED_SOURCE_TYPE"
+        )
+        ingestion.refresh_from_db()
 
         instance = WorkflowInstance.objects.create(
             workflow_definition=self._get_workflow_definition(),
@@ -271,13 +276,16 @@ class ScheduledIngestionWorkflowUnitTest(TestCase):
         )
         task_func = self.engine.task_registry.get("scheduled_ingestion.connect_to_source")
 
-        with self.assertRaises(ConnectorNotAvailableError) as cm:
+        from hub.apps.orchestration.workflow_engine import WorkflowStepValueError
+
+        # ``_connect_to_source_task`` wraps ``ConnectorNotAvailableError``
+        # inside ``WorkflowStepValueError`` so the engine can handle it
+        # uniformly (compensation, progress, etc.).
+        with self.assertRaises(WorkflowStepValueError) as cm:
             task_func(instance.input_data, instance, step)
 
         self.assertIn("UNSUPPORTED_SOURCE_TYPE", str(cm.exception))
         self.assertIn("connector not registered", str(cm.exception))
-        self.assertEqual(cm.exception.connector_type, "UNSUPPORTED_SOURCE_TYPE")
-        self.assertEqual(cm.exception.role, "source")
     
     @patch('hub.apps.orchestration.workflows.scheduled_ingestion._get_source_connector_factory')
     def test_discover_files_task_success(self, mock_get_factory):

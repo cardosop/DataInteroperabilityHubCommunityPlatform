@@ -10,6 +10,7 @@ import redis
 import structlog
 import threading as _threading
 import time
+import uuid as _uuid
 from typing import Dict, Any, Optional, Callable, List
 from django.conf import settings
 from django.db import transaction
@@ -72,6 +73,24 @@ except ImportError:
     _trace_available = False
 
 logger = structlog.get_logger(__name__)
+
+
+def _validate_optional_uuid(value: Optional[str], field_name: str) -> None:
+    """Raise ``ValueError`` if *value* is not a valid UUID or None/empty.
+
+    This is called at the top of :meth:`EventBus.publish` so invalid
+    tenant_id / user_id values fail fast with a clear error instead of
+    cascading into schema validation or DB persistence — both of which
+    log at ERROR level and obscure the root cause.
+    """
+    if value is None or value == "":
+        return
+    try:
+        _uuid.UUID(value)
+    except (ValueError, AttributeError):
+        raise ValueError(
+            f"{field_name} must be a valid UUID or None; got {value!r}"
+        ) from None
 
 
 def _run_with_timeout(func, args=(), timeout_seconds=30):
@@ -248,7 +267,15 @@ class EventBus:
 
         Raises:
             EventPublishError: If event publishing fails
+            ValueError: If tenant_id or user_id is not a valid UUID or None
         """
+        # Validate UUID fields early so invalid values don't cascade into
+        # schema validation or DB persistence — both of which log at ERROR
+        # level.  Catching them here gives callers a clean ValueError and
+        # keeps ERROR logs for actual system failures.
+        _validate_optional_uuid(tenant_id, "tenant_id")
+        _validate_optional_uuid(user_id, "user_id")
+
         start_time = time.time()
         tenant_label = get_tenant_id(tenant_id)
         status = "success"
@@ -530,7 +557,10 @@ class EventBus:
                     tenant_id=tenant_label
                 ).inc()
 
-                logger.error(
+                # Redis publish failures are operational events — the system
+                # gracefully falls back to DB persistence.  WARNING keeps CI
+                # output clean while still recording the event.
+                logger.warning(
                     "event_publish_redis_error",
                     event_id=event_id,
                     event_type=event_type,

@@ -41,4 +41,13 @@ export type AssetCreationBlockedReason =
 export interface RuntimeCapabilitiesSnapshot {
   asset_creation: boolean;
   asset_creation_blocked_reason: AssetCreationBlockedReason;
+  datasets?: boolean;
+  files?: boolean;
+  data_quality?: boolean;
+  data_quality_advanced?: boolean;
+  compliance_consent?: boolean;
+  compliance_ropa?: boolean;
+  compliance_dpia?: boolean;
+  compliance_retention_enforcer?: boolean;
+  plan_compliance_pro_pack?: boolean;
 }

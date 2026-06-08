@@ -34,8 +34,8 @@ class Phase26CLISDKRegressionTest(TestCase):
 
         # Create tenant
         self.tenant = Tenant.objects.create(
-            name="CLI SDK Test Tenant",
-            slug="cli-sdk-test-tenant",
+            name=f"CLI SDK Test Tenant {uuid.uuid4().hex[:8]}",
+            slug=f"cli-sdk-test-tenant-{uuid.uuid4().hex[:8]}",
             status=TenantStatus.ACTIVE,
         )
 

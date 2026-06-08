@@ -11,9 +11,8 @@ import structlog
 from django.http import HttpRequest, HttpResponse, JsonResponse
 from django.utils.deprecation import MiddlewareMixin
 from rest_framework import status
-from rest_framework.exceptions import ValidationError
 
-from .error_codes import StandardErrorCodes, get_error_code, get_error_message
+from .error_codes import StandardErrorCodes
 from .response_formats import format_error_response
 
 logger = structlog.get_logger(__name__)
@@ -64,6 +63,7 @@ class APIValidationMiddleware(MiddlewareMixin):
             content_type = request.META.get("CONTENT_TYPE", "")
             if "application/json" not in content_type and request.body:
                 return self._error_response(
+                    request,
                     StandardErrorCodes.INVALID_FORMAT,
                     "Content-Type must be application/json for POST/PUT/PATCH requests",
                     status.HTTP_400_BAD_REQUEST,
@@ -75,6 +75,7 @@ class APIValidationMiddleware(MiddlewareMixin):
                 json.loads(request.body)
             except json.JSONDecodeError as e:
                 return self._error_response(
+                    request,
                     StandardErrorCodes.INVALID_FORMAT,
                     f"Invalid JSON in request body: {str(e)}",
                     status.HTTP_400_BAD_REQUEST,
@@ -104,12 +105,14 @@ class APIValidationMiddleware(MiddlewareMixin):
                 page_num = int(page)
                 if page_num < 1:
                     return self._error_response(
+                        request,
                         StandardErrorCodes.VALIDATION_ERROR,
                         "Page number must be >= 1",
                         status.HTTP_400_BAD_REQUEST,
                     )
             except ValueError:
                 return self._error_response(
+                    request,
                     StandardErrorCodes.VALIDATION_ERROR,
                     "Page must be a valid integer",
                     status.HTTP_400_BAD_REQUEST,
@@ -121,18 +124,21 @@ class APIValidationMiddleware(MiddlewareMixin):
                 page_size_num = int(page_size)
                 if page_size_num < 1:
                     return self._error_response(
+                        request,
                         StandardErrorCodes.VALIDATION_ERROR,
                         "Page size must be >= 1",
                         status.HTTP_400_BAD_REQUEST,
                     )
                 if page_size_num > 100:
                     return self._error_response(
+                        request,
                         StandardErrorCodes.VALIDATION_ERROR,
                         "Page size must be <= 100",
                         status.HTTP_400_BAD_REQUEST,
                     )
             except ValueError:
                 return self._error_response(
+                    request,
                     StandardErrorCodes.VALIDATION_ERROR,
                     "Page size must be a valid integer",
                     status.HTTP_400_BAD_REQUEST,
@@ -144,6 +150,7 @@ class APIValidationMiddleware(MiddlewareMixin):
             # Check for invalid characters
             if not all(c.isalnum() or c in ["-", "_", ",", "."] for c in ordering):
                 return self._error_response(
+                    request,
                     StandardErrorCodes.VALIDATION_ERROR,
                     "Invalid characters in ordering parameter",
                     status.HTTP_400_BAD_REQUEST,
@@ -153,6 +160,7 @@ class APIValidationMiddleware(MiddlewareMixin):
 
     def _error_response(
         self,
+        request: HttpRequest,
         error_code: str,
         message: str,
         http_status: int,
@@ -161,6 +169,8 @@ class APIValidationMiddleware(MiddlewareMixin):
         Create standardized error response.
 
         Args:
+            request: The Django HTTP request (used to extract the
+                traceable request_id set by RequestIDMiddleware).
             error_code: Error code
             message: Error message
             http_status: HTTP status code
@@ -168,7 +178,7 @@ class APIValidationMiddleware(MiddlewareMixin):
         Returns:
             JSON error response
         """
-        request_id = getattr(self, "request_id", None)
+        request_id = getattr(request, "request_id", None)
         error_data = format_error_response(
             error_code,
             message,

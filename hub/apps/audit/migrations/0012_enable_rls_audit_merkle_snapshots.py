@@ -9,6 +9,7 @@ from django.db import migrations
 
 class Migration(migrations.Migration):
     dependencies = [
+        ("audit", "0006_add_chain_fields"),
         ("audit", "0004_auditevent_full_details_json"),
     ]
 

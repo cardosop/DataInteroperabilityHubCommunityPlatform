@@ -20,6 +20,7 @@ project_root = Path(__file__).resolve().parent.parent.parent
 sys.path.insert(0, str(project_root))
 
 import pytest
+import uuid
 from django.test import TestCase, Client
 from django.contrib.auth import get_user_model
 from rest_framework.test import APIClient
@@ -166,8 +167,8 @@ class TestRateLimitingIntegration(TestCase):
         """Set up test fixtures"""
         self.client = APIClient()
         self.tenant = Tenant.objects.create(
-            name='Test Tenant',
-            slug='test-tenant'
+            name=f"Test Tenant {uuid.uuid4().hex[:8]}",
+            slug=f"test-tenant-{uuid.uuid4().hex[:8]}"
         )
         self.user = User.objects.create_user(
             email='test@example.com',

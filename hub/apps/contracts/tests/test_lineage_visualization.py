@@ -22,6 +22,22 @@ from hub.apps.contracts.tests.test_base import ContractsTransactionTestBase
 class TestLineageVisualization(ContractsTransactionTestBase):
     """Tests for lineage visualization formats using real Contract objects."""
 
+    @staticmethod
+    def _min_models():
+        """Return the minimum-viable structural-floor shape for visualization tests.
+
+        Returns a fresh list on each call so contracts don't share
+        inner-dict references.
+        """
+        return [
+            {
+                "name": "default",
+                "fields": [
+                    {"name": "id", "data_type": "string", "nullable": False},
+                ],
+            }
+        ]
+
     def setUp(self):
         """Set up test fixtures."""
         super().setUp()
@@ -98,20 +114,6 @@ class TestLineageVisualization(ContractsTransactionTestBase):
 
     def test_generate_lineage_json_includes_declared_contract_dependencies(self):
         """Declared hub_contract_json.lineage.contracts edges appear in visualization JSON."""
-        # Phase 227 W1.13.1 — see test_generate_lineage_json_includes_referenced_by_edges
-        # for the rationale on the minimum-viable structural-floor shape.
-        # ``_min_models()`` returns a fresh structure on each call so
-        # the two contracts don't share inner-dict references.
-        def _min_models():
-            return [
-                {
-                    "name": "default",
-                    "fields": [
-                        {"name": "id", "data_type": "string", "nullable": False},
-                    ],
-                }
-            ]
-
         provider = Contract.objects.create(
             tenant=self.tenant,
             version=1,
@@ -122,7 +124,7 @@ class TestLineageVisualization(ContractsTransactionTestBase):
             original_raw='{"info": {"name": "lineage-provider"}}',
             hub_contract_json={
                 "info": {"name": "lineage-provider", "domain": "acme.test"},
-                "models": _min_models(),
+                "models": self._min_models(),
             },
         )
         consumer = Contract.objects.create(
@@ -140,7 +142,7 @@ class TestLineageVisualization(ContractsTransactionTestBase):
                         {"namespace": "acme.test", "name": "lineage-provider"},
                     ]
                 },
-                "models": _min_models(),
+                "models": self._min_models(),
             },
         )
 
@@ -156,26 +158,6 @@ class TestLineageVisualization(ContractsTransactionTestBase):
 
     def test_generate_lineage_json_includes_referenced_by_edges(self):
         """Other contracts that declare this contract in lineage.contracts appear as edges."""
-        # Phase 227 W1.13.1 — populate the minimum-viable structural-floor
-        # shape (1 model, 1 field, type=string, nullable=False) so the
-        # fixture remains valid under the L3 unconditional floor
-        # enforcement. The lineage assertions don't depend on field
-        # contents; the fields are pure structural-floor satisfiers.
-        #
-        # ``_min_models()`` returns a fresh list-of-dicts so the two
-        # contracts don't share the SAME inner-dict reference (which
-        # would let a test-time mutation of one contract's models
-        # silently propagate to the other).
-        def _min_models():
-            return [
-                {
-                    "name": "default",
-                    "fields": [
-                        {"name": "id", "data_type": "string", "nullable": False},
-                    ],
-                }
-            ]
-
         core = Contract.objects.create(
             tenant=self.tenant,
             version=1,
@@ -186,7 +168,7 @@ class TestLineageVisualization(ContractsTransactionTestBase):
             original_raw='{"info": {"name": "refby-core"}}',
             hub_contract_json={
                 "info": {"name": "refby-core", "domain": "tenant.refby"},
-                "models": _min_models(),
+                "models": self._min_models(),
             },
         )
         dependent = Contract.objects.create(
@@ -202,7 +184,7 @@ class TestLineageVisualization(ContractsTransactionTestBase):
                 "lineage": {
                     "contracts": [{"namespace": "tenant.refby", "name": "refby-core"}],
                 },
-                "models": _min_models(),
+                "models": self._min_models(),
             },
         )
 
@@ -317,6 +299,8 @@ class TestLineageVisualization(ContractsTransactionTestBase):
         self.assertIn("links", result)
         # Should handle large graphs
         self.assertIsInstance(result["nodes"], list)
+        self.assertGreater(len(result["nodes"]), 0,
+            "Large lineage graph must produce at least one node")
 
     def test_generate_lineage_dot_with_special_characters(self):
         """Test DOT format generation with special characters in names."""
@@ -411,3 +395,63 @@ class TestLineageVisualization(ContractsTransactionTestBase):
         self.assertIsInstance(result, str)
         # Should not have obvious syntax errors
         self.assertNotIn("[[", result)  # No double brackets
+
+    def test_generate_lineage_json_with_invalid_format_does_not_crash(self):
+        """Invalid format string is silently accepted — format is for compatibility.
+
+        The ``format`` parameter on ``generate_lineage_json()`` is accepted
+        for caller compatibility but not validated at the visualization level.
+        Passing an unknown format must still produce valid JSON output.
+        """
+        result = generate_lineage_json(self.contract, format="invalid-format")
+        self.assertIsNotNone(result,
+            "Invalid format must not crash the visualization function")
+        self.assertIn("nodes", result,
+            "Result must contain 'nodes' even with invalid format")
+        self.assertIn("links", result,
+            "Result must contain 'links' even with invalid format")
+
+    def test_generate_lineage_json_with_non_contract_raises_attribute_error(self):
+        """Passing a plain object without ``hub_contract_json`` raises AttributeError.
+
+        The visualization functions expect a Contract-like object.  Passing
+        something that lacks ``hub_contract_json`` exercises the error path.
+        """
+        class FakeObject:
+            pass
+
+        with self.assertRaises(AttributeError):
+            generate_lineage_json(FakeObject())
+
+    def test_generate_lineage_json_edge_content_verification(self):
+        """Edge properties (source/target/type) and node properties (id/type) are well-formed."""
+        result = generate_lineage_json(self.contract)
+
+        # Every node must have id and type
+        for node in result["nodes"]:
+            self.assertIn("id", node,
+                f"Node {node} must have 'id' property")
+            self.assertIn("type", node,
+                f"Node {node} must have 'type' property")
+            self.assertIsInstance(node["id"], str,
+                f"Node 'id' must be a string, got {type(node['id'])}")
+            self.assertIsInstance(node["type"], str,
+                f"Node 'type' must be a string, got {type(node['type'])}")
+
+        # Every link must have source, target, and type
+        for link in result["links"]:
+            self.assertIn("source", link,
+                f"Link {link} must have 'source' property")
+            self.assertIn("target", link,
+                f"Link {link} must have 'target' property")
+            self.assertIn("type", link,
+                f"Link {link} must have 'type' property")
+            self.assertIsInstance(link["source"], str)
+            self.assertIsInstance(link["target"], str)
+            self.assertIsInstance(link["type"], str)
+            # Source and target must reference actual node ids
+            node_ids = {n["id"] for n in result["nodes"]}
+            self.assertIn(link["source"], node_ids,
+                f"Link source '{link['source']}' must reference an existing node")
+            self.assertIn(link["target"], node_ids,
+                f"Link target '{link['target']}' must reference an existing node")

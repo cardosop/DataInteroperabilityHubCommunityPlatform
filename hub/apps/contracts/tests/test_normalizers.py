@@ -497,7 +497,7 @@ class TestODPSNormalizerRegistration(TestCase):
             assert normalizer is not None, f"ODPS normalizer not found for version {version}"
 
     def test_odps_normalizer_not_returned_for_odcs_contracts(self):
-        """Test that ODPS normalizer is not returned for ODCS contracts."""
+        """Test that ODPS normalizer is not returned for ODCS contracts — verifies type-based routing."""
         from hub.apps.contracts.normalization import get_normalizer
         from hub.apps.contracts.models import OriginalSpecType
 
@@ -511,22 +511,41 @@ class TestODPSNormalizerRegistration(TestCase):
             }
         }
 
-        # get_normalizer might return the ODPS normalizer if spec_type is ODPS,
-        # but the normalizer's supports() method checks the contract data structure
-        # ODPS normalizer checks for ODPS indicators (schema URL, product field)
-        # Since this is ODCS data without ODPS indicators, supports() should return False
-        odps_normalizer = get_normalizer(OriginalSpecType.ODPS, "4.1", odcs_contract_data)
+        # Query for an ODCS normalizer with ODCS data — must return an ODCS normalizer
+        odcs_normalizer = get_normalizer(OriginalSpecType.ODCS, "3.0.2", odcs_contract_data)
+        self.assertIsNotNone(odcs_normalizer, "ODCS normalizer should be found for ODCS contract data")
+        self.assertEqual(
+            odcs_normalizer.spec_type,
+            OriginalSpecType.ODCS,
+            "Returned normalizer must have spec_type ODCS",
+        )
 
-        # If a normalizer is returned, it should not support this ODCS contract data
-        # (ODPS normalizer checks for ODPS indicators in contract_data)
-        if odps_normalizer:
-            # The supports() method checks contract_data for ODPS indicators
-            # ODCS data without ODPS indicators should not be supported
-            supports_result = odps_normalizer.supports(OriginalSpecType.ODPS, "4.1", odcs_contract_data)
-            # Note: ODPS normalizer might still return True if it only checks spec_type
-            # This test verifies the normalizer is registered, not that it rejects ODCS data
-            # The actual rejection happens at the detection level (detect_spec_type)
-            assert isinstance(odps_normalizer, type(odps_normalizer))  # Just verify it's a normalizer
+        # Query for an ODPS normalizer with ODPS data — must return an ODPS normalizer
+        odps_contract_data = {
+            "schema": "https://opendataproducts.org/schema/v4.1",
+            "version": "4.1",
+            "product": {
+                "details": {
+                    "en": {
+                        "productID": "test-product",
+                        "name": "Test Product",
+                    }
+                }
+            },
+        }
+        odps_normalizer = get_normalizer(OriginalSpecType.ODPS, "4.1", odps_contract_data)
+        self.assertIsNotNone(odps_normalizer, "ODPS normalizer should be found for ODPS contract data")
+        self.assertEqual(
+            odps_normalizer.spec_type,
+            OriginalSpecType.ODPS,
+            "Returned normalizer must have spec_type ODPS",
+        )
+
+        # Verify type-based routing: ODCS data should NOT route to ODPS normalizer
+        # Query ODCS spec_type with ODCS data — must return ODCS, not ODPS
+        routed_for_odcs = get_normalizer(OriginalSpecType.ODCS, "3.0.2", odcs_contract_data)
+        self.assertIsNotNone(routed_for_odcs)
+        self.assertEqual(routed_for_odcs.spec_type, OriginalSpecType.ODCS)
 
     def test_odps_normalizer_integration_full_flow(self):
         """Integration test: Full ODPS normalization flow using registry."""

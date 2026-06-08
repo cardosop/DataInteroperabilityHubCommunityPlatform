@@ -270,7 +270,7 @@ def test_model_id(api_available, e2e_api_key, django_db_blocker):
             if not tenant:
                 tenant = Tenant.objects.create(
                     slug=f'model-serving-e2e-test-tenant-{uuid.uuid4().hex[:8]}',
-                    name='Model Serving E2E Test Tenant',
+                    name=f"Model Serving E2E Test Tenant {uuid.uuid4().hex[:8]}",
                 )
 
             ensure_e2e_tenant_ready(tenant)

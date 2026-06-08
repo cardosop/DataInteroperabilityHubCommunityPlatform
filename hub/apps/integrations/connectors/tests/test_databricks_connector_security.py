@@ -41,8 +41,10 @@ class TestDatabricksConnectorSecurity(TestCase):
     @classmethod
     def setUpClass(cls):
         """Set up test class with real credentials"""
-        super().setUpClass()
+        # Check credentials BEFORE super().setUpClass() to avoid
+        # _fixture_teardown() closing connections on the skip path.
         cls.credentials = get_databricks_credentials()
+        super().setUpClass()
         cls.host = cls.credentials['host']
         cls.token = cls.credentials['token']
 
@@ -104,8 +106,8 @@ class TestDatabricksConnectorSecurity(TestCase):
         # It accepts any string as host and lets the HTTP client handle validation
         # This is acceptable as invalid URLs will fail during actual API calls
 
-    def test_token_validation(self):
-        """Test token validation"""
+    def test_token_validation_missing_or_empty(self):
+        """Test that missing or empty tokens are rejected at construction time."""
         # Test missing token
         with self.assertRaises(ValueError):
             DatabricksConnector(
@@ -275,17 +277,18 @@ class TestDatabricksConnectorSecurity(TestCase):
             connector.map_from_hub_asset(None)
 
     def test_secure_connection_https_only(self):
-        """Test that only HTTPS connections are allowed"""
-        # Test HTTP host (should be rejected or handled securely)
-        # Databricks workspaces typically use HTTPS, but we verify the connector handles it
+        """Test that non-HTTPS hosts are stored as-is and don't crash."""
+        # The connector defers URL validation to the HTTP client at
+        # request time.  Verify an HTTP host is stored verbatim and
+        # the connector can be constructed without crashing.
         connector = DatabricksConnector(
-            host=self.host,  # Should be HTTPS
+            host="http://dbc-6710eb95-8fe1.cloud.databricks.com",
             token=self.token
         )
-
-        # Verify host uses HTTPS (if not, connector should handle it)
-        # Most Databricks workspaces use HTTPS by default
-        self.assertTrue(connector.host.startswith('https://') or connector.host.startswith('http://'))
+        self.assertTrue(connector.host.startswith("http://"))
+        # Actual transport-level rejection is tested in the error-handling
+        # suite; here we verify the connector accepts any URL form.
+        self.assertEqual(connector.host, "http://dbc-6710eb95-8fe1.cloud.databricks.com")
 
     def test_token_not_logged(self):
         """Test that tokens are not logged in plain text"""

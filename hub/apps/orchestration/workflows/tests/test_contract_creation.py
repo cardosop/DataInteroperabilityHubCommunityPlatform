@@ -21,6 +21,7 @@ from hub.apps.search.models import SearchIndex
 from hub.apps.semantic.models import SemanticResource
 from hub.apps.audit.models import AuditEvent
 from hub.apps.core.events.models import Event
+from hub.apps.testing.billing_support import ensure_tenant_has_active_subscription
 
 User = get_user_model()
 
@@ -832,6 +833,7 @@ class ContractCreationWorkflowE2ETest(TestCase):
             password="testpass123",
             tenant=self.tenant
         )
+        ensure_tenant_has_active_subscription(self.tenant)
 
         self.sample_contract = {
             "apiVersion": "odcs.io/v3.0.2",
@@ -948,8 +950,8 @@ class ContractCreationWorkflowE2ETest(TestCase):
         error_code = response_data.get('details', {}).get('code', '') or response_data.get('code', '')
         self.assertIn(
             error_code,
-            ['NORMALIZATION_FAILED', 'INVALID_SPEC_FORMAT', 'VALIDATION_ERROR'],
-            f"Expected NORMALIZATION_FAILED, INVALID_SPEC_FORMAT, or VALIDATION_ERROR, got: {error_code}"
+            ['NORMALIZATION_FAILED', 'INVALID_SPEC_FORMAT', 'VALIDATION_ERROR', 'STRUCTURELESS_CONTRACT'],
+            f"Expected NORMALIZATION_FAILED, INVALID_SPEC_FORMAT, VALIDATION_ERROR, or STRUCTURELESS_CONTRACT, got: {error_code}"
         )
 
 

@@ -9,7 +9,7 @@ from django.db import migrations
 
 class Migration(migrations.Migration):
     dependencies = [
-        ("notifications", "0009"),
+        ("notifications", "0009_alter_emaildelivery_email_type_and_more"),
     ]
 
     operations = [

@@ -55,13 +55,6 @@ def _create_plan_with_export_limits(name=None, slug=None):
 class ScheduledExportServiceCRUDTest(TestCase):
     """Tests for create_scheduled_export, update_scheduled_export, delete_scheduled_export."""
 
-    reset_sequences = False
-    serialized_rollback = False
-
-    @classmethod
-    def _fixture_teardown(cls):
-        pass
-
     def setUp(self):
         unique_id = uuid.uuid4().hex[:8]
         self.plan = _create_plan_with_export_limits()
@@ -219,13 +212,6 @@ class ScheduledExportServiceCRUDTest(TestCase):
 class ScheduledExportServiceRunLifecycleTest(TestCase):
     """Tests for create_export_run and update_export_run."""
 
-    reset_sequences = False
-    serialized_rollback = False
-
-    @classmethod
-    def _fixture_teardown(cls):
-        pass
-
     def setUp(self):
         unique_id = uuid.uuid4().hex[:8]
         self.plan = _create_plan_with_export_limits()
@@ -342,13 +328,6 @@ class ScheduledExportServiceRunLifecycleTest(TestCase):
 
 class ScheduledExportServiceProcessExportItemTest(TestCase):
     """Tests for process_export_item: success, validation, not found, scope, destination types."""
-
-    reset_sequences = False
-    serialized_rollback = False
-
-    @classmethod
-    def _fixture_teardown(cls):
-        pass
 
     def setUp(self):
         unique_id = uuid.uuid4().hex[:8]

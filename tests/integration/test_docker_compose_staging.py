@@ -110,8 +110,6 @@ class TestDockerComposeStaging:
         application_services = [
             "api-service",
             "worker-service",
-            "workflow-engine-service",
-            "workflow-registry-service",
         ]
 
         for service_name in application_services:
@@ -233,14 +231,11 @@ class TestDockerComposeStaging:
         application_services = [
             "api-service",
             "worker-service",
-            "workflow-engine-service",
-            "workflow-registry-service",
             "semantic-service",
             "dq-service",
             "compliance-service",
             "datacontract-service",
             "search-service",
-            "webhook-service",
         ]
 
         for service_name in application_services:
@@ -313,14 +308,11 @@ class TestDockerComposeStaging:
         application_services = [
             "api-service",
             "worker-service",
-            "workflow-engine-service",
-            "workflow-registry-service",
             "semantic-service",
             "dq-service",
             "compliance-service",
             "datacontract-service",
             "search-service",
-            "webhook-service",
         ]
         for service_name in application_services:
             assert (

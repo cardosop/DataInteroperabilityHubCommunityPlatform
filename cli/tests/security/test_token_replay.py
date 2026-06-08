@@ -40,13 +40,33 @@ def test_logged_out_token_returns_401():
 
 
 def test_refresh_token_after_logout_returns_401():
-    """After logout, the refresh_token must also be rejected."""
+    """After logout, the refresh_token must also be rejected.
+
+    Verifies the refresh token works before logout so a 401 after
+    logout is meaningful — not caused by an already-invalid token.
+    """
     creds = provision_persona("data_consumer")
 
-    # Logout
-    api_post("/auth/logout/", creds)
+    # Pre-condition: the refresh token must work before logout
+    if creds.refresh_token:
+        pre_resp = requests.post(
+            f"{api_base_url()}/auth/refresh/",
+            json={"refresh_token": creds.refresh_token},
+            timeout=15,
+        )
+        if pre_resp.status_code != 200:
+            pytest.skip(
+                f"Refresh token not valid before logout "
+                f"(status {pre_resp.status_code})"
+            )
 
-    # Try to refresh with the old refresh token
+    # Logout
+    logout_resp = api_post("/auth/logout/", creds)
+    assert logout_resp.status_code in (200, 204, 205), (
+        f"Logout failed: {logout_resp.status_code}"
+    )
+
+    # Try to refresh with the old (now-revoked) refresh token
     refresh_resp = requests.post(
         f"{api_base_url()}/auth/refresh/",
         json={"refresh_token": creds.refresh_token},

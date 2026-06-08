@@ -12,7 +12,7 @@ from typing import Any, Dict, Optional
 
 import structlog
 from django.conf import settings
-from django.db import transaction
+from django.db import transaction, IntegrityError
 from django.utils import timezone
 
 from hub.apps.core.services.base import BaseService, NotFoundError, ValidationError
@@ -196,6 +196,7 @@ class DataPortabilityService(BaseService):
             "assets": [],
             "datasets": [],
             "files": [],
+            "contracts": [],
             "marketplace_orders": [],
             "payment_transactions": [],
             "webhook_deliveries": [],
@@ -304,7 +305,7 @@ class DataPortabilityService(BaseService):
         # Phase 277.B.013a — marketplace orders
         try:
             from hub.apps.marketplace.models import Order
-            orders = Order.objects.filter(tenant=user.tenant, buyer=user)
+            orders = Order.objects.filter(tenant=user.tenant, created_by=user)
             for o in orders:
                 data["marketplace_orders"].append({"id": str(o.id), "status": o.status, "created_at": o.created_at.isoformat() if o.created_at else None})
         except Exception:
@@ -313,7 +314,7 @@ class DataPortabilityService(BaseService):
         # Phase 277.B.013a — payment transactions
         try:
             from hub.apps.marketplace.models import PaymentTransaction
-            txs = PaymentTransaction.objects.filter(order__tenant=user.tenant, order__buyer=user)
+            txs = PaymentTransaction.objects.filter(order__tenant=user.tenant, order__created_by=user)
             for tx in txs:
                 data["payment_transactions"].append({"id": str(tx.id), "status": getattr(tx, "status", "UNKNOWN"), "amount_cents": getattr(tx, "amount_cents", None), "created_at": tx.created_at.isoformat() if tx.created_at else None})
         except Exception:
@@ -582,11 +583,23 @@ class ErasureService(BaseService):
 
                     scrub_audit_events_for_gdpr_user_target(user=user)
 
-                    # Anonymize user profile
-                    user.email = f"deleted-{user.id}@deleted.local"
+                    # Anonymize user profile (idempotent — guard against
+                    # re-execution where the email is already in the
+                    # deleted-{uuid}@deleted.local format, which would
+                    # trigger a duplicate-key violation on users_email_key)
+                    if not user.email.startswith("deleted-") or not user.email.endswith("@deleted.local"):
+                        user.email = f"deleted-{user.id}@deleted.local"
+                        anonymized_fields.append("email")
                     user.display_name = "Deleted User"
+
+                    # Phase 277.B.097 — clear marketing prefs + token on erasure.
+                    prefs = user.preferences or {}
+                    prefs.setdefault("notifications", {})["marketing_opt_out"] = True
+                    user.preferences = prefs
+                    user.unsubscribe_token = None
+                    user.unsubscribe_token_created_at = None
+
                     user.save()
-                    anonymized_fields.append("email")
                     anonymized_fields.append("display_name")
 
                     # Revoke sessions: find sessions for this user by decoding session_data.
@@ -728,7 +741,7 @@ class ErasureService(BaseService):
 
                     # Phase 277.B.013b — clear FK on ComplianceRun
                     # jobs where job.created_by = user.
-                    from hub.apps.jobs.models import Job
+                    from hub.apps.jobs.models import Job, JobType
 
                     job_updated = Job.objects.filter(
                         created_by=user,
@@ -774,13 +787,25 @@ class ErasureService(BaseService):
                     )
 
             except Exception as e:
-                logger.error(
-                    "erasure_request_execution_failed",
-                    request_id=str(request.id),
-                    error=str(e),
-                    exc_info=True,
-                    message=f"Failed to execute erasure request: {e}",
-                )
+                # IntegrityError from duplicate anonymized emails is a
+                # known edge case (multiple users → same REDACTED email)
+                # — log at WARNING.  Everything else stays at ERROR.
+                if isinstance(e, IntegrityError):
+                    logger.warning(
+                        "erasure_request_execution_failed",
+                        request_id=str(request.id),
+                        error=str(e),
+                        exc_info=True,
+                        message=f"Failed to execute erasure request: {e}",
+                    )
+                else:
+                    logger.error(
+                        "erasure_request_execution_failed",
+                        request_id=str(request.id),
+                        error=str(e),
+                        exc_info=True,
+                        message=f"Failed to execute erasure request: {e}",
+                    )
                 # Update FAILED outside the inner atomic so it persists (inner atomic
                 # rolls back on exception; this save is in the outer transaction).
                 request.status = ErasureRequestStatus.FAILED

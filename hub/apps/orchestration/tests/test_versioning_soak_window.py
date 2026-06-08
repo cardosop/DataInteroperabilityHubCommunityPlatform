@@ -38,7 +38,7 @@ class TestSoakWindowEligibility:
         WorkflowDefinition.objects.create(
             name="asset_creation",
             version="1.0.0",
-            dsl_json={"steps": []},
+            dsl_json={"version": "1.0.0", "steps": [{"name": "test_step", "type": "task"}]},
             is_active=True,
         )
 
@@ -53,13 +53,13 @@ class TestSoakWindowEligibility:
         old = WorkflowDefinition.objects.create(
             name="asset_creation",
             version="1.0.0",
-            dsl_json={"steps": []},
+            dsl_json={"version": "1.0.0", "steps": [{"name": "test_step", "type": "task"}]},
             is_active=False,
         )
         new = WorkflowDefinition.objects.create(
             name="asset_creation",
             version="1.1.0",
-            dsl_json={"steps": []},
+            dsl_json={"version": "1.0.0", "steps": [{"name": "test_step", "type": "task"}]},
             is_active=True,
         )
 
@@ -81,13 +81,13 @@ class TestSoakWindowEligibility:
         old = WorkflowDefinition.objects.create(
             name="asset_creation",
             version="1.0.0",
-            dsl_json={"steps": []},
+            dsl_json={"version": "1.0.0", "steps": [{"name": "test_step", "type": "task"}]},
             is_active=False,
         )
         WorkflowDefinition.objects.create(
             name="asset_creation",
             version="1.1.0",
-            dsl_json={"steps": []},
+            dsl_json={"version": "1.0.0", "steps": [{"name": "test_step", "type": "task"}]},
             is_active=True,
         )
 
@@ -109,13 +109,13 @@ class TestSoakWindowEligibility:
         old = WorkflowDefinition.objects.create(
             name="asset_creation",
             version="1.0.0",
-            dsl_json={"steps": []},
+            dsl_json={"version": "1.0.0", "steps": [{"name": "test_step", "type": "task"}]},
             is_active=False,
         )
         WorkflowDefinition.objects.create(
             name="asset_creation",
             version="1.1.0",
-            dsl_json={"steps": []},
+            dsl_json={"version": "1.0.0", "steps": [{"name": "test_step", "type": "task"}]},
             is_active=True,
         )
         WorkflowDefinition.objects.filter(pk=old.pk).update(
@@ -150,7 +150,7 @@ class TestIsVersionEligibleForInflight:
         WorkflowDefinition.objects.create(
             name="asset_creation",
             version="1.0.0",
-            dsl_json={"steps": []},
+            dsl_json={"version": "1.0.0", "steps": [{"name": "test_step", "type": "task"}]},
             is_active=True,
         )
 
@@ -163,13 +163,13 @@ class TestIsVersionEligibleForInflight:
         old = WorkflowDefinition.objects.create(
             name="asset_creation",
             version="1.0.0",
-            dsl_json={"steps": []},
+            dsl_json={"version": "1.0.0", "steps": [{"name": "test_step", "type": "task"}]},
             is_active=False,
         )
         WorkflowDefinition.objects.create(
             name="asset_creation",
             version="1.1.0",
-            dsl_json={"steps": []},
+            dsl_json={"version": "1.0.0", "steps": [{"name": "test_step", "type": "task"}]},
             is_active=True,
         )
         WorkflowDefinition.objects.filter(pk=old.pk).update(
@@ -185,13 +185,13 @@ class TestIsVersionEligibleForInflight:
         old = WorkflowDefinition.objects.create(
             name="asset_creation",
             version="1.0.0",
-            dsl_json={"steps": []},
+            dsl_json={"version": "1.0.0", "steps": [{"name": "test_step", "type": "task"}]},
             is_active=False,
         )
         WorkflowDefinition.objects.create(
             name="asset_creation",
             version="1.1.0",
-            dsl_json={"steps": []},
+            dsl_json={"version": "1.0.0", "steps": [{"name": "test_step", "type": "task"}]},
             is_active=True,
         )
         WorkflowDefinition.objects.filter(pk=old.pk).update(
@@ -207,7 +207,7 @@ class TestIsVersionEligibleForInflight:
         WorkflowDefinition.objects.create(
             name="asset_creation",
             version="1.0.0",
-            dsl_json={"steps": []},
+            dsl_json={"version": "1.0.0", "steps": [{"name": "test_step", "type": "task"}]},
             is_active=True,
         )
 
@@ -234,19 +234,19 @@ class TestSoakWindowOrdering:
         v100 = WorkflowDefinition.objects.create(
             name="asset_creation",
             version="1.0.0",
-            dsl_json={"steps": []},
+            dsl_json={"version": "1.0.0", "steps": [{"name": "test_step", "type": "task"}]},
             is_active=False,
         )
         v110 = WorkflowDefinition.objects.create(
             name="asset_creation",
             version="1.1.0",
-            dsl_json={"steps": []},
+            dsl_json={"version": "1.0.0", "steps": [{"name": "test_step", "type": "task"}]},
             is_active=False,
         )
         WorkflowDefinition.objects.create(
             name="asset_creation",
             version="2.0.0",
-            dsl_json={"steps": []},
+            dsl_json={"version": "1.0.0", "steps": [{"name": "test_step", "type": "task"}]},
             is_active=True,
         )
 

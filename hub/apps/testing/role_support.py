@@ -26,7 +26,7 @@ def ensure_user_has_data_provider_role(user) -> None:
         defaults={"description": "Data Provider"},
     )
 
-    UserRole.objects.get_or_create(user=user, role=role)
+    UserRole.objects.get_or_create(user=user, tenant=tenant, role=role)
 
 
 def ensure_user_has_tenant_admin_role(user) -> None:
@@ -46,4 +46,4 @@ def ensure_user_has_tenant_admin_role(user) -> None:
         defaults={"description": "Tenant Administrator"},
     )
 
-    UserRole.objects.get_or_create(user=user, role=role)
+    UserRole.objects.get_or_create(user=user, tenant=tenant, role=role)

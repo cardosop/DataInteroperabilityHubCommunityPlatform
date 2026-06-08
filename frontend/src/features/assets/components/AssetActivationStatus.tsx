@@ -62,7 +62,7 @@ export function AssetActivationStatus({
       <span className="activation-pill">
         {label}
       </span>
-      {details?.message && (
+      {!!details?.message && (
         <p className="activation-message">{String(details.message)}</p>
       )}
       {retryAfter && (

@@ -67,6 +67,7 @@ export interface User {
   feature_tenant_switch_enabled?: boolean;
   /** From GET /auth/me/ when backend exposes platform admin flag */
   is_platform_admin?: boolean;
+  has_seen_tour?: boolean;
 }
 
 /** PATCH /auth/me/ — partial profile update */
@@ -74,6 +75,7 @@ export interface ProfileUpdateRequest {
   display_name?: string | null;
   avatar?: string | null;
   preferences?: Record<string, unknown>;
+  has_seen_tour?: boolean;
 }
 
 export interface AuthState {

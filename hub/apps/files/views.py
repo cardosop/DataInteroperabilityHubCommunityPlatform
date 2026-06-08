@@ -54,6 +54,12 @@ class FileViewSet(viewsets.ModelViewSet):
     serializer_class = FileSerializer
     permission_classes = [permissions.IsAuthenticated]
     lookup_field = "id"
+
+    def initial(self, request, *args, **kwargs):
+        from hub.apps.tenants.kill_switch_gates import ensure_tenant_files_api_allowed
+        ensure_tenant_files_api_allowed(request)
+        super().initial(request, *args, **kwargs)
+
     filter_backends = [SearchFilter, OrderingFilter]
     search_fields = ["name"]
     ordering_fields = ["name", "created_at", "updated_at"]
@@ -298,7 +304,7 @@ class FileViewSet(viewsets.ModelViewSet):
 
         # Guard: if another request already completed this upload while we
         # waited for the lock, return 409 instead of retrying S3 operations.
-        if file_obj.status in (FileStatus.ACTIVE, FileStatus.COMPLETED):
+        if file_obj.status == FileStatus.ACTIVE:
             return Response(
                 {"error": "File upload already completed"},
                 status=status.HTTP_409_CONFLICT,
@@ -467,11 +473,7 @@ class FileViewSet(viewsets.ModelViewSet):
                 tenant_id=str(file_obj.tenant.id),
                 user_id=str(request.user.id) if request.user and request.user.id else None,
                 content_sha256=content_sha256,
-                new_status=(
-                    FileStatus.COMPLETED.value
-                    if hasattr(FileStatus.COMPLETED, "value")
-                    else str(FileStatus.COMPLETED)
-                ),
+                new_status=FileStatus.ACTIVE.value,
             )
         except ServiceValidationError as e:
             return handle_service_exception(e)

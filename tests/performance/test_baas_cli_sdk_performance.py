@@ -1,4 +1,6 @@
 """
+
+import uuid
 10.5.8: BaaS Platform CLI/SDK Performance Tests
 
 Tests performance of BaaS Platform CLI commands and SDK methods:

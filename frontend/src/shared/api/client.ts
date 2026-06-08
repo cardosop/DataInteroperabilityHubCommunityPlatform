@@ -389,8 +389,22 @@ export class ApiClient {
     this._cookieAuthMode = false;
   }
 
+  setImpersonationToken(token: string | null): void {
+    if (token === null) {
+      this._impersonationToken = null;
+    } else {
+      this._impersonationToken = token;
+    }
+  }
+
   getClient(): HttpClient {
     return this._httpClient;
+  }
+
+  private _impersonationToken: string | null = null;
+
+  getImpersonationToken(): string | null {
+    return this._impersonationToken;
   }
 }
 

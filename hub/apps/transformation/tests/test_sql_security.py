@@ -4,14 +4,19 @@ Security tests for transformation SQL safety — Phase 115F.4
 Tests SQL injection prevention, blocked keywords, parameterization,
 and DuckDB security configuration.
 """
+import uuid
+
 import pytest
+from django.contrib.auth import get_user_model
 from django.test import TestCase
 
+from hub.apps.tenants.models import KYCStatus, Tenant
 from hub.apps.transformation.business_rules import (
     TransformationBusinessRules,
 )
 
 pytestmark = pytest.mark.django_db(transaction=True)
+User = get_user_model()
 
 
 class SQLInjectionPreventionTest(TestCase):
@@ -125,29 +130,24 @@ class SQLInjectionPreventionTest(TestCase):
 class TenantIsolationTest(TestCase):
     """Test that transformation pipelines enforce tenant isolation."""
 
-    @classmethod
-    def setUpTestData(cls):
-        """Create Tenants and Users once for the whole test class (read-only)."""
-        from hub.apps.tenants.models import KYCStatus, Tenant
-        from django.contrib.auth import get_user_model
-        User = get_user_model()
-
+    def setUp(self):
+        """Create Tenants and Users for each test."""
         uid = uuid.uuid4().hex[:8]
-        cls.tenant_a = Tenant.objects.create(
+        self.tenant_a = Tenant.objects.create(
             name=f"TA-{uid}", slug=f"ta-{uid}",
             kyc_status=KYCStatus.VERIFIED,
         )
-        cls.tenant_b = Tenant.objects.create(
+        self.tenant_b = Tenant.objects.create(
             name=f"TB-{uid}", slug=f"tb-{uid}",
             kyc_status=KYCStatus.VERIFIED,
         )
-        cls.user_a = User.objects.create_user(
+        self.user_a = User.objects.create_user(
             email=f"ua-{uid}@test.com", password="pass",
-            tenant=cls.tenant_a,
+            tenant=self.tenant_a,
         )
-        cls.user_b = User.objects.create_user(
+        self.user_b = User.objects.create_user(
             email=f"ub-{uid}@test.com", password="pass",
-            tenant=cls.tenant_b,
+            tenant=self.tenant_b,
         )
 
     def test_pipeline_tenant_scoped(self):
@@ -177,6 +177,3 @@ class TenantIsolationTest(TestCase):
             tenant=self.tenant_a,
         )
         self.assertEqual(visible_a.count(), 1)
-
-
-import uuid

@@ -96,9 +96,10 @@ def _make_persona_runner(role: str) -> Generator[PersonaRunner, None, None]:
         config_dir = os.path.join(tmpdir, ".datahub")
         os.makedirs(config_dir, exist_ok=True)
 
+        _port = os.environ.get("API_TEST_PORT", "8000")
         api_url = os.environ.get(
             "MESHANT_API_URL",
-            os.environ.get("ODH_BASE_URL", "http://localhost:8000/api/v1"),
+            os.environ.get("ODH_BASE_URL", f"http://localhost:{_port}/api/v1"),
         )
         config_path = os.path.join(config_dir, "config.yaml")
         with open(config_path, "w") as f:

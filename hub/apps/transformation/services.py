@@ -1180,52 +1180,14 @@ class TransformationService(BaseService, TransformationEventPublisher):
     def _select_execution_mode(
         self, asset_id: str, tenant_id: str, force_mode: Optional[str] = None
     ) -> str:
+        """All transformation execution runs through the async orchestration
+        path.  The SYNC mode was removed during the Phase 285.9 dbt-native
+        migration (DuckDB/Polars execution has been deprecated).
         """
-        Select execution mode (SYNC or ASYNC) based on dataset size.
-
-        Args:
-            asset_id: Asset ID
-            tenant_id: Tenant ID
-            force_mode: Optional forced execution mode (SYNC, ASYNC)
-
-        Returns:
-            Execution mode string (SYNC or ASYNC)
-        """
+        from hub.apps.transformation.models import ExecutionMode
         if force_mode:
             return force_mode.upper()
-
-        from hub.apps.assets.models import Asset
-        from hub.apps.transformation.models import ExecutionMode
-
-        try:
-            asset = Asset.objects.get(id=asset_id, tenant_id=tenant_id)
-            latest_dataset = asset.datasets.order_by("-version").first()
-
-            if not latest_dataset:
-                # Default to ASYNC if no dataset info available
-                return ExecutionMode.ASYNC
-
-            # Use row_count if available, otherwise use file size
-            row_count = latest_dataset.row_count
-            file_size = latest_dataset.file.size if latest_dataset.file else 0
-
-            # Threshold: < 10,000 rows or < 10MB = SYNC, otherwise ASYNC
-            SYNC_ROW_THRESHOLD = 10000
-            SYNC_SIZE_THRESHOLD = 10 * 1024 * 1024  # 10MB
-
-            if row_count and row_count < SYNC_ROW_THRESHOLD:
-                return ExecutionMode.SYNC
-            elif file_size and file_size < SYNC_SIZE_THRESHOLD:
-                return ExecutionMode.SYNC
-            else:
-                return ExecutionMode.ASYNC
-
-        except Exception as e:
-            logger.warning(
-                f"Error selecting execution mode for asset {asset_id}: {e}. Defaulting to ASYNC.",
-                exc_info=True,
-            )
-            return ExecutionMode.ASYNC
+        return ExecutionMode.ASYNC
 
     def validate_pipeline_compatibility(
         self,
@@ -1279,82 +1241,20 @@ class TransformationService(BaseService, TransformationEventPublisher):
         tenant_id: str,
         user_id: Optional[str] = None,
     ) -> Dict[str, Any]:
+        """Synchronous in-worker execution (DuckDB/Polars) has been
+        deprecated in favour of the dbt-native async orchestration path
+        (Phase 285.9).  All pipeline execution now goes through the
+        ``transformation_pipeline`` workflow.
         """
-        Execute pipeline synchronously (for small datasets).
-
-        Args:
-            pipeline: Pipeline to execute
-            asset_id: Source asset ID
-            execution: PipelineExecution instance
-            tenant_id: Tenant ID
-            user_id: Optional user ID
-
-        Returns:
-            Execution result dictionary
-
-        Raises:
-            TransformationExecutionError: If execution fails
-        """
-        from hub.apps.assets.models import Asset
-        from hub.apps.files.storage import S3StorageClient
-        from hub.apps.transformation.models import ExecutionStatus
-
-        try:
-            # Get asset and dataset
-            asset = Asset.objects.get(id=asset_id, tenant_id=tenant_id)
-            latest_dataset = asset.datasets.order_by("-version").first()
-
-            if not latest_dataset or not latest_dataset.file:
-                raise TransformationExecutionError(
-                    "Asset has no dataset or file to transform",
-                    error_code=TransformationExecutionError.ERROR_CODE_DATA_PROCESSING_FAILED,
-                    pipeline_id=str(pipeline.id),
-                    execution_id=str(execution.id),
-                    tenant_id=tenant_id,
-                )
-
-            # Download file content
-            storage_client = S3StorageClient()
-            file_content = storage_client.get_file_content(latest_dataset.file.storage_path)
-            file_format = latest_dataset.format or "CSV"
-
-            # Execute transformation steps
-            # For now, this is a placeholder - actual transformation logic would go here
-            # In a real implementation, this would:
-            # 1. Parse the file content based on format
-            # 2. Execute each pipeline step in sequence
-            # 3. Apply transformations (filter, join, aggregate, transform, output)
-            # 4. Generate output file
-            # 5. Create result asset
-
-            execution.add_log_entry("Starting synchronous pipeline execution", "INFO")
-            execution.add_log_entry(
-                f"Processing {file_format} file with {len(file_content)} bytes", "INFO"
-            )
-
-            # Placeholder: In real implementation, execute pipeline steps here
-            # For now, we'll create a simple result
-            result_data = {
-                "rows_processed": latest_dataset.row_count or 0,
-                "execution_mode": "SYNC",
-                "file_format": file_format,
-            }
-
-            execution.add_log_entry("Pipeline execution completed successfully", "INFO")
-
-            return result_data
-
-        except Exception as e:
-            error_msg = f"Synchronous pipeline execution failed: {str(e)}"
-            execution.add_log_entry(error_msg, "ERROR")
-            raise TransformationExecutionError(
-                error_msg,
-                error_code=TransformationExecutionError.ERROR_CODE_EXECUTION_FAILED,
-                pipeline_id=str(pipeline.id),
-                execution_id=str(execution.id),
-                tenant_id=tenant_id,
-                cause=e,
-            )
+        raise TransformationExecutionError(
+            "Synchronous pipeline execution is deprecated. "
+            "All transformation pipelines now execute asynchronously "
+            "via the dbt-native orchestration workflow.",
+            error_code=TransformationExecutionError.ERROR_CODE_EXECUTION_FAILED,
+            pipeline_id=str(pipeline.id),
+            execution_id=str(execution.id),
+            tenant_id=tenant_id,
+        )
 
     @transaction.atomic
     def execute_pipeline(
@@ -1663,9 +1563,10 @@ class TransformationService(BaseService, TransformationEventPublisher):
             # Monitor execution with metrics and tracing
             from hub.apps.transformation.monitoring import record_pipeline_execution
 
-            # For SYNC mode, workflow should have completed synchronously
-            # For ASYNC mode, execution will be processed by job
-            if selected_mode == ExecutionMode.SYNC:
+            # All execution is now ASYNC (Phase 285.9 dbt-native migration).
+            # The SYNC path was removed; DuckDB/Polars in-worker execution
+            # has been deprecated.
+            if False:  # SYNC path removed — kept as sentinel for merge conflicts
                 # Refresh execution to get latest status from workflow
                 execution.refresh_from_db()
                 execution.sync_status_from_workflow()
@@ -1904,11 +1805,9 @@ class TransformationService(BaseService, TransformationEventPublisher):
 
                     # Determine queue name based on execution mode
                     # SYNC mode uses job_critical for high priority, ASYNC uses job_default
-                    # Note: For async execution, we use job_default queue
-                    # For sync execution (if forced), we would use job_critical
-                    queue_name = (
-                        "job_critical" if selected_mode == ExecutionMode.SYNC else "job_default"
-                    )
+                    # All transformation execution runs on job_default (Phase 285.9).
+                    # job_critical was previously used for SYNC mode (removed).
+                    queue_name = "job_default"
 
                     # Create job for async execution
                     job = create_job(
@@ -2118,26 +2017,33 @@ class TransformationService(BaseService, TransformationEventPublisher):
             if not latest_dataset or not latest_dataset.file:
                 return None
 
-            # Download file content
-            storage_client = S3StorageClient()
-            file_content = storage_client.get_file_content(latest_dataset.file.storage_path)
+            # Download file content — use context manager to ensure the
+            # underlying boto3 connection pool is closed after the call.
+            with S3StorageClient() as storage_client:
+                file_content = storage_client.get_file_content(
+                    latest_dataset.file.storage_path
+                )
             file_format = latest_dataset.format or "csv"
 
-            # Initialize compliance client
-            compliance_client = ComplianceServiceClient()
+            # Initialize compliance client — use context manager to ensure
+            # the underlying httpx connection pool is closed.
+            with ComplianceServiceClient() as compliance_client:
 
-            # Check compliance service health
-            is_healthy, _ = compliance_client.health_check()
-            if not is_healthy:
-                execution.add_log_entry(
-                    "Compliance service unavailable, skipping compliance check", "WARNING"
+                # Check compliance service health
+                is_healthy, _ = compliance_client.health_check()
+                if not is_healthy:
+                    execution.add_log_entry(
+                        "Compliance service unavailable, skipping compliance check",
+                        "WARNING",
+                    )
+                    return None
+
+                # Run compliance scan
+                compliance_result = compliance_client.scan_file(
+                    file_content=file_content,
+                    file_format=file_format.lower(),
+                    scan_mode="internal",
                 )
-                return None
-
-            # Run compliance scan
-            compliance_result = compliance_client.scan_file(
-                file_content=file_content, file_format=file_format.lower(), scan_mode="internal"
-            )
 
             # Extract comprehensive compliance status
             compliance_status = {
@@ -2302,26 +2208,33 @@ class TransformationService(BaseService, TransformationEventPublisher):
                 )
                 return None
 
-            # Download file content
-            storage_client = S3StorageClient()
-            file_content = storage_client.get_file_content(latest_dataset.file.storage_path)
+            # Download file content — use context manager to ensure the
+            # underlying boto3 connection pool is closed after the call.
+            with S3StorageClient() as storage_client:
+                file_content = storage_client.get_file_content(
+                    latest_dataset.file.storage_path
+                )
             file_format = latest_dataset.format or "csv"
 
-            # Initialize compliance client
-            compliance_client = ComplianceServiceClient()
+            # Initialize compliance client — use context manager to ensure
+            # the underlying httpx connection pool is closed.
+            with ComplianceServiceClient() as compliance_client:
 
-            # Check compliance service health
-            is_healthy, _ = compliance_client.health_check()
-            if not is_healthy:
-                execution.add_log_entry(
-                    "Compliance service unavailable, skipping output compliance check", "WARNING"
+                # Check compliance service health
+                is_healthy, _ = compliance_client.health_check()
+                if not is_healthy:
+                    execution.add_log_entry(
+                        "Compliance service unavailable, skipping output compliance check",
+                        "WARNING",
+                    )
+                    return None
+
+                # Run compliance scan on output
+                compliance_result = compliance_client.scan_file(
+                    file_content=file_content,
+                    file_format=file_format.lower(),
+                    scan_mode="internal",
                 )
-                return None
-
-            # Run compliance scan on output
-            compliance_result = compliance_client.scan_file(
-                file_content=file_content, file_format=file_format.lower(), scan_mode="internal"
-            )
 
             # Extract comprehensive compliance status
             compliance_status = {

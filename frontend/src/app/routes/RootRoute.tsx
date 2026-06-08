@@ -7,6 +7,7 @@
 
 import { Navigate, useLocation } from 'react-router-dom';
 import { useAuthStore } from '../../features/auth/store/authStore';
+import { useCrossTabAuthSync } from '../../features/auth/hooks/useCrossTabAuthSync';
 import { AppShell } from '../../features/shell/components/AppShell';
 import { LoadingSpinner } from '../../shared/components/LoadingSpinner';
 import { ProtectedRoute } from '../../shared/components/ProtectedRoute';
@@ -16,6 +17,8 @@ import './RootRoute.css';
 export function RootRoute() {
   const { isAuthenticated, isLoading } = useAuthStore();
   const location = useLocation();
+  // Phase 277.B.067 — sync auth tokens across browser tabs
+  useCrossTabAuthSync();
 
   if (isLoading) {
     return (

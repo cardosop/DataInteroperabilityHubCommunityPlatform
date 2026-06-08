@@ -77,7 +77,15 @@ ROLE_SCOPE_MAP: dict[str, frozenset[str]] = {
 
 def _get_user_scopes(request) -> frozenset[str]:
     """Resolve effective scopes for a request from roles or API key."""
-    if hasattr(request, 'api_key_scopes'):
+    # Use getattr(..., None) rather than hasattr() so the check is
+    # MagicMock-safe: MagicMock.__getattr__ auto-creates attributes on
+    # every getattr/hasattr call, making ``hasattr(mock, 'attr')``
+    # always True.  ``getattr(x, 'attr', None)`` returns None when the
+    # attribute genuinely doesn't exist on a real HttpRequest, and
+    # returns the MagicMock (truthy) when it was never set — a callable
+    # mock is not None either, so the fix is in the test helper
+    # (_mock_request) which explicitly sets ``api_key_scopes = None``.
+    if getattr(request, 'api_key_scopes', None) is not None:
         return frozenset(request.api_key_scopes)
 
     if not hasattr(request, 'user') or not request.user or not request.user.is_authenticated:
@@ -223,8 +231,9 @@ class HasScope(permissions.BasePermission):
         if not request.user or not request.user.is_authenticated:
             return False
 
-        # API keys are always scope-checked (no enforcement flag bypass)
-        if hasattr(request, 'api_key_scopes'):
+        # API keys are always scope-checked (no enforcement flag bypass).
+        # Use getattr(..., None) — MagicMock-safe alternative to hasattr.
+        if getattr(request, 'api_key_scopes', None) is not None:
             return self.required_scope in request.api_key_scopes
 
         # When ENFORCE_JWT_SCOPES is off, allow all authenticated users (backwards compat)
@@ -250,8 +259,9 @@ class HasAnyScope(permissions.BasePermission):
         if not request.user or not request.user.is_authenticated:
             return False
 
-        # API keys are always scope-checked
-        if hasattr(request, 'api_key_scopes'):
+        # API keys are always scope-checked.
+        # Use getattr(..., None) — MagicMock-safe alternative to hasattr.
+        if getattr(request, 'api_key_scopes', None) is not None:
             return any(s in request.api_key_scopes for s in self.required_scopes)
 
         if not getattr(settings, 'ENFORCE_JWT_SCOPES', False):

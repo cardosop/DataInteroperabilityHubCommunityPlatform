@@ -308,7 +308,7 @@ class TestDQResultReview:
         asset_result = runner.invoke(cli, [
             'assets', 'create',
             '--name', 'Asset With DQ',
-            '--key', unique_key('asset-wi')
+            '--key', unique_key('asset-wi')  # noqa: PHASE216-STATIC-ID
         ])
         assert asset_result.exit_code == 0, asset_result.output
 

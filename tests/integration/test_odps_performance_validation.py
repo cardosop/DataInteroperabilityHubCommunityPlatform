@@ -89,9 +89,10 @@ SEMANTIC_MAPPING_TARGET_MS_REALISTIC = 10000  # More realistic target based on a
 def authenticated_client():
     """Create authenticated API client for performance tests (subscription + role so POST /contracts/ is allowed)."""
     client = APIClient()
+    uid = uuid.uuid4().hex[:8]
     tenant = TenantFactory.create_tenant(
-        name="Performance Test Tenant",
-        slug=f"perf-tenant-{uuid.uuid4().hex[:8]}",
+        name=f"Performance Test Tenant {uid}",
+        slug=f"perf-tenant-{uid}",
         status=TenantStatus.ACTIVE.value,
         kyc_status=KYCStatus.VERIFIED.value,
     )

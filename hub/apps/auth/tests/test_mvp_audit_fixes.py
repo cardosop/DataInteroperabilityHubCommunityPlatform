@@ -215,14 +215,11 @@ class UserCreateSerializerStatusTest(TestCase):
             },
             format="json",
         )
-        if resp.status_code == status.HTTP_201_CREATED:
-            created = User.objects.get(id=resp.json()["id"])
-            # With send_invitation=True the status MUST be INVITED,
-            # regardless of what the client sent.
-            assert created.status == UserStatus.INVITED, (
-                "Client-supplied status='ACTIVE' must be ignored when "
-                "send_invitation=True — invitation workflow bypassed"
-            )
+        self.assertEqual(resp.status_code, status.HTTP_201_CREATED)
+        created = User.objects.get(id=resp.json()["id"])
+        # With send_invitation=True the status MUST be INVITED,
+        # regardless of what the client sent.
+        self.assertEqual(created.status, UserStatus.INVITED)
 
     def test_default_invitation_flow_sets_invited_status(self):
         resp = self.client.post(
@@ -234,9 +231,9 @@ class UserCreateSerializerStatusTest(TestCase):
             },
             format="json",
         )
-        if resp.status_code == status.HTTP_201_CREATED:
-            created = User.objects.get(id=resp.json()["id"])
-            assert created.status == UserStatus.INVITED
+        self.assertEqual(resp.status_code, status.HTTP_201_CREATED)
+        created = User.objects.get(id=resp.json()["id"])
+        self.assertEqual(created.status, UserStatus.INVITED)
 
 
 # ------------------------------------------------------------------
@@ -264,14 +261,29 @@ class ProductionSSLGuardTest(TestCase):
         )
         source = settings_path.read_text()
 
-        # Find the production block.
-        prod_block = re.search(
+        # Find ALL production blocks — ``re.search`` picks the first one
+        # (BaaS SSL at ~line 730), NOT the security-cookie guard block
+        # at ~line 2540.  We iterate every block and select the one that
+        # contains the security guards.
+        prod_blocks = list(re.finditer(
             r'if ENVIRONMENT\s*==\s*["\']production["\']\s*:\s*\n'
             r'((?:\s+.+\n)+)',
             source,
+        ))
+        assert prod_blocks, "Production settings block not found"
+
+        security_block = None
+        for m in prod_blocks:
+            candidate = m.group(1)
+            if "SESSION_COOKIE_SECURE" in candidate and "ImproperlyConfigured" in candidate:
+                security_block = candidate
+                break
+        assert security_block, (
+            "Security guard production block not found — "
+            "expected a production block containing both "
+            "SESSION_COOKIE_SECURE and ImproperlyConfigured"
         )
-        assert prod_block, "Production settings block not found"
-        block = prod_block.group(1)
+        block = security_block
 
         # Guards must be present.
         assert "ImproperlyConfigured" in block, (

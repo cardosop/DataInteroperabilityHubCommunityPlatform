@@ -20,13 +20,16 @@ def _api_is_reachable(url: str) -> bool:
     return response.status_code < 500
 
 
+def _get_default_api_url() -> str:
+    """Return the default API URL, honoring API_TEST_PORT for host-based tests."""
+    port = os.environ.get("API_TEST_PORT", "8000")
+    return f"http://localhost:{port}/api/v1"
+
+
 def pytest_collection_modifyitems(config, items):  # noqa: ARG001
     if os.environ.get("MESHANT_FORCE_INTEGRATION") == "1":
         return
-    api_url = os.environ.get(
-        "MESHANT_API_URL",
-        "http://localhost:8000/api/v1",
-    )
+    api_url = os.environ.get("MESHANT_API_URL") or _get_default_api_url()
     api_root = api_url.rsplit("/api/v1", 1)[0] or api_url
     if _api_is_reachable(api_root):
         return

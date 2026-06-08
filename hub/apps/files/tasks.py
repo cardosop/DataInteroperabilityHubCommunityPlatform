@@ -52,12 +52,28 @@ def scan_file_malware(file_id: str) -> None:
         storage = S3StorageClient()
         content = storage.get_file_content(file_obj.storage_path)
     except Exception as e:
-        logger.error(
-            "clamav_storage_read_failed",
-            file_id=file_id,
-            error=str(e),
-            exc_info=True,
-        )
+        # StorageObjectNotFoundError is an expected condition — the S3 object
+        # may not exist yet (async upload still in flight) or may have been
+        # deleted by a lifecycle policy. The code handles it gracefully by
+        # marking the file as SCAN_ERROR, so log at WARNING level.
+        # All other storage errors (connection failures, auth errors, etc.)
+        # are genuine infrastructure issues and remain at ERROR level.
+        from hub.apps.files.storage import StorageObjectNotFoundError
+
+        if isinstance(e, StorageObjectNotFoundError):
+            logger.warning(
+                "clamav_storage_object_missing",
+                file_id=file_id,
+                storage_path=file_obj.storage_path,
+                error=str(e),
+            )
+        else:
+            logger.error(
+                "clamav_storage_read_failed",
+                file_id=file_id,
+                error=str(e),
+                exc_info=True,
+            )
         with transaction.atomic():
             try:
                 file_obj = File.objects.select_for_update().get(pk=file_id)

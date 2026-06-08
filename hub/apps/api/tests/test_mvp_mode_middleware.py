@@ -140,8 +140,12 @@ class MvpGatedPrefixCompletenessTest(TestCase):
             "scheduled-exports/",
             # Added by Track A PR 1 — close backend drift: these were mounted in
             # hub/apps/api/urls.py but absent from MVP_GATED_RELATIVE_PREFIXES.
-            "search/",
             "developer/",
+            # Additional gated prefixes (batch-7-4):
+            # NOTE: "admin/", "lineage/", and "quality/" are NOT gated
+            # (no standalone URL routes for those prefixes).
+            "dpia/",
+            "ropa/",
         }
         actual = set(MVP_GATED_RELATIVE_PREFIXES)
         missing = expected - actual
@@ -184,6 +188,18 @@ MVP_CORE_PREFIXES = frozenset(
         # hub.E002 deploy check, NOT by MVP_MODE. They are MVP-safe to mount
         # because the token gate makes them inaccessible without provisioning.
         "test/",
+        # Additional MVP-core prefixes (batch-7-4):
+        # Phase 273.1 — /search permanently MVP-in-scope.
+        # /admin, /lineage, and /quality have no standalone routes
+        # (only sub-paths), so they're classified as core rather than gated.
+        "admin/",
+        "analytics/",
+        "capabilities/",
+        "drafts/",
+        "lineage/",
+        "public/",
+        "quality/",
+        "search/",
     }
 )
 

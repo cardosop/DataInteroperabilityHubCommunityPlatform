@@ -69,6 +69,7 @@ def execute_marketplace_sync(sync_job_id: str, retry_count: int = 0):
     direction = None
     tenant_id = None
     final_status = None
+    _classified = False  # set True when sync_classified_error already emitted
 
     try:
         # Create distributed tracing span
@@ -98,7 +99,7 @@ def execute_marketplace_sync(sync_job_id: str, retry_count: int = 0):
             correlation_context = get_correlation_context()
             log_sync_job(
                 "sync_job_not_found",
-                level="error",
+                level="warning",
                 sync_job_id=sync_job_id,
                 error_message=error_msg,
                 **correlation_context,
@@ -191,7 +192,7 @@ def execute_marketplace_sync(sync_job_id: str, retry_count: int = 0):
             correlation_context = get_correlation_context()
             log_sync_job(
                 "connection_not_active",
-                level="error",
+                level="warning",
                 sync_job_id=str(sync_job.id),
                 connection_id=str(connection.id),
                 error_message=error_msg,
@@ -235,7 +236,7 @@ def execute_marketplace_sync(sync_job_id: str, retry_count: int = 0):
                 correlation_context = get_correlation_context()
                 log_sync_job(
                     "marketplace_type_not_supported",
-                    level="error",
+                    level="warning",
                     sync_job_id=str(sync_job.id),
                     marketplace_type=marketplace_type.value,
                     error_message=error_msg,
@@ -295,7 +296,7 @@ def execute_marketplace_sync(sync_job_id: str, retry_count: int = 0):
                     correlation_context = get_correlation_context()
                     log_sync_job(
                         "no_asset_ids_for_push",
-                        level="error",
+                        level="warning",
                         sync_job_id=str(sync_job.id),
                         error_message=error_msg,
                         **correlation_context,
@@ -336,9 +337,7 @@ def execute_marketplace_sync(sync_job_id: str, retry_count: int = 0):
                         options=options
                     )
                     if sync_result is None:
-                        error_msg = "Sync operation returned no result"
-                        sync_job.mark_failed(error_message=error_msg)
-                        raise ServiceError(error_msg)
+                        raise ServiceError("Sync operation returned no result")
                     sync_duration = time.time() - sync_start_time
                     status = "success" if sync_result.status == SyncStatus.COMPLETED else "error"
                     marketplace_connector_operations_total.labels(
@@ -430,9 +429,7 @@ def execute_marketplace_sync(sync_job_id: str, retry_count: int = 0):
                         options=options
                     )
                     if sync_result is None:
-                        error_msg = "Sync operation returned no result"
-                        sync_job.mark_failed(error_message=error_msg)
-                        raise ServiceError(error_msg)
+                        raise ServiceError("Sync operation returned no result")
                     sync_duration = time.time() - sync_start_time
                     status = "success" if sync_result.status == SyncStatus.COMPLETED else "error"
                     marketplace_connector_operations_total.labels(
@@ -568,7 +565,7 @@ def execute_marketplace_sync(sync_job_id: str, retry_count: int = 0):
                 correlation_context = get_correlation_context()
                 log_sync_job(
                     "unsupported_sync_direction",
-                    level="error",
+                    level="warning",
                     sync_job_id=str(sync_job.id),
                     direction=sync_direction.value,
                     error_message=error_msg,
@@ -775,7 +772,6 @@ def execute_marketplace_sync(sync_job_id: str, retry_count: int = 0):
                     error_message=error_msg,
                     **correlation_context,
                 )
-                sync_job.mark_failed(error_message=error_msg)
                 if span:
                     record_span_exception(ServiceError(error_msg))
                     set_span_status(StatusCode.ERROR)
@@ -787,12 +783,31 @@ def execute_marketplace_sync(sync_job_id: str, retry_count: int = 0):
             correlation_context = get_correlation_context()
             log_sync_job(
                 "sync_validation_error",
-                level="error",
+                level="warning",
                 sync_job_id=str(sync_job.id),
                 error_type=type(e).__name__,
                 error_message=str(e),
                 **correlation_context,
-                exc_info=True,
+            )
+            sync_job.mark_failed(error_message=str(e))
+            if span:
+                record_span_exception(e)
+                set_span_status(StatusCode.ERROR)
+            raise
+
+        except ServiceError as e:
+            # Internal errors raised by the sync executor itself (e.g.
+            # connector returned no result) — already a deliberate failure
+            # signal, not an external connector exception to classify.
+            final_status = "failed"
+            correlation_context = get_correlation_context()
+            log_sync_job(
+                "sync_internal_error",
+                level="warning",
+                sync_job_id=str(sync_job.id),
+                error_type=type(e).__name__,
+                error_message=str(e),
+                **correlation_context,
             )
             sync_job.mark_failed(error_message=str(e))
             if span:
@@ -806,17 +821,22 @@ def execute_marketplace_sync(sync_job_id: str, retry_count: int = 0):
             error_msg = f"{error_class.value.title()} error during sync: {str(e)}"
             final_status = "failed"
             correlation_context = get_correlation_context()
+            # Transient errors are expected and retried — log at WARNING
+            # so they don't pollute ERROR-rate dashboards.  Permanent and
+            # unknown errors require investigation so they stay at ERROR.
+            _classified_is_transient = (error_class.value == "transient")
             log_sync_job(
                 "sync_classified_error",
-                level="error",
+                level="warning" if _classified_is_transient else "error",
                 sync_job_id=str(sync_job.id),
                 error_type=type(e).__name__,
                 error_class=error_class.value,
                 error_message=str(e),
                 retry_count=retry_count,
                 **correlation_context,
-                exc_info=True,
+                **({} if _classified_is_transient else {"exc_info": True}),
             )
+            _classified = True
 
             if error_class == ConnectorErrorType.PERMANENT:
                 # Permanent — fail immediately, no retry.
@@ -889,19 +909,35 @@ def execute_marketplace_sync(sync_job_id: str, retry_count: int = 0):
                     raise ServiceError(error_msg) from e
 
     except Exception as e:
-        # Catch-all for any unhandled errors
+        # Catch-all for any unhandled errors.
+        # ValueErrors are pre-validation failures (already emitted a specific
+        # event).  _classified=True means sync_classified_error was already
+        # logged and the error is being re-raised for retry (TRANSIENT) or
+        # was already recorded.  In both cases log the composite event at
+        # WARNING to avoid double-counting on ERROR-rate dashboards.
         final_status = "failed"
         correlation_context = get_correlation_context()
-        log_sync_job(
-            "sync_job_execution_failed",
-            level="error",
-            sync_job_id=sync_job_id,
-            error_type=type(e).__name__,
-            error_message=str(e),
-            retry_count=retry_count,
-            **correlation_context,
-            exc_info=True,
-        )
+        if isinstance(e, (ValueError, ServiceError)) or _classified:
+            log_sync_job(
+                "sync_job_execution_failed",
+                level="warning",
+                sync_job_id=sync_job_id,
+                error_type=type(e).__name__,
+                error_message=str(e),
+                retry_count=retry_count,
+                **correlation_context,
+            )
+        else:
+            log_sync_job(
+                "sync_job_execution_failed",
+                level="error",
+                sync_job_id=sync_job_id,
+                error_type=type(e).__name__,
+                error_message=str(e),
+                retry_count=retry_count,
+                **correlation_context,
+                exc_info=True,
+            )
         if span:
             record_span_exception(e)
             set_span_status(StatusCode.ERROR)

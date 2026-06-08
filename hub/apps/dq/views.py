@@ -420,8 +420,10 @@ class DQRunViewSet(DQFeatureFlagMixin, viewsets.ModelViewSet):
             }
             check_details.append(check_detail)
 
-        # Calculate quality score breakdown
-        total_checks = len(checks) if checks else 1
+        # Calculate quality score breakdown.
+        # checks is always a list (defaulted via `checks = dq_run.checks_json or []`
+        # above), so len(checks) is correct even for the empty case.
+        total_checks = len(checks)
         score_breakdown = {
             "total_checks": total_checks,
             "passed_checks": passed_checks,
@@ -577,6 +579,54 @@ class DQRunViewSet(DQFeatureFlagMixin, viewsets.ModelViewSet):
             },
             status=status.HTTP_200_OK,
         )
+
+    @action(detail=False, methods=["post"], url_path="warehouse-run",
+            throttle_classes=[ScopedRateThrottle])
+    def warehouse_run(self, request):
+        """Run DQ checks directly in the customer's warehouse (Phase 285.10).
+
+        POST /api/v1/dq/warehouse-run/
+        """
+        from hub.apps.dq.services import DQService
+        from hub.apps.datasets.models import Dataset
+        from hub.apps.tenants.models import Tenant
+
+        tenant = self._resolve_tenant(request)
+        warehouse_config = request.data.get("warehouse_config", {})
+        dataset_id = request.data.get("dataset_id")
+        check_definitions = request.data.get("check_definitions", [])
+
+        if not dataset_id:
+            raise ValidationError({"dataset_id": "This field is required."})
+        if not warehouse_config:
+            raise ValidationError({"warehouse_config": "This field is required."})
+
+        try:
+            dataset = Dataset.objects.get(id=dataset_id, tenant_id=str(tenant.id))
+        except Dataset.DoesNotExist:
+            raise NotFound("Dataset not found or not in your tenant.")
+
+        # Feature flag gate (Fix 11)
+        if not getattr(tenant, "warehouse_dq_enabled", False):
+            return Response(
+                {"error": "WAREHOUSE_DQ_DISABLED",
+                 "message": "Warehouse-native DQ is not enabled for this tenant."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        run = DQService.scan_inmemory_warehouse(
+            dataset=dataset,
+            tenant=tenant,
+            check_definitions=check_definitions,
+            warehouse_config=warehouse_config,
+            user=request.user,
+        )
+        return Response({
+            "id": str(run.id),
+            "status": run.status,
+            "overall_status": run.overall_status,
+            "quality_score": run.quality_score,
+        }, status=status.HTTP_200_OK)
 
 
 class DQAlertingRuleViewSet(DQFeatureFlagMixin, viewsets.ModelViewSet):
@@ -1487,10 +1537,17 @@ def execute_dq_run(dq_run_id: str) -> None:
                 pass  # Notifications must never block DQ pipeline
 
     except Exception as e:
-        logger.exception(
+        # Every condition caught here (no file, storage unavailable,
+        # dq-service error / circuit-breaker open) is an *expected*
+        # operational state that the handler is designed to gracefully
+        # transition to FAILED.  WARNING keeps CI output clean while
+        # still recording the event for debugging; use exc_info=True
+        # so the traceback is preserved at the lower severity.
+        logger.warning(
             "dq_run_execute_failed",
             dq_run_id=dq_run_id,
             error=str(e),
+            exc_info=True,
         )
         _persist_dq_run_failure_state(
             dq_run_id,

@@ -10,7 +10,7 @@ import uuid
 
 import structlog
 from django.core.cache import cache
-from django.http import JsonResponse
+from rest_framework.response import Response
 from django.utils import timezone
 
 logger = structlog.get_logger(__name__)
@@ -241,7 +241,7 @@ class RateLimitMiddleware:
         # Check rate limits
         for key in keys:
             if not self._check_rate_limit(key, request):
-                return JsonResponse(
+                return Response(
                     {
                         "error": {
                             "code": "RATE_LIMIT_EXCEEDED",

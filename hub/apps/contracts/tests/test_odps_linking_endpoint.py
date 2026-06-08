@@ -562,15 +562,13 @@ product:
             url, {"original_raw": odps_json, "original_format": "JSON"}, format="json"
         )
 
-        # Very large documents should either succeed or be rejected with a client error
+        # Well-formed large documents must be accepted (200).  A 413
+        # (payload too large) is an acceptable server-side limit; a 400
+        # would indicate the payload is malformed, which it is not.
         self.assertIn(
             response.status_code,
-            [
-                status.HTTP_200_OK,
-                status.HTTP_400_BAD_REQUEST,
-                status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
-            ],
-            "Very large documents should not cause a 500 server error",
+            [status.HTTP_200_OK, status.HTTP_413_REQUEST_ENTITY_TOO_LARGE],
+            f"Large well-formed document must return 200 or 413, got {response.status_code}",
         )
 
     def test_linking_endpoint_handles_none_values(self):

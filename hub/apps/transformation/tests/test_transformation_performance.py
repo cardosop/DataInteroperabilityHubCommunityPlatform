@@ -17,6 +17,7 @@ from django.test import TestCase, TransactionTestCase
 from django.contrib.auth import get_user_model
 from django.db import transaction
 from hub.apps.tenants.models import Tenant
+from hub.apps.transformation.exceptions import TransformationExecutionError
 from hub.apps.transformation.services import TransformationService
 from hub.apps.transformation.models import (
     TransformationPipeline,
@@ -29,6 +30,7 @@ from hub.apps.users.models import User, UserStatus, Role, UserRole
 from hub.apps.assets.models import Asset, AssetStatus
 from hub.apps.datasets.models import Dataset
 from hub.apps.files.models import File, FileStatus
+from hub.apps.files.storage import StorageObjectNotFoundError
 from hub.apps.governance.models import AccessPolicy
 
 
@@ -39,45 +41,42 @@ User = get_user_model()
 class TransformationPerformanceTest(TestCase):
     """Test transformation pipeline performance"""
 
-    @classmethod
-    def setUpTestData(cls):
-        """Create Tenant and User once for the whole test class (read-only)."""
+    def setUp(self):
+        """Set up per-test fixtures."""
         uid = uuid.uuid4().hex[:8]
-        cls.tenant = Tenant.objects.create(
+        self.tenant = Tenant.objects.create(
             name=f"Test Tenant {uid}",
             slug=f"t-{uid}"
         )
-        cls.user = User.objects.create_user(
+        self.user = User.objects.create_user(
             email=f"t-{uid}@test.com",
-            tenant=cls.tenant,
+            tenant=self.tenant,
             status=UserStatus.ACTIVE
         )
 
         # Create DATA_PROVIDER role
-        data_provider_role, _ = Role.objects.get_or_create(tenant=cls.tenant,
+        data_provider_role, _ = Role.objects.get_or_create(tenant=self.tenant,
             name="DATA_PROVIDER",
             defaults={"description": "Data Provider Role"}
         )
-        cls.user.user_roles.create(role=data_provider_role)
+        self.user.user_roles.create(role=data_provider_role)
 
         # Create ABAC policy to allow transformation operations
         AccessPolicy.objects.get_or_create(
-            tenant=cls.tenant,
+            tenant=self.tenant,
             name="Allow Transformation Operations",
             defaults={
                 "conditions": {
-                    "user": {"tenant_id": str(cls.tenant.id)},
+                    "user": {"tenant_id": str(self.tenant.id)},
                     "resource": {"type": "TRANSFORMATION_PIPELINE"}
                 },
                 "effect": "ALLOW",
                 "priority": 100,
                 "enabled": True,
-                "created_by": cls.user
+                "created_by": self.user
             }
         )
 
-    def setUp(self):
-        """Set up per-test fixtures."""
         self.service = TransformationService(
             tenant_id=str(self.tenant.id),
             user_id=str(self.user.id)
@@ -158,8 +157,7 @@ class TransformationPerformanceTest(TestCase):
         )
 
         # Test preview generation performance
-        # Note: Preview requires actual file storage, which may not be available in test environment
-        # This test verifies the code path executes quickly even when storage is unavailable
+        # Happy path: preview succeeds (requires file storage), measure performance
         start_time = time.time()
         try:
             preview_result = self.service.preview_transformation(
@@ -174,17 +172,17 @@ class TransformationPerformanceTest(TestCase):
             # Preview generation should complete within 10 seconds for small samples
             if preview_result:
                 self.assertLess(preview_time, 10.0, f"Preview generation took {preview_time:.2f}s, expected < 10.0s")
-        except Exception as e:
-            # If preview fails due to missing storage or other integration issues,
-            # verify that the failure happens quickly (within 2 seconds)
-            # This ensures the code path doesn't hang or take too long to fail
+        except (TransformationExecutionError, StorageObjectNotFoundError) as e:
+            # Error path: preview fails due to missing storage or integration issues.
+            # StorageObjectNotFoundError is expected in test environments without
+            # pre-existing MinIO files.
             preview_time = time.time() - start_time
             self.assertLess(preview_time, 2.0,
                           f"Preview failure took {preview_time:.2f}s, expected < 2.0s. "
                           f"Exception: {type(e).__name__}: {str(e)}")
 
-    def test_concurrent_pipeline_creation(self):
-        """Test that multiple pipelines can be created concurrently"""
+    def test_sequential_pipeline_creation_performance(self):
+        """Test that multiple pipelines can be created sequentially within time limits"""
         pipeline_definition = {
             "version": "1.0.0",
             "steps": [

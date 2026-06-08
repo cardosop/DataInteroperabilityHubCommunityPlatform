@@ -27,7 +27,10 @@ from hub.apps.notifications.models import EmailType
 from hub.apps.notifications.tasks import send_email_async
 from hub.apps.orchestration.models import WorkflowInstance, WorkflowStatus
 from hub.apps.orchestration.registry import WorkflowRegistry
-from hub.apps.orchestration.workflow_engine import WorkflowEngine
+from hub.apps.orchestration.workflow_engine import (
+    WorkflowEngine,
+    WorkflowStepValueError,
+)
 from hub.apps.scheduled_ingestion.business_rules import ScheduledIngestionBusinessRules
 from hub.apps.scheduled_ingestion.dead_letter_queue import DeadLetterQueueManager
 from hub.apps.scheduled_ingestion.incremental_state import IncrementalStateManager
@@ -396,18 +399,18 @@ class ScheduledIngestionWorkflow:
             if isinstance(test_result, bool):
                 # test_connection returned bool (True/False)
                 if not test_result:
-                    raise ConnectionError("Connection test failed: Unable to connect to source")
+                    raise WorkflowStepValueError("Connection test failed: Unable to connect to source")
                 connection_details = {}
             elif isinstance(test_result, dict):
                 # test_connection returned dict (legacy or extended format)
                 if not test_result.get("success", False):
-                    raise ConnectionError(
+                    raise WorkflowStepValueError(
                         f"Connection test failed: {test_result.get('error', 'Unknown error')}"
                     )
                 connection_details = test_result.get("details", {})
             else:
                 # Unexpected return type
-                raise ConnectionError(
+                raise WorkflowStepValueError(
                     f"Unexpected test_connection return type: {type(test_result)}"
                 )
 
@@ -423,14 +426,14 @@ class ScheduledIngestionWorkflow:
                 "connection_details": connection_details,
             }
         except Exception as e:
-            logger.error(
+            logger.warning(
                 "Failed to connect to source",
                 workflow_instance_id=str(instance.id),
                 source_type=source_type,
                 error=str(e),
                 exc_info=True,
             )
-            raise ConnectionError(f"Failed to connect to source: {str(e)}") from e
+            raise WorkflowStepValueError(f"Failed to connect to source: {str(e)}") from e
 
     @staticmethod
     def _discover_files_task(
@@ -468,7 +471,7 @@ class ScheduledIngestionWorkflow:
 
             return {"files_found": len(files), "discovered_files": files}
         except Exception as e:
-            logger.error(
+            logger.warning(
                 "Failed to discover files",
                 workflow_instance_id=str(instance.id),
                 scheduled_ingestion_id=scheduled_ingestion_id,
@@ -476,7 +479,7 @@ class ScheduledIngestionWorkflow:
                 error=str(e),
                 exc_info=True,
             )
-            raise ConnectionError(f"Failed to discover files: {str(e)}") from e
+            raise WorkflowStepValueError(f"Failed to discover files: {str(e)}") from e
 
     @staticmethod
     def _filter_files_task(
@@ -559,8 +562,13 @@ class ScheduledIngestionWorkflow:
             "state": {"filtered_files": filtered_files},
         }
 
+    # NOTE: no @transaction.atomic here.  This method performs zero DB
+    # writes — it only fetches the ScheduledIngestion row and downloads
+    # a file from the connector.  Wrapping it in atomic would cause the
+    # SCHEDULED_INGESTION_SOURCE_UNREACHABLE audit row (written in the
+    # except block) to be rolled back when the exception propagates,
+    # defeating the audit contract (260.7.F).
     @staticmethod
-    @transaction.atomic
     def _download_file_task(
         input_data: Dict[str, Any], instance: WorkflowInstance, step
     ) -> Dict[str, Any]:
@@ -596,7 +604,7 @@ class ScheduledIngestionWorkflow:
             file_path = file_info.get("file_path") if isinstance(file_info, dict) else None
 
         if not file_path:
-            raise ValueError("file_path is required")
+            raise WorkflowStepValueError("file_path is required")
 
         scheduled_ingestion = ScheduledIngestion.objects.get(id=scheduled_ingestion_id)
         tenant = scheduled_ingestion.tenant
@@ -615,7 +623,7 @@ class ScheduledIngestionWorkflow:
             result = connector.download_file(source_config, file_path, temp_path)
 
             if result.status.value != "SUCCESS":
-                raise Exception(f"Failed to download file: {result.message}")
+                raise WorkflowStepValueError(f"Failed to download file: {result.message}")
 
             # Read file content
             with open(temp_path, "rb") as f:
@@ -681,7 +689,7 @@ class ScheduledIngestionWorkflow:
             failed_list.append({"file_path": file_path, "error_message": str(e)})
             instance.state_data["failed_files_during_loop"] = failed_list
 
-            logger.error(
+            logger.warning(
                 "Failed to download file",
                 workflow_instance_id=str(instance.id),
                 scheduled_ingestion_id=scheduled_ingestion_id,
@@ -689,7 +697,28 @@ class ScheduledIngestionWorkflow:
                 error=str(e),
                 exc_info=True,
             )
-            raise
+            # 260.7.F — emit source-unreachable audit BEFORE re-raising.
+            create_audit_event(
+                resource_type="scheduled_ingestion",
+                action="SCHEDULED_INGESTION_SOURCE_UNREACHABLE",
+                actor_user=(
+                    scheduled_ingestion.created_by
+                    if scheduled_ingestion else None
+                ),
+                tenant=tenant,
+                resource_id=str(scheduled_ingestion_id),
+                result="FAILURE",
+                details={
+                    "file_path": file_path,
+                    "error_message": str(e),
+                    "audience": "TENANT_ADMIN",
+                },
+            )
+            # Re-raise as WorkflowStepValueError so the workflow engine
+            # routes this controlled business-outcome failure to WARNING
+            # instead of ERROR.  The original exception is chained via
+            # ``from e`` for debugging.
+            raise WorkflowStepValueError(str(e)) from e
 
     @staticmethod
     def _validate_file_task(
@@ -1599,7 +1628,7 @@ Workflow Instance: {instance.id}
             }
         else:
             error_message = workflow_instance.error_message or "Workflow execution failed"
-            logger.error(
+            logger.warning(
                 "Scheduled ingestion workflow failed",
                 scheduled_ingestion_id=scheduled_ingestion_id,
                 workflow_instance_id=str(workflow_instance.id),

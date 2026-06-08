@@ -44,7 +44,7 @@ def test_cache_key_deterministic():
 def test_cache_key_differs_by_role():
     with patch("tests._persona_provisioning._xdist_worker_id", return_value="master"):
         k1 = _cache_key("data_engineer", None)
-        k2 = _cache_key("tenant_admin", None)
+        k2 = _cache_key("tenant_admin", None)  # noqa: PHASE216-STATIC-ID
         assert k1 != k2
 
 

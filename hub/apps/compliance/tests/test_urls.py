@@ -47,7 +47,9 @@ class ComplianceURLPatternResolutionTest(TestCase):
         job = JobFactory.create_job(
             tenant=self.tenant,
             type=JobType.COMPLIANCE_RUN,
-            status=JobStatus.PENDING
+            status=JobStatus.PENDING,
+            resource_type='ASSET',
+            resource_id=str(asset.id),
         )
         compliance_run = ComplianceRun.objects.create(
             tenant=self.tenant,
@@ -77,7 +79,9 @@ class ComplianceURLPatternResolutionTest(TestCase):
         job = JobFactory.create_job(
             tenant=self.tenant,
             type=JobType.COMPLIANCE_RUN,
-            status=JobStatus.COMPLETED
+            status=JobStatus.COMPLETED,
+            resource_type='ASSET',
+            resource_id=str(asset.id),
         )
         compliance_run = ComplianceRun.objects.create(
             tenant=self.tenant,
@@ -111,7 +115,9 @@ class ComplianceURLPatternResolutionTest(TestCase):
         job = JobFactory.create_job(
             tenant=self.tenant,
             type=JobType.COMPLIANCE_RUN,
-            status=JobStatus.PENDING
+            status=JobStatus.PENDING,
+            resource_type='ASSET',
+            resource_id=str(asset.id),
         )
         compliance_run = ComplianceRun.objects.create(
             tenant=self.tenant,
@@ -127,24 +133,21 @@ class ComplianceURLPatternResolutionTest(TestCase):
         """Test that old /compliance-runs/ URL pattern does not resolve to compliance viewset"""
         # Old pattern should not resolve to ComplianceRunViewSet
         # It may resolve to a catch-all pattern, but should not be the compliance viewset
-        from django.urls import resolve
+        from django.urls import resolve, Resolver404
         try:
             resolved = resolve('/api/v1/compliance/compliance-runs/')
-            # If it resolves, verify it's not the compliance viewset
-            # Check that url_name doesn't contain 'compliance-run'
-            if resolved.url_name:
-                self.assertNotIn('compliance-run', resolved.url_name,
-                               "Old pattern should not resolve to compliance-run viewset")
-            # Also check that the view is not ComplianceRunViewSet
-            if hasattr(resolved, 'func'):
-                from hub.apps.compliance.views import ComplianceRunViewSet
-                # Check if it's a ViewSet method (wrapped by DRF router)
-                if hasattr(resolved.func, 'cls'):
-                    self.assertNotIsInstance(resolved.func.cls, ComplianceRunViewSet,
-                                            "Old pattern should not resolve to ComplianceRunViewSet")
-        except Exception:
-            # If it doesn't resolve at all, that's also acceptable
-            pass
+        except Resolver404:
+            # Old URL not resolving at all is the expected behavior
+            return
+        # If it does resolve, verify it's not the compliance viewset
+        if resolved.url_name:
+            self.assertNotIn('compliance-run', resolved.url_name,
+                           "Old pattern should not resolve to compliance-run viewset")
+        if hasattr(resolved, 'func'):
+            from hub.apps.compliance.views import ComplianceRunViewSet
+            if hasattr(resolved.func, 'cls'):
+                self.assertNotIsInstance(resolved.func.cls, ComplianceRunViewSet,
+                                        "Old pattern should not resolve to ComplianceRunViewSet")
 
     def test_url_reverse_with_basename(self):
         """Test that URL reverse works with basename 'compliance-run'"""
@@ -160,7 +163,9 @@ class ComplianceURLPatternResolutionTest(TestCase):
         job = JobFactory.create_job(
             tenant=self.tenant,
             type=JobType.COMPLIANCE_RUN,
-            status=JobStatus.PENDING
+            status=JobStatus.PENDING,
+            resource_type='ASSET',
+            resource_id=str(asset.id),
         )
         compliance_run = ComplianceRun.objects.create(
             tenant=self.tenant,
@@ -188,7 +193,9 @@ class ComplianceURLPatternResolutionTest(TestCase):
         job = JobFactory.create_job(
             tenant=self.tenant,
             type=JobType.COMPLIANCE_RUN,
-            status=JobStatus.PENDING
+            status=JobStatus.PENDING,
+            resource_type='ASSET',
+            resource_id=str(asset.id),
         )
         compliance_run = ComplianceRun.objects.create(
             tenant=self.tenant,
@@ -245,7 +252,9 @@ class ComplianceURLIntegrationTest(TestCase):
         job = JobFactory.create_job(
             tenant=self.tenant,
             type=JobType.COMPLIANCE_RUN,
-            status=JobStatus.PENDING
+            status=JobStatus.PENDING,
+            resource_type='ASSET',
+            resource_id=str(self.asset.id),
         )
         compliance_run = ComplianceRun.objects.create(
             tenant=self.tenant,
@@ -264,7 +273,9 @@ class ComplianceURLIntegrationTest(TestCase):
         job = JobFactory.create_job(
             tenant=self.tenant,
             type=JobType.COMPLIANCE_RUN,
-            status=JobStatus.COMPLETED
+            status=JobStatus.COMPLETED,
+            resource_type='ASSET',
+            resource_id=str(self.asset.id),
         )
         compliance_run = ComplianceRun.objects.create(
             tenant=self.tenant,

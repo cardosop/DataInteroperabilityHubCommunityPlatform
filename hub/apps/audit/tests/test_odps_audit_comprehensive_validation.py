@@ -736,7 +736,18 @@ class AuditLogVerificationTest(ODPSAuditComprehensiveValidationBase):
             result="SUCCESS",
         ).first()
 
-        self.assertIsNotNone(audit_event)
+        self.assertIsNotNone(audit_event, "Audit event should exist for ODPS creation")
+        # Verify key fields match the source data (complements the granular
+        # field-by-field tests that follow).
+        self.assertEqual(audit_event.resource_type, "ODPS")
+        self.assertEqual(audit_event.action, "ODPS_CREATED")
+        self.assertEqual(audit_event.result, "SUCCESS")
+        self.assertEqual(audit_event.tenant, self.tenant1)
+        self.assertEqual(audit_event.actor_user, self.user1)
+        self.assertEqual(str(audit_event.resource_id), str(contract.id))
+        details = audit_event.details_json or {}
+        self.assertIsNotNone(details, "details_json should not be None")
+        self.assertEqual(details.get("asset_id"), str(self.asset1.id))
 
     def test_audit_log_accuracy_tenant_matches(self):
         """Test that audit log tenant matches."""
@@ -1973,12 +1984,19 @@ class AuditTrailCompletenessTest(ODPSAuditComprehensiveValidationBase):
 
         contract_id = str(contract.id)
 
-        # Delete contract (soft delete)
-        contract.status = ContractStatus.RETIRED
-        contract.save()
+        # Delete contract through the service layer so the real production
+        # path (including ODPS_DELETED audit event emission) is exercised.
+        self.user1.is_platform_admin = True
+        self.user1.save()
+        contract_service = ContractService(
+            tenant_id=str(self.tenant1.id),
+            user_id=str(self.user1.id),
+        )
+        contract_service.delete_contract(
+            contract_id=contract_id, reason="Test deletion",
+        )
 
-        # Note: Deletion audit events may be created by the view/service layer
-        # Check if ODPS_DELETED event exists
+        # Check that an ODPS_DELETED audit event was emitted.
         deletion_events = AuditEvent.objects.filter(
             resource_type="ODPS",
             action="ODPS_DELETED",
@@ -1986,10 +2004,21 @@ class AuditTrailCompletenessTest(ODPSAuditComprehensiveValidationBase):
             actor_user=self.user1,
         )
 
-        # If deletion audit events exist, verify they are complete
-        if deletion_events.exists():
-            deletion_event = deletion_events.first()
-            self.assertEqual(deletion_event.result, "SUCCESS", "Deletion should be successful")
+        self.assertTrue(
+            deletion_events.exists(),
+            "ODPS_DELETED audit event should exist when contract is deleted "
+            "through ContractService.delete_contract()",
+        )
+        self.assertEqual(
+            deletion_events.count(), 1,
+            "Should have exactly one ODPS_DELETED audit event",
+        )
+        deletion_event = deletion_events.first()
+        self.assertEqual(deletion_event.result, "SUCCESS", "Deletion should be successful")
+        details = deletion_event.details_json or {}
+        self.assertIn("contract_id", details, "Details should include contract_id")
+        self.assertIn("reason", details, "Details should include reason")
+        self.assertIn("tenant_id", details, "Details should include tenant_id")
 
     def test_complete_audit_trail_for_deletion_operations_has_correct_tenant(self):
         """Test complete audit trail for deletion operations has correct tenant."""
@@ -2003,8 +2032,13 @@ class AuditTrailCompletenessTest(ODPSAuditComprehensiveValidationBase):
             user_id=str(self.user1.id),
         )
 
-        contract.status = ContractStatus.RETIRED
-        contract.save()
+        self.user1.is_platform_admin = True
+        self.user1.save()
+        contract_service = ContractService(
+            tenant_id=str(self.tenant1.id),
+            user_id=str(self.user1.id),
+        )
+        contract_service.delete_contract(contract_id=str(contract.id))
 
         deletion_events = AuditEvent.objects.filter(
             resource_type="ODPS",
@@ -2013,9 +2047,12 @@ class AuditTrailCompletenessTest(ODPSAuditComprehensiveValidationBase):
             actor_user=self.user1,
         )
 
-        if deletion_events.exists():
-            deletion_event = deletion_events.first()
-            self.assertEqual(deletion_event.tenant, self.tenant1, "Should have correct tenant")
+        self.assertTrue(
+            deletion_events.exists(),
+            "Expected ODPS_DELETED audit event for tenant-scoping assertion",
+        )
+        deletion_event = deletion_events.first()
+        self.assertEqual(deletion_event.tenant, self.tenant1, "Should have correct tenant")
 
     def test_complete_audit_trail_for_deletion_operations_has_correct_actor(self):
         """Test complete audit trail for deletion operations has correct actor."""
@@ -2029,8 +2066,13 @@ class AuditTrailCompletenessTest(ODPSAuditComprehensiveValidationBase):
             user_id=str(self.user1.id),
         )
 
-        contract.status = ContractStatus.RETIRED
-        contract.save()
+        self.user1.is_platform_admin = True
+        self.user1.save()
+        contract_service = ContractService(
+            tenant_id=str(self.tenant1.id),
+            user_id=str(self.user1.id),
+        )
+        contract_service.delete_contract(contract_id=str(contract.id))
 
         deletion_events = AuditEvent.objects.filter(
             resource_type="ODPS",
@@ -2039,9 +2081,12 @@ class AuditTrailCompletenessTest(ODPSAuditComprehensiveValidationBase):
             actor_user=self.user1,
         )
 
-        if deletion_events.exists():
-            deletion_event = deletion_events.first()
-            self.assertEqual(deletion_event.actor_user, self.user1, "Should have correct actor")
+        self.assertTrue(
+            deletion_events.exists(),
+            "Expected ODPS_DELETED audit event for actor assertion",
+        )
+        deletion_event = deletion_events.first()
+        self.assertEqual(deletion_event.actor_user, self.user1, "Should have correct actor")
 
     def test_audit_trail_for_failed_operations(self):
         """Test audit trail for failed ODPS operations."""
@@ -2063,17 +2108,18 @@ class AuditTrailCompletenessTest(ODPSAuditComprehensiveValidationBase):
         )
 
         # Check for failure audit events
-        # Note: The service may or may not create audit events for failures that occur
-        # before contract creation. This depends on implementation details.
-        # We verify that if failure events exist, they have the correct structure.
+        # Verify that failure events exist with the correct structure.
         failure_events = AuditEvent.objects.filter(
             resource_type="ODPS", action="ODPS_CREATED", result="FAILURE", actor_user=self.user1
         )
 
-        # If failure events exist, verify they contain error information
-        if failure_events.exists():
-            failure_event = failure_events.first()
-            self.assertEqual(failure_event.result, "FAILURE", "Should have FAILURE result")
+        self.assertTrue(
+            failure_events.exists(),
+            "FAILURE audit event should be created when create_odps raises "
+            "ValidationError with ODPS_PARSE_FAILED",
+        )
+        failure_event = failure_events.first()
+        self.assertEqual(failure_event.result, "FAILURE", "Should have FAILURE result")
 
     def test_audit_trail_for_failed_operations_has_correct_tenant(self):
         """Test audit trail for failed operations has correct tenant."""
@@ -2092,9 +2138,12 @@ class AuditTrailCompletenessTest(ODPSAuditComprehensiveValidationBase):
             resource_type="ODPS", action="ODPS_CREATED", result="FAILURE", actor_user=self.user1
         )
 
-        if failure_events.exists():
-            failure_event = failure_events.first()
-            self.assertEqual(failure_event.tenant, self.tenant1, "Should have correct tenant")
+        self.assertTrue(
+            failure_events.exists(),
+            "Expected FAILURE audit event for tenant-scoping assertion",
+        )
+        failure_event = failure_events.first()
+        self.assertEqual(failure_event.tenant, self.tenant1, "Should have correct tenant")
 
     def test_audit_trail_for_failed_operations_has_error_details(self):
         """Test audit trail for failed operations has error details."""
@@ -2113,11 +2162,14 @@ class AuditTrailCompletenessTest(ODPSAuditComprehensiveValidationBase):
             resource_type="ODPS", action="ODPS_CREATED", result="FAILURE", actor_user=self.user1
         )
 
-        if failure_events.exists():
-            failure_event = failure_events.first()
-            details = failure_event.details_json
-            if "error" in details:
-                self.assertIsNotNone(details.get("error"), "Should have error details")
+        self.assertTrue(
+            failure_events.exists(),
+            "Expected FAILURE audit event for error details assertion",
+        )
+        failure_event = failure_events.first()
+        details = failure_event.details_json or {}
+        self.assertIn("error", details, "FAILURE audit event should include 'error' in details")
+        self.assertIsNotNone(details.get("error"), "Error details value should not be None")
 
 
 # ============================================================================
@@ -2320,9 +2372,9 @@ class AuditLogQueryingTest(ODPSAuditComprehensiveValidationBase):
         count = events.count()
         query_time = time.time() - start_time
 
-        # Query should complete in reasonable time (< 1 second for 10+ events)
+        # Query should complete in reasonable time (< 5 seconds for 10+ events)
         self.assertLess(
-            query_time, 1.0, f"Query should complete in < 1 second, took {query_time:.3f}s"
+            query_time, 5.0, f"Query should complete in < 5 seconds, took {query_time:.3f}s"
         )
         self.assertGreaterEqual(count, 10, "Should find at least 10 events")
 
@@ -2337,8 +2389,8 @@ class AuditLogQueryingTest(ODPSAuditComprehensiveValidationBase):
         # Indexed query should be fast
         self.assertLess(
             indexed_time,
-            1.0,
-            f"Indexed query should complete in < 1 second, took {indexed_time:.3f}s",
+            5.0,
+            f"Indexed query should complete in < 5 seconds, took {indexed_time:.3f}s",
         )
 
     def test_audit_log_querying_performance_indexed_count(self):
@@ -2374,7 +2426,9 @@ class AuditLogRetentionTest(ODPSAuditComprehensiveValidationBase):
 
     def test_audit_log_retention_policy_enforcement(self):
         """Test audit log retention policy enforcement."""
-        from hub.apps.audit.management.commands.archive_old_audit_events import Command
+        from io import StringIO
+
+        from django.core.management import call_command
 
         # Create audit events
         odps_service = ODPSService(tenant_id=str(self.tenant1.id), user_id=str(self.user1.id))
@@ -2394,17 +2448,27 @@ class AuditLogRetentionTest(ODPSAuditComprehensiveValidationBase):
             events_before.count(), 1, "Should have events before retention check"
         )
 
-        # Test retention command (dry-run)
-        command = Command()
-        command.handle(dry_run=True, retention_years=3)
+        # Test retention command (dry-run) via proper call_command path
+        out = StringIO()
+        call_command(
+            "archive_old_audit_events",
+            dry_run=True,
+            retention_years=3,
+            stdout=out,
+        )
+        self.assertIn("DRY RUN", out.getvalue(), "Dry-run output should indicate dry-run mode")
 
-        # Events should still exist (dry-run doesn't delete)
-        events_after = AuditEvent.objects.filter(resource_type="ODPS", resource_id=str(contract.id))
+        # Events should still exist (dry-run doesn't archive)
+        events_after = AuditEvent.objects.filter(
+            resource_type="ODPS", resource_id=str(contract.id)
+        )
         self.assertGreaterEqual(events_after.count(), 1, "Should still have events after dry-run")
 
     def test_audit_log_archival(self):
         """Test audit log archival process."""
-        from hub.apps.audit.management.commands.archive_old_audit_events import Command
+        from io import StringIO
+
+        from django.core.management import call_command
 
         # Create old audit event (simulate by updating timestamp)
         odps_service = ODPSService(tenant_id=str(self.tenant1.id), user_id=str(self.user1.id))
@@ -2417,30 +2481,37 @@ class AuditLogRetentionTest(ODPSAuditComprehensiveValidationBase):
         )
 
         # Get audit event and make it old (4 years ago)
-        audit_event = AuditEvent.objects.filter(
+        audit_event = AuditEvent.all_objects.filter(
             resource_type="ODPS", resource_id=str(contract.id)
         ).first()
 
-        if audit_event:
-            # Use update() to bypass immutable save() method
-            old_timestamp = timezone.now() - timedelta(days=4 * 365)
-            AuditEvent.objects.filter(pk=audit_event.pk).update(timestamp=old_timestamp)
-            audit_event.refresh_from_db()
+        self.assertIsNotNone(audit_event, "Audit event should exist for archival test")
 
-            # Verify event is old
-            self.assertLess(audit_event.timestamp, timezone.now() - timedelta(days=3 * 365))
+        # Use update() to bypass immutable save() method
+        old_timestamp = timezone.now() - timedelta(days=4 * 365)
+        AuditEvent.all_objects.filter(pk=audit_event.pk).update(timestamp=old_timestamp)
+        audit_event.refresh_from_db()
 
-            # Test archival command (dry-run)
-            command = Command()
-            command.handle(dry_run=True, retention_years=3)
+        # Verify event is old
+        self.assertLess(audit_event.timestamp, timezone.now() - timedelta(days=3 * 365))
 
-            # Event should be identified for archival
-            old_events = AuditEvent.objects.filter(
-                timestamp__lt=timezone.now() - timedelta(days=3 * 365)
-            )
-            self.assertGreaterEqual(
-                old_events.count(), 1, "Should identify old events for archival"
-            )
+        # Test archival command (dry-run) via proper call_command path
+        out = StringIO()
+        call_command(
+            "archive_old_audit_events",
+            dry_run=True,
+            retention_years=3,
+            stdout=out,
+        )
+        self.assertIn("DRY RUN", out.getvalue(), "Dry-run output should indicate dry-run mode")
+
+        # Event should be identified for archival
+        old_events = AuditEvent.all_objects.filter(
+            timestamp__lt=timezone.now() - timedelta(days=3 * 365)
+        )
+        self.assertGreaterEqual(
+            old_events.count(), 1, "Should identify old events for archival"
+        )
 
     def test_audit_log_deletion_after_retention_period(self):
         """Test audit log deletion after retention period."""

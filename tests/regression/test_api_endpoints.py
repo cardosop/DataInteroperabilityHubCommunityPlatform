@@ -42,8 +42,8 @@ class APIRegressionTest(TestCase):
         self.client = APIClient()
         plan = get_pro_plan()
         self.tenant = Tenant.objects.create(
-            name="Regression Test Tenant",
-            slug="regression-test-tenant",
+            name=f"Regression Test Tenant {uuid.uuid4().hex[:8]}",
+            slug=f"regression-test-tenant-{uuid.uuid4().hex[:8]}",
             plan=plan,
         )
         Subscription.objects.create(

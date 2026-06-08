@@ -20,6 +20,7 @@ Uses REAL services (no mocks).
 import pytest
 import hashlib
 import time
+import uuid
 from django.test import TestCase
 from rest_framework import status
 
@@ -334,8 +335,8 @@ class CompleteMarketplaceJourneyE2ETest(E2ETestBase):
         
         # Create consumer tenant
         self.consumer_tenant = Tenant.objects.create(
-            name='Consumer Tenant',
-            slug='consumer-tenant',
+            name=f"Consumer Tenant {uuid.uuid4().hex[:8]}",
+            slug=f"consumer-tenant-{uuid.uuid4().hex[:8]}",
             kyc_status=KYCStatus.VERIFIED
         )
         # Consumer tenant needs active subscription so TenantSuspensionMiddleware allows order creation

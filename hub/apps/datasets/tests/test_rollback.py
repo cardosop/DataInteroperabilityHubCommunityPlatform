@@ -333,8 +333,8 @@ class VersionRollbackManagerTest(DatasetsTestBase):
 
     # ========== ERROR HANDLING ==========
 
-    def test_rollback_database_error_handling(self):
-        """Test error handling when rollback fails"""
+    def test_execute_rollback_no_parent_version_returns_failure(self):
+        """execute_rollback with no parent version returns success=False without raising."""
         dataset = Dataset.objects.create(
             tenant=self.tenant,
             asset=self.asset,
@@ -379,3 +379,25 @@ class VersionRollbackManagerTest(DatasetsTestBase):
             self.assertIn("triggers", result)
         except Exception:
             self.fail("check_rollback_conditions should handle errors gracefully")
+
+    # ── Rollback history (gap: previously untested) ──────────────────
+
+    def test_get_rollback_history_returns_list(self):
+        """get_rollback_history must return a list for an asset with versions."""
+        history = VersionRollbackManager.get_rollback_history(
+            asset_id=str(self.asset.id),
+            tenant_id=str(self.tenant.id),
+        )
+        self.assertIsInstance(history, list,
+            "get_rollback_history must return a list")
+
+    def test_get_rollback_history_with_limit(self):
+        """get_rollback_history respects the limit parameter."""
+        history = VersionRollbackManager.get_rollback_history(
+            asset_id=str(self.asset.id),
+            tenant_id=str(self.tenant.id),
+            limit=5,
+        )
+        self.assertIsInstance(history, list)
+        self.assertLessEqual(len(history), 5,
+            "get_rollback_history must not exceed the requested limit")

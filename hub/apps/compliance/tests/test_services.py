@@ -22,6 +22,7 @@ from hub.apps.compliance.models import ComplianceRunStatus
 from hub.apps.compliance.services import ComplianceService
 from hub.apps.core.services.base import NotFoundError, ValidationError
 from hub.apps.tenants.models import Tenant
+from hub.apps.testing.billing_support import ensure_tenant_has_active_subscription
 from hub.apps.users.models import UserStatus
 
 pytestmark = pytest.mark.django_db(transaction=True)
@@ -46,6 +47,10 @@ class ComplianceServiceTest(TestCase):
             tenant=self.tenant,
             status=UserStatus.ACTIVE,
         )
+
+        # Ensure tenant has active subscription so PlanLimitService.check_limit()
+        # does not raise NotFoundError("No FREE plan found").
+        ensure_tenant_has_active_subscription(self.tenant)
 
         # Create service instance
         self.service = ComplianceService(tenant_id=str(self.tenant.id), user_id=str(self.user.id))
@@ -372,8 +377,16 @@ class ComplianceServiceTest(TestCase):
 
     # ========== EDGE CASES ==========
 
-    def test_create_compliance_run_cross_tenant_asset(self):
-        """Test creating compliance run with asset from different tenant raises ValidationError"""
+    def test_create_compliance_run_cross_tenant_asset_returns_validation_error(self):
+        """Creating a compliance run for an asset that belongs to a different tenant
+        raises ValidationError with code BUSINESS_RULES_VALIDATION.
+
+        The service uses a tenant-scoped Asset lookup (``Asset.objects.get(
+        id=asset_id, tenant_id=tenant_id)``), so a cross-tenant asset produces
+        ``Asset.DoesNotExist`` → "Asset not found", which is the same error
+        surface as a genuinely missing asset.  This is intentional from a
+        security standpoint — an attacker must not learn whether an arbitrary
+        UUID belongs to another tenant."""
         from hub.apps.assets.models import Asset, AssetStatus
 
         # Create another tenant
@@ -400,6 +413,9 @@ class ComplianceServiceTest(TestCase):
 
         self.assertEqual(context.exception.code, "BUSINESS_RULES_VALIDATION")
         self.assertIn("Asset not found", str(context.exception))
+        # Confirm the rejection is from the tenant-scoped lookup, not a
+        # different validation path — the asset exists in *another* tenant.
+        self.assertIn(str(asset.id), str(context.exception.details.get("asset_id", "")))
 
     def test_create_compliance_run_default_scan_mode(self):
         """Test creating compliance run defaults scan_mode to internal"""

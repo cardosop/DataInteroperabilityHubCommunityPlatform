@@ -211,15 +211,7 @@ class ODPSRefResolutionErrorTest(TestCase):
         self.assertIsNone(retry_header)
 
 
-def get_real_redis_client_or_none():
-    """Get real Redis client if available, None otherwise"""
-    try:
-        redis_url = getattr(settings, "REDIS_URL", None) or "redis://redis-cache-test:6379/0"
-        client = redis.from_url(redis_url, decode_responses=False, socket_connect_timeout=1)
-        client.ping()
-        return client
-    except Exception:
-        return None
+from hub.apps.contracts.tests.test_base import get_real_redis_client_or_none
 
 
 class ODPSRateLimitingCheckTest(TestCase):
@@ -344,14 +336,15 @@ class ODPSRateLimitingCheckTest(TestCase):
             self.assertTrue(is_allowed, "Should allow requests when Redis unavailable (fail open)")
             self.assertIsNone(error, "No error when failing open")
 
-    def test_check_rate_limit_fails_open_on_redis_error(self):
+    def test_check_rate_limit_normal_operation_with_valid_redis(self):
         """
-        Test that rate limit check fails open on Redis errors.
+        Test rate limit check normal operation with valid Redis.
 
-        The implementation uses try/except blocks around Redis operations to catch
-        errors and fail open. This test verifies that the function handles errors gracefully.
-        Since we can't easily trigger Redis errors with a real client without mocks,
-        this test verifies the normal operation path which includes error handling.
+        The fail-open-on-Redis-error path is tested separately by
+        ``test_check_rate_limit_fails_open_when_redis_unavailable`` which
+        uses ``override_settings(REDIS_URL="redis://localhost:99999")``.
+        This test verifies normal operation: no unhandled exceptions,
+        valid bool return, and correct error code on rate-limit hit.
         """
         redis_client = get_real_redis_client_or_none()
         if not redis_client:
@@ -719,48 +712,28 @@ class ODPSRateLimitingIntegrationTest(TestCase):
 
     # Edge cases and error handling tests
     def test_generate_rate_limit_key_with_none_tenant_id(self):
-        """Test rate limit key generation with None tenant_id."""
-        try:
-            key = generate_rate_limit_key(tenant_id=None, level="tenant")  # type: ignore[misc]  # test: edge-case type exercise
-            # May raise exception
-            self.assertIsNone(key)
-        except ValueError:
-            # None tenant_id should raise ValueError
-            pass
+        """Rate limit key generation with None tenant_id raises ValueError."""
+        with self.assertRaises(ValueError):
+            generate_rate_limit_key(tenant_id=None, level="tenant")  # type: ignore[misc]  # test: edge-case type exercise
 
     def test_generate_rate_limit_key_with_empty_tenant_id(self):
-        """Test rate limit key generation with empty tenant_id."""
-        try:
-            key = generate_rate_limit_key(tenant_id="", level="tenant")
-            # May raise exception or handle empty string
-            self.assertIsNotNone(key)
-        except ValueError:
-            # Empty tenant_id may raise ValueError
-            pass
+        """Rate limit key generation with empty tenant_id raises ValueError."""
+        with self.assertRaises(ValueError):
+            generate_rate_limit_key(tenant_id="", level="tenant")
 
     def test_generate_rate_limit_key_with_special_characters(self):
-        """Test rate limit key generation with special characters."""
+        """Rate limit key generation handles special characters without crashing."""
         tenant_id = "tenant-<>&\"'"
-        try:
-            key = generate_rate_limit_key(tenant_id=tenant_id, level="tenant")
-            # Should handle special characters
-            self.assertIsNotNone(key)
-            self.assertIn(REDIS_KEY_PREFIX_TENANT, key)
-        except ValueError:
-            # Special characters may cause issues
-            pass
+        key = generate_rate_limit_key(tenant_id=tenant_id, level="tenant")
+        self.assertIsNotNone(key)
+        self.assertIn(REDIS_KEY_PREFIX_TENANT, key)
 
     def test_generate_rate_limit_key_with_unicode(self):
-        """Test rate limit key generation with unicode characters."""
+        """Rate limit key generation handles unicode characters without crashing."""
         tenant_id = "租户"
-        try:
-            key = generate_rate_limit_key(tenant_id=tenant_id, level="tenant")
-            # Should handle unicode
-            self.assertIsNotNone(key)
-            self.assertIn(REDIS_KEY_PREFIX_TENANT, key)
-        except ValueError:
-            # Unicode may cause issues
-            pass
+        key = generate_rate_limit_key(tenant_id=tenant_id, level="tenant")
+        self.assertIsNotNone(key)
+        self.assertIn(REDIS_KEY_PREFIX_TENANT, key)
 
     def test_check_rate_limit_with_none_tenant_id(self):
         """Test rate limit check with None tenant_id: rejected for security (tenant_id required)."""
@@ -794,16 +767,12 @@ class ODPSRateLimitingIntegrationTest(TestCase):
         self.assertIsNone(error)
 
     def test_get_rate_limit_info_with_none_tenant_id(self):
-        """Test get rate limit info with None tenant_id."""
-        try:
-            info = get_rate_limit_info(
-                tenant_id=None, user_id=self.user_id, redis_client=self.redis_client  # type: ignore[misc]  # test: edge-case type exercise
-            )
-            # May raise exception or return empty dict
-            self.assertIsInstance(info, dict)
-        except (ValueError, TypeError):
-            # None tenant_id should raise exception
-            pass
+        """get_rate_limit_info with None tenant_id returns empty dict or raises."""
+        result = get_rate_limit_info(
+            tenant_id=None, user_id=self.user_id, redis_client=self.redis_client  # type: ignore[misc]  # test: edge-case type exercise
+        )
+        self.assertIsInstance(result, dict,
+            "get_rate_limit_info must return a dict for None tenant_id")
 
     def test_get_rate_limit_info_with_none_redis_client(self):
         """Test get rate limit info with None Redis client."""
@@ -814,30 +783,22 @@ class ODPSRateLimitingIntegrationTest(TestCase):
         self.assertIsInstance(info, dict)
 
     def test_rate_limit_with_very_long_tenant_id(self):
-        """Test rate limit with very long tenant_id."""
+        """Rate limit check handles very long tenant_id — must not crash, returns bool."""
         long_tenant_id = "a" * 10000
-        try:
-            is_allowed, error = check_rate_limit(
-                tenant_id=long_tenant_id, user_id=self.user_id, redis_client=self.redis_client
-            )
-            # Should handle very long tenant_id
-            self.assertIsNotNone(is_allowed)
-        except Exception:
-            # May raise exception if tenant_id too long
-            pass
+        is_allowed, error = check_rate_limit(
+            tenant_id=long_tenant_id, user_id=self.user_id, redis_client=self.redis_client
+        )
+        self.assertIsInstance(is_allowed, bool,
+            "check_rate_limit must return a boolean for very long tenant_id")
 
     def test_rate_limit_with_very_long_user_id(self):
-        """Test rate limit with very long user_id."""
+        """Rate limit check handles very long user_id — must not crash, returns bool."""
         long_user_id = "a" * 10000
-        try:
-            is_allowed, error = check_rate_limit(
-                tenant_id=self.tenant_id, user_id=long_user_id, redis_client=self.redis_client
-            )
-            # Should handle very long user_id
-            self.assertIsNotNone(is_allowed)
-        except Exception:
-            # May raise exception if user_id too long
-            pass
+        is_allowed, error = check_rate_limit(
+            tenant_id=self.tenant_id, user_id=long_user_id, redis_client=self.redis_client
+        )
+        self.assertIsInstance(is_allowed, bool,
+            "check_rate_limit must return a boolean for very long user_id")
 
     def test_rate_limit_key_consistency(self):
         """Test rate limit key consistency across calls."""
@@ -879,64 +840,46 @@ class ODPSRateLimitingIntegrationTest(TestCase):
             self.assertIn("remaining", level_info)
 
     def test_rate_limiting_handles_unicode_characters(self):
-        """Test that rate limiting handles unicode characters correctly."""
+        """Rate limiting key generation handles unicode tenant IDs without crashing."""
         tenant_id = "测试租户"
-        try:
-            key = generate_rate_limit_key(
-                tenant_id=tenant_id, user_id=None, level=RATE_LIMIT_PER_TENANT
-            )
-            # Should handle unicode characters
-            self.assertIsNotNone(key)
-        except Exception as e:
-            # If it fails, it should fail gracefully
-            self.assertIsInstance(e, (ValueError, TypeError))
+        key = generate_rate_limit_key(
+            tenant_id=tenant_id, user_id=None, level="tenant"
+        )
+        self.assertIsNotNone(key)
+        self.assertIn(REDIS_KEY_PREFIX_TENANT, key)
+        self.assertIn(tenant_id, key)
 
     def test_rate_limiting_handles_special_characters(self):
-        """Test that rate limiting handles special characters correctly."""
+        """Rate limiting key generation handles special characters without crashing."""
         tenant_id = "Test & Co. (Special)"
-        try:
-            key = generate_rate_limit_key(
-                tenant_id=tenant_id, user_id=None, level=RATE_LIMIT_PER_TENANT
-            )
-            # Should handle special characters
-            self.assertIsNotNone(key)
-        except Exception as e:
-            # If it fails, it should fail gracefully
-            self.assertIsInstance(e, (ValueError, TypeError))
+        key = generate_rate_limit_key(
+            tenant_id=tenant_id, user_id=None, level="tenant"
+        )
+        self.assertIsNotNone(key)
+        self.assertIn(REDIS_KEY_PREFIX_TENANT, key)
+        self.assertIn(tenant_id, key)
 
     def test_rate_limiting_handles_very_large_ids(self):
-        """Test that rate limiting handles very large IDs correctly."""
+        """Rate limiting key generation handles very large tenant IDs without crashing."""
         large_tenant_id = "A" * 1000  # Very long tenant ID
-        try:
-            key = generate_rate_limit_key(
-                tenant_id=large_tenant_id, user_id=None, level=RATE_LIMIT_PER_TENANT
-            )
-            # Should handle very large IDs
-            self.assertIsNotNone(key)
-        except Exception as e:
-            # If it fails, it should fail gracefully
-            self.assertIsInstance(e, (ValueError, TypeError))
+        key = generate_rate_limit_key(
+            tenant_id=large_tenant_id, user_id=None, level="tenant"
+        )
+        self.assertIsNotNone(key)
+        self.assertIn(REDIS_KEY_PREFIX_TENANT, key)
 
     def test_rate_limiting_handles_none_values(self):
-        """Test that rate limiting handles None values correctly."""
-        try:
-            key = generate_rate_limit_key(tenant_id=None, user_id=None, level=RATE_LIMIT_GLOBAL)  # type: ignore[misc]  # test: edge-case type exercise
-            # Should handle None values gracefully
-            self.assertIsNotNone(key)
-        except Exception as e:
-            # If it fails, it should fail gracefully
-            self.assertIsInstance(e, (ValueError, TypeError))
+        """Global-level rate limit key generation succeeds with None tenant_id/user_id."""
+        key = generate_rate_limit_key(tenant_id=None, user_id=None, level="global")  # type: ignore[misc]  # test: edge-case type exercise
+        self.assertIsNotNone(key)
+        self.assertIn(REDIS_KEY_PREFIX_GLOBAL, key)
 
     def test_rate_limiting_handles_nested_structures(self):
-        """Test that rate limiting handles nested structures correctly."""
-        # Rate limiting keys are typically flat, but we can test with complex tenant IDs
+        """Rate limiting key generation handles complex tenant ID strings."""
         complex_tenant_id = "tenant-with-nested-structure"
-        try:
-            key = generate_rate_limit_key(
-                tenant_id=complex_tenant_id, user_id=None, level=RATE_LIMIT_PER_TENANT
-            )
-            # Should handle nested structures in IDs
-            self.assertIsNotNone(key)
-        except Exception as e:
-            # If it fails, it should fail gracefully
-            self.assertIsInstance(e, (ValueError, TypeError))
+        key = generate_rate_limit_key(
+            tenant_id=complex_tenant_id, user_id=None, level="tenant"
+        )
+        self.assertIsNotNone(key)
+        self.assertIn(REDIS_KEY_PREFIX_TENANT, key)
+        self.assertIn(complex_tenant_id, key)

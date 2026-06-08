@@ -395,6 +395,10 @@ class TestSyncPullDoesNotDownloadData(TestConnectorPatternBase):
             title="Test Package",
         )
 
+        # Capture initial counts BEFORE sync_pull so we can verify
+        # no files/datasets were created during the pull operation.
+        initial_counts = self.get_initial_counts()
+
         with patch.object(connector, "list_listings", return_value=[sample_listing]):
             with patch.object(connector, "list_resources", return_value=[]):
                 result = connector.sync_pull()
@@ -405,7 +409,6 @@ class TestSyncPullDoesNotDownloadData(TestConnectorPatternBase):
         )
 
         # Verify no files or datasets were created
-        initial_counts = self.get_initial_counts()
         final_counts = self.get_initial_counts()
         self.assertEqual(
             final_counts["files"],
@@ -770,7 +773,7 @@ class TestDownloadResourceHandlesOnDemandDownloads(TestConnectorPatternBase):
         import tempfile
 
         # Mock client.get_resource to return resource data
-        def mock_get_resource(resource_id):
+        def mock_get_resource(resource_id, dataset_id=None):
             return {
                 "success": True,
                 "result": {
@@ -953,31 +956,22 @@ class TestConnectorWorkflowIntegration(TestConnectorPatternBase):
                 tenant=self.tenant, workflow_name__startswith="marketplace_sync"
             ).count()
 
-            try:
-                sync_job = service.sync_from_marketplace(
-                    connection_id=str(connection.id),
-                    tenant_id=str(self.tenant.id),
-                    user_id=str(self.user.id),
-                    options={"dry_run": True},
-                )
+            sync_job = service.sync_from_marketplace(
+                connection_id=str(connection.id),
+                tenant_id=str(self.tenant.id),
+                user_id=str(self.user.id),
+                options={"dry_run": True},
+            )
 
-                self.assertIsNotNone(sync_job)
-                self.assertIsInstance(sync_job, MarketplaceSyncJob)
-                self.assertEqual(sync_job.direction, SyncDirection.PULL.value)
+            self.assertIsNotNone(sync_job)
+            self.assertIsInstance(sync_job, MarketplaceSyncJob)
+            self.assertEqual(sync_job.direction, SyncDirection.PULL.value)
 
-                final_workflow_count = WorkflowInstance.objects.filter(
-                    tenant=self.tenant, workflow_name__startswith="marketplace_sync"
-                ).count()
-                self.assertGreaterEqual(final_workflow_count, initial_workflow_count)
+            final_workflow_count = WorkflowInstance.objects.filter(
+                tenant=self.tenant, workflow_name__startswith="marketplace_sync"
+            ).count()
+            self.assertGreaterEqual(final_workflow_count, initial_workflow_count)
 
-            except Exception as e:
-                sync_jobs = MarketplaceSyncJob.objects.filter(
-                    connection=connection, direction=SyncDirection.PULL.value
-                )
-                self.assertGreater(
-                    sync_jobs.count(), 0,
-                    f"Sync job should be created even if workflow fails: {e}",
-                )
         finally:
             try:
                 MarketplaceConnectorFactory.unregister_connector(

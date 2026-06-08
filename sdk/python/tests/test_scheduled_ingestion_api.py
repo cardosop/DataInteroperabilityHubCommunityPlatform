@@ -42,7 +42,15 @@ async def test_create_ingestion(ingestion_api, client):
     )
     
     assert result == expected_response
-    client.post.assert_called_once()
+    client.post.assert_called_once_with(
+        "scheduled-ingestions/",
+        data={
+            "name": "test-ingestion",
+            "source_type": "s3",
+            "source_config": {"bucket": "test-bucket"},
+            "schedule": "0 0 * * *",
+        },
+    )
 
 
 @pytest.mark.asyncio

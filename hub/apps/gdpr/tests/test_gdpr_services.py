@@ -26,7 +26,7 @@ from hub.apps.audit.models import AuditEvent
 from hub.apps.audit.utils import create_audit_event
 from hub.apps.baas.models import APIKey, APITier, APITierModel
 from hub.apps.contracts.models import Contract, ContractStatus
-from hub.apps.core.services.base import NotFoundError, ValidationError
+from hub.apps.core.services.base import NotFoundError, ServiceError, ValidationError
 from hub.apps.datasets.models import Dataset
 from hub.apps.files.models import File, FileStatus
 from hub.apps.files.storage import S3StorageClient
@@ -673,11 +673,14 @@ class ErasureServiceTest(TestCase):
         request = self.service.create_request(user_id=str(self.user.id))
         self.service.execute_erasure(request_id=str(request.id))
 
-        # Find the specific event we created (not the erasure service's own events)
+        # Find the specific event we created (not the erasure service's own events).
+        # Phase 2 of audit erasure nulls ``actor_user_id`` on rows where the
+        # actor IS the target user — filter by ``resource_id`` alone since
+        # ``actor_user`` is intentionally NULL after erasure.
         audit_event = AuditEvent.objects.filter(
-            actor_user=self.user, resource_id=test_resource_id
+            resource_id=test_resource_id
         ).first()
-        self.assertIsNotNone(audit_event, "Test audit event should still exist after erasure")
+        self.assertIsNotNone(audit_event, "Test audit event should still exist after erasure; resource_id=%s" % test_resource_id)
         self.assertIsInstance(audit_event.details_json, dict)
         self.assertEqual(
             audit_event.details_json["user_email"], "deleted@deleted.local"
@@ -715,8 +718,8 @@ class ErasureServiceTest(TestCase):
             display_name=f"Collision User {unique}",
         )
 
-        # Should raise exception, but request should be marked as FAILED
-        with self.assertRaises(Exception):
+        # Should raise ServiceError, but request should be marked as FAILED
+        with self.assertRaises(ServiceError):
             self.service.execute_erasure(request_id=str(request.id))
 
         # Request should be marked as failed (request survives; no CASCADE)

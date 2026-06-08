@@ -164,3 +164,11 @@ export const SIDEBAR_NAV_ITEMS: NavItem[] = [
   },
   { path: '/admin', label: 'Admin', icon: '⚙️', requiredRole: ['TENANT_ADMIN', 'PLATFORM_ADMIN'] },
 ];
+
+/** Roles required to access compliance sidebar routes. */
+export const COMPLIANCE_SIDEBAR_REQUIRED_ROLES: string[] = [
+  'COMPLIANCE_OFFICER',
+  'DPO',
+  'TENANT_ADMIN',
+  'PLATFORM_ADMIN',
+];

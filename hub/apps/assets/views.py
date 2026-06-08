@@ -727,7 +727,43 @@ class AssetViewSet(viewsets.ModelViewSet):
             # The TTL would clean up eventually, but releasing here
             # frees the slot immediately so retries can proceed.
             _release_lock_once()
-            raise
+            # Re-raise expected Django / DRF exceptions (ValidationError,
+            # Http404, PermissionDenied, etc.) so the framework returns
+            # the proper 4xx response.  Only truly unexpected exceptions
+            # are logged and converted to a 500 — this avoids double-
+            # logging through Django's process_exception middleware.
+            import sys as _sys
+            from django.core.exceptions import (
+                PermissionDenied as _DjangoPermissionDenied,
+                SuspiciousOperation as _DjangoSuspiciousOperation,
+                BadRequest as _DjangoBadRequest,
+            )
+            from django.http import Http404 as _DjangoHttp404
+            from rest_framework.exceptions import APIException as _DRFAPIException
+
+            _exc_type, _exc_value, _exc_tb = _sys.exc_info()
+            if _exc_value is not None and isinstance(
+                _exc_value,
+                (
+                    _DjangoHttp404,
+                    _DjangoPermissionDenied,
+                    _DjangoSuspiciousOperation,
+                    _DjangoBadRequest,
+                    _DRFAPIException,
+                ),
+            ):
+                raise
+            # Truly unexpected — log at WARNING (lock was released;
+            # this is a handled outcome) and return 500 so the client
+            # gets a structured JSON body instead of an HTML traceback.
+            _logger = logging.getLogger(__name__)
+            _logger.warning(
+                "Unhandled exception in data-first endpoint", exc_info=True
+            )
+            return Response(
+                {"error": "Internal server error", "code": "INTERNAL_ERROR"},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
 
     def _data_first_workflow(self, *, request, tenant, _cache_and_return, _just_return):
         """Inner half of :meth:`data_first` — runs while the idempotency
@@ -1956,13 +1992,63 @@ class AssetViewSet(viewsets.ModelViewSet):
 
         return response
 
+    def _get_via_entitlement(self, request, asset_id):
+        """Cross-tenant asset access via marketplace entitlement.
+
+        Returns the Asset if the consumer has an ACTIVE entitlement
+        for the asset; ``None`` otherwise (caller raises 404).
+        Raises ``PermissionDenied`` only when entitlement is revoked
+        or expired (consumer previously had access).
+
+        Follows the same pattern as
+        ``hub.apps.datasets.views.DatasetViewSet._get_via_entitlement``
+        (Phase 117B.5).
+        """
+        try:
+            asset = Asset.objects.select_related("tenant", "created_by").get(
+                id=asset_id,
+            )
+        except Asset.DoesNotExist:
+            return None
+
+        consumer_tenant_id = get_request_tenant_id(request)
+        if not consumer_tenant_id:
+            return None
+
+        from hub.apps.marketplace.entitlement_check import require_entitlement
+
+        try:
+            require_entitlement(
+                consumer_tenant_id=consumer_tenant_id,
+                asset_id=str(asset.id),
+                provider_tenant_id=str(asset.tenant_id),
+            )
+        except PermissionDenied as exc:
+            # ENTITLEMENT_REQUIRED → return None so the caller raises
+            # 404 — don't reveal the resource exists.
+            # Revoked/expired entitlements → re-raise 403.
+            detail = exc.args[0] if exc.args else {}
+            code = detail.get("code", "") if isinstance(detail, dict) else ""
+            if code == "ENTITLEMENT_REQUIRED":
+                return None
+            raise
+        return asset
+
     def retrieve(self, request, *args, **kwargs):
         """
-        Retrieve asset by ID with caching.
+        Retrieve asset by ID with caching and cross-tenant entitlement
+        enforcement.
 
         GET /api/v1/assets/{id}/
+
+        Access control:
+        * Same-tenant: allowed via the tenant-scoped queryset.
+        * Cross-tenant: requires an ACTIVE marketplace entitlement
+          (falls back to ``_get_via_entitlement`` when the asset is
+          not visible through the tenant-scoped queryset).
         """
         from django.conf import settings as _settings
+        from django.http import Http404
 
         asset_id = str(kwargs.get("id", ""))
 
@@ -1975,20 +2061,29 @@ class AssetViewSet(viewsets.ModelViewSet):
         e2e_mode = getattr(_settings, "RATE_LIMIT_E2E_RELAX", False)
 
         if not e2e_mode:
-            # Try to get from cache
+            # Try to get from cache (only for same-tenant hits; cross-tenant
+            # entitlement-based access serves a different audience and may
+            # have different serialisation, so skip the cache for it).
             cached_data = get_cached_asset_detail(asset_id)
             if cached_data is not None:
                 return Response(cached_data)
 
-        # Cache miss (or E2E mode) - execute query
-        asset = self.get_object()
+        # Try tenant-scoped queryset first (same-tenant access).
+        try:
+            asset = self.get_object()
+        except (Http404, NotFound):
+            # Cross-tenant entitlement fallback.
+            asset = self._get_via_entitlement(request, asset_id)
+            if asset is None:
+                raise NotFound("Asset not found.")
 
         # Set resource instance on request for cache headers middleware
         request._resource_instance = asset
 
         response = super().retrieve(request, *args, **kwargs)
 
-        # Cache the result (skip in E2E mode — fresh DB reads are preferred)
+        # Cache the result (skip in E2E mode — fresh DB reads are preferred;
+        # also skip cross-tenant hits to avoid caching under the wrong key).
         if response.status_code == 200 and not e2e_mode:
             try:
                 asset_data = response.data
@@ -2111,6 +2206,12 @@ class AssetViewSet(viewsets.ModelViewSet):
             )
 
             # Phase 274.2.2 — three-state taxonomy via AssetActivationRule.
+            # Compliance-specific status codes (409 Retry-After, 422)
+            # apply ONLY when there are no non-compliance blockers
+            # (contract / DQ).  If a contract or DQ blocker is present
+            # alongside a compliance blocker, the response is 400 so the
+            # caller fixes the actionable issue before retrying the
+            # compliance gate.
             from hub.apps.assets.business_rules import AssetActivationRule
 
             rule_result = AssetActivationRule.validate_activation(asset)
@@ -2118,15 +2219,33 @@ class AssetViewSet(viewsets.ModelViewSet):
             status_code = status.HTTP_400_BAD_REQUEST
             headers = {}
 
-            if blocker_code == "COMPLIANCE_SCAN_PENDING":
-                status_code = 409
-                headers["Retry-After"] = "30"
-            elif blocker_code in (
+            # The compliance-specific HTTP status codes (409 Retry-After,
+            # 422) apply ONLY when AssetActivationRule's SCAN-gate is the
+            # exclusive blocker.  Any other blocker — contract, DQ status,
+            # compliance_status — is an actionable issue the caller must
+            # fix, so the response is 400.
+            _rule_only_blockers = {
+                "COMPLIANCE_SCAN_PENDING",
                 "COMPLIANCE_SCAN_FAILED",
                 "COMPLIANCE_NOT_ALLOWED_TO_STORE",
                 "COMPLIANCE_THRESHOLD_EXCEEDED",
-            ):
-                status_code = 422
+            }
+            _has_actionable_blockers = any(
+                not b.startswith(tuple(_rule_only_blockers))
+                for b in blockers
+            )
+            if _has_actionable_blockers:
+                blocker_code = "ASSET_ACTIVATION_BLOCKED"
+            if not _has_actionable_blockers:
+                if blocker_code == "COMPLIANCE_SCAN_PENDING":
+                    status_code = 409
+                    headers["Retry-After"] = "30"
+                elif blocker_code in (
+                    "COMPLIANCE_SCAN_FAILED",
+                    "COMPLIANCE_NOT_ALLOWED_TO_STORE",
+                    "COMPLIANCE_THRESHOLD_EXCEEDED",
+                ):
+                    status_code = 422
 
             return Response(
                 {
@@ -3211,20 +3330,24 @@ class AssetViewSet(viewsets.ModelViewSet):
 
         Downloads multiple resources in parallel and returns batch status.
         """
+        asset = self.get_object()
+
+        # Check if asset is federated
+        if asset.source_type != AssetSourceType.FEDERATED:
+            return Response(
+                {"error": "Asset is not a federated asset", "code": "NOT_FEDERATED_ASSET"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        # Validate request – ValidationError is a normal client error,
+        # not a server fault.  DRF's exception handler surfaces it as a
+        # structured 400 without an ERROR-level log on the server side.
+        # This is intentionally OUTSIDE the try/except below so the
+        # ValidationError is not caught by the generic handler.
+        serializer = BatchDownloadSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
         try:
-            asset = self.get_object()
-
-            # Check if asset is federated
-            if asset.source_type != AssetSourceType.FEDERATED:
-                return Response(
-                    {"error": "Asset is not a federated asset", "code": "NOT_FEDERATED_ASSET"},
-                    status=status.HTTP_400_BAD_REQUEST,
-                )
-
-            # Validate request
-            serializer = BatchDownloadSerializer(data=request.data)
-            serializer.is_valid(raise_exception=True)
-
             resource_ids = serializer.validated_data["resource_ids"]
             # Deduplicate resource_ids to handle duplicates gracefully
             resource_ids = list(dict.fromkeys(resource_ids))  # Preserves order while removing duplicates

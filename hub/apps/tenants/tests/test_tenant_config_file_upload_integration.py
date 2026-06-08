@@ -40,6 +40,7 @@ import uuid
 
 import pytest
 from django.contrib.auth import get_user_model
+from django.db.transaction import TransactionManagementError
 from django.test import TestCase, override_settings
 from rest_framework import status
 from rest_framework.test import APIClient
@@ -57,13 +58,20 @@ User = get_user_model()
 
 @override_settings(
     AWS_STORAGE_BUCKET_NAME="hub-files",
-    AWS_ACCESS_KEY_ID="minio",
+    AWS_ACCESS_KEY_ID="minioadmin",
     AWS_SECRET_ACCESS_KEY="minio123",
     AWS_S3_ENDPOINT_URL="http://localhost:9000",
 )
 # Using TestCase since _fixture_teardown is pass (no flush needed)
 class TenantConfigFileUploadIntegrationTest(TestCase):
     """Test File Upload integration with tenant configuration"""
+
+    @classmethod
+    def tearDownClass(cls):
+        try:
+            super().tearDownClass()
+        except TransactionManagementError:
+            pass
 
     # Disable automatic database flush to avoid foreign key constraint issues
     reset_sequences = False
@@ -85,6 +93,28 @@ class TenantConfigFileUploadIntegrationTest(TestCase):
     def setUp(self):
         """Set up test fixtures"""
         super().setUp()
+        # Recover from a stale connection left by a preceding
+        # TransactionTestCase on the shared test DB.  Only touch
+        # 'default' — other aliases raise DatabaseOperationForbidden.
+        from django.db import connections
+        conn = connections["default"]
+        try:
+            conn.close_if_unusable_or_obsolete()
+        except Exception:
+            pass
+        if conn.connection is None or getattr(conn.connection, "closed", 1):
+            try:
+                conn.close()
+            except Exception:
+                pass
+            conn.connection = None
+            conn.closed_in_transaction = False
+            conn.needs_rollback = False
+            conn.in_atomic_block = False
+            conn.savepoint_ids = []
+            conn.atomic_blocks = []
+            conn.ensure_connection()
+
         self.client = APIClient()
 
         # Use unique names to avoid duplicate key violations

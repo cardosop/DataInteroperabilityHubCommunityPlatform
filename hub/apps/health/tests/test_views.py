@@ -34,6 +34,19 @@ pytestmark = pytest.mark.django_db(transaction=True)
 User = get_user_model()
 
 
+def _json_data(response):
+    """Extract JSON-parsed data from a view response.
+
+    Works with both Django JsonResponse (plain views: liveness, health_check)
+    and DRF Response (@api_view: circuit_breaker_status).  DRF Response is a
+    SimpleTemplateResponse subclass whose .content raises ContentNotRenderedError
+    before .render() — its .data attribute must be used instead.
+    """
+    if hasattr(response, "data"):
+        return response.data
+    return json.loads(response.content)
+
+
 class TestLiveness(TestCase):
     """Test liveness endpoint (Docker/Kubernetes liveness probe)."""
 
@@ -46,11 +59,9 @@ class TestLiveness(TestCase):
         self.assertEqual(response.status_code, 200)
 
     def test_liveness_returns_json_ok(self):
-        import json
         request = self.factory.get("/health/live/")
         response = liveness(request)
-        # Root cause fix: JsonResponse doesn't have .json() method, use json.loads(response.content)
-        data = json.loads(response.content)
+        data = _json_data(response)
         self.assertEqual(data, {"status": "ok"})
         self.assertEqual(response["Content-Type"], "application/json")
 
@@ -75,7 +86,7 @@ class TestHealthCheck(TestCase):
         request = self.factory.get("/health/")
         response = health_check(request)
 
-        data = json.loads(response.content)
+        data = _json_data(response)
         self.assertIn("status", data)
         self.assertIn("database", data)
         self.assertIn("redis", data)
@@ -86,7 +97,7 @@ class TestHealthCheck(TestCase):
         request = self.factory.get("/health/")
         response = health_check(request)
 
-        data = json.loads(response.content)
+        data = _json_data(response)
         # In test environment, the database is available
         self.assertEqual(data["database"], "connected")
 
@@ -95,7 +106,7 @@ class TestHealthCheck(TestCase):
         request = self.factory.get("/health/")
         response = health_check(request)
 
-        data = json.loads(response.content)
+        data = _json_data(response)
         redis_status = data["redis"]
         self.assertIn("cache", redis_status)
         self.assertIn("queue", redis_status)
@@ -107,7 +118,7 @@ class TestHealthCheck(TestCase):
         request = self.factory.get("/health/")
         response = health_check(request)
 
-        data = json.loads(response.content)
+        data = _json_data(response)
         self.assertEqual(data["database"], "connected")
         # With DB connected, status should be healthy (unless Redis is down)
         # At minimum, the status field must be a valid value
@@ -120,7 +131,7 @@ class TestHealthCheck(TestCase):
         request = self.factory.get("/health/")
         response = health_check(request)
 
-        data = json.loads(response.content)
+        data = _json_data(response)
         if data["status"] == "healthy":
             self.assertEqual(response.status_code, 200)
         else:
@@ -144,7 +155,7 @@ class TestHealthCheck(TestCase):
         request = self.factory.get("/health/")
         response = health_check(request)
 
-        data = json.loads(response.content)
+        data = _json_data(response)
         redis_status = data["redis"]
         expected_instances = ["cache", "queue", "events", "channels"]
         for instance_name in expected_instances:
@@ -155,7 +166,7 @@ class TestHealthCheck(TestCase):
         request = self.factory.get("/health/")
         response = health_check(request)
 
-        data = json.loads(response.content)
+        data = _json_data(response)
         redis_status = data["redis"]
         for instance_name, instance_status in redis_status.items():
             # Status should be 'connected' or start with 'error:'
@@ -169,7 +180,7 @@ class TestHealthCheck(TestCase):
         request = self.factory.get("/health/")
         response = health_check(request)
 
-        data = json.loads(response.content)
+        data = _json_data(response)
         db_status = data["database"]
         # Database status should be 'connected' or start with 'error:'
         self.assertTrue(
@@ -191,7 +202,7 @@ class TestHealthCheck(TestCase):
         request = self.factory.get("/health/")
         response = health_check(request)
 
-        data = json.loads(response.content)
+        data = _json_data(response)
         # Verify all required fields are present
         self.assertIn("status", data)
         self.assertIn("database", data)
@@ -206,7 +217,7 @@ class TestHealthCheck(TestCase):
         request = self.factory.get("/health/")
         response = health_check(request)
 
-        data = json.loads(response.content)
+        data = _json_data(response)
         self.assertIn(data["status"], ["healthy", "unhealthy"])
 
     def test_health_check_response_structure_consistency(self):
@@ -217,8 +228,8 @@ class TestHealthCheck(TestCase):
         response1 = health_check(request1)
         response2 = health_check(request2)
 
-        data1 = json.loads(response1.content)
-        data2 = json.loads(response2.content)
+        data1 = _json_data(response1)
+        data2 = _json_data(response2)
 
         # Structure should be consistent
         self.assertEqual(set(data1.keys()), set(data2.keys()))
@@ -230,7 +241,7 @@ class TestHealthCheck(TestCase):
         request = self.factory.get("/health/")
         response = health_check(request)
 
-        data = json.loads(response.content)
+        data = _json_data(response)
         # http_status should not be in response body (it's used for HTTP status code)
         self.assertNotIn("http_status", data)
 
@@ -251,7 +262,7 @@ class TestHealthCheck(TestCase):
         response = circuit_breaker_status(request)
 
         if response.status_code in [200, 404]:
-            data = response.data if hasattr(response, 'data') else json.loads(response.content)
+            data = _json_data(response)
             self.assertNotIn("http_status", data)
 
 
@@ -281,10 +292,18 @@ class TestCircuitBreakerStatus(TestCase):
     def test_circuit_breaker_status_all_breakers(self):
         """Test getting aggregate status of all circuit breakers"""
         response = self._authed_get()
-        self.assertIn(response.status_code, [200, 500])
+        # Circuit breakers may not be configured in the test environment —
+        # 500 is acceptable ONLY when the error is the expected "unavailable"
+        # message, not a crash or unexpected exception.
+        if response.status_code == 500:
+            data = _json_data(response)
+            self.assertEqual(data.get("error"),
+                "Circuit breaker status unavailable")
+            return  # Infrastructure not available — skip further assertions.
+        self.assertEqual(response.status_code, 200)
 
         if response.status_code == 200:
-            data = response.data
+            data = _json_data(response)
             self.assertIn("status", data)
             self.assertIn("total_breakers", data)
             self.assertIn("open_breakers", data)
@@ -293,6 +312,12 @@ class TestCircuitBreakerStatus(TestCase):
         """Test error handling in circuit breaker status"""
         response = self._authed_get()
         self.assertIn(response.status_code, [200, 500])
+        if response.status_code == 500:
+            data = _json_data(response)
+            self.assertEqual(
+                data.get("error"), "Circuit breaker status unavailable",
+                "500 response must carry the expected generic error message",
+            )
 
     # ========== EDGE CASES TESTS ==========
 
@@ -301,7 +326,7 @@ class TestCircuitBreakerStatus(TestCase):
         response = self._authed_get("/health/circuit-breakers/?service_name=test")
         self.assertIn(response.status_code, [200, 500])
         if response.status_code == 200:
-            data = response.data
+            data = _json_data(response)
             # Should still return aggregate data, not single-service
             self.assertIn("total_breakers", data)
 
@@ -310,7 +335,7 @@ class TestCircuitBreakerStatus(TestCase):
         response = self._authed_get()
 
         if response.status_code == 200:
-            data = response.data
+            data = _json_data(response)
             self.assertIn("status", data)
             self.assertIn("total_breakers", data)
             self.assertIn("open_breakers", data)
@@ -326,7 +351,7 @@ class TestCircuitBreakerStatus(TestCase):
         response = self._authed_get()
 
         if response.status_code == 500:
-            data = response.data
+            data = _json_data(response)
             self.assertIn("status", data)
             self.assertIn("error", data)
             self.assertEqual(data["status"], "error")
@@ -350,7 +375,7 @@ class TestCircuitBreakerStatus(TestCase):
         response = self._authed_get()
 
         if response.status_code == 200:
-            data = response.data
+            data = _json_data(response)
             self.assertIn("status", data)
             self.assertIn("total_breakers", data)
             self.assertIn("open_breakers", data)
@@ -360,7 +385,7 @@ class TestCircuitBreakerStatus(TestCase):
         response = self._authed_get()
 
         if response.status_code == 200:
-            data = response.data
+            data = _json_data(response)
             self.assertIn(data["status"], ["healthy", "degraded"])
 
     def test_circuit_breaker_status_http_status_codes(self):

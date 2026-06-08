@@ -321,6 +321,8 @@ class TestDiagnosticCommandsExecutable(TestCase):
         valid_imports = [
             "from hub.apps.integrations.models import",
             "from hub.apps.integrations.factory import",
+            "from hub.apps.integrations.base import",
+            "from hub.apps.integrations.config.marketplace_instances import",
             "from hub.apps.assets.models import",
             "from django.utils import timezone",
             "from datetime import timedelta",

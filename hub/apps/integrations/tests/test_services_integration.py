@@ -563,9 +563,20 @@ class MarketplaceIntegrationServiceIntegrationTest(TestCase):
         self.assertEqual(sync_job.direction, SyncDirection.PUSH.value)
         self.assertEqual(sync_job.status, SyncStatus.PENDING.value)
         self.assertEqual(sync_job.metadata["asset_ids"], asset_ids)
+        self.assertEqual(sync_job.metadata.get("options"), {"dry_run": False})
+        self.assertEqual(sync_job.metadata.get("request_id"), "test-request-123")
 
-        # Service uses workflow engine; sync job metadata includes workflow_instance_id
+        # Service uses workflow engine; sync job metadata includes a valid workflow_instance_id
         self.assertIn("workflow_instance_id", sync_job.metadata)
+        wf_id = sync_job.metadata["workflow_instance_id"]
+        self.assertIsNotNone(wf_id, "workflow_instance_id must not be None")
+        self.assertNotEqual(wf_id, "", "workflow_instance_id must not be empty")
+        # Must be a valid UUID string (36 chars with hyphens)
+        import uuid as _uuid
+        try:
+            _uuid.UUID(wf_id)
+        except (ValueError, AttributeError):
+            self.fail(f"workflow_instance_id must be a valid UUID, got: {wf_id!r}")
 
         # Verify audit log (when job is created; workflow path may publish different events)
         wait_for_event_persistence()
@@ -623,9 +634,19 @@ class MarketplaceIntegrationServiceIntegrationTest(TestCase):
         self.assertEqual(sync_job.status, SyncStatus.PENDING.value)
         self.assertEqual(sync_job.metadata["listing_ids"], listing_ids)
         self.assertEqual(sync_job.metadata["filters"], filters)
+        self.assertEqual(sync_job.metadata.get("options"), {"create_assets": True})
+        self.assertEqual(sync_job.metadata.get("request_id"), "test-request-123")
 
-        # Service uses workflow engine; sync job metadata includes workflow_instance_id
+        # Service uses workflow engine; sync job metadata includes a valid workflow_instance_id
         self.assertIn("workflow_instance_id", sync_job.metadata)
+        wf_id = sync_job.metadata["workflow_instance_id"]
+        self.assertIsNotNone(wf_id, "workflow_instance_id must not be None")
+        self.assertNotEqual(wf_id, "", "workflow_instance_id must not be empty")
+        import uuid as _uuid
+        try:
+            _uuid.UUID(wf_id)
+        except (ValueError, AttributeError):
+            self.fail(f"workflow_instance_id must be a valid UUID, got: {wf_id!r}")
 
         # Verify audit log
         wait_for_event_persistence()

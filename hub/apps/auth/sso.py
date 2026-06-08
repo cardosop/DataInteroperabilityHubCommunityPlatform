@@ -288,6 +288,10 @@ class SSOService:
             
             return None
             
+        except Tenant.DoesNotExist:
+            # Expected: the tenant record does not exist.  The view will return
+            # 400 — no need to log at ERROR level.
+            return None
         except Exception as e:
             logger.error("sso_provider_error", error=str(e), tenant_id=tenant_id)
             return None

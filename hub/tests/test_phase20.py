@@ -269,19 +269,25 @@ class TestServiceAccountTokenOptOut:
         )
 
     def test_only_prefect_worker_opts_in(self):
-        """Scan all helm templates — only the prefect worker may opt in."""
+        """Scan all helm templates — only the prefect worker and
+        ExternalSecrets SA may opt in to automountServiceAccountToken: true."""
         helm_dir = REPO_ROOT / "helm" / "templates"
         prefect_worker = REPO_ROOT / self.PREFECT_YAML
+        # ExternalSecrets needs a SA token for IRSA to AWS Secrets Manager.
+        allowed_opt_ins = {
+            prefect_worker.resolve(),
+            (REPO_ROOT / "helm/templates/externalsecrets/serviceaccount.yaml").resolve(),
+        }
         violations = []
         for tf in helm_dir.rglob("*.yaml"):
-            if tf.resolve() == prefect_worker.resolve():
+            if tf.resolve() in allowed_opt_ins:
                 continue
             # Use non-comment lines: SA file has the string in an explanatory comment
             code = _non_comment_lines(tf.read_text())
             if "automountServiceAccountToken: true" in code:
                 violations.append(str(tf.relative_to(REPO_ROOT)))
         assert not violations, (
-            "Only the Prefect worker should opt in to token mounting. "
+            "Only the Prefect worker and ExternalSecrets SA should opt in to token mounting. "
             f"Unexpected opt-ins found in: {violations}"
         )
 
@@ -529,8 +535,8 @@ class TestTrivyGateHardening:
             s for s in scan_steps
             if isinstance(s.get("name"), str) and s["name"].startswith("Trivy gate")
         ]
-        assert len(gate_steps) == 7, (
-            f"Expected exactly 7 Trivy gate steps (one per service), found {len(gate_steps)}"
+        assert len(gate_steps) == 9, (
+            f"Expected exactly 9 Trivy gate steps (one per service), found {len(gate_steps)}"
         )
         for step in gate_steps:
             ec = str(step.get("with", {}).get("exit-code", ""))

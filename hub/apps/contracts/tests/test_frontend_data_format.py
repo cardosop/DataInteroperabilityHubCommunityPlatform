@@ -10,6 +10,7 @@ Tests verify:
 
 import json
 import re
+import uuid
 from datetime import datetime
 
 from rest_framework import status
@@ -41,11 +42,12 @@ class FrontendDataFormatTest(ContractsAPITestBase):
         """Set up test fixtures"""
         super().setUp()
         # Update tenant/user names for clarity
-        self.tenant.name = "Data Format Test Tenant"
-        self.tenant.slug = "data-format-test"
+        _uid = uuid.uuid4().hex[:8]
+        self.tenant.name = f"Data Format Test Tenant {_uid}"
+        self.tenant.slug = f"data-format-test-{_uid}"
         self.tenant.save()
 
-        self.user.email = "user@dataformat.test"
+        self.user.email = f"user-{_uid}@dataformat.test"
         self.user.save()
 
         # Create role

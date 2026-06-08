@@ -325,14 +325,17 @@ class Command(BaseCommand):
 
         if options["json"]:
             self.stdout.write(json.dumps(result, indent=2, default=str))
-        else:
-            self.stdout.write(f"Verified: {result['verified']}")
-            self.stdout.write(f"Tenant:   {result.get('tenant_id', 'N/A')}")
-            self.stdout.write(f"Checked:  {result['checked']} event(s)")
-            self.stdout.write(f"Mismatches: {len(result.get('mismatches', []))}")
-            self.stdout.write(f"Snapshots checked: {result.get('snapshots_checked', 0)}")
-            self.stdout.write(f"Snapshot mismatches: {len(result.get('snapshot_mismatches', []))}")
-            self.stdout.write(f"Summary: {result.get('summary', 'UNKNOWN')}")
+            if not result["verified"]:
+                raise SystemExit(1)
+            return
+
+        self.stdout.write(f"Verified: {result['verified']}")
+        self.stdout.write(f"Tenant:   {result.get('tenant_id', 'N/A')}")
+        self.stdout.write(f"Checked:  {result['checked']} event(s)")
+        self.stdout.write(f"Mismatches: {len(result.get('mismatches', []))}")
+        self.stdout.write(f"Snapshots checked: {result.get('snapshots_checked', 0)}")
+        self.stdout.write(f"Snapshot mismatches: {len(result.get('snapshot_mismatches', []))}")
+        self.stdout.write(f"Summary: {result.get('summary', 'UNKNOWN')}")
 
         if not result["verified"]:
             self.stderr.write(self.style.ERROR(

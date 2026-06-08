@@ -1,9 +1,10 @@
-"""
+"""  # noqa: D400
 Compliance Service
 
 Service layer for compliance run operations.
 All create/update/delete paths call ComplianceBusinessRules before mutation.
 """
+import os
 from typing import Any, Dict, List, Optional
 from django.db import transaction
 from django.utils import timezone
@@ -239,14 +240,41 @@ class ComplianceService(BaseService):
             )
         except Exception as e:
             import logging
-            logger = logging.getLogger(__name__)
-            logger.warning(
+            _logger = logging.getLogger(__name__)
+            _logger.error(
                 "Failed to enqueue compliance run job %s (run %s): %s. "
+                "Marking run and job as FAILED to avoid PENDING-forever. "
                 "Ensure Redis and the RQ worker are running.",
                 job.id,
                 compliance_run.id,
                 e,
                 exc_info=True,
+            )
+            # ── Recovery: mark run + job as FAILED so they don't stay ──
+            # ── PENDING forever with no worker to process them.      ──
+            from hub.apps.jobs.models import JobStatus
+
+            _now = timezone.now()
+            compliance_run.status = ComplianceRunStatus.FAILED
+            compliance_run.completed_at = _now
+            # error_message was removed in Phase 278 (Django 6 upgrade);
+            # persist error context in metadata_json instead.
+            meta = compliance_run.metadata_json or {}
+            meta["error_message"] = (
+                f"Job enqueue failed: {e}. "
+                "Verify Redis/RQ connectivity."
+            )[:500]
+            compliance_run.metadata_json = meta
+            compliance_run.save(
+                update_fields=["status", "completed_at", "metadata_json", "updated_at"],
+            )
+            job.status = JobStatus.FAILED
+            job.completed_at = _now
+            job.error_message = (
+                f"Failed to enqueue COMPLIANCE_RUN job: {e}"
+            )[:2000]
+            job.save(
+                update_fields=["status", "completed_at", "error_message", "updated_at"],
             )
 
         return compliance_run
@@ -468,6 +496,38 @@ class ComplianceService(BaseService):
         client = ComplianceServiceClient()
 
         try:
+            # Use synchronous /scan-file by default.  The async path
+            # (scan_file_async → 202 → RQ poll via transaction.on_commit)
+            # has a fundamental timing gap when called from synchronous
+            # workflows: the RQ job is only enqueued after the outer
+            # transaction commits, but the workflow's activation step
+            # reads compliance_status BEFORE the commit, so the result
+            # is always UNKNOWN and activation is blocked.
+            #
+            # Sync scanning blocks until the compliance service returns
+            # a result, eliminating the gap.  The RQ job worker also
+            # calls this code path and benefits from the simpler sync
+            # approach (no polling needed).
+            #
+            # Async is retained as an opt-in via COMPLIANCE_USE_ASYNC=1
+            # for deployments where scan latency exceeds HTTP timeouts.
+            _use_async = os.environ.get("COMPLIANCE_USE_ASYNC", "").lower() in ("1", "true", "yes")
+
+            if not _use_async:
+                sync_result = client.scan_file(
+                    file_content=file_content,
+                    file_format=file_format,
+                    scan_mode=scan_mode,
+                    applicable_regulations=applicable_regulations,
+                    tenant_id=tenant_id,
+                    correlation_id=correlation_id,
+                )
+                ComplianceService._persist_result(
+                    compliance_run=compliance_run,
+                    result=sync_result,
+                )
+                return
+
             async_result = client.scan_file_async(
                 file_content=file_content,
                 file_format=file_format,
@@ -847,3 +907,196 @@ class ComplianceService(BaseService):
             },
             request=request,
         )
+
+    # ── Warehouse-native Compliance (Phase 285.10) ────────────────────
+
+    @staticmethod
+    def _resolve_engine(
+        dataset=None,
+        warehouse_config=None,
+        requested_scan_mode=None,
+    ) -> str:
+        """Auto-detect compliance scan mode from dataset storage_type."""
+        if requested_scan_mode:
+            return requested_scan_mode
+        if dataset is not None:
+            meta = getattr(dataset, "snapshot_metadata", None) or {}
+            if meta.get("storage_type") == "EXTERNAL_WAREHOUSE":
+                return "WAREHOUSE_SQL"
+            if getattr(dataset, "kind", None) == "EXTERNAL_REF":
+                return "WAREHOUSE_SQL"
+        if warehouse_config and warehouse_config.get("warehouse_type"):
+            return "WAREHOUSE_SQL"
+        return "FILE_SCAN"
+
+    @staticmethod
+    @transaction.atomic
+    def scan_inmemory_warehouse(
+        dataset,
+        tenant,
+        regulations=None,
+        warehouse_config=None,
+        user=None,
+        correlation_id=None,
+    ):
+        """Run compliance PII/retention/classification checks directly in
+        the customer's warehouse via SQL pushdown (Phase 285.10).
+
+        Uses ``ComplianceWarehouseSQLCompiler`` to generate per-dialect
+        SQL with ``SELECT COUNT(*)`` patterns — zero PII data transits
+        back to Meshant.  Only aggregate match counts return.
+        """
+        from hub.apps.compliance.models import ComplianceRun, ComplianceRunStatus
+        from hub.apps.compliance.warehouse_sql_compiler import (
+            ComplianceWarehouseSQLCompiler,
+        )
+        from hub.apps.jobs.models import JobType
+        from hub.apps.jobs.utils import create_job, get_job_timeout
+
+        if not tenant:
+            raise ValidationError(
+                "tenant is required for warehouse compliance scan",
+                code="BUSINESS_RULES_VALIDATION",
+            )
+        if not warehouse_config or not warehouse_config.get("table_fqn"):
+            raise ValidationError(
+                "warehouse_config.table_fqn is required",
+                code="BUSINESS_RULES_VALIDATION",
+            )
+
+        warehouse_type = (warehouse_config.get("warehouse_type") or "").lower()
+        if warehouse_type not in ("snowflake", "bigquery", "databricks"):
+            raise ValidationError(
+                f"Unsupported warehouse type: {warehouse_type}",
+                code="WAREHOUSE_UNSUPPORTED_DIALECT",
+            )
+
+        effective_correlation_id = correlation_id or str(dataset.id)
+
+        job = create_job(
+            tenant=tenant,
+            user=user,
+            job_type=JobType.COMPLIANCE_RUN,
+            resource_type="COMPLIANCE_RUN",
+            resource_id=str(dataset.id),
+            details_json={
+                "warehouse_native": True,
+                "correlation_id": effective_correlation_id,
+                "warehouse_type": warehouse_type,
+            },
+            timeout_seconds=get_job_timeout(JobType.COMPLIANCE_RUN),
+            executed_by_prefect=True,
+        )
+
+        run = ComplianceRun.objects.create(
+            tenant=tenant,
+            dataset=dataset,
+            job=job,
+            scan_mode="WAREHOUSE_SQL",
+            warehouse_config=warehouse_config,
+            status=ComplianceRunStatus.RUNNING,
+            started_at=timezone.now(),
+        )
+        job.resource_id = str(run.id)
+        job.details_json["compliance_run_id"] = str(run.id)
+        job.save(update_fields=["resource_id", "details_json"])
+
+        try:
+            compiler = ComplianceWarehouseSQLCompiler()
+            compiled = compiler.compile(
+                scan_types=regulations or ["pii_email", "pii_phone", "pii_ssn",
+                                            "pii_credit_card", "retention_breach",
+                                            "classification_mismatch"],
+                warehouse_type=warehouse_type,
+                table_fqn=warehouse_config["table_fqn"],
+            )
+
+            from hub.apps.dq.services import _resolve_warehouse_connector
+            connector = _resolve_warehouse_connector(
+                warehouse_config, tenant_id=str(tenant.id),
+            )
+
+            results: list[dict] = []
+            connector.connect()
+            try:
+                for c in compiled:
+                    rows, _cols = connector.execute_query(c.sql)
+                    match_count = rows[0][0] if rows else 0
+                    results.append({
+                        "check_name": c.check_name,
+                        "check_type": c.check_type,
+                        "column_name": c.column_name,
+                        "match_count": match_count,
+                        "sql_preview": c.sql[:200],
+                    })
+            finally:
+                try:
+                    connector.close()
+                except Exception:
+                    pass
+
+            total_matches = sum(r["match_count"] for r in results)
+            has_findings = total_matches > 0
+
+            run.status = ComplianceRunStatus.SUCCEEDED
+            run.overall_status = "PASS" if not has_findings else "WARN"
+            run.risk_level = "HIGH" if has_findings else "LOW"
+            run.allowed_to_store = not has_findings
+            run.detected_categories_json = [
+                r["check_type"] for r in results if r["match_count"] > 0
+            ]
+            run.completed_at = timezone.now()
+            run.save(update_fields=[
+                "status", "overall_status", "risk_level",
+                "allowed_to_store", "detected_categories_json",
+                "completed_at", "updated_at",
+            ])
+
+            try:
+                from hub.apps.audit.utils import create_audit_event
+                create_audit_event(
+                    resource_type="COMPLIANCE_RUN",
+                    action="COMPLIANCE_WAREHOUSE_SCANNED",
+                    tenant=tenant,
+                    resource_id=str(run.id),
+                    details={
+                        "compliance_run_id": str(run.id),
+                        "warehouse_type": warehouse_type,
+                        "table_fqn": warehouse_config.get("table_fqn"),
+                        "total_matches": total_matches,
+                        "correlation_id": effective_correlation_id,
+                    },
+                )
+            except Exception:
+                logger.warning("compliance_warehouse_audit_failed", exc_info=True)
+
+        except Exception as exc:
+            logger.warning(
+                "compliance_scan_inmemory_warehouse_failed",
+                extra={
+                    "dataset_id": str(dataset.id),
+                    "tenant_id": str(tenant.id),
+                    "warehouse_type": warehouse_type,
+                    "correlation_id": effective_correlation_id,
+                    "error": str(exc),
+                },
+                exc_info=True,
+            )
+            run.status = ComplianceRunStatus.FAILED
+            run.overall_status = "UNKNOWN"
+            run.risk_level = "UNKNOWN"
+            run.allowed_to_store = False
+            # error_message was removed in Phase 278 (Django 6 upgrade);
+            # persist error context in metadata_json instead.
+            meta = run.metadata_json or {}
+            meta["error_message"] = str(exc)[:2000]
+            run.metadata_json = meta
+            run.completed_at = timezone.now()
+            run.save(update_fields=[
+                "status", "overall_status", "risk_level",
+                "allowed_to_store", "metadata_json",
+                "completed_at", "updated_at",
+            ])
+
+        run.refresh_from_db()
+        return run

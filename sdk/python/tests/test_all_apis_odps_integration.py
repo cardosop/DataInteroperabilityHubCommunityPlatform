@@ -79,25 +79,18 @@ def setup_authentication_for_sdk_tests(api_base_url: str) -> Optional[str]:
     """
     Set up authentication for SDK tests.
 
-    Tries multiple methods:
-    1. Use TEST_API_KEY environment variable if available
-    2. Use DATAHUB_API_KEY environment variable
-    3. Return None if no key available
-
-    Args:
-        api_base_url: API base URL
-
-    Returns:
-        API key string or None
+    Delegates to the canonical conftest helper which handles token
+    validation, auto-provisioning, and transparent refresh so tests
+    always receive a working credential.
     """
-    api_key = os.environ.get('TEST_API_KEY') or os.environ.get('DATAHUB_API_KEY')
-    return api_key
+    from tests.conftest import get_api_key
+    return get_api_key()
 
 
 @pytest.fixture
 def real_api_config():
     """Fixture for real API configuration"""
-    api_base_url = os.environ.get('API_BASE_URL', 'http://localhost:8000/api/v1')
+    api_base_url = os.environ.get('API_BASE_URL', 'http://localhost:8001/api/v1')
     api_key = setup_authentication_for_sdk_tests(api_base_url)
 
     if not api_key:
@@ -193,34 +186,21 @@ async def odps_contract(real_api_config):
 
             yield odps_id
             return
-        except (NetworkError, Exception) as e:
+        except NetworkError as e:
             error_str = str(e).lower()
 
-            # Check if it's a network error that we should retry
-            is_network_error = (
-                isinstance(e, NetworkError) or
-                "network" in error_str or
-                "connection" in error_str or
-                "disconnected" in error_str or
-                "read error" in error_str or
-                "remote protocol" in error_str or
-                "timeout" in error_str
-            )
-
-            if is_network_error and attempt < max_retries - 1:
-                # Retry after delay
-                await asyncio.sleep(retry_delay * (attempt + 1))  # Exponential backoff
+            if attempt < max_retries - 1:
+                await asyncio.sleep(retry_delay * (attempt + 1))
                 continue
 
-            # For workflow errors, skip the test
-            if "workflow" in error_str or "product creation failed" in error_str:
-                pytest.skip(f"Workflow execution failed: {error_str}")
+            # Network error after all retries — fail, don't skip.
+            # Connectivity problems are real failures that need investigation.
+            pytest.fail(
+                f"Network error after {max_retries} attempts: {error_str}"
+            )
 
-            # For network errors on last attempt, skip
-            if is_network_error:
-                pytest.skip(f"Network error after {max_retries} attempts: {error_str}")
-
-            # For other errors, raise
+        except Exception as e:
+            # Re-raise unexpected errors immediately — they are real bugs.
             raise
 
 

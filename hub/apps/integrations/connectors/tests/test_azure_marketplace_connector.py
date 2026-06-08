@@ -152,7 +152,7 @@ class TestAzureMarketplaceConnector:
         assert listing.marketplace_id == SAMPLE_PRODUCT["uniqueProductId"]
         assert listing.title == SAMPLE_PRODUCT["displayName"]
         assert listing.description is not None
-        assert "Test data product" in (listing.description or "")
+        assert "connector tests" in (listing.description or "")
 
     def test_get_listing(self, azure_connector):
         pid = SAMPLE_PRODUCT["uniqueProductId"]

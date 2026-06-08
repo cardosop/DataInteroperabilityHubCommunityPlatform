@@ -10,6 +10,7 @@ Tests policy application, listing, and removal operations with comprehensive err
 import os
 import pytest
 import uuid
+import asyncio
 import subprocess
 from typing import Optional
 from unittest.mock import AsyncMock, MagicMock
@@ -18,113 +19,20 @@ from datahub_interoperability.errors import (
     ValidationError,
     NotFoundError,
 )
-
-
-def setup_authentication_for_sdk_tests(api_base_url: str) -> Optional[str]:
-    """
-    Set up authentication for SDK tests.
-
-    Tries multiple methods:
-    1. Use TEST_API_KEY environment variable if available
-    2. Use DATAHUB_API_KEY environment variable
-    3. Try to create API key via Django shell (if Docker Compose is available)
-    4. Return None if no key available
-
-    Args:
-        api_base_url: API base URL
-
-    Returns:
-        API key string or None
-    """
-    # Method 1: Use environment variables
-    api_key = os.environ.get('TEST_API_KEY') or os.environ.get('DATAHUB_API_KEY')
-    if api_key:
-        return api_key
-
-    # Method 2: Try to create API key via Django shell in Docker Compose
-    try:
-        django_shell_script = """
-from hub.apps.tenants.models import Tenant
-from hub.apps.users.models import User, UserStatus, Role, UserRole
-from hub.apps.auth.models import APIKey
-import os
-
-tenant, _ = Tenant.objects.get_or_create(
-    slug='mesh-policies-sdk-test-tenant',
-    defaults={'name': 'Mesh Policies SDK Test Tenant'}
+from tests._sdk_test_helpers import (
+    check_api_available,
+    create_real_api_config,
 )
 
-# Get or create TENANT_ADMIN role
-admin_role, _ = Role.objects.get_or_create(
-    tenant=tenant,
-    name='TENANT_ADMIN',
-    defaults={'description': 'Tenant Administrator'}
-)
-
-user, _ = User.objects.get_or_create(
-    email='mesh-policies-sdk-test@example.com',
-    defaults={
-        'tenant': tenant,
-        'status': UserStatus.ACTIVE
-    }
-)
-if user.tenant != tenant:
-    user.tenant = tenant
-    user.status = UserStatus.ACTIVE
-    user.save()
-
-# Assign TENANT_ADMIN role to user
-UserRole.objects.get_or_create(user=user, role=admin_role)
-
-# Delete existing API key if it exists
-APIKey.objects.filter(user=user, name='mesh-policies-sdk-test-key').delete()
-
-# Create new API key with mesh:write and mesh:read scopes
-api_key_value = APIKey.generate_key()
-api_key_hash = APIKey.hash_key(api_key_value)
-api_key_obj = APIKey.objects.create(
-    user=user,
-    tenant=tenant,
-    name='mesh-policies-sdk-test-key',
-    key_hash=api_key_hash,
-    scopes=['mesh:write', 'mesh:read', 'governance:read', 'governance:write']
-)
-print(api_key_value)
-"""
-        result = subprocess.run(
-            ['docker', 'compose', 'exec', '-T', 'api-service', 'python', 'manage.py', 'shell'],
-            input=django_shell_script,
-            text=True,
-            capture_output=True,
-            timeout=30,
-            cwd='/home/ph/Desktop/DataInteroperabilityHub'
-        )
-        if result.returncode == 0:
-            output_lines = result.stdout.strip().split('\n')
-            # Look for line starting with API key (long alphanumeric string)
-            for line in reversed(output_lines):
-                line = line.strip()
-                # API keys are typically long strings (40+ characters)
-                if line and len(line) > 40:
-                    # Additional validation: check if it looks like an API key
-                    cleaned = line.replace('-', '').replace('_', '')
-                    if cleaned.isalnum() and ' ' not in line:
-                        return line
-    except Exception:
-        pass
-
-    return None
+# File-specific tenant parameters
+_POLICIES_TENANT_SLUG = "mesh-policies-sdk-test-tenant"
+_POLICIES_TENANT_NAME = "Mesh Policies SDK Test Tenant"
+_POLICIES_API_KEY_NAME = "mesh-policies-sdk-test-key"
+_POLICIES_SCOPES = ["mesh:write", "mesh:read", "governance:read", "governance:write"]
+_POLICIES_EXTRA_TENANT_SETUP = "tenant.data_mesh_enabled = True; tenant.save()"
 
 
-def check_api_available(api_base_url: str) -> bool:
-    """Check if API service is available"""
-    try:
-        import requests
-        response = requests.get(f"{api_base_url}/", timeout=2)
-        return response.status_code < 600  # Any HTTP response means API is up
-    except Exception:
-        return False
-
+# ── Unit-test fixtures (no API calls) ───────────────────────────────
 
 @pytest.fixture
 def config():
@@ -151,38 +59,27 @@ def mesh_api(client):
     return MeshAPI(client)
 
 
-@pytest.fixture
+# ── Integration-test fixtures (real API) ────────────────────────────
+
+@pytest.fixture(scope="module")
 def real_api_config():
-    """Fixture for real API configuration"""
-    api_base_url = os.environ.get('API_BASE_URL', 'http://localhost:8000/api/v1')
-
-    # Check if API is available
-    if not check_api_available(api_base_url):
-        pytest.skip("API service is not available. Ensure Docker Compose services are running.")
-
-    api_key = setup_authentication_for_sdk_tests(api_base_url)
-
-    if not api_key:
-        pytest.skip(
-            "No API key available. Set TEST_API_KEY or DATAHUB_API_KEY environment variable, "
-            "or ensure Docker Compose api-service is accessible."
-        )
-
-    return DataHubClientConfig(
-        base_url=api_base_url,
-        api_token=api_key,
-        timeout=30.0,
-        max_retries=3,
-        user_agent="DataHub-SDK-Test",
-        enable_logging=False,
+    """Fixture for real API configuration (module-scoped)."""
+    return create_real_api_config(
+        tenant_slug=_POLICIES_TENANT_SLUG,
+        tenant_name=_POLICIES_TENANT_NAME,
+        api_key_name=_POLICIES_API_KEY_NAME,
+        scopes=_POLICIES_SCOPES,
+        extra_tenant_setup=_POLICIES_EXTRA_TENANT_SETUP,
     )
 
 
 @pytest.fixture
 async def real_client(real_api_config):
-    """Create SDK client with real API configuration"""
+    """Create SDK client with real API configuration."""
+    import asyncio
     async with DataHubClient(real_api_config) as client:
         yield client
+        await asyncio.sleep(0.1)  # Reduce server load between tests
 
 
 # Unit Tests - Method Structure and Parameters
@@ -299,6 +196,60 @@ async def test_remove_policy_method_structure(mesh_api, client):
 
 # Integration Tests - Real API
 
+
+async def _create_policy_for_test(tenant_slug: str) -> Optional[str]:
+    """Create a test AccessPolicy via Django shell (same approach as
+    test_mesh_api.py).  Returns the policy UUID or None on failure.
+
+    Uses docker compose exec because the governance HTTP API endpoint
+    is not reliably available on all test/staging deployments.
+    """
+    django_shell_script = f"""
+from hub.apps.tenants.models import Tenant
+from hub.apps.governance.models import AccessPolicy
+
+tenant = Tenant.objects.filter(slug='{tenant_slug}').first()
+if not tenant:
+    print("NO_TENANT")
+    exit(1)
+
+policy = AccessPolicy.objects.create(
+    tenant=tenant,
+    name='Test Policy for SDK',
+    description='Test policy for SDK integration tests',
+    enabled=True,
+    effect='ALLOW',
+    conditions={{}},
+    priority=100
+)
+print(policy.id)
+"""
+    _compose_attempts = [
+        (["docker", "compose", "-f", "docker-compose.test.yml",
+          "exec", "-T", "api-service-test"], "hub/manage.py"),
+        (["docker", "compose", "exec", "-T", "api-service"], "manage.py"),
+    ]
+    for compose_cmd, manage_py in _compose_attempts:
+        try:
+            result = subprocess.run(
+                compose_cmd + ["python", manage_py, "shell"],
+                input=django_shell_script,
+                text=True,
+                capture_output=True,
+                timeout=30,
+                cwd='/home/ph/Desktop/DataInteroperabilityHub',
+            )
+            if result.returncode == 0:
+                output_lines = result.stdout.strip().split('\n')
+                for line in reversed(output_lines):
+                    line = line.strip()
+                    if line and len(line) == 36 and '-' in line:
+                        return line
+        except Exception:
+            pass
+    return None
+
+
 @pytest.mark.asyncio
 async def test_apply_policy_integration(real_client):
     """Test applying policy with real API"""
@@ -310,58 +261,29 @@ async def test_apply_policy_integration(real_client):
         status="ACTIVE"
     )
 
-    # Create a test policy via API
-    try:
-        import requests
-        api_base_url = os.environ.get('API_BASE_URL', 'http://localhost:8000/api/v1')
-        api_key = setup_authentication_for_sdk_tests(api_base_url)
+    # Create a test policy via Django shell
+    policy_id = await _create_policy_for_test(_POLICIES_TENANT_SLUG)
+    if not policy_id:
+        pytest.skip("Could not create test policy via Django shell")
 
-        # Create a policy
-        policy_response = requests.post(
-            f"{api_base_url}/governance/policies/",
-            json={
-                "name": f"Test Policy {uuid.uuid4().hex[:8]}",
-                "description": "Test policy for SDK tests",
-                "conditions": {"user": {"tenant_id": "test"}},
-                "effect": "ALLOW",
-                "enabled": True,
-            },
-            headers={"X-API-Key": api_key},
-            timeout=10
+    try:
+        # Apply policy
+        result = await real_client.mesh.apply_policy(
+            created_domain["id"],
+            policy_id
         )
 
-        if policy_response.status_code == 201:
-            policy_data = policy_response.json()
-            policy_id = policy_data["id"]
+        assert result is not None
+        assert result["domain_id"] == created_domain["id"]
+        assert result["policy_id"] == policy_id
+        assert result["status"] in ["PENDING", "APPLIED"]
+        assert "id" in result
 
-            try:
-                # Apply policy
-                result = await real_client.mesh.apply_policy(
-                    created_domain["id"],
-                    policy_id
-                )
-
-                assert result is not None
-                assert result["domain_id"] == created_domain["id"]
-                assert result["policy_id"] == policy_id
-                assert result["status"] in ["PENDING", "APPLIED"]
-                assert "id" in result
-
-                # Cleanup policy application
-                try:
-                    await real_client.mesh.remove_policy(created_domain["id"], policy_id)
-                except Exception:
-                    pass
-            finally:
-                # Cleanup policy
-                try:
-                    requests.delete(
-                        f"{api_base_url}/governance/policies/{policy_id}/",
-                        headers={"X-API-Key": api_key},
-                        timeout=10
-                    )
-                except Exception:
-                    pass
+        # Cleanup policy application
+        try:
+            await real_client.mesh.remove_policy(created_domain["id"], policy_id)
+        except Exception:
+            pass
     finally:
         # Cleanup domain
         try:
@@ -381,59 +303,30 @@ async def test_apply_policy_with_overrides_integration(real_client):
         status="ACTIVE"
     )
 
-    # Create a test policy via API
-    try:
-        import requests
-        api_base_url = os.environ.get('API_BASE_URL', 'http://localhost:8000/api/v1')
-        api_key = setup_authentication_for_sdk_tests(api_base_url)
+    # Create a test policy via Django shell
+    policy_id = await _create_policy_for_test(_POLICIES_TENANT_SLUG)
+    if not policy_id:
+        pytest.skip("Could not create test policy via Django shell")
 
-        # Create a policy
-        policy_response = requests.post(
-            f"{api_base_url}/governance/policies/",
-            json={
-                "name": f"Test Policy Overrides {uuid.uuid4().hex[:8]}",
-                "description": "Test policy for overrides",
-                "conditions": {"user": {"tenant_id": "test"}},
-                "effect": "ALLOW",
-                "enabled": True,
-            },
-            headers={"X-API-Key": api_key},
-            timeout=10
+    try:
+        # Apply policy with overrides
+        overrides = {"priority": 50, "effect": "ALLOW"}
+        result = await real_client.mesh.apply_policy(
+            created_domain["id"],
+            policy_id,
+            overrides=overrides
         )
 
-        if policy_response.status_code == 201:
-            policy_data = policy_response.json()
-            policy_id = policy_data["id"]
+        assert result is not None
+        assert result["domain_id"] == created_domain["id"]
+        assert result["policy_id"] == policy_id
+        assert result.get("overrides") == overrides
 
-            try:
-                # Apply policy with overrides
-                overrides = {"priority": 50, "effect": "ALLOW"}
-                result = await real_client.mesh.apply_policy(
-                    created_domain["id"],
-                    policy_id,
-                    overrides=overrides
-                )
-
-                assert result is not None
-                assert result["domain_id"] == created_domain["id"]
-                assert result["policy_id"] == policy_id
-                assert result.get("overrides") == overrides
-
-                # Cleanup policy application
-                try:
-                    await real_client.mesh.remove_policy(created_domain["id"], policy_id)
-                except Exception:
-                    pass
-            finally:
-                # Cleanup policy
-                try:
-                    requests.delete(
-                        f"{api_base_url}/governance/policies/{policy_id}/",
-                        headers={"X-API-Key": api_key},
-                        timeout=10
-                    )
-                except Exception:
-                    pass
+        # Cleanup policy application
+        try:
+            await real_client.mesh.remove_policy(created_domain["id"], policy_id)
+        except Exception:
+            pass
     finally:
         # Cleanup domain
         try:
@@ -525,64 +418,35 @@ async def test_remove_policy_integration(real_client):
         status="ACTIVE"
     )
 
-    # Create a test policy via API
-    try:
-        import requests
-        api_base_url = os.environ.get('API_BASE_URL', 'http://localhost:8000/api/v1')
-        api_key = setup_authentication_for_sdk_tests(api_base_url)
+    # Create a test policy via Django shell
+    policy_id = await _create_policy_for_test(_POLICIES_TENANT_SLUG)
+    if not policy_id:
+        pytest.skip("Could not create test policy via Django shell")
 
-        # Create a policy
-        policy_response = requests.post(
-            f"{api_base_url}/governance/policies/",
-            json={
-                "name": f"Test Policy Remove {uuid.uuid4().hex[:8]}",
-                "description": "Test policy for removal",
-                "conditions": {"user": {"tenant_id": "test"}},
-                "effect": "ALLOW",
-                "enabled": True,
-            },
-            headers={"X-API-Key": api_key},
-            timeout=10
+    try:
+        # Apply policy first
+        applied = await real_client.mesh.apply_policy(
+            created_domain["id"],
+            policy_id
         )
 
-        if policy_response.status_code == 201:
-            policy_data = policy_response.json()
-            policy_id = policy_data["id"]
+        assert applied is not None
 
-            try:
-                # Apply policy first
-                applied = await real_client.mesh.apply_policy(
-                    created_domain["id"],
-                    policy_id
-                )
+        # Remove policy
+        result = await real_client.mesh.remove_policy(
+            created_domain["id"],
+            policy_id
+        )
 
-                assert applied is not None
+        assert result is not None
+        assert result["status"] == "REVOKED"
 
-                # Remove policy
-                result = await real_client.mesh.remove_policy(
-                    created_domain["id"],
-                    policy_id
-                )
-
-                assert result is not None
-                assert result["status"] == "REVOKED"
-
-                # Verify it's removed by listing policies
-                policies = await real_client.mesh.list_policies(created_domain["id"])
-                # The policy should still be in the list but with REVOKED status
-                revoked_policies = [p for p in policies["results"] if p["id"] == applied["id"]]
-                if revoked_policies:
-                    assert revoked_policies[0]["status"] == "REVOKED"
-            finally:
-                # Cleanup policy
-                try:
-                    requests.delete(
-                        f"{api_base_url}/governance/policies/{policy_id}/",
-                        headers={"X-API-Key": api_key},
-                        timeout=10
-                    )
-                except Exception:
-                    pass
+        # Verify it's removed by listing policies
+        policies = await real_client.mesh.list_policies(created_domain["id"])
+        # The policy should still be in the list but with REVOKED status
+        revoked_policies = [p for p in policies["results"] if p["id"] == applied["id"]]
+        if revoked_policies:
+            assert revoked_policies[0]["status"] == "REVOKED"
     finally:
         # Cleanup domain
         try:

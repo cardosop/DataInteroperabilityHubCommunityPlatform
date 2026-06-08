@@ -37,8 +37,8 @@ class MarketplacePublishTests(E2ETestBase):
         
         # Create provider tenant (must have active subscription for listing creation)
         self.provider_tenant = Tenant.objects.create(
-            name="Provider Tenant",
-            slug="provider-tenant",
+            name=f"Provider Tenant {uuid.uuid4().hex[:8]}",
+            slug=f"provider-tenant-{uuid.uuid4().hex[:8]}",
             kyc_status=KYCStatus.VERIFIED
         )
         from hub.apps.testing.billing_support import ensure_e2e_tenant_ready
@@ -96,8 +96,8 @@ class MarketplacePublishTests(E2ETestBase):
         """Test that unverified tenants cannot publish listings"""
         # Create unverified tenant (subscription needed for POST; KYC intentionally UNVERIFIED)
         unverified_tenant = Tenant.objects.create(
-            name="Unverified Tenant",
-            slug="unverified-tenant",
+            name=f"Unverified Tenant {uuid.uuid4().hex[:8]}",
+            slug=f"unverified-tenant-{uuid.uuid4().hex[:8]}",
             kyc_status=KYCStatus.UNVERIFIED
         )
         from hub.apps.testing.billing_support import ensure_tenant_has_active_subscription
@@ -197,8 +197,8 @@ class MarketplaceBrowseTests(E2ETestBase):
 
         # Provider setup (subscription required for writes)
         self.provider_tenant = Tenant.objects.create(
-            name="Provider Tenant",
-            slug="provider-tenant",
+            name=f"Provider Tenant {uuid.uuid4().hex[:8]}",
+            slug=f"provider-tenant-{uuid.uuid4().hex[:8]}",
             kyc_status=KYCStatus.VERIFIED
         )
         ensure_e2e_tenant_ready(self.provider_tenant)
@@ -214,8 +214,8 @@ class MarketplaceBrowseTests(E2ETestBase):
         
         # Consumer setup (subscription for any writes)
         self.consumer_tenant = Tenant.objects.create(
-            name="Consumer Tenant",
-            slug="consumer-tenant",
+            name=f"Consumer Tenant {uuid.uuid4().hex[:8]}",
+            slug=f"consumer-tenant-{uuid.uuid4().hex[:8]}",
             kyc_status=KYCStatus.VERIFIED
         )
         ensure_e2e_tenant_ready(self.consumer_tenant)
@@ -296,8 +296,8 @@ class MarketplacePurchaseTests(E2ETestBase):
 
         # Provider setup (subscription required for writes)
         self.provider_tenant = Tenant.objects.create(
-            name="Provider Tenant",
-            slug="provider-tenant",
+            name=f"Provider Tenant {uuid.uuid4().hex[:8]}",
+            slug=f"provider-tenant-{uuid.uuid4().hex[:8]}",
             kyc_status=KYCStatus.VERIFIED
         )
         ensure_e2e_tenant_ready(self.provider_tenant)
@@ -313,8 +313,8 @@ class MarketplacePurchaseTests(E2ETestBase):
         
         # Consumer setup (subscription required for order creation)
         self.consumer_tenant = Tenant.objects.create(
-            name="Consumer Tenant",
-            slug="consumer-tenant",
+            name=f"Consumer Tenant {uuid.uuid4().hex[:8]}",
+            slug=f"consumer-tenant-{uuid.uuid4().hex[:8]}",
             kyc_status=KYCStatus.VERIFIED
         )
         ensure_e2e_tenant_ready(self.consumer_tenant)

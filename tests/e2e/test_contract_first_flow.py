@@ -93,7 +93,7 @@ class ContractFirstE2ETest(TestCase):
         self.client = APIClient()
 
         self.tenant = Tenant.objects.create(
-            name="Contract First Test Tenant",
+            name=f"Contract First Test Tenant {uuid.uuid4().hex[:8]}",
             slug="contract-first-test",
             kyc_status=KYCStatus.VERIFIED
         )
@@ -279,7 +279,7 @@ class ContractFirstE2ETest(TestCase):
         compliance_run = ComplianceRun.objects.get(id=compliance_run_id)
         if compliance_run.job_id:
             try:
-                process_job(str(compliance_run.job_id), job_type=JobType.COMPLIANCE_RUN)
+                process_job(str(compliance_run.job_id), type=JobType.COMPLIANCE_RUN)
             except (ConnectionError, TimeoutError, OSError) as exc:
                 # Compliance service not reachable — skip visibly so
                 # PR 10's skip-counter gate can track infra outages.
@@ -289,7 +289,7 @@ class ContractFirstE2ETest(TestCase):
         dq_run = DQRun.objects.get(id=dq_run_id)
         if dq_run.job_id:
             try:
-                process_job(str(dq_run.job_id), job_type=JobType.DQ_RUN)
+                process_job(str(dq_run.job_id), type=JobType.DQ_RUN)
             except (ConnectionError, TimeoutError, OSError) as exc:
                 self.skipTest(f"DQ service not reachable: {exc}")
         dq_run.refresh_from_db()

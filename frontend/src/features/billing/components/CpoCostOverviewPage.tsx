@@ -87,7 +87,7 @@ export const CpoCostOverviewPage: FC = () => {
   }
 
   if (!data) {
-    return <EmptyState title="No cost data" description="No completed payment transactions exist." />;
+    return <EmptyState title="No cost data" message="No completed payment transactions exist." />;
   }
 
   return (

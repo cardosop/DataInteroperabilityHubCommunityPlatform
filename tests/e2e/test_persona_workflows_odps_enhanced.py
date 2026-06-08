@@ -1193,8 +1193,8 @@ class TestDataConsumerEnhancedWorkflowsWithODPS(E2ETestBase):
 
         # Create provider tenant and user (subscription required for asset/listing creation)
         self.provider_tenant = Tenant.objects.create(
-            name="Provider Tenant",
-            slug="provider-tenant",
+            name=f"Provider Tenant {uuid.uuid4().hex[:8]}",
+            slug=f"provider-tenant-{uuid.uuid4().hex[:8]}",
             kyc_status=KYCStatus.VERIFIED
         )
         ensure_e2e_tenant_ready(self.provider_tenant)
@@ -1214,8 +1214,8 @@ class TestDataConsumerEnhancedWorkflowsWithODPS(E2ETestBase):
 
         # Create consumer tenant and user (subscription required for order creation)
         self.consumer_tenant = Tenant.objects.create(
-            name="Consumer Tenant",
-            slug="consumer-tenant",
+            name=f"Consumer Tenant {uuid.uuid4().hex[:8]}",
+            slug=f"consumer-tenant-{uuid.uuid4().hex[:8]}",
             kyc_status=KYCStatus.VERIFIED
         )
         ensure_e2e_tenant_ready(self.consumer_tenant)

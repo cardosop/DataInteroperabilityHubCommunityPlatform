@@ -55,21 +55,6 @@ def _create_worker_api_key(tenant, user):
 class RunCompletionSideEffectsIntegrationTest(TestCase):
     """Integration tests for run completion side effects."""
 
-    reset_sequences = False
-    serialized_rollback = False
-
-    @classmethod
-    def _fixture_teardown(cls):
-        """Skip TRUNCATE flush (times out on complex FK graphs).
-
-        Close DB connections to release all locks and poisoned
-        transactions.  Data isolation relies on UUID-based unique
-        names in setUp.
-        """
-        from django.db import connections
-        for db_name in cls._databases_names(include_mirrors=False):
-            connections[db_name].close()
-
     def setUp(self):
         unique_id = uuid.uuid4().hex[:8]
         self.tenant = Tenant.objects.create(

@@ -49,9 +49,9 @@ class Command(BaseCommand):
         )
 
     def handle(self, *args, **options):
-        retention_years = options["retention_years"]
-        dry_run = options["dry_run"]
-        batch_size = options["batch_size"]
+        retention_years = options.get("retention_years", getattr(settings, "AUDIT_RETENTION_YEARS", 3))
+        dry_run = options.get("dry_run", False)
+        batch_size = options.get("batch_size", DEFAULT_BATCH_SIZE)
 
         if retention_years < 1:
             self.stderr.write(self.style.ERROR("--retention-years must be >= 1"))
@@ -64,6 +64,105 @@ class Command(BaseCommand):
             timestamp__lt=cutoff_date,
             is_archived=False,
         )
+
+        # ---- Phase 234.5 — per-event-type retention override ------------------
+        # Check whether any (tenant, action) pair in the candidate set has an
+        # extended retention policy; if it does, skip those events.  We do NOT
+        # handle shortened-retention here — those events are younger than the
+        # global cutoff and would require a separate inclusion pass.  That is
+        # tracked separately.  When no enabled policies exist, this is a fast
+        # no-op.
+        from hub.apps.audit.models import resolve_retention_days_for_event_type
+
+        global_days = retention_years * 365
+        now = timezone.now()
+        excluded_pks: list = []
+
+        # Only scan for policies if the candidate set is non-empty.
+        if eligible.exists():
+            distinct_pairs = list(
+                eligible.order_by()
+                .values_list("tenant_id", "action")
+                .distinct()
+            )
+            for tid, action in distinct_pairs:
+                effective_days = resolve_retention_days_for_event_type(
+                    tenant_id=tid,
+                    event_type=action or "",
+                    default_days=global_days,
+                )
+                if effective_days > global_days:
+                    policy_cutoff = now - timedelta(days=effective_days)
+                    pks = list(
+                        eligible.filter(
+                            tenant_id=tid,
+                            action=action,
+                            timestamp__gte=policy_cutoff,
+                        ).values_list("pk", flat=True)
+                    )
+                    excluded_pks.extend(pks)
+                elif effective_days < global_days:
+                    # Shortened retention: also include events that are between
+                    # the policy cutoff and the global cutoff.
+                    policy_cutoff = now - timedelta(days=effective_days)
+                    pks = list(
+                        AuditEvent.all_objects.filter(
+                            is_archived=False,
+                            tenant_id=tid,
+                            action=action,
+                            timestamp__lt=policy_cutoff,
+                            timestamp__gte=cutoff_date,
+                        ).values_list("pk", flat=True)
+                    )
+                    if pks and not dry_run:
+                        AuditEvent.all_objects.filter(pk__in=pks).update(
+                            is_archived=True,
+                            archived_at=now,
+                        )
+                        self.stdout.write(
+                            f"  Archived batch (per-event-type policy): "
+                            f"{len(pks)}"
+                        )
+
+            if excluded_pks:
+                eligible = eligible.exclude(pk__in=excluded_pks)
+
+        # ---- Inclusion pass: shortened retention policies --------------------
+        # Events with shortened retention are YOUNGER than the global cutoff
+        # and their actions do NOT appear in ``distinct_pairs`` (which is
+        # derived from the global-candidate set).  We must query the policy
+        # table directly.
+        from hub.apps.audit.models import AuditEventRetentionPolicy
+
+        shortened_rows = (
+            AuditEventRetentionPolicy.objects
+            .filter(enabled=True, retention_days__gt=0, retention_days__lt=global_days)
+            .values("tenant_id", "event_type", "retention_days")
+        )
+        for row in shortened_rows:
+            tid = row["tenant_id"]
+            action = row["event_type"]
+            policy_days = int(row["retention_days"])
+            policy_cutoff = now - timedelta(days=policy_days)
+            pks = list(
+                AuditEvent.all_objects.filter(
+                    is_archived=False,
+                    tenant_id=tid,
+                    action=action,
+                    timestamp__lt=policy_cutoff,
+                    timestamp__gte=cutoff_date,
+                ).values_list("pk", flat=True)
+            )
+            if pks and not dry_run:
+                AuditEvent.all_objects.filter(pk__in=pks).update(
+                    is_archived=True,
+                    archived_at=now,
+                )
+                self.stdout.write(
+                    f"  Archived batch (per-event-type shortened policy): "
+                    f"{len(pks)}"
+                )
+
         total_count = eligible.count()
 
         if total_count == 0:

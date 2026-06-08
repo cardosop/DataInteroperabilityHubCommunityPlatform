@@ -18,22 +18,28 @@ class CompliancePollTimeoutTest(TestCase):
     """Test compliance polling deadline and fail-closed behavior."""
 
     def _create_run(self, started_minutes_ago=0):
-        """Create a ComplianceRun in RUNNING state."""
+        """Create a ComplianceRun in RUNNING state via ORM.
+
+        Uses the real model layer (save/clean/signals) rather than raw SQL
+        so the test exercises the same code paths as production.  The only
+        requirement is that ``ComplianceRun.clean()`` passes — satisfied
+        because an ``Asset`` is always provided.
+        """
         from hub.apps.compliance.models import ComplianceRun
         from hub.apps.tenants.models import Tenant
+        from hub.apps.jobs.models import Job
+        from hub.apps.assets.models import Asset
 
         tenant, _ = Tenant.objects.get_or_create(
             name="poll-timeout-test",
             defaults={"slug": "poll-timeout-test"},
         )
 
-        # Create required related objects
-        from hub.apps.jobs.models import Job
-        from hub.apps.assets.models import Asset
-
+        uid = uuid.uuid4().hex[:8]
         asset = Asset.objects.create(
             tenant=tenant,
-            name=f"poll-test-{uuid.uuid4().hex[:8]}",
+            key=f"poll-test-{uid}",
+            name=f"poll-test-{uid}",
         )
         job = Job.objects.create(
             tenant=tenant,
@@ -43,27 +49,17 @@ class CompliancePollTimeoutTest(TestCase):
             resource_id=str(asset.id),
         )
 
-        # Insert directly to bypass model clean() validation
-        from django.db import connection
-        run_id = uuid.uuid4()
         started_at = timezone.now() - timedelta(minutes=started_minutes_ago)
-        now = timezone.now()
-        job_id_meta = str(uuid.uuid4())
-        with connection.cursor() as cursor:
-            cursor.execute(
-                """
-                INSERT INTO compliance_runs
-                    (id, tenant_id, job_id, asset_id, status,
-                     started_at, created_at, updated_at, metadata_json)
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
-                """,
-                [
-                    str(run_id), str(tenant.id), str(job.id),
-                    str(asset.id), "RUNNING", started_at, now, now,
-                    f'{{"job_id": "{job_id_meta}"}}',
-                ],
-            )
-        return ComplianceRun.objects.get(id=run_id)
+        run = ComplianceRun.objects.create(
+            tenant=tenant,
+            asset=asset,
+            job=job,
+            status="RUNNING",
+            scan_mode="full",
+            started_at=started_at,
+            metadata_json={"job_id": str(uuid.uuid4())},
+        )
+        return run
 
     @override_settings(COMPLIANCE_POLL_MAX_SECONDS=1)
     def test_poll_timeout_marks_run_failed(self):
@@ -74,7 +70,8 @@ class CompliancePollTimeoutTest(TestCase):
         poll_compliance_job(run.id)
 
         run.refresh_from_db()
-        self.assertEqual(run.status, "FAILED")
+        from hub.apps.compliance.models import ComplianceRunStatus
+        self.assertEqual(run.status, ComplianceRunStatus.FAILED)
 
     @override_settings(COMPLIANCE_POLL_MAX_SECONDS=1)
     def test_poll_timeout_sets_error_code(self):

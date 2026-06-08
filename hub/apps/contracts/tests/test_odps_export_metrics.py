@@ -277,7 +277,7 @@ class ODPSExportMetricsCollectionTest(ODPSExportMetricsTestBase):
         self.assertEqual(response["content-type"], "application/json")
 
         # Verify response contains valid JSON
-        data = json.loads(response.content)
+        data = response.data
         self.assertIn("schema", data)
         self.assertIn("version", data)
         self.assertIn("product", data)
@@ -527,7 +527,7 @@ class ODPSExportMetricsIntegrationTest(ODPSExportMetricsTestBase):
 
             # Verify response content
             if output_format == "json":
-                data = json.loads(response.content)
+                data = response.data
                 self.assertIn("schema", data)
             else:
                 content = response.content.decode("utf-8")
@@ -624,11 +624,12 @@ class ODPSExportFailureAlertTest(ODPSExportMetricsTestBase):
             {"format": "odps", "output_format": "json"},
         )
 
-        # Verify export failed
-        self.assertIn(
+        # Export must fail with 400 — a contract without hub_contract_json
+        # is a client error, not a server fault.
+        self.assertEqual(
             response.status_code,
-            [status.HTTP_400_BAD_REQUEST, status.HTTP_500_INTERNAL_SERVER_ERROR],
-            f"Export should fail for contract without hub_contract_json: {response.status_code}",
+            status.HTTP_400_BAD_REQUEST,
+            f"Export without hub_contract_json must return 400, got {response.status_code}",
         )
 
         # Verify failure metric structure is correct
@@ -744,67 +745,42 @@ class ODPSExportFailureAlertTest(ODPSExportMetricsTestBase):
             self.fail(f"Metrics should support per-tenant tracking: {e}")
 
     def test_export_metrics_handles_unicode_characters(self):
-        """Test that export metrics handles unicode characters correctly."""
+        """Export metrics must accept unicode tenant IDs — Prometheus label
+        values support UTF-8; rejecting valid unicode would be a bug."""
         tenant = "测试租户"
-        try:
-            success_metric = odps_export_total.labels(
-                status="success", format="json", tenant_id=tenant
-            )
-            # Should handle unicode characters
-            self.assertIsNotNone(success_metric)
-        except Exception as e:
-            # If it fails, it should fail gracefully
-            self.assertIsInstance(e, (ValueError, TypeError))
+        success_metric = odps_export_total.labels(
+            status="success", format="json", tenant_id=tenant
+        )
+        self.assertIsNotNone(success_metric)
 
     def test_export_metrics_handles_special_characters(self):
-        """Test that export metrics handles special characters correctly."""
+        """Export metrics must accept special characters in tenant IDs."""
         tenant = "Test & Co. (Special)"
-        try:
-            success_metric = odps_export_total.labels(
-                status="success", format="json", tenant_id=tenant
-            )
-            # Should handle special characters
-            self.assertIsNotNone(success_metric)
-        except Exception as e:
-            # If it fails, it should fail gracefully
-            self.assertIsInstance(e, (ValueError, TypeError))
+        success_metric = odps_export_total.labels(
+            status="success", format="json", tenant_id=tenant
+        )
+        self.assertIsNotNone(success_metric)
 
     def test_export_metrics_handles_very_large_labels(self):
-        """Test that export metrics handles very large labels correctly."""
-        large_tenant = "A" * 1000  # Very long tenant ID
-        try:
-            success_metric = odps_export_total.labels(
-                status="success", format="json", tenant_id=large_tenant
-            )
-            # Should handle very large labels
-            self.assertIsNotNone(success_metric)
-        except Exception as e:
-            # If it fails, it should fail gracefully
-            self.assertIsInstance(e, (ValueError, TypeError))
+        """Export metrics must accept very long tenant ID labels."""
+        large_tenant = "A" * 1000
+        success_metric = odps_export_total.labels(
+            status="success", format="json", tenant_id=large_tenant
+        )
+        self.assertIsNotNone(success_metric)
 
     def test_export_metrics_handles_none_values(self):
-        """Test that export metrics handles None values correctly."""
-        try:
-            # None tenant_id might be handled differently
-            success_metric = odps_export_total.labels(
-                status="success", format="json", tenant_id=None  # None value
-            )
-            # Should handle None values gracefully
-            self.assertIsNotNone(success_metric)
-        except Exception as e:
-            # If it fails, it should fail gracefully
-            self.assertIsInstance(e, (ValueError, TypeError))
+        """Export metrics must handle None tenant_id gracefully by
+        converting it to a string label."""
+        success_metric = odps_export_total.labels(
+            status="success", format="json", tenant_id=None
+        )
+        self.assertIsNotNone(success_metric)
 
     def test_export_metrics_handles_nested_structures(self):
-        """Test that export metrics handles nested structures correctly."""
-        # Metrics labels are typically flat, but we can test with complex tenant IDs
+        """Export metrics must handle complex tenant ID strings."""
         nested_tenant = "tenant-with-nested-structure"
-        try:
-            success_metric = odps_export_total.labels(
-                status="success", format="json", tenant_id=nested_tenant
-            )
-            # Should handle nested structures in labels
-            self.assertIsNotNone(success_metric)
-        except Exception as e:
-            # If it fails, it should fail gracefully
-            self.assertIsInstance(e, (ValueError, TypeError))
+        success_metric = odps_export_total.labels(
+            status="success", format="json", tenant_id=nested_tenant
+        )
+        self.assertIsNotNone(success_metric)

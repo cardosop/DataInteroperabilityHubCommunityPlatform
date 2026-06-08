@@ -33,18 +33,33 @@ class TestThrottleCoverageNegative(TestCase):
     """Stripping throttle_classes from a view causes check to fail."""
 
     def test_missing_throttle_detected(self):
-        from hub.apps.search import views as search_views
+        import tempfile
+        import os
+        from unittest.mock import patch
 
-        # Monkey-patch: remove throttle_classes from UnifiedSearchView.
-        original = getattr(search_views.UnifiedSearchView, "throttle_classes", None)
+        # Write a temporary module with a View class that lacks throttle_classes.
+        with tempfile.NamedTemporaryFile(
+            mode="w", suffix=".py", delete=False
+        ) as tmp:
+            tmp.write(
+                "from rest_framework import viewsets\n"
+                "from rest_framework.permissions import IsAuthenticated\n\n"
+                "class UncoveredTestView(viewsets.ViewSet):\n"
+                "    permission_classes = [IsAuthenticated]\n"
+            )
+            tmp_path = tmp.name
+
         try:
-            delattr(search_views.UnifiedSearchView, "throttle_classes")
-            with pytest.raises(SystemExit) as exc_info:
-                call_command("check_throttle_coverage")
-            assert exc_info.value.code == 1, "Should exit 1 when throttle missing"
+            # Patch _check_module to scan our temp file instead of a real one.
+            from hub.apps.observability.management.commands.check_throttle_coverage import (
+                _check_module,
+            )
+            uncovered = _check_module(tmp_path)
+            assert len(uncovered) >= 1, (
+                f"Should report at least 1 uncovered view, got: {uncovered}"
+            )
         finally:
-            if original is not None:
-                search_views.UnifiedSearchView.throttle_classes = original
+            os.unlink(tmp_path)
 
 
 class TestViewHasAuditEmission(TestCase):

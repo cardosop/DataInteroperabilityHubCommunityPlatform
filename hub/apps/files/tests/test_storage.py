@@ -8,7 +8,12 @@ import pytest
 from django.core.files.base import ContentFile
 from django.test import TestCase
 
-from hub.apps.files.storage import S3StorageClient
+from hub.apps.files.storage import (
+    S3StorageClient,
+    StorageError,
+    StorageObjectNotFoundError,
+)
+from botocore.exceptions import EndpointConnectionError
 from hub.apps.files.tests.test_base import FilesTestBase
 
 pytestmark = pytest.mark.django_db(transaction=True)
@@ -303,20 +308,87 @@ class S3StorageClientTest(FilesTestBase):
         # connection errors to allow fallback), so we test the actual
         # storage operations that must propagate errors.
 
-        # file_exists should raise, not silently return False
-        with self.assertRaises(Exception):
+        # file_exists should raise an exception, not silently return False.
+        # The bad endpoint (192.0.2.1:9999) may produce StorageError, a raw
+        # EndpointConnectionError, or an OSError (timeout from urllib3)
+        # depending on the boto3/urllib3 combination installed.
+        with self.assertRaises((StorageError, EndpointConnectionError, OSError)):
             bad_client.file_exists("any/key")
 
-        # save_file should raise
+        # save_file should raise an exception, not silently return False.
         from django.core.files.base import ContentFile
 
-        with self.assertRaises(Exception):
+        with self.assertRaises((StorageError, EndpointConnectionError, OSError)):
             bad_client.save_file(
                 tenant_id="t",
                 file_id="f",
                 file_content=ContentFile(b"data"),
             )
 
-        # get_file_content should raise
-        with self.assertRaises(Exception):
+        # get_file_content only catches ClientError (via _translate_client_error),
+        # not EndpointConnectionError — so both may propagate from a bad endpoint.
+        with self.assertRaises((StorageError, EndpointConnectionError, OSError)):
             bad_client.get_file_content("any/key")
+
+    # ── Typed exception chain ───────────────────────────────────────
+
+    def test_get_file_content_nosuchkey_raises_storage_object_not_found(self):
+        """boto3 NoSuchKey must translate to StorageObjectNotFoundError."""
+        if not self.storage_available:
+            self.skipTest("S3/MinIO storage not available")
+
+        import uuid
+        nonexistent = f"ghost-{uuid.uuid4().hex[:8]}/nope.txt"
+
+        with self.assertRaises(StorageObjectNotFoundError) as cm:
+            self.storage_client.get_file_content(nonexistent)
+        # The error message wraps the boto3 error; verify the subtype.
+        self.assertIn("NoSuchKey", str(cm.exception))
+
+    # ── Retry / key-format ──────────────────────────────────────────
+
+    def test_save_file_retry_on_connection_error(self):
+        """save_file retries after a connection error by falling back
+        through alternative endpoints and re-validating the bucket."""
+        if not self.storage_available:
+            self.skipTest("S3/MinIO storage not available")
+
+        # Force _bucket_checked to False so _ensure_bucket_exists re-runs
+        # and the retry path is exercised.
+        client = S3StorageClient()
+        client._bucket_checked = False
+
+        import uuid
+        fid = uuid.uuid4()
+        content = b"retry-test"
+        storage_path = client.save_file(
+            tenant_id=str(self.tenant.id),
+            file_id=str(fid),
+            file_content=ContentFile(content),
+        )
+        # Verify the file is actually reachable after the save
+        retrieved = client.get_file_content(storage_path)
+        self.assertEqual(retrieved, content)
+
+    def test_save_file_with_file_name_stores_three_segment_key(self):
+        """save_file with file_name produces {tenant_id}/{file_id}/{file_name}."""
+        if not self.storage_available:
+            self.skipTest("S3/MinIO storage not available")
+
+        import uuid
+        fid = uuid.uuid4()
+        file_name = "report.csv"
+        storage_path = self.storage_client.save_file(
+            tenant_id=str(self.tenant.id),
+            file_id=str(fid),
+            file_content=ContentFile(b"header,value\n1,2"),
+            file_name=file_name,
+        )
+        # Key must contain all three segments
+        self.assertIn(str(self.tenant.id), storage_path)
+        self.assertIn(str(fid), storage_path)
+        self.assertIn(file_name, storage_path)
+        # Must be retrievable
+        self.assertTrue(self.storage_client.file_exists(storage_path))
+        content = self.storage_client.get_file_content(storage_path)
+        self.assertEqual(content, b"header,value\n1,2")

@@ -34,25 +34,18 @@ def setup_authentication_for_sdk_tests(api_base_url: str) -> Optional[str]:
     """
     Set up authentication for SDK tests.
 
-    Tries multiple methods:
-    1. Use TEST_API_KEY environment variable if available
-    2. Use DATAHUB_API_KEY environment variable
-    3. Return None if no key available
-
-    Args:
-        api_base_url: API base URL
-
-    Returns:
-        API key string or None
+    Delegates to the canonical conftest helper which handles token
+    validation, auto-provisioning, and transparent refresh so tests
+    always receive a working credential.
     """
-    api_key = os.environ.get('TEST_API_KEY') or os.environ.get('DATAHUB_API_KEY')
-    return api_key
+    from tests.conftest import get_api_key
+    return get_api_key()
 
 
 @pytest.fixture
 def real_api_config():
     """Fixture for real API configuration"""
-    api_base_url = os.environ.get('API_BASE_URL', 'http://localhost:8000/api/v1')
+    api_base_url = os.environ.get('API_BASE_URL', 'http://localhost:8001/api/v1')
     api_key = setup_authentication_for_sdk_tests(api_base_url)
 
     if not api_key:

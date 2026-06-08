@@ -10,7 +10,7 @@ Tests domain CRUD operations with comprehensive error handling.
 import os
 import pytest
 import uuid
-import subprocess
+import asyncio
 from typing import Optional
 from unittest.mock import AsyncMock, MagicMock
 from datahub_interoperability import DataHubClient, DataHubClientConfig, MeshAPI
@@ -19,113 +19,20 @@ from datahub_interoperability.errors import (
     NotFoundError,
     ConflictError,
 )
-
-
-def setup_authentication_for_sdk_tests(api_base_url: str) -> Optional[str]:
-    """
-    Set up authentication for SDK tests.
-
-    Tries multiple methods:
-    1. Use TEST_API_KEY environment variable if available
-    2. Use DATAHUB_API_KEY environment variable
-    3. Try to create API key via Django shell (if Docker Compose is available)
-    4. Return None if no key available
-
-    Args:
-        api_base_url: API base URL
-
-    Returns:
-        API key string or None
-    """
-    # Method 1: Use environment variables
-    api_key = os.environ.get('TEST_API_KEY') or os.environ.get('DATAHUB_API_KEY')
-    if api_key:
-        return api_key
-
-    # Method 2: Try to create API key via Django shell in Docker Compose
-    try:
-        django_shell_script = """
-from hub.apps.tenants.models import Tenant
-from hub.apps.users.models import User, UserStatus, Role, UserRole
-from hub.apps.auth.models import APIKey
-import os
-
-tenant, _ = Tenant.objects.get_or_create(
-    slug='mesh-domains-sdk-test-tenant',
-    defaults={'name': 'Mesh Domains SDK Test Tenant'}
+from tests._sdk_test_helpers import (
+    check_api_available,
+    create_real_api_config,
 )
 
-# Get or create TENANT_ADMIN role
-admin_role, _ = Role.objects.get_or_create(
-    tenant=tenant,
-    name='TENANT_ADMIN',
-    defaults={'description': 'Tenant Administrator'}
-)
-
-user, _ = User.objects.get_or_create(
-    email='mesh-domains-sdk-test@example.com',
-    defaults={
-        'tenant': tenant,
-        'status': UserStatus.ACTIVE
-    }
-)
-if user.tenant != tenant:
-    user.tenant = tenant
-    user.status = UserStatus.ACTIVE
-    user.save()
-
-# Assign TENANT_ADMIN role to user
-UserRole.objects.get_or_create(user=user, role=admin_role)
-
-# Delete existing API key if it exists
-APIKey.objects.filter(user=user, name='mesh-domains-sdk-test-key').delete()
-
-# Create new API key with mesh:write and mesh:read scopes
-api_key_value = APIKey.generate_key()
-api_key_hash = APIKey.hash_key(api_key_value)
-api_key_obj = APIKey.objects.create(
-    user=user,
-    tenant=tenant,
-    name='mesh-domains-sdk-test-key',
-    key_hash=api_key_hash,
-    scopes=['mesh:write', 'mesh:read']
-)
-print(api_key_value)
-"""
-        result = subprocess.run(
-            ['docker', 'compose', 'exec', '-T', 'api-service', 'python', 'manage.py', 'shell'],
-            input=django_shell_script,
-            text=True,
-            capture_output=True,
-            timeout=30,
-            cwd='/home/ph/Desktop/DataInteroperabilityHub'
-        )
-        if result.returncode == 0:
-            output_lines = result.stdout.strip().split('\n')
-            # Look for line starting with API key (long alphanumeric string)
-            for line in reversed(output_lines):
-                line = line.strip()
-                # API keys are typically long strings (40+ characters)
-                if line and len(line) > 40:
-                    # Additional validation: check if it looks like an API key
-                    cleaned = line.replace('-', '').replace('_', '')
-                    if cleaned.isalnum() and ' ' not in line:
-                        return line
-    except Exception:
-        pass
-
-    return None
+# File-specific tenant parameters
+_DOMAINS_TENANT_SLUG = "mesh-domains-sdk-test-tenant"
+_DOMAINS_TENANT_NAME = "Mesh Domains SDK Test Tenant"
+_DOMAINS_API_KEY_NAME = "mesh-domains-sdk-test-key"
+_DOMAINS_SCOPES = ["mesh:write", "mesh:read"]
+_DOMAINS_EXTRA_TENANT_SETUP = "tenant.data_mesh_enabled = True; tenant.save()"
 
 
-def check_api_available(api_base_url: str) -> bool:
-    """Check if API service is available"""
-    try:
-        import requests
-        response = requests.get(f"{api_base_url}/", timeout=2)
-        return response.status_code < 600  # Any HTTP response means API is up
-    except Exception:
-        return False
-
+# ── Unit-test fixtures (no API calls) ───────────────────────────────
 
 @pytest.fixture
 def config():
@@ -152,38 +59,27 @@ def mesh_api(client):
     return MeshAPI(client)
 
 
-@pytest.fixture
+# ── Integration-test fixtures (real API) ────────────────────────────
+
+@pytest.fixture(scope="module")
 def real_api_config():
-    """Fixture for real API configuration"""
-    api_base_url = os.environ.get('API_BASE_URL', 'http://localhost:8000/api/v1')
-
-    # Check if API is available
-    if not check_api_available(api_base_url):
-        pytest.skip("API service is not available. Ensure Docker Compose services are running.")
-
-    api_key = setup_authentication_for_sdk_tests(api_base_url)
-
-    if not api_key:
-        pytest.skip(
-            "No API key available. Set TEST_API_KEY or DATAHUB_API_KEY environment variable, "
-            "or ensure Docker Compose api-service is accessible."
-        )
-
-    return DataHubClientConfig(
-        base_url=api_base_url,
-        api_token=api_key,
-        timeout=30.0,
-        max_retries=3,
-        user_agent="DataHub-SDK-Test",
-        enable_logging=False,
+    """Fixture for real API configuration (module-scoped)."""
+    return create_real_api_config(
+        tenant_slug=_DOMAINS_TENANT_SLUG,
+        tenant_name=_DOMAINS_TENANT_NAME,
+        api_key_name=_DOMAINS_API_KEY_NAME,
+        scopes=_DOMAINS_SCOPES,
+        extra_tenant_setup=_DOMAINS_EXTRA_TENANT_SETUP,
     )
 
 
 @pytest.fixture
 async def real_client(real_api_config):
-    """Create SDK client with real API configuration"""
+    """Create SDK client with real API configuration."""
+    import asyncio
     async with DataHubClient(real_api_config) as client:
         yield client
+        await asyncio.sleep(0.1)  # Reduce server load between tests
 
 
 # Unit Tests - Method Structure and Parameters
@@ -489,6 +385,9 @@ async def test_list_domains_with_filters_integration(real_client):
         # Filter by status
         active_domains = await real_client.mesh.list_domains(status="ACTIVE")
         assert active_domains is not None
+        assert len(active_domains["results"]) > 0, (
+            "Filter for status='ACTIVE' returned zero results; cannot verify status filtering"
+        )
         assert all(d["status"] == "ACTIVE" for d in active_domains["results"])
 
         # Filter by search

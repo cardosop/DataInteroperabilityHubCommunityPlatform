@@ -39,12 +39,13 @@ class FrontendErrorHandlingTest(ContractsAPITestBase):
     def setUp(self):
         """Set up test fixtures"""
         super().setUp()
+        import uuid
         # Update tenant/user names for clarity
-        self.tenant.name = "Error Test Tenant"
-        self.tenant.slug = "error-test"
+        self.tenant.name = f"Error Test Tenant {uuid.uuid4().hex[:8]}"
+        self.tenant.slug = f"error-test-{uuid.uuid4().hex[:8]}"
         self.tenant.save()
 
-        self.user.email = "user@error.test"
+        self.user.email = f"user-{uuid.uuid4().hex[:8]}@error.test"
         self.user.save()
 
         # Create role
@@ -80,14 +81,24 @@ class FrontendErrorHandlingTest(ContractsAPITestBase):
             "/api/v1/contracts/", {}, format="json"  # Empty data should cause validation error
         )
 
-        if response.status_code == status.HTTP_400_BAD_REQUEST:
-            error_data = response.json()
+        self.assertEqual(
+            response.status_code,
+            status.HTTP_400_BAD_REQUEST,
+            "Empty POST data must produce a 400 validation error",
+        )
+        error_data = response.json()
 
-            # Should have error code or type
-            has_code = any(
-                key in error_data for key in ["code", "error_code", "type", "error_type"]
-            )
-            # Note: Not all APIs may include codes, so this is informational
+        # Should have an error-identification field — the API uses 'error'
+        # for the user-facing message and field names for per-field errors.
+        # Not all backends attach a machine-readable 'code', so we verify
+        # that at least one error-bearing key is present.
+        error_keys = {"error", "code", "error_code", "type", "error_type", "detail"}
+        has_error_key = bool(error_keys & set(error_data.keys()))
+        self.assertTrue(
+            has_error_key,
+            f"Error response must include at least one error-identification field "
+            f"from {sorted(error_keys)}. Got keys: {sorted(error_data.keys())}",
+        )
 
     def test_error_responses_include_field_level_errors(self):
         """Test all error responses include field-level errors (where applicable)"""
@@ -98,16 +109,24 @@ class FrontendErrorHandlingTest(ContractsAPITestBase):
             format="json",
         )
 
-        if response.status_code == status.HTTP_400_BAD_REQUEST:
-            error_data = response.json()
+        self.assertEqual(
+            response.status_code,
+            status.HTTP_400_BAD_REQUEST,
+            "Invalid POST data must produce a 400 validation error",
+        )
+        error_data = response.json()
 
-            # Should have field-level errors or a general error structure
-            has_field_errors = (
-                any(isinstance(v, (dict, list)) for v in error_data.values())
-                or "errors" in error_data
-                or "fields" in error_data
-            )
-            # Field-level errors may or may not be present depending on implementation
+        # Should have field-level errors or a general error structure
+        has_field_errors = (
+            any(isinstance(v, (dict, list)) for v in error_data.values())
+            or "errors" in error_data
+            or "fields" in error_data
+        )
+        self.assertTrue(
+            has_field_errors,
+            f"Error response must include field-level error details (nested dict/list, 'errors', or 'fields'). "
+            f"Got keys: {sorted(error_data.keys())}",
+        )
 
     def test_error_responses_are_properly_formatted_for_frontend(self):
         """Test all error responses are properly formatted for frontend"""
@@ -180,16 +199,14 @@ class FrontendErrorHandlingTest(ContractsAPITestBase):
             format="json",
         )
 
-        # Should return validation error
-        self.assertIn(
+        # Should return validation error (400)
+        self.assertEqual(
             response.status_code,
-            [status.HTTP_400_BAD_REQUEST, status.HTTP_422_UNPROCESSABLE_ENTITY],
-            "Should return validation error for invalid data",
+            status.HTTP_400_BAD_REQUEST,
+            "Invalid POST data must produce a 400 validation error",
         )
-
-        if response.status_code >= 400:
-            error_data = response.json()
-            self.assertIsInstance(error_data, dict, "Error response should be a dictionary")
+        error_data = response.json()
+        self.assertIsInstance(error_data, dict, "Error response should be a dictionary")
 
     def test_error_responses_handle_authentication_errors(self):
         """Test error responses handle authentication errors properly"""
@@ -198,16 +215,14 @@ class FrontendErrorHandlingTest(ContractsAPITestBase):
 
         response = unauthenticated_client.get("/api/v1/contracts/")
 
-        # Should return authentication error
-        self.assertIn(
+        # Should return authentication error (401)
+        self.assertEqual(
             response.status_code,
-            [status.HTTP_401_UNAUTHORIZED, status.HTTP_403_FORBIDDEN],
-            "Should return authentication error for unauthenticated request",
+            status.HTTP_401_UNAUTHORIZED,
+            "Unauthenticated requests must receive a 401 response",
         )
-
-        if response.status_code >= 400:
-            error_data = response.json()
-            self.assertIsInstance(error_data, dict, "Error response should be a dictionary")
+        error_data = response.json()
+        self.assertIsInstance(error_data, dict, "Error response should be a dictionary")
 
     def test_error_responses_handle_permission_errors(self):
         """Test error responses handle permission errors properly"""
@@ -224,41 +239,60 @@ class FrontendErrorHandlingTest(ContractsAPITestBase):
             normalization_status=NormalizationStatus.NORMALIZED_OK,
         )
 
-        # Try to access with insufficient permissions (if permission system is implemented)
-        # This test verifies error handling structure
+        # Create a cross-tenant user who should NOT have access
+        from hub.apps.tenants.models import Tenant as TenantModel
+        import uuid
+
+        other_tenant = TenantModel.objects.create(
+            name=f"Other Tenant {uuid.uuid4().hex[:8]}",
+            slug=f"other-{uuid.uuid4().hex[:8]}",
+        )
+        from django.contrib.auth import get_user_model
+
+        User = get_user_model()
+        other_user = User.objects.create_user(
+            email=f"other-{uuid.uuid4().hex[:8]}@test.com",
+            password="testpass123",
+            tenant=other_tenant,
+        )
+        self.client.force_authenticate(user=other_user)
+
         response = self.client.get(f"/api/v1/contracts/{contract.id}/")
 
-        # Should succeed or return permission error
+        # Cross-tenant access must be forbidden (403) or not found (404)
         self.assertIn(
             response.status_code,
-            [status.HTTP_200_OK, status.HTTP_403_FORBIDDEN],
-            "Should handle permissions appropriately",
+            [status.HTTP_403_FORBIDDEN, status.HTTP_404_NOT_FOUND],
+            "Cross-tenant access should return 403 Forbidden or 404 Not Found",
         )
+        error_data = response.json()
+        self.assertIsInstance(error_data, dict, "Error response should be a dictionary")
 
     def test_error_responses_handle_server_errors(self):
         """Test error responses handle server errors (500) properly"""
-        # Test with potentially problematic data that might cause server error
-        # (This is a structural test - actual 500 errors are hard to trigger safely)
-        try:
-            response = self.client.post(
-                "/api/v1/contracts/",
-                {"original_raw": None, "original_format": "JSON"},  # None value
-                format="json",
-            )
+        # Test with potentially problematic data that might cause server error.
+        # DRF serializers should validate this and return a structured error
+        # rather than raising an unhandled 500.
+        response = self.client.post(
+            "/api/v1/contracts/",
+            {"original_raw": None, "original_format": "JSON"},  # None value
+            format="json",
+        )
 
-            # Should handle gracefully (either validate or return error)
-            self.assertIn(
-                response.status_code,
-                [
-                    status.HTTP_200_OK,
-                    status.HTTP_400_BAD_REQUEST,
-                    status.HTTP_500_INTERNAL_SERVER_ERROR,
-                ],
-                "Should handle server errors gracefully",
-            )
-        except Exception:
-            # If it raises exception, that's also acceptable - error handling may vary
-            pass
+        # The API should handle this gracefully — either reject with 400
+        # or (if the serializer accepts None) return 201. A raw 500 here
+        # would signal a validation gap that needs fixing.
+        self.assertIn(
+            response.status_code,
+            [
+                status.HTTP_400_BAD_REQUEST,
+                status.HTTP_201_CREATED,
+            ],
+            f"POST with original_raw=None should be handled gracefully, "
+            f"got {response.status_code}",
+        )
+        error_data = response.json()
+        self.assertIsInstance(error_data, dict, "Response should be a dictionary")
 
     def test_error_responses_consistency_across_endpoints(self):
         """Test error response format consistency across different endpoints"""

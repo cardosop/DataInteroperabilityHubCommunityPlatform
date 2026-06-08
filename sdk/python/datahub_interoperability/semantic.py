@@ -73,3 +73,27 @@ class SemanticAPI:
 
     async def resource_resolve(self, uri: str) -> Dict[str, Any]:
         return await self.client.get("semantic/resource/resolve/", params={"uri": uri})
+
+    async def execute_graphql_ld(
+        self,
+        query: str,
+        variables: Optional[Dict[str, Any]] = None,
+    ) -> Dict[str, Any]:
+        """Execute a GraphQL-LD query against the semantic graph.
+
+        Args:
+            query: GraphQL-LD query string (must be non-empty).
+            variables: Optional variables dict for parameterised queries.
+
+        Returns:
+            Response dict with ``data`` and/or ``errors`` keys.
+
+        Raises:
+            ValueError: If *query* is empty or None.
+        """
+        if not query or not query.strip():
+            raise ValueError("GraphQL-LD query must be non-empty")
+        body: Dict[str, Any] = {"query": query}
+        if variables is not None:
+            body["variables"] = variables
+        return await self.client.post("semantic/graphql", data=body)

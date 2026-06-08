@@ -26,7 +26,7 @@ class GDPRRegressionTestBase(TestCase):
         super().setUp()
         self.client = APIClient()
         self.tenant = Tenant.objects.create(
-            name="GDPR Regression Tenant",
+            name=f"GDPR Regression Tenant {uuid.uuid4().hex[:8]}",
             slug="gdpr-regression",
         )
         self.user = User.objects.create_user(

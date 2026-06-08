@@ -1115,6 +1115,11 @@ class GovernanceBusinessRules(BusinessRules):
         result = result.combine(status_result)
         details['status_transition_validated'] = True
 
+        # Pre-check errors (missing resource, missing reason, etc.) must
+        # invalidate the result even when sub-validators return is_valid=True.
+        if result.errors:
+            result.is_valid = False
+
         # Update result details
         result.details.update(details)
         result.details['is_valid'] = result.is_valid
@@ -2892,7 +2897,13 @@ class ApproverIdentityRule:
         from hub.apps.core.business_rules.base import ValidationResult
         if approver is None:
             return ValidationResult(is_valid=False, errors=["Approver is required"])
-        if not getattr(approver, "is_active", False):
+        # Call the is_active() method (not the AbstractBaseUser.is_active field)
+        # to check the custom User status logic.
+        if callable(getattr(approver, "is_active", None)):
+            active = approver.is_active()
+        else:
+            active = getattr(approver, "is_active", False)
+        if not active:
             return ValidationResult(is_valid=False, errors=["Approver is not active"])
         return ValidationResult(is_valid=True)
 
@@ -2904,7 +2915,7 @@ class ApprovalStageRule:
         self.tenant_id = tenant_id
         self.user_id = user_id
 
-    def validate_transition(self, access_request, tenant, approver):
+    def validate_transition(self, access_request, tenant, approver, new_status=None):
         from hub.apps.core.business_rules.base import ValidationResult
         from hub.apps.governance.state_machine import ALLOWED_TRANSITIONS
         if access_request is None:
@@ -2913,12 +2924,23 @@ class ApprovalStageRule:
         if hasattr(current, "value"):
             current = current.value
         allowed = ALLOWED_TRANSITIONS.get(current, set())
-        # Approve transitions from PENDING or PENDING_NEXT_APPROVER → PENDING_NEXT_APPROVER/APPROVED
+        # If a target status is specified, validate it is in the allowed set.
+        target = new_status or "APPROVED"
+        if target not in allowed:
+            return ValidationResult(
+                is_valid=False,
+                errors=[f"Transition from {current} to {target} is not allowed"],
+            )
         return ValidationResult(is_valid=True)
 
 
 class ApprovalQuorumRule:
-    """Phase 274.5/274.7 — validates quorum requirements for approval."""
+    """Phase 274.5/274.7 — validates quorum requirements for approval.
+
+    Anti-self-dealing: the same user may not both request access
+    and serve as an approver on the same access request (nor may
+    the same user approve consecutive steps in a multi-step chain).
+    """
 
     def __init__(self, tenant_id=None, user_id=None):
         self.tenant_id = tenant_id
@@ -2928,5 +2950,13 @@ class ApprovalQuorumRule:
         from hub.apps.core.business_rules.base import ValidationResult
         if access_request is None:
             return ValidationResult(is_valid=False, errors=["Access request is required"])
-        # Quorum is satisfied if at least one approver has acted.
+        # Anti-self-dealing: same user cannot both request and be the
+        # most recent approver on the same access request.
+        requested_by_id = getattr(access_request, "requested_by_id", None)
+        approved_by_id = getattr(access_request, "approved_by_id", None)
+        if requested_by_id and approved_by_id and requested_by_id == approved_by_id:
+            return ValidationResult(
+                is_valid=False,
+                errors=["Same user cannot both request and approve the same access request"],
+            )
         return ValidationResult(is_valid=True)

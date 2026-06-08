@@ -38,13 +38,13 @@ class ODCSNormalizerBaseStructureTest(TestCase):
     def test_can_instantiate_concrete_subclass(self):
         """Test that a concrete subclass can be instantiated."""
         normalizer = ConcreteODCSNormalizer()
-        assert normalizer is not None
-        assert isinstance(normalizer, ODCSNormalizerBase)
+        self.assertIsNotNone(normalizer)
+        self.assertIsInstance(normalizer, ODCSNormalizerBase)
 
     def test_spec_type_is_odcs(self):
         """Test that spec_type is set to ODCS."""
         normalizer = ConcreteODCSNormalizer()
-        assert normalizer.spec_type == OriginalSpecType.ODCS
+        self.assertEqual(normalizer.spec_type , OriginalSpecType.ODCS)
 
 
 class ODCSNormalizerBaseSupportsTest(TestCase):
@@ -53,21 +53,21 @@ class ODCSNormalizerBaseSupportsTest(TestCase):
     def test_supports_odcs_spec_type(self):
         """Test that supports() returns True for ODCS spec type."""
         normalizer = ConcreteODCSNormalizer()
-        assert normalizer.supports(OriginalSpecType.ODCS, "3.0.2", {})
+        self.assertTrue(normalizer.supports(OriginalSpecType.ODCS, "3.0.2", {}))
 
     def test_supports_does_not_support_other_spec_types(self):
         """Test that supports() returns False for non-ODCS spec types."""
         normalizer = ConcreteODCSNormalizer()
-        assert not normalizer.supports(OriginalSpecType.ODPS, "4.1", {})
-        assert not normalizer.supports("CUSTOM", "1.0", {})
+        self.assertFalse(normalizer.supports(OriginalSpecType.ODPS, "4.1", {}))
+        self.assertFalse(normalizer.supports("CUSTOM", "1.0", {}))
 
     def test_supports_delegates_to_supports_version(self):
         """Test that supports() delegates to _supports_version()."""
         normalizer = ConcreteODCSNormalizer()
         # Concrete implementation supports 3.0.2
-        assert normalizer.supports(OriginalSpecType.ODCS, "3.0.2", {})
+        self.assertTrue(normalizer.supports(OriginalSpecType.ODCS, "3.0.2", {}))
         # But not 3.0.1
-        assert not normalizer.supports(OriginalSpecType.ODCS, "3.0.1", {})
+        self.assertFalse(normalizer.supports(OriginalSpecType.ODCS, "3.0.1", {}))
 
 
 class ODCSNormalizerBaseNormalizeTest(TestCase):
@@ -88,18 +88,18 @@ class ODCSNormalizerBaseNormalizeTest(TestCase):
         result = normalizer.normalize(contract_data, spec_version="3.0.2")
 
         # Check that result has the expected attributes (using hasattr due to dynamic imports)
-        assert hasattr(result, "hub_contract")
-        assert hasattr(result, "status")
-        assert hasattr(result, "errors")
-        assert hasattr(result, "warnings")
-        assert hasattr(result, "spec_type")
-        assert hasattr(result, "spec_version")
-        assert hasattr(result, "coverage")
+        self.assertTrue(hasattr(result, "hub_contract"))
+        self.assertTrue(hasattr(result, "status"))
+        self.assertTrue(hasattr(result, "errors"))
+        self.assertTrue(hasattr(result, "warnings"))
+        self.assertTrue(hasattr(result, "spec_type"))
+        self.assertTrue(hasattr(result, "spec_version"))
+        self.assertTrue(hasattr(result, "coverage"))
 
-        assert result.spec_type == OriginalSpecType.ODCS
-        assert result.spec_version == "3.0.2"
-        assert isinstance(result.errors, list)
-        assert isinstance(result.warnings, list)
+        self.assertEqual(result.spec_type , OriginalSpecType.ODCS)
+        self.assertEqual(result.spec_version , "3.0.2")
+        self.assertIsInstance(result.errors, list)
+        self.assertIsInstance(result.warnings, list)
 
     def test_normalize_detects_version_if_not_provided(self):
         """Test that normalize() detects version from contract_data if not provided."""
@@ -115,7 +115,7 @@ class ODCSNormalizerBaseNormalizeTest(TestCase):
 
         result = normalizer.normalize(contract_data, spec_version=None)
 
-        assert result.spec_version == "3.0.2"
+        self.assertEqual(result.spec_version , "3.0.2")
 
     def test_normalize_fails_for_unsupported_version(self):
         """Test that normalize() fails gracefully for unsupported versions."""
@@ -130,12 +130,9 @@ class ODCSNormalizerBaseNormalizeTest(TestCase):
 
         result = normalizer.normalize(contract_data, spec_version="3.0.1")
 
-        assert result.status == NormalizationStatus.NORMALIZATION_FAILED
-        assert len(result.errors) > 0
-        assert (
-            "does not support" in result.errors[0].lower()
-            or "not support" in result.errors[0].lower()
-        )
+        self.assertEqual(result.status , NormalizationStatus.NORMALIZATION_FAILED)
+        self.assertGreater(len(result.errors) , 0)
+        self.assertTrue("does not support" in result.errors[0].lower() or "not support" in result.errors[0].lower())
 
     def test_normalize_validates_contract_data_is_dict(self):
         """Test that normalize() validates contract_data is a dictionary."""
@@ -143,9 +140,9 @@ class ODCSNormalizerBaseNormalizeTest(TestCase):
 
         result = normalizer.normalize("not a dict", spec_version="3.0.2")
 
-        assert result.status == NormalizationStatus.NORMALIZATION_FAILED
-        assert len(result.errors) > 0
-        assert "dictionary" in result.errors[0].lower()
+        self.assertEqual(result.status , NormalizationStatus.NORMALIZATION_FAILED)
+        self.assertGreater(len(result.errors) , 0)
+        self.assertIn("dictionary", result.errors[0].lower())
 
     def test_normalize_handles_missing_required_fields(self):
         """Test that normalize() handles missing required fields gracefully."""
@@ -161,12 +158,12 @@ class ODCSNormalizerBaseNormalizeTest(TestCase):
         result = normalizer.normalize(contract_data, spec_version="3.0.2")
 
         # Should have errors for missing required fields
-        assert len(result.errors) > 0
-        assert any("name" in error.lower() for error in result.errors)
-        assert any("fields" in error.lower() for error in result.errors)
+        self.assertGreater(len(result.errors) , 0)
+        self.assertTrue(any("name" in error.lower() for error in result.errors))
+        self.assertTrue(any("fields" in error.lower() for error in result.errors))
 
-    def test_normalize_handles_exceptions_gracefully(self):
-        """Test that normalize() handles unexpected exceptions gracefully."""
+    def test_normalize_contract_with_valid_data(self):
+        """Normalize valid contract data without raising — returns result with status."""
         normalizer = ConcreteODCSNormalizer()
         # Create contract data that might cause issues
         contract_data = {
@@ -180,8 +177,8 @@ class ODCSNormalizerBaseNormalizeTest(TestCase):
         # This should not raise an exception
         result = normalizer.normalize(contract_data, spec_version="3.0.2")
 
-        assert result is not None
-        assert hasattr(result, "status")
+        self.assertIsNotNone(result)
+        self.assertTrue(hasattr(result, "status"))
 
 
 class ODCSNormalizerBaseHelperMethodsTest(TestCase):
@@ -201,7 +198,7 @@ class ODCSNormalizerBaseHelperMethodsTest(TestCase):
         # Test through public API - normalize() internally calls _detect_odcs_version()
         result = normalizer.normalize(contract_data, spec_version=None)
 
-        assert result.spec_version == "3.0.2"
+        self.assertEqual(result.spec_version , "3.0.2")
 
     def test_detect_odcs_version_from_version_field(self):
         """Test that normalize() detects version from version field through public API."""
@@ -219,7 +216,7 @@ class ODCSNormalizerBaseHelperMethodsTest(TestCase):
         result = normalizer.normalize(contract_data, spec_version=None)
         # Version detection should work, but normalization will fail because 3.0.1 is not supported
         # The version detection happens before version support check
-        assert result.status == NormalizationStatus.NORMALIZATION_FAILED
+        self.assertEqual(result.status , NormalizationStatus.NORMALIZATION_FAILED)
 
     def test_detect_odcs_version_defaults_to_3_0_2(self):
         """Test that normalize() defaults to 3.0.2 if version cannot be detected through public API."""
@@ -234,7 +231,7 @@ class ODCSNormalizerBaseHelperMethodsTest(TestCase):
         # and defaults to 3.0.2 if version cannot be detected
         result = normalizer.normalize(contract_data, spec_version=None)
 
-        assert result.spec_version == "3.0.2"
+        self.assertEqual(result.spec_version , "3.0.2")
 
     def test_map_version_specific_fields_default_implementation(self):
         """Test that _map_version_specific_fields has a default no-op implementation through public API."""
@@ -252,11 +249,68 @@ class ODCSNormalizerBaseHelperMethodsTest(TestCase):
         result = normalizer.normalize(contract_data, spec_version="3.0.2")
 
         # Should succeed - default implementation doesn't modify anything
-        assert result.status in [
-            NormalizationStatus.NORMALIZED_OK,
-            NormalizationStatus.NORMALIZED_WITH_WARNINGS,
-        ]
-        assert result.hub_contract is not None
+        self.assertEqual(result.status, NormalizationStatus.NORMALIZED_OK)
+        self.assertIsNotNone(result.hub_contract)
+
+    def test_detect_odcs_version_from_shorthand_api_version(self):
+        """_detect_odcs_version handles shorthand apiVersion like 'odcs/v3.0.2'."""
+        normalizer = ConcreteODCSNormalizer()
+        contract_data = {
+            "apiVersion": "odcs/v3.0.2",
+            "kind": "DataContract",
+            "id": "test",
+            "name": "Test Contract",
+            "schema": {"fields": [{"name": "id", "type": "string"}]},
+        }
+        # Test through public API - normalize() internally calls _detect_odcs_version()
+        result = normalizer.normalize(contract_data, spec_version=None)
+        # The shorthand "odcs/v3.0.2" should be detected as version "3.0.2"
+        self.assertEqual(result.spec_version, "3.0.2")
+
+    def test_detect_odcs_version_with_v_prefix(self):
+        """_detect_odcs_version handles v-prefixed apiVersion like 'v3.0.2'."""
+        normalizer = ConcreteODCSNormalizer()
+        contract_data = {
+            "apiVersion": "v3.0.2",
+            "kind": "DataContract",
+            "id": "test",
+            "name": "Test Contract",
+            "schema": {"fields": [{"name": "id", "type": "string"}]},
+        }
+        result = normalizer.normalize(contract_data, spec_version=None)
+        # "v3.0.2" should be detected as version "3.0.2"
+        self.assertEqual(result.spec_version, "3.0.2")
+
+    def test_detect_odcs_version_with_build_metadata(self):
+        """_detect_odcs_version handles apiVersion with build metadata like 'odcs.io/v3.0.2+build.1'."""
+        normalizer = ConcreteODCSNormalizer()
+        contract_data = {
+            "apiVersion": "odcs.io/v3.0.2+build.1",
+            "kind": "DataContract",
+            "id": "test",
+            "name": "Test Contract",
+            "schema": {"fields": [{"name": "id", "type": "string"}]},
+        }
+        result = normalizer.normalize(contract_data, spec_version=None)
+        # Build metadata is preserved as part of the version string by the split logic
+        self.assertIsNotNone(result)
+        # The version detection should extract something meaningful
+        self.assertTrue(result.spec_version.startswith("3.0.2"))
+
+    def test_detect_odcs_version_shorthand_with_build_metadata(self):
+        """_detect_odcs_version handles shorthand apiVersion with build metadata like 'odcs/v3.0.2+build.1'."""
+        normalizer = ConcreteODCSNormalizer()
+        contract_data = {
+            "apiVersion": "odcs/v3.0.2+build.1",
+            "kind": "DataContract",
+            "id": "test",
+            "name": "Test Contract",
+            "schema": {"fields": [{"name": "id", "type": "string"}]},
+        }
+        result = normalizer.normalize(contract_data, spec_version=None)
+        self.assertIsNotNone(result)
+        # Should extract version from the shorthand + build metadata format
+        self.assertTrue(result.spec_version.startswith("3.0.2"))
 
 
 class ODCSNormalizerBaseNormalizationMethodsTest(TestCase):
@@ -281,13 +335,13 @@ class ODCSNormalizerBaseNormalizationMethodsTest(TestCase):
 
         # Top-level owners/tags should override info section
         # Owners are normalized from strings to HubContractOwner format
-        assert result.hub_contract is not None
-        assert "info" in result.hub_contract
-        assert "owners" in result.hub_contract["info"]
-        assert "tags" in result.hub_contract["info"]
+        self.assertIsNotNone(result.hub_contract)
+        self.assertIn("info", result.hub_contract)
+        self.assertIn("owners", result.hub_contract["info"])
+        self.assertIn("tags", result.hub_contract["info"])
         # Owners are normalized from strings to HubContractOwner format
-        assert result.hub_contract["info"]["owners"] == [{"name": "owner2"}]
-        assert result.hub_contract["info"]["tags"] == ["tag2"]
+        self.assertEqual(result.hub_contract["info"]["owners"] , [{"name": "owner2"}])
+        self.assertEqual(result.hub_contract["info"]["tags"] , ["tag2"])
 
     def test_normalize_schema(self):
         """Test _normalize_schema method through public API."""
@@ -304,10 +358,10 @@ class ODCSNormalizerBaseNormalizationMethodsTest(TestCase):
         result = normalizer.normalize(contract_data, spec_version="3.0.2")
 
         # Should have models and schema derived
-        assert result.hub_contract is not None
-        assert "models" in result.hub_contract
-        assert len(result.hub_contract["models"]) > 0
-        assert "fields" in result.hub_contract["schema"]
+        self.assertIsNotNone(result.hub_contract)
+        self.assertIn("models", result.hub_contract)
+        self.assertGreater(len(result.hub_contract["models"]) , 0)
+        self.assertIn("fields", result.hub_contract["schema"])
 
     def test_normalize_quality(self):
         """Test _normalize_quality method through public API."""
@@ -324,9 +378,9 @@ class ODCSNormalizerBaseNormalizationMethodsTest(TestCase):
         # Test through public API - normalize() internally calls _normalize_quality()
         result = normalizer.normalize(contract_data, spec_version="3.0.2")
 
-        assert result.hub_contract is not None
-        assert "quality" in result.hub_contract
-        assert result.hub_contract["quality"]["default_profile_key"] == "profile1"
+        self.assertIsNotNone(result.hub_contract)
+        self.assertIn("quality", result.hub_contract)
+        self.assertEqual(result.hub_contract["quality"]["default_profile_key"] , "profile1")
 
     def test_normalize_privacy_compliance(self):
         """Test _normalize_privacy_compliance method through public API."""
@@ -346,9 +400,9 @@ class ODCSNormalizerBaseNormalizationMethodsTest(TestCase):
         # Test through public API - normalize() internally calls _normalize_privacy_compliance()
         result = normalizer.normalize(contract_data, spec_version="3.0.2")
 
-        assert result.hub_contract is not None
-        assert "privacy_compliance" in result.hub_contract
-        assert result.hub_contract["privacy_compliance"]["contains_personal_data"] is True
+        self.assertIsNotNone(result.hub_contract)
+        self.assertIn("privacy_compliance", result.hub_contract)
+        self.assertTrue(result.hub_contract["privacy_compliance"]["contains_personal_data"] is True)
 
     def test_normalize_lifecycle(self):
         """Test _normalize_lifecycle method through public API."""
@@ -365,9 +419,9 @@ class ODCSNormalizerBaseNormalizationMethodsTest(TestCase):
         # Test through public API - normalize() internally calls _normalize_lifecycle()
         result = normalizer.normalize(contract_data, spec_version="3.0.2")
 
-        assert result.hub_contract is not None
-        assert "lifecycle" in result.hub_contract
-        assert result.hub_contract["lifecycle"]["data_source"] == "database"
+        self.assertIsNotNone(result.hub_contract)
+        self.assertIn("lifecycle", result.hub_contract)
+        self.assertEqual(result.hub_contract["lifecycle"]["data_source"] , "database")
 
     def test_validate_required_fields(self):
         """Test _validate_required_fields method through public API."""
@@ -388,12 +442,13 @@ class ODCSNormalizerBaseNormalizationMethodsTest(TestCase):
         result = normalizer.normalize(contract_data, spec_version="3.0.2")
 
         # Should have validation errors for missing required fields
-        assert len(result.errors) > 0
+        self.assertGreater(len(result.errors) , 0)
         # Check that errors mention missing required fields
         error_messages = " ".join(result.errors).lower()
         # Note: The exact error messages depend on implementation
         # But validation should catch missing required fields
-        assert result.status == NormalizationStatus.NORMALIZATION_FAILED or len(result.errors) > 0
+        self.assertEqual(result.status, NormalizationStatus.NORMALIZATION_FAILED)
+        self.assertGreater(len(result.errors), 0)
 
     def test_normalization_handles_unicode_characters(self):
         """Test that normalization handles unicode characters correctly."""
@@ -411,9 +466,10 @@ class ODCSNormalizerBaseNormalizationMethodsTest(TestCase):
         result = normalizer.normalize(contract_data, spec_version="3.0.2")
 
         # Should handle unicode characters
-        assert result.hub_contract is not None
-        if result.hub_contract and "info" in result.hub_contract:
-            assert result.hub_contract["info"] is not None
+        self.assertIsNotNone(result.hub_contract)
+        self.assertIsNotNone(result.hub_contract, "hub_contract must not be None")
+        self.assertIn("info", result.hub_contract, "info key must be present")
+        self.assertIsNotNone(result.hub_contract["info"], "info must not be None")
 
     def test_normalization_handles_special_characters(self):
         """Test that normalization handles special characters correctly."""
@@ -431,9 +487,10 @@ class ODCSNormalizerBaseNormalizationMethodsTest(TestCase):
         result = normalizer.normalize(contract_data, spec_version="3.0.2")
 
         # Should handle special characters
-        assert result.hub_contract is not None
-        if result.hub_contract and "info" in result.hub_contract:
-            assert result.hub_contract["info"] is not None
+        self.assertIsNotNone(result.hub_contract)
+        self.assertIsNotNone(result.hub_contract, "hub_contract must not be None")
+        self.assertIn("info", result.hub_contract, "info key must be present")
+        self.assertIsNotNone(result.hub_contract["info"], "info must not be None")
 
     def test_normalization_handles_very_large_documents(self):
         """Test that normalization handles very large documents correctly."""
@@ -452,7 +509,7 @@ class ODCSNormalizerBaseNormalizationMethodsTest(TestCase):
         result = normalizer.normalize(contract_data, spec_version="3.0.2")
 
         # Should handle very large documents
-        assert result.hub_contract is not None
+        self.assertIsNotNone(result.hub_contract)
 
     def test_normalization_handles_none_values(self):
         """Test that normalization handles None values correctly."""
@@ -470,7 +527,7 @@ class ODCSNormalizerBaseNormalizationMethodsTest(TestCase):
         result = normalizer.normalize(contract_data, spec_version="3.0.2")
 
         # Should handle None values gracefully
-        assert result.hub_contract is not None
+        self.assertIsNotNone(result.hub_contract)
 
     def test_normalization_handles_nested_structures(self):
         """Test that normalization handles nested structures correctly."""
@@ -495,6 +552,7 @@ class ODCSNormalizerBaseNormalizationMethodsTest(TestCase):
         result = normalizer.normalize(contract_data, spec_version="3.0.2")
 
         # Should handle nested structures
-        assert result.hub_contract is not None
-        if result.hub_contract and "schema" in result.hub_contract:
-            assert result.hub_contract["schema"] is not None
+        self.assertIsNotNone(result.hub_contract)
+        self.assertIsNotNone(result.hub_contract, "hub_contract must not be None")
+        self.assertIn("schema", result.hub_contract, "schema key must be present")
+        self.assertIsNotNone(result.hub_contract["schema"], "schema must not be None")

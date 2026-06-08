@@ -109,7 +109,8 @@ class ComplianceRunSerializerTest(TestCase):
         )
 
         # Read-only fields should be ignored
-        serializer.is_valid()
+        self.assertTrue(serializer.is_valid(),
+            f"Serializer must be valid; got: {serializer.errors}")
         self.assertEqual(str(self.compliance_run.id), serializer.data["id"])
 
     def test_compliance_run_serializer_with_asset(self):

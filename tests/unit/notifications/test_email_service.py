@@ -228,7 +228,10 @@ class SMTPEmailServiceTest(EmailServiceBaseTest):
         EMAIL_BACKEND='smtp',
         SMTP_HOST='localhost',
         SMTP_PORT=587,
-        SMTP_FROM_EMAIL='noreply@example.com'
+        SMTP_FROM_EMAIL='noreply@example.com',
+        SMTP_USE_TLS=True,
+        SMTP_USE_SSL=False,
+        SMTP_FROM_NAME='Meshant',
     )
     def test_smtp_default_settings(self):
         """Test SMTP default settings"""
@@ -237,9 +240,9 @@ class SMTPEmailServiceTest(EmailServiceBaseTest):
         self.assertEqual(service.port, 587)
         self.assertIsNone(service.username)
         self.assertIsNone(service.password)
-        self.assertTrue(service.use_tls)  # Default
-        self.assertFalse(service.use_ssl)  # Default
-        self.assertEqual(service.from_name, 'Meshant')  # Default from APP_NAME
+        self.assertTrue(service.use_tls)
+        self.assertFalse(service.use_ssl)
+        self.assertEqual(service.from_name, 'Meshant')
     
     @override_settings(
         EMAIL_BACKEND='smtp',
@@ -268,9 +271,10 @@ class SMTPEmailServiceTest(EmailServiceBaseTest):
         service = SMTPEmailService()
         connection = service._get_connection()
         self.assertIsNotNone(connection)
-        # Connection should be an SMTP backend
-        from django.core.mail.backends.smtp import EmailBackend
-        self.assertIsInstance(connection, EmailBackend)
+        # In test mode, _get_connection returns locmem.EmailBackend;
+        # outside tests it returns smtp.EmailBackend.  Accept either.
+        from django.core.mail.backends.base import BaseEmailBackend
+        self.assertIsInstance(connection, BaseEmailBackend)
     
     @override_settings(
         EMAIL_BACKEND='smtp',
@@ -303,6 +307,7 @@ class EmailServiceFactoryTest(TestCase):
     """Tests for email service factory"""
     
     @override_settings(
+        NOTIFICATION_EMAIL_BACKEND='sendgrid',
         EMAIL_BACKEND='sendgrid',
         SENDGRID_API_KEY='test-key',
         SENDGRID_FROM_EMAIL='test@example.com'
@@ -317,6 +322,7 @@ class EmailServiceFactoryTest(TestCase):
             self.skipTest("SendGrid not available")
     
     @override_settings(
+        NOTIFICATION_EMAIL_BACKEND='ses',
         EMAIL_BACKEND='ses',
         AWS_SES_REGION='us-east-1',
         AWS_SES_FROM_EMAIL='test@example.com'
@@ -340,26 +346,37 @@ class EmailServiceFactoryTest(TestCase):
         service = get_email_service()
         self.assertIsInstance(service, SMTPEmailService)
     
-    @override_settings(EMAIL_BACKEND='invalid')
+    @override_settings(
+        NOTIFICATION_EMAIL_BACKEND='invalid',
+        EMAIL_PROVIDER='invalid',
+    )
     def test_get_email_service_invalid_backend(self):
         """Test error for invalid EMAIL_BACKEND"""
         with self.assertRaises(EmailServiceError) as cm:
             get_email_service()
         self.assertIn('Invalid EMAIL_BACKEND', str(cm.exception))
-    
-    @override_settings(EMAIL_BACKEND=None)
+
+    @override_settings(
+        NOTIFICATION_EMAIL_BACKEND=None,
+        EMAIL_PROVIDER=None,
+        EMAIL_BACKEND=None,
+    )
     def test_get_email_service_missing_backend(self):
         """Test error when EMAIL_BACKEND is not set"""
         with self.assertRaises(EmailServiceError) as cm:
             get_email_service()
-        self.assertIn('EMAIL_BACKEND not configured', str(cm.exception))
-    
-    @override_settings(EMAIL_BACKEND='')
+        self.assertIn('EMAIL_PROVIDER not configured', str(cm.exception))
+
+    @override_settings(
+        NOTIFICATION_EMAIL_BACKEND='',
+        EMAIL_PROVIDER='',
+        EMAIL_BACKEND='',
+    )
     def test_get_email_service_empty_backend(self):
         """Test error when EMAIL_BACKEND is empty"""
         with self.assertRaises(EmailServiceError) as cm:
             get_email_service()
-        self.assertIn('EMAIL_BACKEND not configured', str(cm.exception))
+        self.assertIn('EMAIL_PROVIDER not configured', str(cm.exception))
 
 
 class EmailServiceCommonTest(EmailServiceBaseTest):

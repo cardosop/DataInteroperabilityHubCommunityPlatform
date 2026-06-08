@@ -34,6 +34,14 @@ def _clean_stale_workflow_data():
             WorkflowDefinition,
             WorkflowInstance,
         )
+        from hub.apps.orchestration.registry import (
+            reset_workflow_definition_cache,
+        )
+
+        # Clear the process-level cache BEFORE deleting rows so that
+        # ``register_workflow`` doesn't serve a stale cached object
+        # whose DB row was rolled back by the previous TestCase.
+        reset_workflow_definition_cache()
 
         with transaction.atomic():
             WorkflowInstance.objects.all().delete()

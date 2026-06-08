@@ -1061,10 +1061,10 @@ class ComplianceBusinessRulesIntegrationTest(TestCase):
         try:
             compliance_client = ComplianceServiceClient()
             self.assertIsNotNone(compliance_client)
-        except Exception as e:
-            # Compliance service might not be available in test environment
-            # This is acceptable - we're testing the business rules, not the service
-            pass
+        except (ConnectionError, OSError, ImportError) as e:
+            self.skipTest(
+                f"ComplianceServiceClient unavailable in test environment: {e}"
+            )
 
     def test_validate_risk_assessment_with_compliance_service_result(self):
         """Test risk assessment validation with ComplianceService result structure"""
@@ -1128,10 +1128,10 @@ class ComplianceBusinessRulesIntegrationTest(TestCase):
             self.assertIsNotNone(compliance_client)
             # Verify client has scan_file method (integration check)
             self.assertTrue(hasattr(compliance_client, 'scan_file'))
-        except Exception as e:
-            # Compliance service might not be available in test environment
-            # This is acceptable - we're testing the business rules, not the service
-            pass
+        except (ConnectionError, OSError, ImportError) as e:
+            self.skipTest(
+                f"ComplianceServiceClient unavailable in test environment: {e}"
+            )
 
     def test_validate_comprehensive_risk_assessment_integration(self):
         """Test comprehensive risk assessment validation with all features"""
@@ -1538,10 +1538,10 @@ class ComplianceRunExecutionValidationTest(TestCase):
             self.assertIsNotNone(compliance_client)
             # Verify client has health_check method
             self.assertTrue(hasattr(compliance_client, 'health_check'))
-        except Exception as e:
-            # Compliance service might not be available in test environment
-            # This is acceptable - we're testing the business rules, not the service
-            pass
+        except (ConnectionError, OSError) as e:
+            # Compliance service might not be available in test environment.
+            # This is acceptable — we're testing the business rules, not the service.
+            self.skipTest(f"Compliance service not available: {e}")
 
 
 
@@ -1776,7 +1776,11 @@ class ScanResourceValidationTest(TestCase):
         result = self.rules._validate_scan_resource(scan_config, self.tenant, self.user)
         self.assertFalse(result.is_valid)
         self.assertGreater(len(result.errors), 0)
-        self.assertIn('asset_id', result.errors[0].lower() or 'dataset_id' in result.errors[0].lower() or 'file_id' in result.errors[0].lower())
+        error_text = result.errors[0].lower()
+        self.assertTrue(
+            any(kw in error_text for kw in ['asset_id', 'dataset_id', 'file_id']),
+            f"Expected resource ID error, got: {result.errors[0]}",
+        )
 
     def test_validate_scan_resource_valid_asset(self):
         """Test scan resource validation with valid asset"""
@@ -2006,7 +2010,7 @@ class ScanConfigurationValidationIntegrationTest(TestCase):
         try:
             compliance_client = ComplianceServiceClient()
             self.assertIsNotNone(compliance_client)
-        except Exception as e:
-            # Compliance service might not be available in test environment
-            # This is acceptable - we're testing the business rules, not the service
-            pass
+        except (ConnectionError, OSError, ImportError) as e:
+            self.skipTest(
+                f"ComplianceServiceClient unavailable in test environment: {e}"
+            )

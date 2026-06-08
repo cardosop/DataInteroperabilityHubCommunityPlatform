@@ -10,9 +10,11 @@ Tests cover:
 All tests use real Redis connections - no mocks or stubs.
 """
 import time
+import uuid
+from unittest.mock import MagicMock
 from structlog.testing import capture_logs
 from django.test import TestCase, override_settings
-from django.test.client import Client
+from rest_framework.test import APIClient
 
 from hub.apps.core.resilience.circuit_breaker import (
     CircuitBreaker,
@@ -35,7 +37,7 @@ class TestCircuitBreakerMetrics(TestCase):
             self.skipTest("Redis not available for integration tests")
 
         # Create a test circuit breaker
-        self.service_name = f"test-service-{int(time.time())}"
+        self.service_name = f"test-service-{uuid.uuid4().hex[:12]}"
         self.circuit_breaker = CircuitBreaker(
             service_name=self.service_name,
             failure_threshold=3,
@@ -56,28 +58,36 @@ class TestCircuitBreakerMetrics(TestCase):
             pass
 
     def test_circuit_breaker_has_metrics(self):
-        """Test circuit breaker initializes metrics."""
-        # Metrics should be initialized (may be None if OpenTelemetry not available)
+        """Test circuit breaker initializes metric attributes post-init.
+
+        This is a smoke test that ``_init_metrics()`` completed without
+        raising.  The attribute values may be ``None`` when OpenTelemetry
+        is not available in the test environment.
+        """
         self.assertTrue(hasattr(self.circuit_breaker, '_state_changes_counter'))
         self.assertTrue(hasattr(self.circuit_breaker, '_failures_counter'))
         self.assertTrue(hasattr(self.circuit_breaker, '_state_gauge'))
 
     def test_state_change_records_metric(self):
-        """Test state changes record metrics."""
-        # Initial state should be CLOSED
+        """Test state changes record metrics by verifying counter.add() is called."""
         self.assertEqual(self.circuit_breaker.get_state(), CircuitBreakerState.CLOSED)
 
-        # Force state change to OPEN
-        self.circuit_breaker._set_state(CircuitBreakerState.OPEN)
-        self.assertEqual(self.circuit_breaker.get_state(), CircuitBreakerState.OPEN)
+        # Replace the counter with a MagicMock so we can verify the call
+        self.circuit_breaker._state_changes_counter = MagicMock()
 
-        # Verify the counter attribute exists
-        self.assertIsNotNone(self.circuit_breaker._state_changes_counter)
+        # Trigger a state change from CLOSED to OPEN
+        self.circuit_breaker._set_state(CircuitBreakerState.OPEN)
+
+        self.circuit_breaker._state_changes_counter.add.assert_called_once()
+        _args, kwargs = self.circuit_breaker._state_changes_counter.add.call_args
+        self.assertEqual(kwargs["attributes"]["from_state"], "CLOSED")
+        self.assertEqual(kwargs["attributes"]["to_state"], "OPEN")
+        self.assertEqual(kwargs["attributes"]["service_name"], self.service_name)
 
     def test_failure_records_metric(self):
-        """Test failures record metrics via the call() path."""
-        # Use call() with a failing function — this increments both the
-        # OTel metric counter AND the Redis/local failure count.
+        """Test failures record metrics by verifying counter.add() is called."""
+        self.circuit_breaker._failures_counter = MagicMock()
+
         def failing_func():
             raise ValueError("Test error")
 
@@ -86,36 +96,33 @@ class TestCircuitBreakerMetrics(TestCase):
         except (ValueError, CircuitBreakerError):
             pass
 
-        # Verify the counter attribute exists
-        self.assertIsNotNone(self.circuit_breaker._failures_counter)
-
-        # Verify failure count incremented (call() updates the actual count)
-        failure_count = self.circuit_breaker._get_failure_count()
-        self.assertGreaterEqual(
-            failure_count, 1,
-            "Expected failure count >= 1 after a failed call()"
-        )
+        self.circuit_breaker._failures_counter.add.assert_called_once()
+        _args, kwargs = self.circuit_breaker._failures_counter.add.call_args
+        self.assertEqual(kwargs["attributes"]["state"], "CLOSED")
+        self.assertEqual(kwargs["attributes"]["service_name"], self.service_name)
 
     def test_state_gauge_updates(self):
-        """Test state gauge updates correctly."""
-        # Update gauge for different states
-        self.circuit_breaker._update_state_gauge(CircuitBreakerState.CLOSED)
+        """Test state gauge records correct add() calls on state transitions."""
+        self.circuit_breaker._state_gauge = MagicMock()
+        self.circuit_breaker._previous_gauge_value = 0
+
+        # HALF_OPEN has numeric value 1; gauge transitions from 0→1
         self.circuit_breaker._update_state_gauge(CircuitBreakerState.HALF_OPEN)
+        self.circuit_breaker._state_gauge.add.assert_called_once_with(
+            1, attributes={"service_name": self.service_name},
+        )
+
+        # OPEN has numeric value 2; gauge transitions from 1→2:
+        # subtract previous (1) then add new value (2)
+        self.circuit_breaker._state_gauge.add.reset_mock()
         self.circuit_breaker._update_state_gauge(CircuitBreakerState.OPEN)
 
-        # Verify the gauge attribute exists
-        self.assertIsNotNone(self.circuit_breaker._state_gauge)
-
-        # Verify state reflects the last update (OPEN)
-        self.assertEqual(
-            self.circuit_breaker.get_state(),
-            CircuitBreakerState.CLOSED
-        )
-        # The gauge tracks the last value set
-        self.assertEqual(
-            self.circuit_breaker._previous_gauge_value, 2,
-            "Expected gauge value 2 (OPEN) after update"
-        )
+        self.assertEqual(self.circuit_breaker._state_gauge.add.call_count, 2)
+        calls = self.circuit_breaker._state_gauge.add.call_args_list
+        # First call: reset previous HALF_OPEN → add(-1)
+        self.assertEqual(calls[0][0], (-1,))
+        # Second call: set new OPEN → add(2)
+        self.assertEqual(calls[1][0], (2,))
 
 
 class TestCircuitBreakerStructuredLogging(TestCase):
@@ -129,7 +136,7 @@ class TestCircuitBreakerStructuredLogging(TestCase):
         if self.redis_client is None:
             self.skipTest("Redis not available for integration tests")
 
-        self.service_name = f"test-service-{int(time.time())}"
+        self.service_name = f"test-service-{uuid.uuid4().hex[:12]}"
         self.circuit_breaker = CircuitBreaker(
             service_name=self.service_name,
             failure_threshold=3,
@@ -253,7 +260,7 @@ class TestCircuitBreakerRegistry(TestCase):
 
     def test_circuit_breaker_registered(self):
         """Test circuit breaker is registered in global registry."""
-        service_name = f"test-service-{int(time.time())}"
+        service_name = f"test-service-{uuid.uuid4().hex[:12]}"
         breaker = CircuitBreaker(
             service_name=service_name,
             redis_client=self.redis_client
@@ -266,7 +273,7 @@ class TestCircuitBreakerRegistry(TestCase):
 
     def test_get_circuit_breaker_status_single(self):
         """Test getting status for single circuit breaker."""
-        service_name = f"test-service-{int(time.time())}"
+        service_name = f"test-service-{uuid.uuid4().hex[:12]}"
         breaker = CircuitBreaker(
             service_name=service_name,
             redis_client=self.redis_client
@@ -283,8 +290,8 @@ class TestCircuitBreakerRegistry(TestCase):
 
     def test_get_circuit_breaker_status_all(self):
         """Test getting status for all circuit breakers."""
-        service_name1 = f"test-service-1-{int(time.time())}"
-        service_name2 = f"test-service-2-{int(time.time())}"
+        service_name1 = f"test-service-1-{uuid.uuid4().hex[:12]}"
+        service_name2 = f"test-service-2-{uuid.uuid4().hex[:12]}"
 
         breaker1 = CircuitBreaker(
             service_name=service_name1,
@@ -318,12 +325,28 @@ class TestCircuitBreakerHealthEndpoint(TestCase):
         if self.redis_client is None:
             self.skipTest("Redis not available for integration tests")
 
-        self.client = Client()
+        # Authenticate a test user — the circuit breaker health
+        # endpoint requires IsAuthenticated (Phase 221.3.1).
+        from django.contrib.auth import get_user_model
+        User = get_user_model()
+        # Use get_or_create to avoid creating duplicate users across
+        # tests, which can affect cache warming that iterates all tenants.
+        self.test_user, _ = User.objects.get_or_create(
+            email="cb-health-test@example.com",
+            defaults={"password": "testpass123"},
+        )
+        self.client = APIClient()
+        self.client.force_authenticate(user=self.test_user)
 
     def test_circuit_breaker_status_endpoint_all(self):
-        """Test circuit breaker status endpoint returns all breakers."""
+        """Test circuit breaker status endpoint returns aggregate breaker counts.
+
+        Phase 221.3.2 — endpoint returns only aggregate data (status,
+        total_breakers, open_breakers). Individual service names and
+        the ?service_name= query parameter have been removed.
+        """
         # Create a test circuit breaker
-        service_name = f"test-service-{int(time.time())}"
+        service_name = f"test-service-{uuid.uuid4().hex[:12]}"
         breaker = CircuitBreaker(
             service_name=service_name,
             redis_client=self.redis_client
@@ -336,40 +359,50 @@ class TestCircuitBreakerHealthEndpoint(TestCase):
         self.assertEqual(response.status_code, 200)
         data = response.json()
         self.assertIn('status', data)
-        self.assertIn('circuit_breakers', data)
         self.assertIn('total_breakers', data)
-        self.assertIn(service_name, data['circuit_breakers'])
-        self.assertEqual(data['circuit_breakers'][service_name]['state'], 'CLOSED')
+        self.assertIn('open_breakers', data)
+        # Aggregate-only response — no per-breaker detail (Phase 221.3.2)
 
     def test_circuit_breaker_status_endpoint_single(self):
-        """Test circuit breaker status endpoint returns single breaker."""
-        service_name = f"test-service-{int(time.time())}"
+        """Test circuit breaker status endpoint ignores ?service_name= query param.
+
+        Phase 221.3.2 — the ?service_name= query parameter has been
+        removed. All requests return aggregate-only data.
+        """
+        service_name = f"test-service-{uuid.uuid4().hex[:12]}"
         breaker = CircuitBreaker(
             service_name=service_name,
             redis_client=self.redis_client
         )
 
-        # Ensure circuit breaker is in CLOSED state
         breaker.reset()
 
         response = self.client.get(f'/health/circuit-breakers/?service_name={service_name}')
         self.assertEqual(response.status_code, 200)
         data = response.json()
+        # Aggregate response — ?service_name= is ignored (Phase 221.3.2)
         self.assertIn('status', data)
-        self.assertIn('circuit_breaker', data)
-        self.assertEqual(data['circuit_breaker']['service_name'], service_name)
-        self.assertEqual(data['circuit_breaker']['state'], 'CLOSED')
+        self.assertIn('total_breakers', data)
+        self.assertIn('open_breakers', data)
 
     def test_circuit_breaker_status_endpoint_not_found(self):
-        """Test circuit breaker status endpoint handles non-existent breaker."""
+        """Test circuit breaker status endpoint handles unknown service gracefully.
+
+        Phase 221.3.2 — the endpoint no longer returns 404 for unknown
+        services. It returns aggregate counts regardless.
+        """
         response = self.client.get('/health/circuit-breakers/?service_name=non-existent')
-        self.assertEqual(response.status_code, 404)
+        self.assertEqual(response.status_code, 200)
         data = response.json()
-        self.assertIn('error', data)
+        self.assertIn('status', data)
 
     def test_circuit_breaker_status_endpoint_open_breaker(self):
-        """Test circuit breaker status endpoint shows open breaker as degraded."""
-        service_name = f"test-service-{int(time.time())}"
+        """Test circuit breaker status endpoint shows degraded when breakers are open.
+
+        Phase 221.3.2 — endpoint returns HTTP 200 with status='degraded'
+        when one or more breakers are open (no per-breaker detail).
+        """
+        service_name = f"test-service-{uuid.uuid4().hex[:12]}"
         breaker = CircuitBreaker(
             service_name=service_name,
             failure_threshold=2,
@@ -390,17 +423,21 @@ class TestCircuitBreakerHealthEndpoint(TestCase):
         # Circuit should be open
         self.assertEqual(breaker.get_state(), CircuitBreakerState.OPEN)
 
-        # Check endpoint
+        # Check endpoint — returns 200 with degraded status (Phase 221.3.2)
         response = self.client.get(f'/health/circuit-breakers/?service_name={service_name}')
-        self.assertEqual(response.status_code, 503)  # Service Unavailable
+        self.assertEqual(response.status_code, 200)
         data = response.json()
         self.assertEqual(data['status'], 'degraded')
-        self.assertEqual(data['circuit_breaker']['state'], 'OPEN')
+        self.assertGreater(data['open_breakers'], 0)
 
     def test_circuit_breaker_status_endpoint_all_with_open_breakers(self):
-        """Test circuit breaker status endpoint shows open breakers."""
-        service_name1 = f"test-service-1-{int(time.time())}"
-        service_name2 = f"test-service-2-{int(time.time())}"
+        """Test circuit breaker status endpoint shows open breakers in aggregate.
+
+        Phase 221.3.2 — returns aggregate only: status='degraded',
+        open_breakers count (no per-breaker names or state detail).
+        """
+        service_name1 = f"test-service-1-{uuid.uuid4().hex[:12]}"
+        service_name2 = f"test-service-2-{uuid.uuid4().hex[:12]}"
 
         breaker1 = CircuitBreaker(
             service_name=service_name1,
@@ -423,13 +460,10 @@ class TestCircuitBreakerHealthEndpoint(TestCase):
             except (ValueError, CircuitBreakerError):
                 pass
 
-        # Check endpoint
+        # Check endpoint — aggregate only (Phase 221.3.2)
         response = self.client.get('/health/circuit-breakers/')
         self.assertEqual(response.status_code, 200)
         data = response.json()
         self.assertEqual(data['status'], 'degraded')
-        self.assertEqual(data['open_breakers'], 1)
-        self.assertIn(service_name1, data['open_breaker_names'])
-        self.assertEqual(data['circuit_breakers'][service_name1]['state'], 'OPEN')
-        self.assertEqual(data['circuit_breakers'][service_name2]['state'], 'CLOSED')
+        self.assertGreater(data['open_breakers'], 0)
 

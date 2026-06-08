@@ -1,4 +1,6 @@
 """
+
+import uuid
 10.5.10: Model Serving CLI/SDK Performance Tests
 
 Tests performance of Model Serving CLI commands and SDK methods:

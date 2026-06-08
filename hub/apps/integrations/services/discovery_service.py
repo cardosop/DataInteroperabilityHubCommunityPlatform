@@ -188,7 +188,7 @@ class DiscoveryServiceMixin:
                             resource_id=None,
                             result="FAILURE",
                             details=details,
-                        )
+                            )
                     except Exception as audit_exc:  # noqa: BLE001
                         logger.warning(
                             "cross_region_rejection_audit_emit_failed",
@@ -206,7 +206,6 @@ class DiscoveryServiceMixin:
                         details=details,
                     )
 
-    @transaction.atomic
     def create_federated_asset_with_contracts(
         self,
         asset_mapping: "MarketplaceAssetMapping",
@@ -347,85 +346,58 @@ class DiscoveryServiceMixin:
             cross_region_consent=cross_region_consent,
         )
 
-        try:
-            # Create span for distributed tracing
-            span_context = create_span(span_name, kind=1)
-            span = span_context.__enter__() if span_context else None
-
-            # Get tenant and user
-            tenant_obj = self.get_resource_or_raise(Tenant, effective_tenant_id)
-            user_obj = self.get_resource_or_raise(User, effective_user_id)
-
-            # Validate asset_mapping
-            if not isinstance(asset_mapping, MarketplaceAssetMapping):
-                raise ValidationError(
-                    "asset_mapping must be a MarketplaceAssetMapping instance",
-                    details={"type": type(asset_mapping).__name__},
-                )
-
-            asset_data = asset_mapping.asset_data
-            if not asset_data or not isinstance(asset_data, dict):
-                raise ValidationError(
-                    "asset_mapping.asset_data must be a non-empty dictionary",
-                    details={"asset_data": asset_data},
-                )
-
-            # Extract asset fields
-            asset_name = asset_data.get("name") or "Untitled Asset"
-            asset_description = asset_data.get("description") or ""
-            asset_domain = asset_data.get("domain")
-            asset_key = (
-                asset_data.get("key")
-                or asset_data.get("id")
-                or str(asset_data.get("name", "asset")).lower().replace(" ", "-")
-            )
-
-            # Enrich source_metadata with connection and sync_job IDs
-            source_metadata = (
-                asset_mapping.source_metadata.copy() if asset_mapping.source_metadata else {}
-            )
-            source_metadata["connection_id"] = str(connection.id)
-            if sync_job:
-                source_metadata["sync_job_id"] = str(sync_job.id)
-            else:
-                # If sync_job is None, log warning but continue (may happen in parallel execution contexts)
-                logger.warning(
-                    "Creating federated asset without sync_job reference",
-                    extra={
-                        "connection_id": str(connection.id),
-                        "tenant_id": effective_tenant_id,
-                    },
-                )
-
-            # STEP 1: Create Hub Asset with FEDERATED source type (ALWAYS)
-            # Map data_strategy parameter to Asset model field
-            from hub.apps.assets.models import DataStrategy
-
-            asset_data_strategy = DataStrategy.METADATA_ONLY
-            if data_strategy == "DOWNLOAD_ALL":
-                asset_data_strategy = DataStrategy.DOWNLOAD_ALL
-            elif data_strategy == "DOWNLOAD_SELECTIVE":
-                asset_data_strategy = DataStrategy.DOWNLOAD_SELECTIVE
-            elif data_strategy == "METADATA_ONLY":
-                asset_data_strategy = DataStrategy.METADATA_ONLY
-
+        with transaction.atomic():
             try:
-                asset = Asset.objects.get(tenant=tenant_obj, key=asset_key)
-                logger.info(
-                    f"Asset with key '{asset_key}' already exists, updating data_strategy",
-                    extra={
-                        "asset_id": str(asset.id),
-                        "asset_key": asset_key,
-                        "tenant_id": str(tenant_obj.id),
-                        "data_strategy": asset_data_strategy,
-                    },
+                # Create span for distributed tracing
+                span_context = create_span(span_name, kind=1)
+                span = span_context.__enter__() if span_context else None
+
+                # Get tenant and user
+                tenant_obj = self.get_resource_or_raise(Tenant, effective_tenant_id)
+                user_obj = self.get_resource_or_raise(User, effective_user_id)
+
+                # Validate asset_mapping
+                if not isinstance(asset_mapping, MarketplaceAssetMapping):
+                    raise ValidationError(
+                        "asset_mapping must be a MarketplaceAssetMapping instance",
+                        details={"type": type(asset_mapping).__name__},
+                    )
+
+                asset_data = asset_mapping.asset_data
+                if not asset_data or not isinstance(asset_data, dict):
+                    raise ValidationError(
+                        "asset_mapping.asset_data must be a non-empty dictionary",
+                        details={"asset_data": asset_data},
+                    )
+
+                # Extract asset fields
+                asset_name = asset_data.get("name") or "Untitled Asset"
+                asset_description = asset_data.get("description") or ""
+                asset_domain = asset_data.get("domain")
+                asset_key = (
+                    asset_data.get("key")
+                    or asset_data.get("id")
+                    or str(asset_data.get("name", "asset")).lower().replace(" ", "-")
                 )
-                # Update data_strategy if it changed
-                if asset.data_strategy != asset_data_strategy:
-                    asset.data_strategy = asset_data_strategy
-                    asset.save(update_fields=["data_strategy"])
-                # Return existing asset instead of creating a new one
-            except Asset.DoesNotExist:
+
+                # Enrich source_metadata with connection and sync_job IDs
+                source_metadata = (
+                    asset_mapping.source_metadata.copy() if asset_mapping.source_metadata else {}
+                )
+                source_metadata["connection_id"] = str(connection.id)
+                if sync_job:
+                    source_metadata["sync_job_id"] = str(sync_job.id)
+                else:
+                    # If sync_job is None, log warning but continue (may happen in parallel execution contexts)
+                    logger.warning(
+                        "Creating federated asset without sync_job reference",
+                        extra={
+                            "connection_id": str(connection.id),
+                            "tenant_id": effective_tenant_id,
+                        },
+                    )
+
+                # STEP 1: Create Hub Asset with FEDERATED source type (ALWAYS)
                 # Map data_strategy parameter to Asset model field
                 from hub.apps.assets.models import DataStrategy
 
@@ -437,245 +409,250 @@ class DiscoveryServiceMixin:
                 elif data_strategy == "METADATA_ONLY":
                     asset_data_strategy = DataStrategy.METADATA_ONLY
 
-                asset = Asset.objects.create(
-                    tenant=tenant_obj,
-                    key=asset_key,
-                    name=asset_name,
-                    description=asset_description,
-                    domain=asset_domain,
-                    status=AssetStatus.DRAFT,  # Changed from ACTIVE to DRAFT - will be activated after workflow validation
-                    visibility=AssetVisibility.PUBLIC,
-                    source_type=AssetSourceType.FEDERATED,
-                    source_metadata=source_metadata,
-                    data_strategy=asset_data_strategy,
-                    created_by=user_obj,
-                )
-
-            if span:
-                add_span_attributes(
-                    {
-                        "asset.id": str(asset.id),
-                        "asset.name": asset_name,
-                        "asset.key": asset_key,
-                        "data_strategy": data_strategy,
-                    }
-                )
-
-            # STEP 2: Store external resource references (ALWAYS)
-            # Create ExternalResourceReference records for each resource
-            external_resources = []
-            if asset_mapping.resources:
-                from hub.apps.assets.models import ExternalResourceReference
-
-                # Phase 250.5.A.5 — propagate the source-tenant ID
-                # onto each ExternalResourceReference so the
-                # ``hub.apps.tenants.signals`` cascade can find the
-                # rows when the source tenant is soft-deleted. The
-                # value is a UUID (not an FK), so a stale source-
-                # tenant lookup doesn't block the import — the
-                # cascade simply has no rows to tombstone.
-                _src_tenant_uuid = source_metadata.get("source_tenant_id")
-                for resource in asset_mapping.resources:
-                    # Create ExternalResourceReference record
-                    external_resource_ref, created = (
-                        ExternalResourceReference.objects.get_or_create(
-                            asset=asset,
-                            resource_id=resource.resource_id,
-                            defaults={
-                                "name": resource.name or resource.resource_id,
-                                "url": resource.url or "",
-                                "format": resource.format or "CSV",
-                                "size_bytes": resource.size_bytes,
-                                "marketplace_type": source_metadata.get("marketplace_type", ""),
-                                "connection_id": connection.id,
-                                "source_tenant_id": _src_tenant_uuid,
-                                "metadata": {
-                                    "resource_type": resource.resource_type,
-                                    "description": resource.description,
-                                    "external": True,
-                                    "download_url": resource.url,
-                                },
-                            },
-                        )
-                    )
-
-                    # Also store in source_metadata for backward compatibility
-                    external_resource = {
-                        "resource_id": resource.resource_id,
-                        "name": resource.name,
-                        "url": resource.url,
-                        "format": resource.format,
-                        "size_bytes": resource.size_bytes,
-                        "external": True,
-                        "marketplace_type": source_metadata.get("marketplace_type"),
-                        "download_url": resource.url,  # Store download URL for later use
-                    }
-                    external_resources.append(external_resource)
-
-            # Store external resources in source_metadata for backward compatibility
-            if "external_resources" not in source_metadata:
-                source_metadata["external_resources"] = []
-            source_metadata["external_resources"].extend(external_resources)
-            asset.source_metadata = source_metadata
-            asset.save(update_fields=["source_metadata"])
-
-            # STEP 3: Create ODPS Contract (ALWAYS, even with minimal metadata)
-            from hub.apps.contracts.models import OriginalSpecType
-
-            # Check if ODPS contract already exists BEFORE creating
-            existing_odps = (
-                asset.contracts.filter(tenant=tenant_obj, original_spec_type=OriginalSpecType.ODPS)
-                .order_by("-version")
-                .first()
-            )
-
-            if existing_odps:
-                odps_contract = existing_odps
-                logger.debug(f"ODPS contract already exists for asset {asset.id}, using existing")
-            else:
-                # Always create ODPS contract, even if odps_metadata is None
-                odps_contract = self._create_odps_contract_from_metadata(
-                    asset=asset,
-                    odps_metadata=asset_mapping.odps_metadata,  # Can be None
-                    tenant_obj=tenant_obj,
-                    user_obj=user_obj,
-                    source_metadata=source_metadata,
-                )
-                if span:
-                    add_span_attributes({"odps_contract.id": str(odps_contract.id)})
-
-            # STEP 4: Create ODCS Contract with schema hints from external resources (ALWAYS)
-            # Check if ODCS contract already exists BEFORE creating
-            existing_odcs = (
-                asset.contracts.filter(tenant=tenant_obj, original_spec_type=OriginalSpecType.ODCS)
-                .order_by("-version")
-                .first()
-            )
-
-            if existing_odcs:
-                odcs_contract = existing_odcs
-                logger.debug(f"ODCS contract already exists for asset {asset.id}, using existing")
-            else:
-                odcs_contract = self._create_odcs_contract_from_metadata(
-                    asset=asset,
-                    odcs_metadata=asset_mapping.odcs_metadata,
-                    tenant_obj=tenant_obj,
-                    user_obj=user_obj,
-                    source_metadata=source_metadata,
-                    external_resources=external_resources,
-                )
-                if span:
-                    add_span_attributes({"odcs_contract.id": str(odcs_contract.id)})
-
-            # STEP 5: Link ODPS <-> ODCS contracts bidirectionally (ALWAYS)
-            if odps_contract and odcs_contract:
-                self._link_odps_odcs_contracts(odps_contract, odcs_contract)
-
-            # STEP 6: Map to Semantic Layer (ALWAYS)
-            # Execute semantic mapping calls in parallel to reduce total time
-            # Root cause: Fuseki operations are slow (~20s each), sequential calls = 60+ seconds
-            # Solution: Parallelize the 3 mapping calls to reduce to ~20 seconds total
-            # Note: In test environments, use sequential execution to avoid transaction isolation issues
-            if not skip_semantic_mapping:
                 try:
-                    import sys
-                    import threading
-                    from concurrent.futures import ThreadPoolExecutor, as_completed
+                    asset = Asset.objects.get(tenant=tenant_obj, key=asset_key)
+                    logger.info(
+                        f"Asset with key '{asset_key}' already exists, updating data_strategy",
+                        extra={
+                            "asset_id": str(asset.id),
+                            "asset_key": asset_key,
+                            "tenant_id": str(tenant_obj.id),
+                            "data_strategy": asset_data_strategy,
+                        },
+                    )
+                    # Update data_strategy if it changed
+                    if asset.data_strategy != asset_data_strategy:
+                        asset.data_strategy = asset_data_strategy
+                        asset.save(update_fields=["data_strategy"])
+                    # Return existing asset instead of creating a new one
+                except Asset.DoesNotExist:
+                    # Map data_strategy parameter to Asset model field
+                    from hub.apps.assets.models import DataStrategy
 
-                    # Detect test environment to avoid transaction isolation issues
-                    # In tests, parallel threads can't see uncommitted transactions
-                    is_test_env = (
-                        "test" in sys.argv
-                        or "pytest" in sys.modules
-                        or "unittest" in sys.modules
-                        or hasattr(sys, "_getframe")
-                        and any(
-                            "test" in str(f.filename).lower()
-                            for f in [sys._getframe(i) for i in range(10)]
-                            if f
-                        )
+                    asset_data_strategy = DataStrategy.METADATA_ONLY
+                    if data_strategy == "DOWNLOAD_ALL":
+                        asset_data_strategy = DataStrategy.DOWNLOAD_ALL
+                    elif data_strategy == "DOWNLOAD_SELECTIVE":
+                        asset_data_strategy = DataStrategy.DOWNLOAD_SELECTIVE
+                    elif data_strategy == "METADATA_ONLY":
+                        asset_data_strategy = DataStrategy.METADATA_ONLY
+
+                    asset = Asset.objects.create(
+                        tenant=tenant_obj,
+                        key=asset_key,
+                        name=asset_name,
+                        description=asset_description,
+                        domain=asset_domain,
+                        status=AssetStatus.DRAFT,  # Changed from ACTIVE to DRAFT - will be activated after workflow validation
+                        visibility=AssetVisibility.PUBLIC,
+                        source_type=AssetSourceType.FEDERATED,
+                        source_metadata=source_metadata,
+                        data_strategy=asset_data_strategy,
+                        created_by=user_obj,
                     )
 
-                    def map_asset_semantic():
-                        """Map asset to semantic layer."""
-                        try:
-                            return map_asset_to_semantic(asset, tenant=tenant_obj)
-                        except Exception as e:
-                            logger.warning(f"Asset semantic mapping failed: {e}", exc_info=True)
-                            return None
+                if span:
+                    add_span_attributes(
+                        {
+                            "asset.id": str(asset.id),
+                            "asset.name": asset_name,
+                            "asset.key": asset_key,
+                            "data_strategy": data_strategy,
+                        }
+                    )
 
-                    def map_odps_semantic():
-                        """Map ODPS contract to semantic layer."""
-                        if not odps_contract:
-                            return None
-                        try:
-                            from hub.apps.semantic.utils import map_odps_to_semantic
+                # STEP 2: Store external resource references (ALWAYS)
+                # Create ExternalResourceReference records for each resource
+                external_resources = []
+                if asset_mapping.resources:
+                    from hub.apps.assets.models import ExternalResourceReference
 
-                            return map_odps_to_semantic(odps_contract, tenant=tenant_obj)
-                        except Exception as odps_semantic_error:
-                            # Fallback to standard contract mapping if ODPS-specific fails
-                            logger.warning(
-                                f"ODPS-specific semantic mapping failed, using standard mapping: {odps_semantic_error}",
-                                exc_info=True,
+                    # Phase 250.5.A.5 — propagate the source-tenant ID
+                    # onto each ExternalResourceReference so the
+                    # ``hub.apps.tenants.signals`` cascade can find the
+                    # rows when the source tenant is soft-deleted. The
+                    # value is a UUID (not an FK), so a stale source-
+                    # tenant lookup doesn't block the import — the
+                    # cascade simply has no rows to tombstone.
+                    _src_tenant_uuid = source_metadata.get("source_tenant_id")
+                    for resource in asset_mapping.resources:
+                        # Create ExternalResourceReference record
+                        external_resource_ref, created = (
+                            ExternalResourceReference.objects.get_or_create(
+                                asset=asset,
+                                resource_id=resource.resource_id,
+                                defaults={
+                                    "name": resource.name or resource.resource_id,
+                                    "url": resource.url or "",
+                                    "format": resource.format or "CSV",
+                                    "size_bytes": resource.size_bytes,
+                                    "marketplace_type": source_metadata.get("marketplace_type", ""),
+                                    "connection_id": connection.id,
+                                    "source_tenant_id": _src_tenant_uuid,
+                                    "metadata": {
+                                        "resource_type": resource.resource_type,
+                                        "description": resource.description,
+                                        "external": True,
+                                        "download_url": resource.url,
+                                    },
+                                },
                             )
+                        )
+
+                        # Also store in source_metadata for backward compatibility
+                        external_resource = {
+                            "resource_id": resource.resource_id,
+                            "name": resource.name,
+                            "url": resource.url,
+                            "format": resource.format,
+                            "size_bytes": resource.size_bytes,
+                            "external": True,
+                            "marketplace_type": source_metadata.get("marketplace_type"),
+                            "download_url": resource.url,  # Store download URL for later use
+                        }
+                        external_resources.append(external_resource)
+
+                # Store external resources in source_metadata for backward compatibility
+                if "external_resources" not in source_metadata:
+                    source_metadata["external_resources"] = []
+                source_metadata["external_resources"].extend(external_resources)
+                asset.source_metadata = source_metadata
+                asset.save(update_fields=["source_metadata"])
+
+                # STEP 3: Create ODPS Contract (ALWAYS, even with minimal metadata)
+                from hub.apps.contracts.models import OriginalSpecType
+
+                # Check if ODPS contract already exists BEFORE creating
+                existing_odps = (
+                    asset.contracts.filter(tenant=tenant_obj, original_spec_type=OriginalSpecType.ODPS)
+                    .order_by("-version")
+                    .first()
+                )
+
+                if existing_odps:
+                    odps_contract = existing_odps
+                    logger.debug(f"ODPS contract already exists for asset {asset.id}, using existing")
+                else:
+                    # Always create ODPS contract, even if odps_metadata is None
+                    odps_contract = self._create_odps_contract_from_metadata(
+                        asset=asset,
+                        odps_metadata=asset_mapping.odps_metadata,  # Can be None
+                        tenant_obj=tenant_obj,
+                        user_obj=user_obj,
+                        source_metadata=source_metadata,
+                    )
+                    if span:
+                        add_span_attributes({"odps_contract.id": str(odps_contract.id)})
+
+                # STEP 4: Create ODCS Contract with schema hints from external resources (ALWAYS)
+                # Check if ODCS contract already exists BEFORE creating
+                existing_odcs = (
+                    asset.contracts.filter(tenant=tenant_obj, original_spec_type=OriginalSpecType.ODCS)
+                    .order_by("-version")
+                    .first()
+                )
+
+                if existing_odcs:
+                    odcs_contract = existing_odcs
+                    logger.debug(f"ODCS contract already exists for asset {asset.id}, using existing")
+                else:
+                    odcs_contract = self._create_odcs_contract_from_metadata(
+                        asset=asset,
+                        odcs_metadata=asset_mapping.odcs_metadata,
+                        tenant_obj=tenant_obj,
+                        user_obj=user_obj,
+                        source_metadata=source_metadata,
+                        external_resources=external_resources,
+                    )
+                    if span:
+                        add_span_attributes({"odcs_contract.id": str(odcs_contract.id)})
+
+                # STEP 5: Link ODPS <-> ODCS contracts bidirectionally (ALWAYS)
+                if odps_contract and odcs_contract:
+                    self._link_odps_odcs_contracts(odps_contract, odcs_contract)
+
+                # STEP 6: Map to Semantic Layer (ALWAYS)
+                # Execute semantic mapping calls in parallel to reduce total time
+                # Root cause: Fuseki operations are slow (~20s each), sequential calls = 60+ seconds
+                # Solution: Parallelize the 3 mapping calls to reduce to ~20 seconds total
+                # Note: In test environments, use sequential execution to avoid transaction isolation issues
+                if not skip_semantic_mapping:
+                    try:
+                        import sys
+                        import threading
+                        from concurrent.futures import ThreadPoolExecutor, as_completed
+
+                        # Detect test environment to avoid transaction isolation issues
+                        # In tests, parallel threads can't see uncommitted transactions
+                        is_test_env = (
+                            "test" in sys.argv
+                            or "pytest" in sys.modules
+                            or "unittest" in sys.modules
+                            or hasattr(sys, "_getframe")
+                            and any(
+                                "test" in str(f.filename).lower()
+                                for f in [sys._getframe(i) for i in range(10)]
+                                if f
+                            )
+                        )
+
+                        def map_asset_semantic():
+                            """Map asset to semantic layer."""
                             try:
-                                return map_contract_to_semantic(odps_contract, tenant=tenant_obj)
+                                return map_asset_to_semantic(asset, tenant=tenant_obj)
+                            except Exception as e:
+                                logger.warning(f"Asset semantic mapping failed: {e}", exc_info=True)
+                                return None
+
+                        def map_odps_semantic():
+                            """Map ODPS contract to semantic layer."""
+                            if not odps_contract:
+                                return None
+                            try:
+                                from hub.apps.semantic.utils import map_odps_to_semantic
+
+                                return map_odps_to_semantic(odps_contract, tenant=tenant_obj)
+                            except Exception as odps_semantic_error:
+                                # Fallback to standard contract mapping if ODPS-specific fails
+                                logger.warning(
+                                    f"ODPS-specific semantic mapping failed, using standard mapping: {odps_semantic_error}",
+                                    exc_info=True,
+                                )
+                                try:
+                                    return map_contract_to_semantic(odps_contract, tenant=tenant_obj)
+                                except Exception as e:
+                                    logger.warning(
+                                        f"ODPS contract semantic mapping failed: {e}", exc_info=True
+                                    )
+                                    return None
+
+                        def map_odcs_semantic():
+                            """Map ODCS contract to semantic layer."""
+                            if not odcs_contract:
+                                return None
+                            try:
+                                return map_contract_to_semantic(odcs_contract, tenant=tenant_obj)
                             except Exception as e:
                                 logger.warning(
-                                    f"ODPS contract semantic mapping failed: {e}", exc_info=True
+                                    f"ODCS contract semantic mapping failed: {e}", exc_info=True
                                 )
                                 return None
 
-                    def map_odcs_semantic():
-                        """Map ODCS contract to semantic layer."""
-                        if not odcs_contract:
-                            return None
-                        try:
-                            return map_contract_to_semantic(odcs_contract, tenant=tenant_obj)
-                        except Exception as e:
-                            logger.warning(
-                                f"ODCS contract semantic mapping failed: {e}", exc_info=True
-                            )
-                            return None
+                        # Execute semantic mapping calls
+                        semantic_tasks = []
+                        if asset:
+                            semantic_tasks.append(("asset", map_asset_semantic))
+                        if odps_contract:
+                            semantic_tasks.append(("odps", map_odps_semantic))
+                        if odcs_contract:
+                            semantic_tasks.append(("odcs", map_odcs_semantic))
 
-                    # Execute semantic mapping calls
-                    semantic_tasks = []
-                    if asset:
-                        semantic_tasks.append(("asset", map_asset_semantic))
-                    if odps_contract:
-                        semantic_tasks.append(("odps", map_odps_semantic))
-                    if odcs_contract:
-                        semantic_tasks.append(("odcs", map_odcs_semantic))
-
-                    if semantic_tasks:
-                        if is_test_env:
-                            # Sequential execution in tests to avoid transaction isolation issues
-                            for task_name, task_func in semantic_tasks:
-                                try:
-                                    result = task_func()
-                                    if result:
-                                        logger.debug(
-                                            f"Semantic mapping completed for {task_name}: {result}"
-                                        )
-                                except Exception as e:
-                                    logger.warning(
-                                        f"Semantic mapping task {task_name} failed: {e}",
-                                        exc_info=True,
-                                    )
-                        else:
-                            # Parallel execution in production for performance
-                            with ThreadPoolExecutor(
-                                max_workers=min(3, len(semantic_tasks))
-                            ) as executor:
-                                future_to_task = {
-                                    executor.submit(task_func): task_name
-                                    for task_name, task_func in semantic_tasks
-                                }
-
-                                for future in as_completed(future_to_task):
-                                    task_name = future_to_task[future]
+                        if semantic_tasks:
+                            if is_test_env:
+                                # Sequential execution in tests to avoid transaction isolation issues
+                                for task_name, task_func in semantic_tasks:
                                     try:
-                                        result = future.result()
+                                        result = task_func()
                                         if result:
                                             logger.debug(
                                                 f"Semantic mapping completed for {task_name}: {result}"
@@ -685,342 +662,374 @@ class DiscoveryServiceMixin:
                                             f"Semantic mapping task {task_name} failed: {e}",
                                             exc_info=True,
                                         )
-                except Exception as e:
-                    logger.warning(
-                        f"Semantic mapping failed for asset {asset.id}: {e}", exc_info=True
-                    )
-                    # Don't fail the whole operation if semantic mapping fails
+                            else:
+                                # Parallel execution in production for performance
+                                with ThreadPoolExecutor(
+                                    max_workers=min(3, len(semantic_tasks))
+                                ) as executor:
+                                    future_to_task = {
+                                        executor.submit(task_func): task_name
+                                        for task_name, task_func in semantic_tasks
+                                    }
 
-            # STEP 7: Download resources ONLY if data_strategy != "METADATA_ONLY"
-            created_files = []
-            created_datasets = []
-            resources_to_download = []
-
-            if data_strategy != "METADATA_ONLY" and asset_mapping.resources:
-                # Determine which resources to download
-                if data_strategy == "DOWNLOAD_SELECTIVE":
-                    # Download only resources in download_resources list
-                    if download_resources:
-                        resources_to_download = [
-                            r
-                            for r in asset_mapping.resources
-                            if r.resource_id in download_resources
-                        ]
-                    else:
+                                    for future in as_completed(future_to_task):
+                                        task_name = future_to_task[future]
+                                        try:
+                                            result = future.result()
+                                            if result:
+                                                logger.debug(
+                                                    f"Semantic mapping completed for {task_name}: {result}"
+                                                )
+                                        except Exception as e:
+                                            logger.warning(
+                                                f"Semantic mapping task {task_name} failed: {e}",
+                                                exc_info=True,
+                                            )
+                    except Exception as e:
                         logger.warning(
-                            "DOWNLOAD_SELECTIVE strategy specified but no "
-                            "download_resources provided, skipping downloads",
-                            extra={"asset_id": str(asset.id)},
+                            f"Semantic mapping failed for asset {asset.id}: {e}", exc_info=True
                         )
-                elif data_strategy == "DOWNLOAD_ALL":
-                    # Download all resources (legacy behavior)
-                    resources_to_download = asset_mapping.resources
+                        # Don't fail the whole operation if semantic mapping fails
 
-                # Download and process resources
-                if resources_to_download:
-                    # Get connector for downloading resources
-                    factory = MarketplaceConnectorFactory()
-                    # Convert string marketplace_type to enum
-                    marketplace_type_enum = MarketplaceType(connection.marketplace_type)
-                    connector = factory.create_connector(
-                        marketplace_type_enum, config=connection.get_config()
-                    )
+                # STEP 7: Download resources ONLY if data_strategy != "METADATA_ONLY"
+                created_files = []
+                created_datasets = []
+                resources_to_download = []
 
-                    # Download resources in parallel for better performance
-                    import threading
-                    from concurrent.futures import ThreadPoolExecutor, as_completed
-
-                    def download_and_process_single_resource(resource):
-                        """Download and process a single resource."""
-                        try:
-                            # Download resource with timeout protection
-                            temp_dir = tempfile.gettempdir()
-                            destination_path = os.path.join(
-                                temp_dir,
-                                f"resource_{resource.resource_id}_{threading.current_thread().ident}",
+                if data_strategy != "METADATA_ONLY" and asset_mapping.resources:
+                    # Determine which resources to download
+                    if data_strategy == "DOWNLOAD_SELECTIVE":
+                        # Download only resources in download_resources list
+                        if download_resources:
+                            resources_to_download = [
+                                r
+                                for r in asset_mapping.resources
+                                if r.resource_id in download_resources
+                            ]
+                        else:
+                            logger.warning(
+                                "DOWNLOAD_SELECTIVE strategy specified but no "
+                                "download_resources provided, skipping downloads",
+                                extra={"asset_id": str(asset.id)},
                             )
-                            downloaded_path = connector.download_resource(
-                                resource_id=resource.resource_id, destination_path=destination_path
-                            )
+                    elif data_strategy == "DOWNLOAD_ALL":
+                        # Download all resources (legacy behavior)
+                        resources_to_download = asset_mapping.resources
 
-                            # Read downloaded file
-                            with open(downloaded_path, "rb") as f:
-                                file_content = f.read()
+                    # Download and process resources
+                    if resources_to_download:
+                        # Get connector for downloading resources
+                        factory = MarketplaceConnectorFactory()
+                        # Convert string marketplace_type to enum
+                        marketplace_type_enum = MarketplaceType(connection.marketplace_type)
+                        connector = factory.create_connector(
+                            marketplace_type_enum, config=connection.get_config()
+                        )
 
-                            # Determine file format
-                            file_format = resource.format or "CSV"
-                            content_type_map = {
-                                "CSV": "text/csv",
-                                "JSON": "application/json",
-                                "PARQUET": "application/octet-stream",
-                            }
-                            content_type = content_type_map.get(
-                                file_format, "application/octet-stream"
-                            )
+                        # Download resources in parallel for better performance
+                        import threading
+                        from concurrent.futures import ThreadPoolExecutor, as_completed
 
-                            # Create File record
-                            # Use captured tenant_obj and user_obj directly - Django ORM handles foreign keys
-                            # correctly within the same transaction context
-                            file_obj = File.objects.create(
-                                tenant=tenant_obj,
-                                name=resource.name or Path(downloaded_path).name,
-                                content_type=content_type,
-                                size=len(file_content),
-                                status=FileStatus.ACTIVE,
-                                created_by=user_obj,
-                            )
-
-                            # Calculate SHA-256 hash
-                            file_obj.content_sha256 = hashlib.sha256(file_content).hexdigest()
-
-                            # Upload file to storage
-                            storage = S3StorageClient()
-                            storage_path = storage.save_file(
-                                tenant_id=str(tenant_obj.id),
-                                file_id=str(file_obj.id),
-                                file_content=ContentFile(file_content, name=file_obj.name),
-                            )
-                            file_obj.storage_path = storage_path
-                            file_obj.save(update_fields=["content_sha256", "storage_path"])
-
-                            # Infer schema and create Dataset
-                            schema_json = {}
+                        def download_and_process_single_resource(resource):
+                            """Download and process a single resource."""
                             try:
-                                if file_format == "CSV":
-                                    schema_json = infer_schema_from_csv(file_content)
-                                elif file_format == "JSON":
-                                    schema_json = infer_schema_from_json(file_content)
-                                elif file_format == "PARQUET":
-                                    schema_json = infer_schema_from_parquet(file_content)
+                                # Download resource with timeout protection
+                                temp_dir = tempfile.gettempdir()
+                                destination_path = os.path.join(
+                                    temp_dir,
+                                    f"resource_{resource.resource_id}_{threading.current_thread().ident}",
+                                )
+                                downloaded_path = connector.download_resource(
+                                    resource_id=resource.resource_id, destination_path=destination_path
+                                )
+
+                                # Read downloaded file
+                                with open(downloaded_path, "rb") as f:
+                                    file_content = f.read()
+
+                                # Determine file format
+                                file_format = resource.format or "CSV"
+                                content_type_map = {
+                                    "CSV": "text/csv",
+                                    "JSON": "application/json",
+                                    "PARQUET": "application/octet-stream",
+                                }
+                                content_type = content_type_map.get(
+                                    file_format, "application/octet-stream"
+                                )
+
+                                # Create File record
+                                # Use captured tenant_obj and user_obj directly - Django ORM handles foreign keys
+                                # correctly within the same transaction context
+                                file_obj = File.objects.create(
+                                    tenant=tenant_obj,
+                                    name=resource.name or Path(downloaded_path).name,
+                                    content_type=content_type,
+                                    size=len(file_content),
+                                    status=FileStatus.ACTIVE,
+                                    created_by=user_obj,
+                                )
+
+                                # Calculate SHA-256 hash
+                                file_obj.content_sha256 = hashlib.sha256(file_content).hexdigest()
+
+                                # Upload file to storage
+                                storage = S3StorageClient()
+                                storage_path = storage.save_file(
+                                    tenant_id=str(tenant_obj.id),
+                                    file_id=str(file_obj.id),
+                                    file_content=ContentFile(file_content, name=file_obj.name),
+                                )
+                                file_obj.storage_path = storage_path
+                                file_obj.save(update_fields=["content_sha256", "storage_path"])
+
+                                # Infer schema and create Dataset
+                                schema_json = {}
+                                try:
+                                    if file_format == "CSV":
+                                        schema_json = infer_schema_from_csv(file_content)
+                                    elif file_format == "JSON":
+                                        schema_json = infer_schema_from_json(file_content)
+                                    elif file_format == "PARQUET":
+                                        schema_json = infer_schema_from_parquet(file_content)
+                                except Exception as e:
+                                    logger.warning(
+                                        f"Schema inference failed for resource {resource.resource_id}: {e}",
+                                        exc_info=True,
+                                    )
+
+                                # Create Dataset
+                                # Calculate next version number to avoid unique constraint violations
+                                # when creating multiple datasets for the same asset
+                                from django.db.models import Max
+
+                                max_version = (
+                                    Dataset.objects.filter(tenant=tenant_obj, asset=asset).aggregate(
+                                        max_version=Max("version")
+                                    )["max_version"]
+                                    or 0
+                                )
+                                next_version = max_version + 1
+
+                                dataset = Dataset.objects.create(
+                                    tenant=tenant_obj,
+                                    asset=asset,
+                                    file=file_obj,
+                                    schema_json=schema_json,
+                                    format=file_format,
+                                    version=next_version,
+                                    created_by=user_obj,
+                                )
+                                created_datasets.append(dataset)
+
+                                # Update ODCS contract schema if schema was inferred
+                                if schema_json.get("fields") and odcs_contract:
+                                    self._update_odcs_schema_from_inferred_schema(
+                                        odcs_contract, schema_json
+                                    )
+
+                                # Cleanup temp file
+                                try:
+                                    os.remove(downloaded_path)
+                                except Exception as e:
+                                    logger.debug(
+                                        "integrations_non_critical_failed",
+                                        extra={"error_type": type(e).__name__, "error": str(e)},
+                                    )
+
+                                return {"file": file_obj, "dataset": dataset}
                             except Exception as e:
                                 logger.warning(
-                                    f"Schema inference failed for resource {resource.resource_id}: {e}",
+                                    f"Failed to download and process resource {resource.resource_id}: {e}",
                                     exc_info=True,
                                 )
+                                return None
 
-                            # Create Dataset
-                            # Calculate next version number to avoid unique constraint violations
-                            # when creating multiple datasets for the same asset
-                            from django.db.models import Max
+                        # Execute downloads in parallel for performance
+                        # Note: In test environments, use sequential execution to avoid transaction isolation issues
+                        import sys
 
-                            max_version = (
-                                Dataset.objects.filter(tenant=tenant_obj, asset=asset).aggregate(
-                                    max_version=Max("version")
-                                )["max_version"]
-                                or 0
+                        is_test_env = (
+                            "test" in sys.argv
+                            or "pytest" in sys.modules
+                            or "unittest" in sys.modules
+                            or hasattr(sys, "_getframe")
+                            and any(
+                                "test" in str(f.filename).lower()
+                                for f in [sys._getframe(i) for i in range(10)]
+                                if f
                             )
-                            next_version = max_version + 1
-
-                            dataset = Dataset.objects.create(
-                                tenant=tenant_obj,
-                                asset=asset,
-                                file=file_obj,
-                                schema_json=schema_json,
-                                format=file_format,
-                                version=next_version,
-                                created_by=user_obj,
-                            )
-                            created_datasets.append(dataset)
-
-                            # Update ODCS contract schema if schema was inferred
-                            if schema_json.get("fields") and odcs_contract:
-                                self._update_odcs_schema_from_inferred_schema(
-                                    odcs_contract, schema_json
-                                )
-
-                            # Cleanup temp file
-                            try:
-                                os.remove(downloaded_path)
-                            except Exception as e:
-                                logger.debug(
-                                    "integrations_non_critical_failed",
-                                    extra={"error_type": type(e).__name__, "error": str(e)},
-                                )
-
-                            return {"file": file_obj, "dataset": dataset}
-                        except Exception as e:
-                            logger.warning(
-                                f"Failed to download and process resource {resource.resource_id}: {e}",
-                                exc_info=True,
-                            )
-                            return None
-
-                    # Execute downloads in parallel for performance
-                    # Note: In test environments, use sequential execution to avoid transaction isolation issues
-                    import sys
-
-                    is_test_env = (
-                        "test" in sys.argv
-                        or "pytest" in sys.modules
-                        or "unittest" in sys.modules
-                        or hasattr(sys, "_getframe")
-                        and any(
-                            "test" in str(f.filename).lower()
-                            for f in [sys._getframe(i) for i in range(10)]
-                            if f
                         )
-                    )
 
-                    if is_test_env:
-                        # Sequential execution in tests to avoid transaction isolation issues
-                        # Parallel threads can't see uncommitted transactions in Django TestCase
-                        for resource in resources_to_download:
-                            result = download_and_process_single_resource(resource)
-                            if result:
-                                created_files.append(result["file"])
-                                created_datasets.append(result["dataset"])
-                    else:
-                        # Parallel execution in production for performance (max 5 concurrent downloads)
-                        max_workers = min(5, len(resources_to_download))
-                        with ThreadPoolExecutor(max_workers=max_workers) as executor:
-                            future_to_resource = {
-                                executor.submit(
-                                    download_and_process_single_resource, resource
-                                ): resource
-                                for resource in resources_to_download
-                            }
-
-                            for future in as_completed(future_to_resource):
-                                result = future.result()
+                        if is_test_env:
+                            # Sequential execution in tests to avoid transaction isolation issues
+                            # Parallel threads can't see uncommitted transactions in Django TestCase
+                            for resource in resources_to_download:
+                                result = download_and_process_single_resource(resource)
                                 if result:
                                     created_files.append(result["file"])
                                     created_datasets.append(result["dataset"])
+                        else:
+                            # Parallel execution in production for performance (max 5 concurrent downloads)
+                            max_workers = min(5, len(resources_to_download))
+                            with ThreadPoolExecutor(max_workers=max_workers) as executor:
+                                future_to_resource = {
+                                    executor.submit(
+                                        download_and_process_single_resource, resource
+                                    ): resource
+                                    for resource in resources_to_download
+                                }
 
-            if span:
-                add_span_attributes(
-                    {
+                                for future in as_completed(future_to_resource):
+                                    result = future.result()
+                                    if result:
+                                        created_files.append(result["file"])
+                                        created_datasets.append(result["dataset"])
+
+                if span:
+                    add_span_attributes(
+                        {
+                            "files_created": len(created_files),
+                            "datasets_created": len(created_datasets),
+                            "resources_downloaded": len(resources_to_download),
+                        }
+                    )
+
+                # STEP 8: Execute federated asset workflow (only if semantic mapping succeeded)
+                # This ensures assets go through validation, checks, indexing, and notifications
+                workflow_results = None
+                if not skip_semantic_mapping:
+                    try:
+                        workflow_results = self._execute_federated_asset_workflow(
+                            asset=asset,
+                            odps_contract=odps_contract,
+                            odcs_contract=odcs_contract,
+                            created_datasets=created_datasets,
+                            tenant_obj=tenant_obj,
+                            user_obj=user_obj,
+                            data_strategy=data_strategy,
+                        )
+
+                        # Refresh asset from database to get updated status
+                        asset.refresh_from_db()
+
+                        logger.info(
+                            f"Federated asset workflow executed for asset {asset.id}",
+                            extra={
+                                "asset_id": str(asset.id),
+                                "workflow_executed": workflow_results.get("workflow_executed"),
+                                "activated": workflow_results.get("activated"),
+                                "contract_validated": workflow_results.get("contract_validated"),
+                                "dq_checks_run": workflow_results.get("dq_checks_run"),
+                                "compliance_checks_run": workflow_results.get("compliance_checks_run"),
+                                "indexed": workflow_results.get("indexed"),
+                                "notifications_sent": workflow_results.get("notifications_sent"),
+                                "errors": workflow_results.get("errors", []),
+                                "warnings": workflow_results.get("warnings", []),
+                            },
+                        )
+
+                        if span:
+                            add_span_attributes(
+                                {
+                                    "workflow_executed": workflow_results.get("workflow_executed"),
+                                    "asset_activated": workflow_results.get("activated"),
+                                    "workflow_instance_id": workflow_results.get(
+                                        "workflow_instance_id"
+                                    ),
+                                }
+                            )
+                    except Exception as e:
+                        # Don't fail entire operation if workflow execution fails
+                        logger.warning(
+                            f"Federated asset workflow execution failed for asset {asset.id}: {e}",
+                            exc_info=True,
+                            extra={"asset_id": str(asset.id)},
+                        )
+                        if span:
+                            add_span_attributes({"workflow_error": str(e)})
+
+                # Create MarketplaceMapping record
+                external_listing_id = source_metadata.get("listing_id") or source_metadata.get(
+                    "marketplace_id", ""
+                )
+                external_resource_ids = [r.resource_id for r in asset_mapping.resources]
+
+                mapping = MarketplaceMapping.objects.create(
+                    tenant=tenant_obj,
+                    connection=connection,
+                    hub_asset=asset,
+                    external_listing_id=external_listing_id,
+                    external_resource_ids=external_resource_ids,
+                    sync_metadata={
+                        "sync_job_id": str(sync_job.id) if sync_job else None,
+                        "synced_at": source_metadata.get("synced_at"),
+                    },
+                    last_synced_at=timezone.now(),
+                )
+
+                if span:
+                    add_span_attributes(
+                        {
+                            "mapping.id": str(mapping.id),
+                            "mapping.external_listing_id": external_listing_id,
+                        }
+                    )
+                    set_span_status(StatusCode.OK)
+
+                logger.info(
+                    f"Created federated asset {asset.id} with contracts from marketplace mapping",
+                    extra={
+                        "asset_id": str(asset.id),
+                        "connection_id": str(connection.id),
+                        "sync_job_id": str(sync_job.id) if sync_job else None,
+                        "odps_contract_id": str(odps_contract.id) if odps_contract else None,
+                        "odcs_contract_id": str(odcs_contract.id) if odcs_contract else None,
                         "files_created": len(created_files),
                         "datasets_created": len(created_datasets),
-                        "resources_downloaded": len(resources_to_download),
-                    }
+                    },
                 )
 
-            # STEP 8: Execute federated asset workflow (only if semantic mapping succeeded)
-            # This ensures assets go through validation, checks, indexing, and notifications
-            workflow_results = None
-            if not skip_semantic_mapping:
+                return asset
+
+            except (ValidationError, NotFoundError) as e:
+                if span:
+                    record_span_exception(e)
+                    set_span_status(StatusCode.ERROR)
+                raise
+            except Exception as e:
+                if span:
+                    record_span_exception(e)
+                    set_span_status(StatusCode.ERROR)
+                # The atomic block marks the transaction for rollback
+                # on any exception.  Clear the flag so cleanup / logging
+                # that touches the DB can proceed.  The data mutations
+                # were already rolled back by the savepoint.
+                from django.db import transaction as _tx
                 try:
-                    workflow_results = self._execute_federated_asset_workflow(
-                        asset=asset,
-                        odps_contract=odps_contract,
-                        odcs_contract=odcs_contract,
-                        created_datasets=created_datasets,
-                        tenant_obj=tenant_obj,
-                        user_obj=user_obj,
-                        data_strategy=data_strategy,
-                    )
-
-                    # Refresh asset from database to get updated status
-                    asset.refresh_from_db()
-
-                    logger.info(
-                        f"Federated asset workflow executed for asset {asset.id}",
-                        extra={
-                            "asset_id": str(asset.id),
-                            "workflow_executed": workflow_results.get("workflow_executed"),
-                            "activated": workflow_results.get("activated"),
-                            "contract_validated": workflow_results.get("contract_validated"),
-                            "dq_checks_run": workflow_results.get("dq_checks_run"),
-                            "compliance_checks_run": workflow_results.get("compliance_checks_run"),
-                            "indexed": workflow_results.get("indexed"),
-                            "notifications_sent": workflow_results.get("notifications_sent"),
-                            "errors": workflow_results.get("errors", []),
-                            "warnings": workflow_results.get("warnings", []),
-                        },
-                    )
-
-                    if span:
-                        add_span_attributes(
-                            {
-                                "workflow_executed": workflow_results.get("workflow_executed"),
-                                "asset_activated": workflow_results.get("activated"),
-                                "workflow_instance_id": workflow_results.get(
-                                    "workflow_instance_id"
-                                ),
-                            }
+                    _tx.set_rollback(False)
+                except Exception:
+                    pass
+                logger.error(
+                    f"Unexpected error creating federated asset with contracts: {e}",
+                    exc_info=True,
+                    extra={
+                        "connection_id": str(connection.id) if connection else None,
+                        "sync_job_id": str(sync_job.id) if sync_job else None,
+                        "tenant_id": effective_tenant_id,
+                        "user_id": effective_user_id,
+                    },
+                )
+                raise ServiceError(f"Failed to create federated asset with contracts: {e}") from e
+            finally:
+                if span_context:
+                    try:
+                        span_context.__exit__(None, None, None)
+                    except Exception as e:
+                        logger.debug(
+                            "integrations_non_critical_failed",
+                            extra={"error_type": type(e).__name__, "error": str(e)},
                         )
-                except Exception as e:
-                    # Don't fail entire operation if workflow execution fails
-                    logger.warning(
-                        f"Federated asset workflow execution failed for asset {asset.id}: {e}",
-                        exc_info=True,
-                        extra={"asset_id": str(asset.id)},
-                    )
-                    if span:
-                        add_span_attributes({"workflow_error": str(e)})
-
-            # Create MarketplaceMapping record
-            external_listing_id = source_metadata.get("listing_id") or source_metadata.get(
-                "marketplace_id", ""
-            )
-            external_resource_ids = [r.resource_id for r in asset_mapping.resources]
-
-            mapping = MarketplaceMapping.objects.create(
-                tenant=tenant_obj,
-                connection=connection,
-                hub_asset=asset,
-                external_listing_id=external_listing_id,
-                external_resource_ids=external_resource_ids,
-                sync_metadata={
-                    "sync_job_id": str(sync_job.id) if sync_job else None,
-                    "synced_at": source_metadata.get("synced_at"),
-                },
-                last_synced_at=timezone.now(),
-            )
-
-            if span:
-                add_span_attributes(
-                    {
-                        "mapping.id": str(mapping.id),
-                        "mapping.external_listing_id": external_listing_id,
-                    }
-                )
-                set_span_status(StatusCode.OK)
-
-            logger.info(
-                f"Created federated asset {asset.id} with contracts from marketplace mapping",
-                extra={
-                    "asset_id": str(asset.id),
-                    "connection_id": str(connection.id),
-                    "sync_job_id": str(sync_job.id) if sync_job else None,
-                    "odps_contract_id": str(odps_contract.id) if odps_contract else None,
-                    "odcs_contract_id": str(odcs_contract.id) if odcs_contract else None,
-                    "files_created": len(created_files),
-                    "datasets_created": len(created_datasets),
-                },
-            )
-
-            return asset
-
-        except (ValidationError, NotFoundError) as e:
-            if span:
-                record_span_exception(e)
-                set_span_status(StatusCode.ERROR)
-            raise
-        except Exception as e:
-            if span:
-                record_span_exception(e)
-                set_span_status(StatusCode.ERROR)
-            logger.error(
-                f"Unexpected error creating federated asset with contracts: {e}",
-                exc_info=True,
-                extra={
-                    "connection_id": str(connection.id) if connection else None,
-                    "sync_job_id": str(sync_job.id) if sync_job else None,
-                    "tenant_id": effective_tenant_id,
-                    "user_id": effective_user_id,
-                },
-            )
-            raise ServiceError(f"Failed to create federated asset with contracts: {e}") from e
-        finally:
-            if span_context:
-                try:
-                    span_context.__exit__(None, None, None)
-                except Exception as e:
-                    logger.debug(
-                        "integrations_non_critical_failed",
-                        extra={"error_type": type(e).__name__, "error": str(e)},
-                    )
 
     def _create_odps_contract_from_metadata(
         self,
@@ -1590,20 +1599,26 @@ class DiscoveryServiceMixin:
             workflow_name = AssetCreationWorkflow.WORKFLOW_NAME
             workflow_version = AssetCreationWorkflow.WORKFLOW_VERSION
 
-            # Try to get existing workflow definition
-            workflow_def = WorkflowDefinition.objects.filter(
-                name=workflow_name, version=workflow_version
-            ).first()
+            # Register (or retrieve) the workflow definition.  The
+            # registry persists to the DB inside ``register_workflow``.
+            from hub.apps.orchestration.registry import WorkflowRegistry
 
-            # If not found, register it using WorkflowRegistry
-            if not workflow_def:
-                from hub.apps.orchestration.registry import WorkflowRegistry
-
-                registry = WorkflowRegistry()
-                AssetCreationWorkflow.register_workflow(registry)
+            registry = WorkflowRegistry()
+            AssetCreationWorkflow.register_workflow(registry)
+            try:
                 workflow_def = WorkflowDefinition.objects.get(
                     name=workflow_name, version=workflow_version
                 )
+            except WorkflowDefinition.DoesNotExist:
+                logger.warning(
+                    "WorkflowDefinition not persisted after register_workflow",
+                    workflow_name=workflow_name,
+                    workflow_version=workflow_version,
+                )
+                # Skip the workflow execution; the asset was already
+                # created and contracts attached — the workflow is a
+                # post-creation validation/enrichment pass.
+                return None
 
             # Create minimal WorkflowInstance for state tracking
             workflow_instance = WorkflowInstance.objects.create(
@@ -1765,6 +1780,10 @@ class DiscoveryServiceMixin:
             # Task 4: Validate activation requirements (using business rules)
             activation_validated = False
             try:
+                # Refresh asset from DB to get current dq_status/compliance_status
+                # set by the DQ and compliance workflow steps above.  Without this
+                # refresh the asset object is stale (fetched before those steps ran).
+                asset.refresh_from_db()
                 business_rules = AssetsBusinessRules(
                     tenant_id=str(tenant_obj.id), user_id=str(user_obj.id)
                 )

@@ -60,9 +60,10 @@ class TenantMeUsageViewTest(TestCase):
         response = self.client.get("/api/v1/tenants/me/usage/")
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertEqual(response.data["tenant_id"], str(self.tenant.id))
-        self.assertIn("storage_bytes", response.data)
-        self.assertIn("storage_gb", response.data)
-        self.assertIn("api_calls_this_month", response.data)
+        # The usage response uses dynamic *_usage keys from RESOURCE_COUNTERS.
+        # Legacy top-level keys (storage_bytes, storage_gb, api_calls_this_month)
+        # were replaced by individual counter keys under their own names.
+        self.assertIn("storage_gb_usage", response.data)
         self.assertIn("plan_limits", response.data)
         self.assertIn("usage_percentages", response.data)
 

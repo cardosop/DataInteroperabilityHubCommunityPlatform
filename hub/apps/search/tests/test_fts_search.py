@@ -219,13 +219,26 @@ class TestFTSIndexUpdatedOnSave(TestCase):
 
     def setUp(self):
         from django.db.models.signals import post_save
-        # Ensure handlers are connected regardless of prior test teardown
         from hub.apps.assets.signals import rebuild_asset_search_vector
         from hub.apps.contracts.signals import rebuild_contract_search_vector
+
+        # Disconnect first so this class is re-entrant (survives being run
+        # after a prior class that left them disconnected).
+        post_save.disconnect(rebuild_asset_search_vector, sender=Asset)
+        post_save.disconnect(rebuild_contract_search_vector, sender=Contract)
         post_save.connect(rebuild_asset_search_vector, sender=Asset)
         post_save.connect(rebuild_contract_search_vector, sender=Contract)
         self.tenant = _create_tenant("signal-tenant")
         self.user = _create_user(self.tenant, email="signal@test.com")
+
+    def tearDown(self):
+        """Clean up signal connections to leave state clean for subsequent tests."""
+        from django.db.models.signals import post_save
+        from hub.apps.assets.signals import rebuild_asset_search_vector
+        from hub.apps.contracts.signals import rebuild_contract_search_vector
+        post_save.disconnect(rebuild_asset_search_vector, sender=Asset)
+        post_save.disconnect(rebuild_contract_search_vector, sender=Contract)
+        super().tearDown()
 
     @patch("hub.apps.search.tasks.enqueue_asset_search_vector_update")
     def test_asset_save_calls_enqueue(self, mock_enqueue):

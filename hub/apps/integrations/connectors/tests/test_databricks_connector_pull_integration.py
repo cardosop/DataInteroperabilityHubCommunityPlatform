@@ -39,14 +39,15 @@ class TestDatabricksConnectorPullIntegration(TestCase):
     @classmethod
     def setUpClass(cls):
         """Set up test class with real Databricks workspace."""
-        super().setUpClass()
-
-        # Get credentials from environment
+        # Check credentials BEFORE super().setUpClass() to avoid
+        # _fixture_teardown() closing connections on the skip path.
         cls.host = os.getenv('DATABRICKS_HOST')
         cls.token = os.getenv('DATABRICKS_TOKEN')
 
         if not cls.host or not cls.token:
             raise unittest.SkipTest("DATABRICKS_HOST and DATABRICKS_TOKEN environment variables required for integration tests")
+
+        super().setUpClass()
 
         # Create connector
         cls.connector = DatabricksConnector(host=cls.host, token=cls.token)

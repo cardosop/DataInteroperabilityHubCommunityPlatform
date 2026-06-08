@@ -19,6 +19,7 @@ export function ScheduledIngestionCreatePage() {
   const [description, setDescription] = useState('');
   const [sourceType, setSourceType] = useState<SourceType>('S3');
   const [scheduleType, setScheduleType] = useState<ScheduleType>('DAILY');
+  const [credentialRef, setCredentialRef] = useState('');
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -35,6 +36,14 @@ export function ScheduledIngestionCreatePage() {
         sourceConfig = { host: 'example.com' };
       } else if (sourceType === 'DATABASE') {
         sourceConfig = { host: 'localhost', database: 'placeholder' };
+      } else if (sourceType === 'SNOWFLAKE_SOURCE') {
+        sourceConfig = { host: 'placeholder.snowflakecomputing.com', database: 'PLACEHOLDER', schema: 'PUBLIC' };
+      } else if (sourceType === 'BIGQUERY_SOURCE') {
+        sourceConfig = { project_id: 'placeholder-project', dataset_id: 'placeholder_dataset' };
+      } else if (sourceType === 'DATABRICKS_SOURCE') {
+        sourceConfig = { host: 'placeholder.cloud.databricks.com', http_path: '/sql/1.0/warehouses/placeholder', catalog: 'main', schema: 'default' };
+      } else if (sourceType === 'ATHENA_SOURCE') {
+        sourceConfig = { database: 'placeholder_db', s3_staging_dir: 's3://placeholder-bucket/athena-results/' };
       }
 
       let scheduleConfig: Record<string, unknown> = {};
@@ -53,6 +62,7 @@ export function ScheduledIngestionCreatePage() {
         schedule_config: scheduleConfig,
         file_pattern: '.*', // Default: match all files (can be customized later)
         test_connection: false, // Skip connection test for now (requires valid credentials)
+        credential_ref: credentialRef || undefined,
       });
       navigate(`/scheduled-ingestions/${schedule.id}`);
     } catch (err) {
@@ -124,7 +134,26 @@ export function ScheduledIngestionCreatePage() {
             <option value="FTP">FTP</option>
             <option value="SFTP">SFTP</option>
             <option value="DATABASE">Database</option>
+            <option value="SNOWFLAKE_SOURCE">Snowflake Source</option>
+            <option value="BIGQUERY_SOURCE">BigQuery Source</option>
+            <option value="DATABRICKS_SOURCE">Databricks Source</option>
+            <option value="ATHENA_SOURCE">Athena Source</option>
           </select>
+        </div>
+
+        <div className="form-group">
+          <label htmlFor="credential_ref">Credential Reference</label>
+          <input
+            id="credential_ref"
+            type="text"
+            value={credentialRef}
+            onChange={(e) => setCredentialRef(e.target.value)}
+            placeholder="arn:aws:secretsmanager:... or prefect://block-name"
+          />
+          <small className="form-help">
+            AWS Secrets Manager ARN or Prefect block reference for dlt credentials.
+            Leave empty to use inline credentials from source config.
+          </small>
         </div>
 
         <div className="form-group">

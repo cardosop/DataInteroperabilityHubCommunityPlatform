@@ -348,7 +348,14 @@ class UserViewSet(viewsets.ModelViewSet):
         Invite a user to join the tenant via service layer.
 
         Creates user with INVITED status and sends invitation email.
+
+        Requires TENANT_ADMIN or PLATFORM_ADMIN role (consistent with
+        other mutation endpoints on this viewset: update, destroy, manage_roles).
         """
+        perm = self._check_admin_update_permission(request)
+        if perm is not None:
+            return perm
+
         serializer = UserInviteSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
 

@@ -35,8 +35,8 @@ class AuthenticationRegressionTest(TestCase):
         """Set up test fixtures"""
         self.client = APIClient()
         self.tenant = Tenant.objects.create(
-            name="Auth Test Tenant",
-            slug="auth-test-tenant"
+            name=f"Auth Test Tenant {uuid.uuid4().hex[:8]}",
+            slug=f"auth-test-tenant-{uuid.uuid4().hex[:8]}"
         )
         self.user = User.objects.create_user(
             email=f"auth-{uuid.uuid4().hex[:8]}@example.com",
@@ -274,8 +274,8 @@ class AuthorizationTest(AuthenticationRegressionTest):
         """Test tenant isolation in authorization"""
         # Create another tenant and user
         other_tenant = Tenant.objects.create(
-            name="Other Tenant",
-            slug="other-tenant"
+            name=f"Other Tenant {uuid.uuid4().hex[:8]}",
+            slug=f"other-tenant-{uuid.uuid4().hex[:8]}"
         )
         other_user = User.objects.create_user(
             email=f"other-{uuid.uuid4().hex[:8]}@example.com",

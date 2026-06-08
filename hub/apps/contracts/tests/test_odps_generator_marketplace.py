@@ -11,7 +11,7 @@ Tests verify:
 7. Error handling for invalid marketplace data
 """
 
-from django.test import SimpleTestCase, TestCase
+from django.test import SimpleTestCase
 
 from hub.apps.contracts.odps_errors import ODPSExportError
 from hub.apps.contracts.odps_generator import generate_odps_from_hubcontract
@@ -675,10 +675,9 @@ class ODPSGeneratorMarketplaceCombinedMappingTest(SimpleTestCase):
         # Verify product exists
         self.assertIn("product", result)
 
-        # Verify marketplace section is not present (optional)
-        if "marketplace" in result["product"]:
-            # If marketplace exists, it should be empty or minimal
-            pass
+        # Verify marketplace section is not present when not provided.
+        self.assertNotIn("marketplace", result["product"],
+            "Marketplace section must be absent when no marketplace data is provided")
 
         # Verify license is not present (optional)
         self.assertNotIn("license", result)
@@ -844,17 +843,10 @@ class ODPSGeneratorMarketplaceIntegrationTest(SimpleTestCase):
             },
         }
 
-        # Should handle large documents gracefully
-        try:
-            result = generate_odps_from_hubcontract(hub_contract)
-            # If generation succeeds, verify structure
-            self.assertIn("license", result)
-            self.assertIn("en", result["license"])
-        except Exception as e:
-            # If generation fails, it should fail gracefully
-            self.assertIsInstance(
-                e, ODPSExportError, "Should raise ODPSExportError for very large documents"
-            )
+        # Valid data (large license text) must succeed — must include license structure
+        result = generate_odps_from_hubcontract(hub_contract)
+        self.assertIn("license", result)
+        self.assertIn("en", result["license"])
 
     def test_marketplace_generation_handles_none_values(self):
         """Test that marketplace generation handles None values correctly."""
@@ -870,15 +862,9 @@ class ODPSGeneratorMarketplaceIntegrationTest(SimpleTestCase):
         }
 
         # Should handle None values gracefully
-        try:
-            result = generate_odps_from_hubcontract(hub_contract)
-            # If generation succeeds, None values may be omitted or handled
-            self.assertIsNotNone(result)
-        except Exception as e:
-            # If generation fails, it should fail gracefully
-            self.assertIsInstance(
-                e, ODPSExportError, "Should raise ODPSExportError for None values"
-            )
+        result = generate_odps_from_hubcontract(hub_contract)
+        self.assertIsNotNone(result)
+        self.assertIn("product", result)
 
     def test_marketplace_generation_handles_nested_structures(self):
         """Test that marketplace generation handles nested structures correctly."""
@@ -905,7 +891,10 @@ class ODPSGeneratorMarketplaceIntegrationTest(SimpleTestCase):
         self.assertIn("product", result)
         self.assertIn("marketplace", result["product"])
         self.assertIn("pricingPlans", result["product"]["marketplace"])
-        if len(result["product"]["marketplace"]["pricingPlans"]) > 0:
-            plan = result["product"]["marketplace"]["pricingPlans"][0]
-            if "nested" in plan:
-                self.assertIn("level1", plan["nested"], "Nested structures should be preserved")
+        self.assertGreater(len(result["product"]["marketplace"]["pricingPlans"]), 0,
+            "pricingPlans must not be empty for nested structure test")
+        plan = result["product"]["marketplace"]["pricingPlans"][0]
+        self.assertIn("nested", plan,
+            "Nested data must be preserved in pricing plan")
+        self.assertIn("level1", plan["nested"],
+            "Nested structures should be preserved")

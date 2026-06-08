@@ -3,10 +3,11 @@ import pytest
 pytestmark = pytest.mark.performance
 
 """
-Phase 216.4.5 — 50 concurrent SDK requests: no deadlock, < 10s.
+Phase 216.4.5 — 50 concurrent API requests: no deadlock, < 10s (backend baseline).
 
-Fires 50 parallel GET /auth/me/ and verifies all complete within 10s
-with no server errors or thread hangs.
+Fires 50 parallel GET /auth/me/ via raw HTTP and verifies all complete
+within 10s with no server errors or thread hangs. Tests backend API
+concurrency, not the SDK client.
 """
 
 import concurrent.futures
@@ -38,7 +39,11 @@ def _single_request(token: str) -> tuple[int, float]:
 
 def test_concurrent_requests_under_budget():
     """50 parallel requests must all complete in <10s total."""
-    creds = provision_persona("data_engineer")
+    try:
+        creds = provision_persona("data_engineer")
+    except (requests.exceptions.ConnectionError, requests.exceptions.Timeout):
+        pytest.skip("Backend not available")
+
 
     start = time.perf_counter()
     with concurrent.futures.ThreadPoolExecutor(max_workers=CONCURRENCY) as pool:
@@ -58,8 +63,8 @@ def test_concurrent_requests_under_budget():
     assert not server_errors, f"{len(server_errors)} server errors in concurrent batch"
 
     record = build_perf_record(
-        test_name="test_concurrent_requests_under_budget",
-        measurements_ms=[total_ms],
+        test_name="test_api_concurrent_requests_under_budget",
+        measurements_ms=latencies,  # individual request latencies for meaningful percentiles
         budget_ms=BUDGET_MS,
     )
     write_perf_record(record)

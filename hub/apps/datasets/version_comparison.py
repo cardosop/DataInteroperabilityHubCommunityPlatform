@@ -208,7 +208,7 @@ class VersionComparisonService:
                     'semantic_version': old_version.semantic_version,
                     'format': old_version.format,
                     'row_count': old_version.row_count,
-                    'created_at': old_version.created_at.isoformat()
+                    'created_at': old_version.created_at.isoformat() if old_version.created_at else None
                 },
                 'new': {
                     'id': str(new_version.id),
@@ -216,7 +216,7 @@ class VersionComparisonService:
                     'semantic_version': new_version.semantic_version,
                     'format': new_version.format,
                     'row_count': new_version.row_count,
-                    'created_at': new_version.created_at.isoformat()
+                    'created_at': new_version.created_at.isoformat() if new_version.created_at else None
                 }
             },
             'fields': fields_comparison,

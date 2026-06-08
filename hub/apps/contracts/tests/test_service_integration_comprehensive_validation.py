@@ -479,7 +479,7 @@ class ServiceHealthDependencyTest(ServiceIntegrationValidationTestBase):
 
         # Health response should be JSON
         try:
-            data = json.loads(response.content)
+            data = response.data
             self.assertIn("status", data)
         except json.JSONDecodeError:
             # If not JSON, that's also acceptable
@@ -493,7 +493,7 @@ class ServiceHealthDependencyTest(ServiceIntegrationValidationTestBase):
 
         # Try to parse health response
         try:
-            data = json.loads(response.content)
+            data = response.data
             # Health response should have status information
             self.assertIsNotNone(data)
         except json.JSONDecodeError:
@@ -701,7 +701,7 @@ class ServiceHealthDependencyTest(ServiceIntegrationValidationTestBase):
 
         # Try to parse health response
         try:
-            data = json.loads(response.content)
+            data = response.data
             # May include service dependencies
             if isinstance(data, dict):
                 # Health response may include service status

@@ -151,11 +151,14 @@ class PrefectConfigTest(TestCase):
 class VaultESOTest(TestCase):
     """K.5 — Vault + ESO configuration."""
 
-    def test_secret_store_template_has_vault_provider(self):
+    def test_secret_store_template_has_aws_provider(self):
+        """Phase 211: Vault replaced by AWS Secrets Manager provider.
+        Verifies the SecretStore uses the AWS provider for Secrets Manager,
+        not just a vague 'aws' substring match."""
         t = _read(
             "helm/templates/externalsecrets/secret-store.yaml",
         )
-        self.assertIn("vault", t.lower())
+        self.assertIn("service: SecretsManager", t)
 
     def test_external_secret_syncs_django_secrets(self):
         t = _read(
@@ -172,6 +175,10 @@ class VaultESOTest(TestCase):
         )
         self.assertIn("POSTGRES_PASSWORD", t)
 
-    def test_deploy_workflow_references_vault(self):
+    def test_deploy_workflow_references_oidc(self):
+        """Phase 211: Vault removed. Deploy uses GitHub OIDC for AWS auth.
+        Both the OIDC token permission and the AWS credentials action must
+        be present for the OIDC→IRSA auth flow to function."""
         d = _read(".github/workflows/deploy.yml")
-        self.assertIn("VAULT_ADDR", d)
+        self.assertIn("id-token: write", d)
+        self.assertIn("configure-aws-credentials", d)

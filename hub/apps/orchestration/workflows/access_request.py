@@ -188,7 +188,7 @@ class AccessRequestWorkflow:
         asset_id = input_data.get("asset_id")
         dataset_id = input_data.get("dataset_id")
         file_id = input_data.get("file_id")
-        reason = input_data.get("reason", "")
+        reason = input_data.get("reason") or "Access request"
         requested_access_type = input_data.get("requested_access_type", "READ")
         expires_at_str = input_data.get("expires_at")
 

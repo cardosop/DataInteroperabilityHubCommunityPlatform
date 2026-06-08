@@ -54,10 +54,14 @@ class TestSearchErrorEnvelope(TestCase):
         assert "request_id" in err
 
     @patch("hub.apps.search.views.UnifiedSearchView._fts_query")
-    def test_missing_q_returns_envelope(self, mock_fts):
+    def test_missing_q_returns_filter_only(self, mock_fts):
+        """Empty/missing q returns 200 with filter-only results (Phase 18.3)."""
         mock_fts.return_value = []
         resp = self.client.get("/api/search/")  # no q param
-        self._assert_envelope(resp, "QUERY_REQUIRED", 400)
+        assert resp.status_code == 200
+        data = resp.json() if hasattr(resp, "json") else resp.data
+        assert "results" in data
+        assert isinstance(data["results"], list)
 
     @patch("hub.apps.search.views.UnifiedSearchView._fts_query")
     def test_query_too_long_returns_envelope(self, mock_fts):

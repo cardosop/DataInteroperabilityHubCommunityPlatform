@@ -340,8 +340,10 @@ class ODPSNotificationIntegrationTest(TestCase):
         mock_service.send_email.side_effect = EmailServiceError("Service unavailable")
         mock_get_service.return_value = mock_service
 
-        # Send email - task records failure and propagates EmailServiceError to caller
-        with self.assertRaises(EmailServiceError):
+        # Send email - task records failure and propagates EmailServiceError to caller.
+        # The ERROR log is expected — verified with assertLogs to keep CI output clean.
+        with self.assertRaises(EmailServiceError), \
+             self.assertLogs('hub.apps.notifications.tasks', level='ERROR'):
             send_odps_creation_completion_email(str(self.odps_contract.id))
 
         # Verify delivery record was created with failure status

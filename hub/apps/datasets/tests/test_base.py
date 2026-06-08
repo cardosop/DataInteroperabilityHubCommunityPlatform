@@ -12,7 +12,7 @@ from django.test import TestCase
 from rest_framework.test import APIClient
 
 from hub.apps.datasets.services import DatasetService
-from hub.apps.files.models import File, FileStatus
+from hub.apps.files.models import File, FileScanStatus, FileStatus
 from hub.apps.tenants.models import KYCStatus, Tenant, TenantStatus
 from hub.apps.users.models import UserStatus
 from hub.apps.testing.billing_support import ensure_tenant_has_active_subscription
@@ -46,18 +46,44 @@ class DatasetsTestBase(TestCase):
         # Create service
         self.service = DatasetService(tenant_id=str(self.tenant.id), user_id=str(self.user.id))
 
-        # Create file
+        # Create file with real S3 content so schema inference can run.
         file_id = uuid.uuid4()
+        storage_path = f"{self.tenant.id}/{file_id}/test.csv"
+        csv_body = b"id,name\n1,alice\n2,bob\n"
         self.file = File.objects.create(
             id=file_id,
             tenant=self.tenant,
             name="test.csv",
             content_type="text/csv",
-            size=1024,
+            size=len(csv_body),
             status=FileStatus.ACTIVE,
-            storage_path=f"{self.tenant.id}/{file_id}/test.csv",
+            scan_status=FileScanStatus.CLEAN,
+            storage_path=storage_path,
             created_by=self.user,
         )
+        # Upload the CSV to S3/MinIO so dataset service schema inference
+        # has real bytes to work with (D93 removed the mock fallback).
+        # Surface failures via ``storage_available`` so downstream tests
+        # can skip rather than failing with an opaque storage error.
+        self.storage_available = False
+        try:
+            import boto3
+            from django.conf import settings
+            s3 = boto3.client(
+                "s3",
+                endpoint_url=getattr(settings, "AWS_S3_ENDPOINT_URL", None),
+                aws_access_key_id=getattr(settings, "AWS_ACCESS_KEY_ID", ""),
+                aws_secret_access_key=getattr(settings, "AWS_SECRET_ACCESS_KEY", ""),
+            )
+            s3.put_object(
+                Bucket=getattr(settings, "AWS_STORAGE_BUCKET_NAME", "hub-test"),
+                Key=storage_path,
+                Body=csv_body,
+                ContentType="text/csv",
+            )
+            self.storage_available = True
+        except Exception:
+            pass
 
 
 class DatasetsTransactionTestBase(TestCase):
@@ -86,18 +112,40 @@ class DatasetsTransactionTestBase(TestCase):
         # Create service
         self.service = DatasetService(tenant_id=str(self.tenant.id), user_id=str(self.user.id))
 
-        # Create file
+        # Create file with real S3 content so schema inference can run.
         file_id = uuid.uuid4()
+        storage_path = f"{self.tenant.id}/{file_id}/test.csv"
+        csv_body = b"id,name\n1,alice\n2,bob\n"
         self.file = File.objects.create(
             id=file_id,
             tenant=self.tenant,
             name="test.csv",
             content_type="text/csv",
-            size=1024,
+            size=len(csv_body),
             status=FileStatus.ACTIVE,
-            storage_path=f"{self.tenant.id}/{file_id}/test.csv",
+            scan_status=FileScanStatus.CLEAN,
+            storage_path=storage_path,
             created_by=self.user,
         )
+        self.storage_available = False
+        try:
+            import boto3
+            from django.conf import settings
+            s3 = boto3.client(
+                "s3",
+                endpoint_url=getattr(settings, "AWS_S3_ENDPOINT_URL", None),
+                aws_access_key_id=getattr(settings, "AWS_ACCESS_KEY_ID", ""),
+                aws_secret_access_key=getattr(settings, "AWS_SECRET_ACCESS_KEY", ""),
+            )
+            s3.put_object(
+                Bucket=getattr(settings, "AWS_STORAGE_BUCKET_NAME", "hub-test"),
+                Key=storage_path,
+                Body=csv_body,
+                ContentType="text/csv",
+            )
+            self.storage_available = True
+        except Exception:
+            pass
 
 
 class DatasetsAPITestBase(DatasetsTestBase):

@@ -23,6 +23,7 @@ class DQAPI:
         "PASS",
         "FAIL",
         "WARN",
+        "SUCCEEDED",
         "completed",
         "failed",
         "cancelled",
@@ -137,7 +138,9 @@ class DQAPI:
             results = response.get("results") or []
             if results:
                 latest: Dict[str, Any] = results[0]
-                if latest.get("status") in self.TERMINAL_STATUSES:
+                run_asset_id = latest.get("asset_id") or latest.get("asset")
+                if (run_asset_id and str(run_asset_id) == str(asset_id)
+                        and latest.get("status") in self.TERMINAL_STATUSES):
                     return latest
             await asyncio.sleep(interval)
             elapsed += interval

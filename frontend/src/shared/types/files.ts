@@ -8,6 +8,7 @@ export const FileStatus = {
   UPLOADING: 'UPLOADING',
   COMPLETED: 'COMPLETED',
   FAILED: 'FAILED',
+  ACTIVE: 'ACTIVE',
 } as const;
 export type FileStatus = (typeof FileStatus)[keyof typeof FileStatus];
 
@@ -19,6 +20,8 @@ export interface File {
   storage_path: string;
   status: FileStatus;
   content_sha256?: string;
+  scan_status?: FileScanStatus;
+  scanned_at?: string | null;
   created_at: string;
   updated_at: string;
   created_by: string;
@@ -58,4 +61,24 @@ export interface FileCompleteRequest {
   file_id: string;
   content_sha256?: string;
   parts?: Array<{ ETag: string; PartNumber: number }>;
+}
+
+export const FileScanStatus = {
+  CLEAN: 'CLEAN',
+  INFECTED: 'INFECTED',
+  SCANNING: 'SCANNING',
+  UNKNOWN: 'UNKNOWN',
+  PENDING_SCAN: 'PENDING_SCAN',
+  SCAN_ERROR: 'SCAN_ERROR',
+  SCAN_UNAVAILABLE: 'SCAN_UNAVAILABLE',
+} as const;
+export type FileScanStatus = (typeof FileScanStatus)[keyof typeof FileScanStatus];
+
+export interface FileStorageQuota {
+  used_bytes: number;
+  total_bytes: number;
+  file_count: number;
+  unlimited?: boolean;
+  limit_bytes?: number;
+  percentage?: number;
 }

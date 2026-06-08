@@ -3,6 +3,7 @@ Integration tests for Platform APIs: tenants list/suspend/resume, usage, erasure
 
 Real APIClient; admin where required. No mocks/stubs. Plan 3.3.1.1 (P1).
 """
+from hub.apps.testing.role_support import ensure_user_has_data_provider_role
 
 import pytest
 from django.contrib.auth import get_user_model
@@ -24,9 +25,10 @@ class TestPlatformAPIsIntegration:
     @pytest.fixture(autouse=True)
     def _setup(self, db):
         self.client = APIClient()
+        uid = uuid.uuid4().hex[:8]
         self.tenant = Tenant.objects.create(
-            name="Platform Integration Tenant",
-            slug="platform-integration-tenant",
+            name=f"Platform Integration Tenant {uid}",
+            slug=f"platform-integration-tenant-{uid}",
         )
         self.admin = User.objects.create_user(
             email=f"platform_admin-{uuid.uuid4().hex[:8]}@example.com",
@@ -56,9 +58,10 @@ class TestPlatformAPIsIntegration:
     def test_platform_tenant_suspend_resume_flow(self):
         """Platform admin can suspend and resume a tenant."""
         # Create a second tenant to suspend
+        uid2 = uuid.uuid4().hex[:8]
         other = Tenant.objects.create(
-            name="Other Tenant",
-            slug="other-tenant-platform-integration",
+            name=f"Other Tenant {uid2}",
+            slug=f"other-tenant-platform-integration-{uid2}",
         )
         # Suspend
         response_suspend = self.client.post(

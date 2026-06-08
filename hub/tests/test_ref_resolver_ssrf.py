@@ -46,14 +46,18 @@ def _mock_dns_ipv6_in_resolver(ip: str):
 # Tests
 # ---------------------------------------------------------------------------
 
-@override_settings(WEBHOOK_SSRF_ENABLED=True)
 @pytest.mark.django_db
 class TestRefResolverSSRF(TestCase):
 
     def _validate_url(self, url: str):
-        """Call the private _validate_external_url helper."""
-        resolver = _make_resolver()
-        resolver._validate_external_url(url)
+        """Call the private _validate_external_url helper with SSRF enabled."""
+        # Use a context-manager override instead of class-level so the override
+        # is guaranteed to take effect regardless of setUpClass / test-runner
+        # lifecycle details.
+        from django.test import override_settings as _override_settings
+        with _override_settings(WEBHOOK_SSRF_ENABLED=True):
+            resolver = _make_resolver()
+            resolver._validate_external_url(url)
 
     # --- localhost -----------------------------------------------------------
 
@@ -182,3 +186,15 @@ class TestRefResolverSSRF(TestCase):
         """::ffff:93.184.216.34 maps to a public IP and must not be blocked."""
         with _mock_dns_ipv6_in_resolver("::ffff:93.184.216.34"):
             self._validate_url("https://example.com/schema.json")
+
+    # ── SSRF toggle (disabled) ────────────────────────────────────────
+
+    def test_private_url_passes_when_ssrf_disabled(self):
+        """When WEBHOOK_SSRF_ENABLED=False, private IPs must NOT be blocked."""
+        from django.test import override_settings as _override_settings
+        with _override_settings(WEBHOOK_SSRF_ENABLED=False):
+            resolver = _make_resolver()
+            # Must not raise — the SSRF guard is disabled.
+            resolver._validate_external_url("http://127.0.0.1/schema.json")
+            resolver._validate_external_url("http://10.0.0.1/schema.json")
+            resolver._validate_external_url("http://169.254.169.254/latest/meta-data/")

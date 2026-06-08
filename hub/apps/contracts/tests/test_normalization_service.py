@@ -93,8 +93,12 @@ class NormalizationServiceTest(ContractsTestBase):
             self.assertNotIn(
                 "Data Contract Specification (DCS) is no longer supported", str(e.message)
             )
-            # Should be generic normalization failure
-            self.assertEqual(e.details.get("code"), "NORMALIZATION_FAILED")
+            # Should be structural-floor rejection (Phase 227 — structureless inputs
+            # are now caught by enforce_structural_floor before generic
+            # NORMALIZATION_FAILED is returned).
+            self.assertEqual(e.code, "STRUCTURELESS_CONTRACT")
+            self.assertIn("subcode", e.details,
+                "Structural-floor error details must include a subcode")
 
     def test_validate_hubcontract_success(self):
         """Test successful HubContract validation"""

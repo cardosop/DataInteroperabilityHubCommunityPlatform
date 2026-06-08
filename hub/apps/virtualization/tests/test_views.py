@@ -33,13 +33,15 @@ class VirtualDatasetViewSetTest(TestCase):
         # Create tenant
         uid = uuid.uuid4().hex[:8]
         self.tenant = Tenant.objects.create(
-            name=f"Test Tenant {uid}", slug=f"test-tenant-{uid}", kyc_status=KYCStatus.VERIFIED
+            name=f"Test Tenant {uid}", slug=f"test-tenant-{uid}", kyc_status=KYCStatus.VERIFIED,
+            virtualization_enabled=True,
         )
 
         # Create another tenant for isolation tests
         _uid = uuid.uuid4().hex[:8]
         self.other_tenant = Tenant.objects.create(
-            name=f"Other Tenant {_uid}", slug=f"other-tenant-{_uid}", kyc_status=KYCStatus.VERIFIED
+            name=f"Other Tenant {_uid}", slug=f"other-tenant-{_uid}", kyc_status=KYCStatus.VERIFIED,
+            virtualization_enabled=True,
         )
 
         # Create platform admin user
@@ -824,9 +826,12 @@ class VirtualDatasetViewSetTest(TestCase):
             "RateLimit-Remaining",
             "RateLimit-Reset",
         ]
-        # At least one rate limit header should be present (if implemented)
         has_rate_limit_header = any(h in headers for h in rate_limit_headers)
-        # This is informational - rate limiting headers may not be fully implemented yet
+        self.assertTrue(
+            has_rate_limit_header,
+            f"At least one rate-limit header must be present in the response. "
+            f"Headers found: {dict(headers)}"
+        )
 
     def test_rbac_write_operations_require_role(self):
         """Test that write operations require DATA_PROVIDER or TENANT_ADMIN role"""

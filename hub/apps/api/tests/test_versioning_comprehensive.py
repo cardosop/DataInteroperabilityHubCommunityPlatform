@@ -9,7 +9,7 @@ from datetime import timedelta
 
 import pytest
 
-pytestmark = pytest.mark.slow
+pytestmark = [pytest.mark.slow, pytest.mark.django_db(transaction=True)]
 from django.http import HttpRequest, HttpResponse, JsonResponse
 from django.test import RequestFactory, TestCase
 from django.utils import timezone
@@ -21,7 +21,6 @@ from hub.apps.api.versioning import (
     DeprecatedEndpoint,
 )
 
-pytestmark = pytest.mark.django_db(transaction=True)
 
 
 class APIVersionTest(TestCase):
@@ -303,6 +302,17 @@ class DeprecatedEndpointTest(TestCase):
 class APIVersionManagerTest(TestCase):
     """Comprehensive tests for APIVersionManager"""
 
+    def setUp(self):
+        super().setUp()
+        # Save and isolate the global deprecated-endpoint registry so
+        # test ordering doesn't affect results.
+        self._saved_deprecated = dict(APIVersionManager.DEPRECATED_ENDPOINTS)
+        APIVersionManager.DEPRECATED_ENDPOINTS = {}
+
+    def tearDown(self):
+        APIVersionManager.DEPRECATED_ENDPOINTS = self._saved_deprecated
+        super().tearDown()
+
     def test_get_version_from_path_v1(self):
         """Test extracting version v1 from URL path"""
         version = APIVersionManager.get_version_from_path("/api/v1/assets/")
@@ -555,6 +565,11 @@ class APIVersionMiddlewareTest(TestCase):
     """Comprehensive tests for APIVersionMiddleware"""
 
     def setUp(self):
+        super().setUp()
+        # Isolate the global deprecated-endpoint registry.
+        self._saved_deprecated = dict(APIVersionManager.DEPRECATED_ENDPOINTS)
+        APIVersionManager.DEPRECATED_ENDPOINTS = {}
+
         self.factory = RequestFactory()
 
         def mock_get_response(request):
@@ -585,8 +600,12 @@ class APIVersionMiddlewareTest(TestCase):
         self.assertEqual(request.api_version.major, 1)
 
     def test_middleware_api_request_unsupported_version(self):
-        """Test middleware rejects API request with unsupported version"""
-        request = self.factory.get("/api/v2/assets/")
+        """Test middleware rejects API request with an unsupported version.
+
+        Uses v999 (a version that will practically never be supported) so the
+        test survives when v2 is eventually introduced.
+        """
+        request = self.factory.get("/api/v999/assets/")
         response = self.middleware.process_request(request)
 
         # Should return error response
@@ -596,7 +615,7 @@ class APIVersionMiddlewareTest(TestCase):
         # Check response content
         import json
 
-        content = json.loads(response.content)
+        content = response.data
         self.assertEqual(content["error"]["code"], "UNSUPPORTED_API_VERSION")
         self.assertIn("supported_versions", content["error"])
 
@@ -681,3 +700,7 @@ class APIVersionMiddlewareTest(TestCase):
         response = self.middleware.process_request(request)
         # Should succeed (current version is supported)
         self.assertIsNone(response)
+
+    def tearDown(self):
+        APIVersionManager.DEPRECATED_ENDPOINTS = self._saved_deprecated
+        super().tearDown()

@@ -949,7 +949,11 @@ class TestBanditConfigNoB601Skip:
         if not os.path.exists(path):
             pytest.skip(".bandit not found")
         cp = configparser.ConfigParser()
-        cp.read(path)
+        read_files = cp.read(path)
+        assert read_files, (
+            f"Failed to read .bandit config file at {path} — "
+            f"ConfigParser.read() returned empty list"
+        )
         raw = cp.get("bandit", "skips", fallback="")
         skips = [s.strip().strip('"').strip("'")
                  for s in raw.strip("[]").split(",") if s.strip()]

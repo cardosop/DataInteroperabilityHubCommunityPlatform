@@ -100,11 +100,14 @@ class VirtualizationFederatedAssetE2ETest(TestCase):
     """
 
     def setUp(self):
+        from hub.apps.orchestration.registry import reset_workflow_definition_cache
+        reset_workflow_definition_cache()
         _uid = uuid.uuid4().hex[:8]
         self.tenant = Tenant.objects.create(
             name=f"Federated E2E Test Tenant {_uid}",
             slug=f"federated-e2e-test-{_uid}",
             kyc_status=KYCStatus.VERIFIED,
+            federated_import_enabled=True,
         )
         self.user = User.objects.create_user(
             email=f"federatede2e-{uuid.uuid4().hex[:8]}@example.com",

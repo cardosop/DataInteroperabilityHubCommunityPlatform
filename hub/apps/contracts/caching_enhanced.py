@@ -101,6 +101,16 @@ def cache_contract_with_tags(
         tags: List of cache tags (e.g., ["tenant:t1", "owner:user1"])
         ttl: Time-to-live in seconds (default: CACHE_TTL_CONTRACT)
     """
+    # Guard: skip if contract_id is None or empty — Redis keys require a non-empty name.
+    if not contract_id:
+        logger.debug(
+            "contract_cache_tag_skipped_empty_id",
+            contract_id=contract_id,
+            tags=tags,
+            message="Skipping cache tagging: contract_id is None or empty"
+        )
+        return
+
     # Cache contract data using existing function
     cache_contract(contract_id, contract_data, ttl=ttl)
 
@@ -208,6 +218,15 @@ def invalidate_contract_cache_by_tags(tags: List[str]) -> int:
     Returns:
         Number of contracts invalidated
     """
+    # Guard: None or empty list → nothing to invalidate.
+    if not tags:
+        logger.debug(
+            "contract_cache_invalidate_skipped",
+            tags=tags,
+            message="Skipping tag-based invalidation: tags is None or empty"
+        )
+        return 0
+
     redis_client = get_redis_client()
     invalidated_count = 0
 
@@ -281,12 +300,17 @@ def warm_frequently_accessed_contracts(
 
     Args:
         tenant_id: Optional tenant ID to filter contracts
-        limit: Maximum number of contracts to warm (default: 100)
+        limit: Maximum number of contracts to warm (default: 100, clamped to 0+)
         min_access_count: Minimum access count to consider (default: 5)
 
     Returns:
         Number of contracts warmed
     """
+    # Guard: clamp limit to non-negative. Django querysets raise
+    # "Negative indexing is not supported." on negative slice stops.
+    if limit < 0:
+        limit = 0
+
     try:
         # Query frequently accessed contracts
         # Note: This assumes there's an access tracking mechanism

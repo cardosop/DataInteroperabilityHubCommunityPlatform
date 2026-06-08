@@ -10,6 +10,8 @@ Tests all database operations:
 - Database connection pooling
 """
 
+import uuid
+
 import pytest
 
 pytestmark = pytest.mark.slow
@@ -325,11 +327,11 @@ class DatabaseIndexesTest(TestCase):
     def test_unique_constraints(self):
         """Test unique constraints work"""
         # Create tenant with unique slug
-        tenant1 = Tenant.objects.create(name="Unique Test Tenant", slug="unique-test-tenant")
+        tenant1 = Tenant.objects.create(name=f"Unique Test Tenant {uuid.uuid4().hex[:8]}", slug=f"unique-test-tenant-{uuid.uuid4().hex[:8]}")
 
         # Try to create another with same slug (should fail)
         with self.assertRaises(Exception):  # IntegrityError or ValidationError
-            Tenant.objects.create(name="Duplicate Tenant", slug="unique-test-tenant")  # Same slug
+            Tenant.objects.create(name=f"Duplicate Tenant {uuid.uuid4().hex[:8]}", slug=f"unique-test-tenant-{uuid.uuid4().hex[:8]}")  # Same slug
 
 
 class DatabaseConnectionPoolingTest(TestCase):

@@ -342,9 +342,6 @@ class DQRunViewSetTest(DQAPITestBase):
 
         response = self.client.post("/api/v1/dq/runs/", data, format="json")
 
-        if response.status_code == status.HTTP_400_BAD_REQUEST:
-            self.skipTest(f"DQ service unavailable: {response.data}")
-
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
         self.assertIn("id", response.data)
         self.assertIn("status", response.data)
@@ -355,9 +352,6 @@ class DQRunViewSetTest(DQAPITestBase):
         data = {"dataset_id": str(self.dataset.id)}
 
         response = self.client.post("/api/v1/dq/runs/", data, format="json")
-
-        if response.status_code == status.HTTP_400_BAD_REQUEST:
-            self.skipTest(f"DQ service unavailable: {response.data}")
 
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
         self.assertIn("id", response.data)
@@ -370,9 +364,6 @@ class DQRunViewSetTest(DQAPITestBase):
 
         response = self.client.post("/api/v1/dq/runs/", data, format="json")
 
-        if response.status_code == status.HTTP_400_BAD_REQUEST:
-            self.skipTest(f"DQ service unavailable: {response.data}")
-
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
         self.assertIn("id", response.data)
         self.assertIn("status", response.data)
@@ -383,9 +374,6 @@ class DQRunViewSetTest(DQAPITestBase):
         data = {"file_id": str(self.file.id), "profile_key": "intake_basic_soda"}
 
         response = self.client.post("/api/v1/dq/runs/", data, format="json")
-
-        if response.status_code == status.HTTP_400_BAD_REQUEST:
-            self.skipTest(f"DQ service unavailable: {response.data}")
 
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
         self.assertIn("id", response.data)
@@ -466,11 +454,6 @@ class DQRunViewSetTest(DQAPITestBase):
             f"/api/v1/dq/runs/{self.dq_run.id}/", updated_data, format="json"
         )
 
-        if response.status_code == status.HTTP_400_BAD_REQUEST:
-            self.skipTest(
-                f"Update not supported or validation failed: {response.data}"
-            )
-
         self.assertEqual(response.status_code, status.HTTP_200_OK)
 
     def test_update_dq_run_not_found(self):
@@ -489,9 +472,6 @@ class DQRunViewSetTest(DQAPITestBase):
         response = self.client.patch(
             f"/api/v1/dq/runs/{self.dq_run.id}/", updated_data, format="json"
         )
-
-        if response.status_code == status.HTTP_400_BAD_REQUEST:
-            self.skipTest(f"Partial update not supported or validation failed: {response.data}")
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
 
@@ -699,7 +679,7 @@ class DQRunViewSetTest(DQAPITestBase):
         self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
 
     def test_create_dq_run_user_without_tenant(self):
-        """Test creating DQ run with user that doesn't belong to tenant (edge case)"""
+        """Test creating DQ run with user that doesn't belong to tenant (edge case)."""
         # Create user without tenant
         user_no_tenant = User.objects.create_user(
             email=f"notenant-{uuid.uuid4().hex[:8]}@example.com",
@@ -713,4 +693,9 @@ class DQRunViewSetTest(DQAPITestBase):
 
         response = self.client.post("/api/v1/dq/runs/", data, format="json")
 
-        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        # DQFeatureFlagMixin fires during initial() BEFORE create().
+        # It calls check_data_quality_enabled() which requires a
+        # resolved tenant context.  A user with tenant=None cannot
+        # satisfy this, so the mixin returns 403 DATA_QUALITY_DISABLED
+        # before the view's create() method ever runs.
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)

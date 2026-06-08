@@ -65,14 +65,37 @@ def is_odh_service_error(error: Exception) -> bool:
 def setup_authentication_for_sdk_tests(api_base_url: str) -> Optional[str]:
     """
     Set up authentication for SDK tests.
-    Tries multiple methods to get API key.
+
+    Creates a dedicated tenant with ``ml_enabled=True`` so model-serving
+    endpoints avoid feature-flag gates and admin-token invalidation.
     """
-    # Method 1: Use environment variables
+    # Method 1: Create dedicated tenant via Django shell (PRIMARY).
+    try:
+        key = _create_model_serving_tenant_and_key()
+        if key:
+            return key
+    except Exception:
+        pass
+
+    # Method 2: Use canonical conftest helper
+    try:
+        from tests.conftest import get_api_key
+        canonical = get_api_key()
+        if canonical:
+            return canonical
+    except Exception:
+        pass
+
+    # Method 3: Fall back to env-var keys
     api_key = os.environ.get('TEST_API_KEY') or os.environ.get('DATAHUB_API_KEY')
     if api_key:
         return api_key
 
-    # Method 2: Try to create API key via Django shell in Docker Compose
+    return None
+
+
+def _create_model_serving_tenant_and_key() -> Optional[str]:
+    """Create a dedicated tenant with ``ml_enabled=True`` and return an API key."""
     try:
         unique_id = uuid.uuid4().hex[:8]
         django_shell_script = f"""
@@ -85,8 +108,11 @@ unique_id = '{unique_id}'
 # Get or create tenant
 tenant, _ = Tenant.objects.get_or_create(
     slug='model-serving-sdk-test-tenant-' + unique_id,
-    defaults={{'name': 'Model Serving SDK Test Tenant ' + unique_id}}
+    defaults={{'name': 'Model Serving SDK Test Tenant ' + unique_id, 'ml_enabled': True}}
 )
+if not tenant.ml_enabled:
+    tenant.ml_enabled = True
+    tenant.save(update_fields=['ml_enabled'])
 
 # Get or create user
 user, _ = User.objects.get_or_create(
@@ -137,7 +163,7 @@ print('API_KEY_END')
             return None
 
         result = subprocess.run(
-            ['docker', 'compose', 'exec', '-T', 'api-service', 'python', '/app/hub/manage.py', 'shell'],
+                        ['docker', 'compose', '-f', 'docker-compose.test.yml', 'exec', '-T', 'api-service-test', 'python', 'hub/manage.py', 'shell'],
             input=django_shell_script,
             text=True,
             capture_output=True,
@@ -195,7 +221,7 @@ def model_serving_api(client):
 @pytest.fixture
 def real_api_config():
     """Create real API config for integration tests."""
-    api_base_url = os.environ.get('API_BASE_URL', 'http://localhost:8000/api/v1')
+    api_base_url = os.environ.get('API_BASE_URL', 'http://localhost:8001/api/v1')
 
     if not check_api_available(api_base_url):
         pytest.skip(f"API service not available at {api_base_url}")
@@ -695,7 +721,7 @@ async def test_sdk_authentication_with_valid_key(real_model_serving_api):
 async def test_sdk_authentication_without_key():
     """Test SDK authentication without API key."""
     config = DataHubClientConfig(
-        base_url=os.environ.get("MESHANT_API_URL", "http://localhost:8000/api/v1"),
+        base_url=os.environ.get("MESHANT_API_URL", "http://localhost:8001/api/v1"),
         api_token=None,
         timeout=30.0,
         max_retries=3,
@@ -713,7 +739,7 @@ async def test_sdk_authentication_without_key():
 async def test_sdk_authentication_with_invalid_key():
     """Test SDK authentication with invalid API key."""
     config = DataHubClientConfig(
-        base_url=os.environ.get("MESHANT_API_URL", "http://localhost:8000/api/v1"),
+        base_url=os.environ.get("MESHANT_API_URL", "http://localhost:8001/api/v1"),
         api_token="invalid-key-12345",
         timeout=30.0,
         max_retries=3,

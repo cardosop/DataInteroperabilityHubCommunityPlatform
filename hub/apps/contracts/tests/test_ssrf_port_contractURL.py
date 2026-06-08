@@ -57,24 +57,30 @@ class SchemeRejectionTests(TestCase):
     """
 
     def test_file_scheme_rejected(self):
-        assert not is_safe_url("file:///etc/passwd")
+        self.assertFalse(is_safe_url("file:///etc/passwd"),
+            "file:// scheme must be rejected")
 
     def test_gopher_scheme_rejected(self):
-        assert not is_safe_url("gopher://evil.example/_payload")
+        self.assertFalse(is_safe_url("gopher://evil.example/_payload"),
+            "gopher:// scheme must be rejected")
 
     def test_dict_scheme_rejected(self):
-        assert not is_safe_url("dict://localhost:6379/INFO")
+        self.assertFalse(is_safe_url("dict://localhost:6379/INFO"),
+            "dict:// scheme must be rejected")
 
     def test_ftp_scheme_rejected(self):
-        assert not is_safe_url("ftp://internal.fileshare.example/file.json")
+        self.assertFalse(is_safe_url("ftp://internal.fileshare.example/file.json"),
+            "ftp:// scheme must be rejected")
 
     def test_data_scheme_rejected(self):
         # Inline data: URLs would let an attacker exfiltrate via the
         # response cache; rejected for defence-in-depth.
-        assert not is_safe_url("data:text/plain;base64,SGVsbG8=")
+        self.assertFalse(is_safe_url("data:text/plain;base64,SGVsbG8="),
+            "data: scheme must be rejected")
 
     def test_javascript_scheme_rejected(self):
-        assert not is_safe_url("javascript:alert(1)")
+        self.assertFalse(is_safe_url("javascript:alert(1)"),
+            "javascript: scheme must be rejected")
 
 
 # ---------------------------------------------------------------------------
@@ -168,12 +174,13 @@ class HelperWithBlockedURLTests(TestCase):
         )
 
         # SSRF blocked → no model emitted.
-        assert hub["models"] == [], f"Expected no models; got {hub['models']!r}"
+        self.assertEqual(hub["models"], [],
+            f"Expected no models; got {hub['models']!r}")
         # … and a STRUCTURELESS warning surfaces so ops can find it.
-        assert any(
+        self.assertTrue(any(
             "STRUCTURELESS_PORT_NO_RESOLVABLE_PAYLOAD" in w
             for w in warnings
-        ), f"Expected STRUCTURELESS warning; got {warnings!r}"
+        ), f"Expected STRUCTURELESS warning; got {warnings!r}")
 
 
 # ---------------------------------------------------------------------------
@@ -233,15 +240,15 @@ class HelperWithMockedResolverTests(TestCase):
             ref_resolver=resolver,
         )
 
-        assert resolver.calls == [
-            "https://contracts.example.com/odcs/orders.json"
-        ], f"Resolver should have been called once with the URL; got {resolver.calls}"
-        assert len(hub["models"]) == 1
-        assert hub["models"][0]["name"] == "remote-port"
-        assert [f["name"] for f in hub["models"][0]["fields"]] == [
-            "id", "amount",
-        ]
-        assert warnings == [], f"Expected no warnings; got {warnings!r}"
+        self.assertEqual(resolver.calls,
+            ["https://contracts.example.com/odcs/orders.json"],
+            f"Resolver should have been called once with the URL; got {resolver.calls}")
+        self.assertEqual(len(hub["models"]), 1)
+        self.assertEqual(hub["models"][0]["name"], "remote-port")
+        self.assertEqual([f["name"] for f in hub["models"][0]["fields"]],
+            ["id", "amount"])
+        self.assertEqual(warnings, [],
+            f"Expected no warnings; got {warnings!r}")
 
     def test_resolver_raising_falls_back_to_no_resolvable(self):
         """If RefResolver raises (e.g., 404, SSRF block), helper warns."""
@@ -265,8 +272,8 @@ class HelperWithMockedResolverTests(TestCase):
             warnings=warnings,
             ref_resolver=_BoomResolver(),
         )
-        assert hub["models"] == []
-        assert any("STRUCTURELESS_PORT_NO_RESOLVABLE_PAYLOAD" in w for w in warnings)
+        self.assertEqual(hub["models"], [])
+        self.assertTrue(any("STRUCTURELESS_PORT_NO_RESOLVABLE_PAYLOAD" in w for w in warnings))
 
     def test_no_ref_resolver_supplied_means_contractURL_is_unresolvable(self):
         """Caller did not pass a resolver — contractURL-only ports warn."""
@@ -286,5 +293,5 @@ class HelperWithMockedResolverTests(TestCase):
             warnings=warnings,
             # ref_resolver omitted on purpose
         )
-        assert hub["models"] == []
-        assert any("STRUCTURELESS_PORT_NO_RESOLVABLE_PAYLOAD" in w for w in warnings)
+        self.assertEqual(hub["models"], [])
+        self.assertTrue(any("STRUCTURELESS_PORT_NO_RESOLVABLE_PAYLOAD" in w for w in warnings))

@@ -25,7 +25,6 @@ import {
   QUOTA_WARN_THRESHOLD_PERCENT,
   severityForQuota,
 } from '../../files/utils/quotaFormatting';
-import type { QuotaSeverity } from '../../files/utils/quotaFormatting';
 import { tenantService } from '../services/tenantService';
 import { SparqlFederationPanel } from './SparqlFederationPanel';
 import { RopaCompliancePanel } from './RopaCompliancePanel';
@@ -390,7 +389,6 @@ export function TenantSettingsPage() {
                 pct: usage.usage_percentages?.max_datasets ?? null,
               },
             ])}
-          </div>
             <div className="tenant-metric">
               <span className="tenant-metric-label">Scheduled ingestions</span>
               <span className="tenant-metric-value">{usage.scheduled_ingestion_count}</span>
@@ -731,7 +729,7 @@ export function TenantSettingsPage() {
  * niche jurisdictions can submit via the API directly while
  * the UI catches the rest.
  */
-function TaxBillingIdentityPanel(): JSX.Element {
+function TaxBillingIdentityPanel(): React.ReactElement {
   const [taxId, setTaxId] = useState<string>('');
   const [taxIdType, setTaxIdType] = useState<string>('eu_vat');
   const [taxAddressCountry, setTaxAddressCountry] = useState<string>('');
@@ -756,12 +754,16 @@ function TaxBillingIdentityPanel(): JSX.Element {
         setTaxId(data.tax_id || '');
         setTaxIdType(data.tax_id_type || 'eu_vat');
         setTaxIdVerified(!!data.tax_id_verified);
-        const addr = data.tax_address || {};
+        const addr = (data.tax_address || {}) as {
+          country?: string;
+          postal_code?: string;
+          line1?: string;
+        };
         setTaxAddressCountry(String(addr.country || ''));
         setTaxAddressPostal(String(addr.postal_code || ''));
         setTaxAddressLine1(String(addr.line1 || ''));
       } catch (err) {
-        if (!cancelled) setError(normalizeError(err));
+        if (!cancelled) setError((normalizeError(err) as ApiError).error?.message || 'Failed to load tax identity');
       } finally {
         if (!cancelled) setLoadingState(false);
       }
@@ -790,13 +792,13 @@ function TaxBillingIdentityPanel(): JSX.Element {
           line1: taxAddressLine1.trim(),
         },
       });
-      setStoredTaxId(data.tax_id);
+      setStoredTaxId(data.tax_id ?? '');
       setTaxIdVerified(!!data.tax_id_verified);
       setSuccess(
         'Submitted. Stripe is verifying your tax ID — the badge will turn green once verification completes.',
       );
     } catch (err) {
-      setError(normalizeError(err));
+      setError((normalizeError(err) as ApiError).error?.message || 'Failed to save tax identity');
     } finally {
       setSavingState(false);
     }
@@ -982,7 +984,7 @@ function ConnectAccountPanel() {
   }
 
   if (statusError) {
-    return <ErrorDisplay message={statusError} />;
+    return <ErrorDisplay error={statusError} />;
   }
 
   return (

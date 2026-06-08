@@ -143,7 +143,7 @@ class ODCSNormalizerBase(ABC):
                     f"Use a version-specific normalizer for this version."
                 )
                 errors.append(error_msg)
-                logger.error(
+                logger.warning(
                     "odcs_version_not_supported",
                     spec_version=spec_version,
                     normalizer_class=self.__class__.__name__,
@@ -470,7 +470,14 @@ class ODCSNormalizerBase(ABC):
             if validation_errors:
                 errors.extend(validation_errors)
             elif validated_contract:
-                hub_contract = validated_contract.model_dump(exclude_none=True, by_alias=True)
+                # by_alias=False preserves canonical HubContract field names
+                # (data_type, min_length, max_length) rather than reverting to
+                # ODCS aliases (type, minLength, maxLength).  The Pydantic
+                # model uses ``schema_`` internally (``schema`` is a Python
+                # keyword), so we rename it back after the dump.
+                hub_contract = validated_contract.model_dump(exclude_none=True, by_alias=False)
+                if "schema_" in hub_contract and "schema" not in hub_contract:
+                    hub_contract["schema"] = hub_contract.pop("schema_")
 
             # Determine status based on completeness
             status = _determine_normalization_status(hub_contract, errors, warnings)

@@ -14,6 +14,9 @@ from click.testing import CliRunner
 
 from datahub_cli.config import Config
 
+_api_test_port = os.environ.get("API_TEST_PORT", "8000")
+_DEFAULT_API_BASE = f"http://localhost:{_api_test_port}"
+
 
 def _api_is_reachable(url: str) -> bool:
     try:
@@ -28,7 +31,7 @@ def pytest_collection_modifyitems(config, items):  # noqa: ARG001
         return
     api_url = os.environ.get(
         "MESHANT_API_URL",
-        "http://localhost:8000/api/v1",
+        f"{_DEFAULT_API_BASE}/api/v1",
     )
     api_root = api_url.rsplit("/api/v1", 1)[0] or api_url
     if _api_is_reachable(api_root):
@@ -77,7 +80,7 @@ def api_base_url():
     """API base URL — reads from env for staging, falls back to localhost."""
     return os.environ.get(
         "MESHANT_API_URL",
-        os.environ.get("ODH_BASE_URL", "http://localhost:8000/api/v1"),
+        os.environ.get("ODH_BASE_URL", f"{_DEFAULT_API_BASE}/api/v1"),
     )
 
 
@@ -112,11 +115,10 @@ def _setup_cli_auth(api_base_url: str, config: Config) -> bool:
 
     Tries, in order:
     1. ``TEST_API_KEY`` or ``DATAHUB_API_KEY`` env var
-    2. ``TEST_USER_EMAIL`` / ``TEST_USER_PASSWORD`` env vars
-    3. ``SMOKE_ADMIN_EMAIL`` / ``SMOKE_ADMIN_PASSWORD`` env vars
-    4. Pre-seeded E2E account (``e2e_test@example.com`` / ``TestPass123``)
+    2. Cached token from a previous successful setup
+    3. Persona provisioning (``provision_persona("data_engineer")``)
+       which handles rate-limit backoff, token caching, and self-heal.
 
-    Caches the token across tests to avoid rate-limiting.
     Returns True on success.
     """
     global _cached_access_token
@@ -132,64 +134,21 @@ def _setup_cli_auth(api_base_url: str, config: Config) -> bool:
         config.set_access_token(_cached_access_token)
         return True
 
-    # --- Method 2: explicit credentials from environment ---
-    _credential_pairs = [
-        (os.getenv("TEST_USER_EMAIL"), os.getenv("TEST_USER_PASSWORD")),
-        (os.getenv("SMOKE_ADMIN_EMAIL"), os.getenv("SMOKE_ADMIN_PASSWORD")),
-    ]
-    for email, password in _credential_pairs:
-        if email and password:
-            token = _login_for_token(api_base_url, email, password)
-            if token:
-                _cached_access_token = token
-                config.set_access_token(token)
-                return True
-
-    # --- Method 3: pre-seeded E2E account ---
-    token = _login_for_token(
-        api_base_url, "e2e_test@example.com", "TestPass123",
-    )
-    if token:
-        _cached_access_token = token
-        config.set_access_token(token)
-        return True
+    # --- Method 2: persona provisioning (handles 429, cache, self-heal) ---
+    try:
+        from tests._persona_provisioning import provision_persona
+        creds = provision_persona("data_engineer")
+        if creds and creds.api_key:
+            _cached_access_token = creds.api_key
+            config.set_access_token(creds.api_key)
+            return True
+    except Exception:
+        pass
 
     return False
 
 
 _login_failure_reason: str = ""
-
-
-def _login_for_token(api_base_url: str, email: str, password: str) -> str:
-    """Attempt login and return the access_token, or empty string on failure.
-
-    Sets ``_login_failure_reason`` on failure for diagnostic skip messages.
-    """
-    global _login_failure_reason
-    try:
-        resp = requests.post(
-            f"{api_base_url}/auth/login/",
-            json={"email": email, "password": password},
-            timeout=10,
-        )
-        if resp.status_code == 200:
-            _login_failure_reason = ""
-            return resp.json().get("access_token", "")
-
-        # Record failure reason for better skip messages
-        body = resp.text[:200]
-        if "EMAIL_NOT_VERIFIED" in body:
-            _login_failure_reason = (
-                f"Login for {email} blocked: email not verified. "
-                f"Run 'python manage.py ensure_e2e_user_roles' on staging."
-            )
-        else:
-            _login_failure_reason = (
-                f"Login for {email} failed: {resp.status_code} {body}"
-            )
-    except requests.RequestException as exc:
-        _login_failure_reason = f"Login for {email} connection error: {exc}"
-    return ""
 
 
 @pytest.fixture

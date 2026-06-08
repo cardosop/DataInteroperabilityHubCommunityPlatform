@@ -28,6 +28,7 @@ from hub.apps.jobs.models import Job, JobStatus, JobType
 from hub.apps.tenants.models import Tenant
 from hub.apps.users.models import UserStatus
 from hub.apps.testing.billing_support import ensure_tenant_has_active_subscription
+from hub.apps.testing.role_support import ensure_user_has_data_provider_role
 from tests.factories import TenantFactory
 import uuid
 
@@ -51,6 +52,7 @@ class RESTAPIEndpointsTest(TestCase):
             status=UserStatus.ACTIVE,
         )
         self.client.force_authenticate(user=self.user)
+        ensure_user_has_data_provider_role(self.user)
 
     def test_assets_endpoints(self):
         """Test assets REST API endpoints"""
@@ -163,6 +165,7 @@ class GraphQLEndpointsTest(TestCase):
             status=UserStatus.ACTIVE,
         )
         self.client.force_authenticate(user=self.user)
+        ensure_user_has_data_provider_role(self.user)
 
     def _graphql_query(self, query, variables=None):
         """Helper to execute GraphQL query"""
@@ -350,6 +353,7 @@ class ErrorHandlingTest(TestCase):
             status=UserStatus.ACTIVE,
         )
         self.client.force_authenticate(user=self.user)
+        ensure_user_has_data_provider_role(self.user)
 
     def test_404_error_handling(self):
         """Test 404 error handling"""
@@ -387,6 +391,7 @@ class ResponseFormatsTest(TestCase):
             status=UserStatus.ACTIVE,
         )
         self.client.force_authenticate(user=self.user)
+        ensure_user_has_data_provider_role(self.user)
 
     def test_json_response_format(self):
         """Test JSON response format"""

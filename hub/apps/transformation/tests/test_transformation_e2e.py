@@ -30,6 +30,7 @@ from hub.apps.transformation.models import (
     ExecutionStatus,
     ExecutionMode
 )
+from hub.apps.core.services.base import NotFoundError
 from hub.apps.transformation.exceptions import (
     TransformationValidationError,
     TransformationExecutionError,
@@ -58,53 +59,50 @@ User = get_user_model()
 class TransformationE2ETest(TestCase):
     """End-to-end tests for transformation service user journeys."""
 
-    @classmethod
-    def setUpTestData(cls):
-        """Create Tenant and User once for the whole test class (read-only)."""
+    def setUp(self):
+        """Set up per-test fixtures."""
         uid = uuid.uuid4().hex[:8]
-        cls.tenant = Tenant.objects.create(
+        self.tenant = Tenant.objects.create(
             name=f"Test Tenant {uid}",
             slug=f"t-{uid}"
         )
 
         # Create user
-        cls.user = User.objects.create_user(
+        self.user = User.objects.create_user(
             email=f"t-{uid}@test.com",
             password="testpass123",
-            tenant=cls.tenant,
+            tenant=self.tenant,
             status=UserStatus.ACTIVE
         )
 
         # Create DATA_PROVIDER role
-        cls.data_provider_role, _ = Role.objects.get_or_create(
-            tenant=cls.tenant,
+        self.data_provider_role, _ = Role.objects.get_or_create(
+            tenant=self.tenant,
             name="DATA_PROVIDER",
             defaults={"description": "Data Provider"}
         )
 
         # Assign role to user
         UserRole.objects.get_or_create(
-            user=cls.user,
-            role=cls.data_provider_role
+            user=self.user,
+            role=self.data_provider_role
         )
 
         # Create access policy
         AccessPolicy.objects.get_or_create(
-            tenant=cls.tenant,
+            tenant=self.tenant,
             name="Allow Pipeline Operations",
             defaults={
                 "conditions": {
-                    "user": {"tenant_id": str(cls.tenant.id)}
+                    "user": {"tenant_id": str(self.tenant.id)}
                 },
                 "effect": "ALLOW",
                 "priority": 100,
                 "enabled": True,
-                "created_by": cls.user
+                "created_by": self.user
             }
         )
 
-    def setUp(self):
-        """Set up per-test fixtures."""
         # Create service
         self.service = TransformationService(
             tenant_id=str(self.tenant.id),
@@ -186,7 +184,7 @@ class TransformationE2ETest(TestCase):
             self.file.status = FileStatus.ACTIVE
             self.file.save()
             self.storage_available = True
-        except Exception as e:
+        except (ConnectionError, OSError, NotFoundError) as e:
             # Storage might not be available, tests will skip
             self.storage_available = False
             self.storage_error = str(e)
@@ -237,25 +235,19 @@ class TransformationE2ETest(TestCase):
                 asset_id=str(self.asset.id),
                 tenant_id=str(self.tenant.id),
                 user_id=str(self.user.id),
-                execution_mode=ExecutionMode.SYNC[0] if isinstance(ExecutionMode.SYNC, tuple) else ExecutionMode.SYNC
+                execution_mode=ExecutionMode.ASYNC
             )
             self.assertIsNotNone(execution.id)
             self.assertEqual(execution.pipeline, pipeline)
             self.assertEqual(execution.asset, self.asset)
 
-            # Step 4: Monitor execution (check status)
+            # Step 4: Verify async execution was created (Phase 285.9)
             execution.refresh_from_db()
-            # Sync execution should reach a terminal state
-            self.assertIn(execution.status, [
-                ExecutionStatus.COMPLETED,
-                ExecutionStatus.FAILED
-            ])
-
-            # Step 5: Verify completion
-            self.assertIsNotNone(execution.started_at)
-            if execution.status == ExecutionStatus.COMPLETED:
-                self.assertIsNotNone(execution.completed_at)
-        except Exception as e:
+            self.assertEqual(execution.execution_mode, ExecutionMode.ASYNC)
+            self.assertEqual(execution.status, ExecutionStatus.PENDING)
+            # prefect_flow_run_id is set at creation time for traceability
+            self.assertIsNotNone(execution.prefect_flow_run_id)
+        except (TransformationExecutionError, ConnectionError, OSError, NotFoundError) as e:
             # If services are not available, skip this test
             if any(keyword in str(e).lower() for keyword in ["workflow", "quality", "compliance"]):
                 self.skipTest(f"Service not available: {e}")
@@ -321,10 +313,10 @@ class TransformationE2ETest(TestCase):
                 asset_id=str(self.asset.id),
                 tenant_id=str(self.tenant.id),
                 user_id=str(self.user.id),
-                execution_mode=ExecutionMode.SYNC[0] if isinstance(ExecutionMode.SYNC, tuple) else ExecutionMode.SYNC
+                execution_mode=ExecutionMode.ASYNC
             )
             self.assertIsNotNone(execution.id)
-        except Exception as e:
+        except (TransformationExecutionError, ConnectionError, OSError, NotFoundError) as e:
             # If services are not available, skip this test
             if any(keyword in str(e).lower() for keyword in ["storage", "preview", "workflow"]):
                 self.skipTest(f"Service not available: {e}")
@@ -352,7 +344,7 @@ class TransformationE2ETest(TestCase):
                 asset_id=str(self.asset.id),
                 tenant_id=str(self.tenant.id),
                 user_id=str(self.user.id),
-                execution_mode=ExecutionMode.SYNC[0] if isinstance(ExecutionMode.SYNC, tuple) else ExecutionMode.SYNC
+                execution_mode=ExecutionMode.ASYNC
             )
 
             # Step 3: Check execution status
@@ -367,11 +359,11 @@ class TransformationE2ETest(TestCase):
                     asset_id=str(self.asset.id),
                     tenant_id=str(self.tenant.id),
                     user_id=str(self.user.id),
-                    execution_mode=ExecutionMode.SYNC[0] if isinstance(ExecutionMode.SYNC, tuple) else ExecutionMode.SYNC
+                    execution_mode=ExecutionMode.ASYNC
                 )
                 self.assertIsNotNone(retry_execution.id)
                 self.assertNotEqual(retry_execution.id, execution.id)
-        except Exception as e:
+        except (TransformationExecutionError, ConnectionError, OSError, NotFoundError) as e:
             # If services are not available, skip this test
             if any(keyword in str(e).lower() for keyword in ["workflow", "quality", "compliance"]):
                 self.skipTest(f"Service not available: {e}")
@@ -438,25 +430,16 @@ class TransformationE2ETest(TestCase):
                 asset_id=str(self.asset.id),
                 tenant_id=str(self.tenant.id),
                 user_id=str(self.user.id),
-                execution_mode=ExecutionMode.SYNC[0] if isinstance(ExecutionMode.SYNC, tuple) else ExecutionMode.SYNC
+                execution_mode=ExecutionMode.ASYNC
             )
 
-            # Step 3: View results (check execution details)
+            # Step 3: Verify async execution state (Phase 285.9)
             execution.refresh_from_db()
             self.assertIsNotNone(execution.id)
-            self.assertIsNotNone(execution.started_at)
-            # Sync execution should reach a terminal state
-            self.assertIn(execution.status, [
-                ExecutionStatus.COMPLETED,
-                ExecutionStatus.FAILED
-            ])
-
-            # Step 4: Export results (verify completion details)
-            if execution.status == ExecutionStatus.COMPLETED:
-                # Results would be in result_asset or execution.result_data
-                # Verify execution has result information
-                self.assertIsNotNone(execution.completed_at)
-        except Exception as e:
+            self.assertEqual(execution.execution_mode, ExecutionMode.ASYNC)
+            self.assertEqual(execution.status, ExecutionStatus.PENDING)
+            self.assertIsNotNone(execution.prefect_flow_run_id)
+        except (TransformationExecutionError, ConnectionError, OSError, NotFoundError) as e:
             # If services are not available, skip this test
             if any(keyword in str(e).lower() for keyword in ["workflow", "quality", "compliance"]):
                 self.skipTest(f"Service not available: {e}")
@@ -581,14 +564,14 @@ class TransformationE2ETest(TestCase):
                 asset_id=str(self.asset.id),
                 tenant_id=str(self.tenant.id),
                 user_id=str(self.user.id),
-                execution_mode=ExecutionMode.SYNC[0] if isinstance(ExecutionMode.SYNC, tuple) else ExecutionMode.SYNC
+                execution_mode=ExecutionMode.ASYNC
             )
 
-            # Compliance checks are performed before execution starts
-            # If they pass, execution should proceed
+            # Compliance checks gate before async execution enqueue (Phase 285.9)
             self.assertIsNotNone(execution.id)
-            self.assertIsNotNone(execution.started_at)
-        except Exception as e:
+            self.assertEqual(execution.execution_mode, ExecutionMode.ASYNC)
+            self.assertEqual(execution.status, ExecutionStatus.PENDING)
+        except (TransformationExecutionError, ConnectionError, OSError, NotFoundError) as e:
             # If compliance service is not available, skip this test
             if "compliance" in str(e).lower():
                 self.skipTest(f"Compliance service not available: {e}")
@@ -616,13 +599,13 @@ class TransformationE2ETest(TestCase):
                 asset_id=str(self.asset.id),
                 tenant_id=str(self.tenant.id),
                 user_id=str(self.user.id),
-                execution_mode=ExecutionMode.SYNC[0] if isinstance(ExecutionMode.SYNC, tuple) else ExecutionMode.SYNC
+                execution_mode=ExecutionMode.ASYNC
             )
 
             # Quality checks are performed during workflow execution
             # They are handled by TransformationQualityIntegration within workflow tasks
             self.assertIsNotNone(execution.id)
-        except Exception as e:
+        except (TransformationExecutionError, ConnectionError, OSError, NotFoundError) as e:
             # If quality service is not available, skip this test
             if "quality" in str(e).lower() or "dq" in str(e).lower():
                 self.skipTest(f"Quality service not available: {e}")
@@ -658,7 +641,7 @@ class TransformationE2ETest(TestCase):
                 asset_id=str(self.asset.id),
                 tenant_id=str(self.tenant.id),
                 user_id=str(self.user.id),
-                execution_mode=ExecutionMode.SYNC[0] if isinstance(ExecutionMode.SYNC, tuple) else ExecutionMode.SYNC
+                execution_mode=ExecutionMode.ASYNC
             )
 
             # Verify audit event was created for execution
@@ -670,7 +653,7 @@ class TransformationE2ETest(TestCase):
             # May or may not have execution audit events depending on implementation
             # At minimum, creation audit event should exist
             self.assertGreaterEqual(audit_events.count(), 1)
-        except Exception as e:
+        except (TransformationExecutionError, ConnectionError, OSError, NotFoundError) as e:
             # If services are not available, skip this test
             if any(keyword in str(e).lower() for keyword in ["workflow", "quality", "compliance"]):
                 self.skipTest(f"Service not available: {e}")

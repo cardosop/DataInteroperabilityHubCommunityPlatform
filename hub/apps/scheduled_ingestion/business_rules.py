@@ -1892,6 +1892,22 @@ class ScheduledIngestionBusinessRules(BusinessRules):
                 "required": ["host", "database"],
                 "optional": ["port", "username", "password", "type", "schema", "tables"],
             },
+            SourceType.SNOWFLAKE_SOURCE.value: {  # 'SNOWFLAKE_SOURCE'
+                "required": ["host", "database", "schema"],
+                "optional": ["warehouse", "role", "account", "port", "username", "password"],
+            },
+            SourceType.BIGQUERY_SOURCE.value: {  # 'BIGQUERY_SOURCE'
+                "required": ["project_id", "dataset_id"],
+                "optional": ["credentials_json", "location"],
+            },
+            SourceType.DATABRICKS_SOURCE.value: {  # 'DATABRICKS_SOURCE'
+                "required": ["host", "http_path", "catalog", "schema"],
+                "optional": ["access_token", "port", "username", "password"],
+            },
+            SourceType.ATHENA_SOURCE.value: {  # 'ATHENA_SOURCE'
+                "required": ["database", "s3_staging_dir"],
+                "optional": ["region", "workgroup", "catalog_name"],
+            },
         }
 
         requirements = field_requirements.get(source_type)

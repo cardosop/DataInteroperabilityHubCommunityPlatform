@@ -31,6 +31,14 @@ class PluginViewSet(viewsets.ReadOnlyModelViewSet):
     permission_classes = [AllowAny]
     lookup_field = "id"
 
+    def initial(self, request, *args, **kwargs):
+        from hub.apps.tenants.feature_flag_gates import check_developer_enabled
+        from rest_framework.exceptions import PermissionDenied
+        result = check_developer_enabled(request)
+        if isinstance(result, Response):
+            raise PermissionDenied(detail=result.data)
+        super().initial(request, *args, **kwargs)
+
     def get_queryset(self):
         """Filter queryset by category, status, and search"""
         queryset = Plugin.objects.filter(status=PluginStatus.AVAILABLE)

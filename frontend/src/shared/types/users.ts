@@ -15,8 +15,10 @@ export interface User {
   display_name?: string;
   status: 'ACTIVE' | 'INACTIVE' | 'PENDING' | 'SUSPENDED';
   tenant?: UserTenant;
+  tenant_id?: string;
   tenant_name?: string;
   roles?: UserRole[];
+  has_seen_tour?: boolean;
   created_at: string;
   updated_at: string;
 }

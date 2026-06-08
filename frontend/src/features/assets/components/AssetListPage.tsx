@@ -253,8 +253,8 @@ export function AssetListPage() {
 
         <BulkActionBar
           selectedCount={selection.selectedCount}
-          onDeselectAll={selection.deselectAll}
-          description="Only DRAFT assets may be bulk-deleted."
+          onClear={selection.deselectAll}
+          resourceLabel="DRAFT assets"
           actions={[
             {
               label: `Delete ${selection.selectedCount}`,

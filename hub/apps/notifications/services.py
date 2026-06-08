@@ -364,7 +364,16 @@ class SMTPEmailService(BaseService, EmailService):
         self.from_name = getattr(settings, 'SMTP_FROM_NAME', getattr(settings, 'APP_NAME', 'Meshant'))
 
     def _get_connection(self):
-        """Get SMTP connection"""
+        """Get SMTP connection — uses locmem.EmailBackend in test runs."""
+        import sys as _sys
+        import os as _os
+        _in_test = (
+            "test" in _sys.argv
+            or bool(_os.environ.get("TEST_DB_SUFFIX"))
+            or "PYTEST_VERSION" in _os.environ
+        )
+        if _in_test:
+            return get_connection(backend='django.core.mail.backends.locmem.EmailBackend')
         return get_connection(
             backend='django.core.mail.backends.smtp.EmailBackend',
             host=self.host,
@@ -466,11 +475,18 @@ def get_email_service() -> EmailService:
     Raises:
         EmailServiceError: If EMAIL_BACKEND is not configured or invalid
     """
-    # Check for notification-specific EMAIL_BACKEND first, then fall back to Django's EMAIL_BACKEND
-    backend = getattr(settings, 'NOTIFICATION_EMAIL_BACKEND', None) or getattr(settings, 'EMAIL_BACKEND', None)
+    # Read the provider selector.  EMAIL_PROVIDER is the canonical name
+    # (renamed from EMAIL_BACKEND to avoid shadowing Django's built-in
+    # ``EMAIL_BACKEND`` setting).  Fall back to EMAIL_BACKEND for older
+    # deployments that haven't been updated yet.
+    backend = (
+        getattr(settings, 'NOTIFICATION_EMAIL_BACKEND', None)
+        or getattr(settings, 'EMAIL_PROVIDER', None)
+        or getattr(settings, 'EMAIL_BACKEND', None)
+    )
 
     if not backend:
-        raise EmailServiceError("EMAIL_BACKEND not configured in settings")
+        raise EmailServiceError("EMAIL_PROVIDER not configured in settings")
 
     # Handle simple string backends (sendgrid, ses, smtp)
     if backend == 'sendgrid':

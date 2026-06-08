@@ -41,7 +41,7 @@ class TestSweepLockDecorator:
         call_count = 0
 
         with patch(
-            "hub.apps.core.sweep_lock.get_redis_cache_client"
+            "hub.apps.core.redis_pools.get_redis_cache_client"
         ) as mock_redis_factory:
             fake_redis = MagicMock()
             # SET NX returns True → acquired
@@ -60,15 +60,19 @@ class TestSweepLockDecorator:
 
         assert result == 15
         assert call_count == 1
-        # Verify SET was called with NX + EX
-        assert fake_redis.set.called
-        # Verify Lua eval was called for release
-        assert fake_redis.eval.called
+        # Verify SET NX was called with correct key, TTL, and flags
+        fake_redis.set.assert_called_once()
+        set_args, set_kwargs = fake_redis.set.call_args
+        assert set_args[0] == "sweep:test-decorator-sweep"
+        assert set_kwargs.get("nx") is True
+        assert set_kwargs.get("ex") == 60
+        # Verify Lua compare-and-del was called for release
+        fake_redis.eval.assert_called_once()
 
     def test_decorator_raises_when_lock_held(self):
         """If lock cannot be acquired, SweepLockHeldError is raised."""
         with patch(
-            "hub.apps.core.sweep_lock.get_redis_cache_client"
+            "hub.apps.core.redis_pools.get_redis_cache_client"
         ) as mock_redis_factory:
             fake_redis = MagicMock()
             fake_redis.set.return_value = False  # Lock held by another
@@ -86,7 +90,7 @@ class TestSweepLockDecorator:
         ran = False
 
         with patch(
-            "hub.apps.core.sweep_lock.get_redis_cache_client"
+            "hub.apps.core.redis_pools.get_redis_cache_client"
         ) as mock_redis_factory:
             fake_redis = MagicMock()
             fake_redis.set.return_value = False
@@ -120,7 +124,7 @@ class TestSweepLockDecorator:
     def test_lock_released_even_on_exception(self):
         """Lock is released in finally block even if function raises."""
         with patch(
-            "hub.apps.core.sweep_lock.get_redis_cache_client"
+            "hub.apps.core.redis_pools.get_redis_cache_client"
         ) as mock_redis_factory:
             fake_redis = MagicMock()
             fake_redis.set.return_value = True

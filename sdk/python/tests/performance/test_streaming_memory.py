@@ -13,6 +13,7 @@ stays roughly constant regardless of total result count.
 
 import os
 import resource
+import requests
 from tests._persona_provisioning import provision_persona
 from tests.use_cases._api_helpers import api_get
 from tests.fixtures.perf_record import build_perf_record, write_perf_record
@@ -33,7 +34,10 @@ def _get_rss_mb() -> float:
 
 def test_streaming_memory_under_budget():
     """Paginating 50 pages must not grow RSS by >100MB."""
-    creds = provision_persona("data_engineer")
+    try:
+        creds = provision_persona("data_engineer")
+    except (requests.exceptions.ConnectionError, requests.exceptions.Timeout):
+        pytest.skip("Backend not available")
 
     rss_before = _get_rss_mb()
 

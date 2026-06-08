@@ -596,6 +596,7 @@ class GovernanceService(BaseService, AccessEventPublisher):
                 "A compliance scan is required before this access request can be approved.",
                 code="COMPLIANCE_RUN_REQUIRED",
                 details={"resource_id": str(resource_id)},
+                http_status=422,
             )
 
         if latest_run.allowed_to_store is False:
@@ -621,6 +622,7 @@ class GovernanceService(BaseService, AccessEventPublisher):
                     "resource_id": str(resource_id),
                     "compliance_run_id": str(latest_run.id),
                 },
+                http_status=422,
             )
 
     def reject_access_request(

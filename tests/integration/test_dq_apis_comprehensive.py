@@ -20,6 +20,7 @@ from hub.apps.dq.models import DQRun, DQRunStatus, DQEngine, DQTrend, DQTrendDir
 from hub.apps.jobs.models import Job, JobType, JobStatus
 from hub.apps.tenants.models import Tenant, TenantStatus
 from hub.apps.testing.billing_support import ensure_tenant_has_active_subscription
+from hub.apps.testing.role_support import ensure_user_has_data_provider_role
 from hub.apps.users.models import User, UserStatus
 from hub.apps.assets.models import Asset, AssetStatus
 from hub.apps.datasets.models import Dataset
@@ -57,6 +58,7 @@ class TestDQRunCreateAPI(TestCase):
             tenant=self.tenant,
             status=UserStatus.ACTIVE.value
         )
+        ensure_user_has_data_provider_role(self.user)
 
         # Create asset, file, and dataset
         self.asset = AssetFactory.create_asset(
@@ -264,13 +266,13 @@ class TestDQRunRetrieveAPI(TestCase):
 
         # Create tenant and users
         self.tenant_a = TenantFactory.create_tenant(
-            name="Tenant A",
+            name=f"Tenant A {uuid.uuid4().hex[:8]}",
             slug="tenant-a",
             status=TenantStatus.ACTIVE
         )
 
         self.tenant_b = TenantFactory.create_tenant(
-            name="Tenant B",
+            name=f"Tenant B {uuid.uuid4().hex[:8]}",
             slug="tenant-b",
             status=TenantStatus.ACTIVE
         )
@@ -303,7 +305,7 @@ class TestDQRunRetrieveAPI(TestCase):
         # Create DQ runs
         job_a = JobFactory.create_job(
             tenant=self.tenant_a,
-            job_type=JobType.DQ_RUN,
+            type=JobType.DQ_RUN,
             status=JobStatus.COMPLETED,
             created_by=self.user_a
         )
@@ -322,7 +324,7 @@ class TestDQRunRetrieveAPI(TestCase):
 
         job_b = JobFactory.create_job(
             tenant=self.tenant_b,
-            job_type=JobType.DQ_RUN,
+            type=JobType.DQ_RUN,
             status=JobStatus.COMPLETED,
             created_by=self.user_b
         )
@@ -382,7 +384,7 @@ class TestDQRunRetrieveAPI(TestCase):
         """Test retrieving DQ run with PENDING status"""
         job = JobFactory.create_job(
             tenant=self.tenant_a,
-            job_type=JobType.DQ_RUN,
+            type=JobType.DQ_RUN,
             status=JobStatus.PENDING,
             created_by=self.user_a
         )
@@ -421,7 +423,7 @@ class TestDQRunRetrieveAPI(TestCase):
         """Test retrieving DQ run with FAILED status"""
         job = JobFactory.create_job(
             tenant=self.tenant_a,
-            job_type=JobType.DQ_RUN,
+            type=JobType.DQ_RUN,
             status=JobStatus.FAILED,
             created_by=self.user_a,
             error_message="DQ check failed"
@@ -493,6 +495,7 @@ class TestDQRunUpdateAPI(TestCase):
             tenant=self.tenant,
             status=UserStatus.ACTIVE.value
         )
+        ensure_user_has_data_provider_role(self.user)
 
         # Create asset
         self.asset = AssetFactory.create_asset(
@@ -511,7 +514,7 @@ class TestDQRunUpdateAPI(TestCase):
         # Create DQ run
         job = JobFactory.create_job(
             tenant=self.tenant,
-            job_type=JobType.DQ_RUN,
+            type=JobType.DQ_RUN,
             status=JobStatus.PENDING,
             created_by=self.user
         )
@@ -581,8 +584,8 @@ class TestDQRunUpdateAPI(TestCase):
 
         # Create another tenant and DQ run
         other_tenant = TenantFactory.create_tenant(
-            name="Other Tenant",
-            slug="other-tenant",
+            name=f"Other Tenant {uuid.uuid4().hex[:8]}",
+            slug=f"other-tenant-{uuid.uuid4().hex[:8]}",
             status=TenantStatus.ACTIVE
         )
 
@@ -600,7 +603,7 @@ class TestDQRunUpdateAPI(TestCase):
 
         other_job = JobFactory.create_job(
             tenant=other_tenant,
-            job_type=JobType.DQ_RUN,
+            type=JobType.DQ_RUN,
             status=JobStatus.PENDING,
             created_by=other_user
         )
@@ -687,6 +690,7 @@ class TestDQRunDeleteAPI(TestCase):
             tenant=self.tenant,
             status=UserStatus.ACTIVE.value
         )
+        ensure_user_has_data_provider_role(self.user)
 
         # Create asset
         self.asset = AssetFactory.create_asset(
@@ -698,7 +702,7 @@ class TestDQRunDeleteAPI(TestCase):
         # Create DQ run
         job = JobFactory.create_job(
             tenant=self.tenant,
-            job_type=JobType.DQ_RUN,
+            type=JobType.DQ_RUN,
             status=JobStatus.PENDING,
             created_by=self.user
         )
@@ -750,8 +754,8 @@ class TestDQRunDeleteAPI(TestCase):
 
         # Create another tenant and DQ run
         other_tenant = TenantFactory.create_tenant(
-            name="Other Tenant",
-            slug="other-tenant",
+            name=f"Other Tenant {uuid.uuid4().hex[:8]}",
+            slug=f"other-tenant-{uuid.uuid4().hex[:8]}",
             status=TenantStatus.ACTIVE
         )
 
@@ -769,7 +773,7 @@ class TestDQRunDeleteAPI(TestCase):
 
         other_job = JobFactory.create_job(
             tenant=other_tenant,
-            job_type=JobType.DQ_RUN,
+            type=JobType.DQ_RUN,
             status=JobStatus.PENDING,
             created_by=other_user
         )
@@ -828,6 +832,7 @@ class TestDQScorecardsAPI(TestCase):
             tenant=self.tenant,
             status=UserStatus.ACTIVE.value
         )
+        ensure_user_has_data_provider_role(self.user)
 
         # Create assets and datasets
         self.asset = AssetFactory.create_asset(
@@ -856,7 +861,7 @@ class TestDQScorecardsAPI(TestCase):
         for i in range(10):
             job = JobFactory.create_job(
                 tenant=self.tenant,
-                job_type=JobType.DQ_RUN,
+                type=JobType.DQ_RUN,
                 status=JobStatus.COMPLETED,
                 created_by=self.user
             )
@@ -987,7 +992,7 @@ class TestDQScorecardsAPI(TestCase):
         """Test tenant isolation for scorecards"""
         # Create another tenant
         tenant_b = TenantFactory.create_tenant(
-            name="Tenant B",
+            name=f"Tenant B {uuid.uuid4().hex[:8]}",
             slug="tenant-b",
             status=TenantStatus.ACTIVE
         )
@@ -1033,8 +1038,8 @@ class TestDQScorecardsAPI(TestCase):
         """Test getting scorecards when no DQ runs exist"""
         # Create new tenant with no DQ runs
         empty_tenant = TenantFactory.create_tenant(
-            name="Empty Tenant",
-            slug="empty-tenant",
+            name=f"Empty Tenant {uuid.uuid4().hex[:8]}",
+            slug=f"empty-tenant-{uuid.uuid4().hex[:8]}",
             status=TenantStatus.ACTIVE
         )
 
@@ -1070,13 +1075,13 @@ class TestDQRunListAPI(TestCase):
 
         # Create tenants and users
         self.tenant_a = TenantFactory.create_tenant(
-            name="Tenant A",
+            name=f"Tenant A {uuid.uuid4().hex[:8]}",
             slug="tenant-a",
             status=TenantStatus.ACTIVE
         )
 
         self.tenant_b = TenantFactory.create_tenant(
-            name="Tenant B",
+            name=f"Tenant B {uuid.uuid4().hex[:8]}",
             slug="tenant-b",
             status=TenantStatus.ACTIVE
         )
@@ -1110,7 +1115,7 @@ class TestDQRunListAPI(TestCase):
         for i in range(5):
             job = JobFactory.create_job(
                 tenant=self.tenant_a,
-                job_type=JobType.DQ_RUN,
+                type=JobType.DQ_RUN,
                 status=JobStatus.COMPLETED if i % 2 == 0 else JobStatus.PENDING,
                 created_by=self.user_a
             )
@@ -1130,7 +1135,7 @@ class TestDQRunListAPI(TestCase):
         # Create DQ run for tenant_b
         job_b = JobFactory.create_job(
             tenant=self.tenant_b,
-            job_type=JobType.DQ_RUN,
+            type=JobType.DQ_RUN,
             status=JobStatus.COMPLETED,
             created_by=self.user_b
         )
@@ -1287,6 +1292,7 @@ class TestDQRunIntegration(TestCase):
             tenant=self.tenant,
             status=UserStatus.ACTIVE.value
         )
+        ensure_user_has_data_provider_role(self.user)
 
         self.asset = AssetFactory.create_asset(
             tenant=self.tenant,
@@ -1418,6 +1424,7 @@ class TestDQRunPerformance(TestCase):
             tenant=self.tenant,
             status=UserStatus.ACTIVE.value
         )
+        ensure_user_has_data_provider_role(self.user)
 
         self.asset = AssetFactory.create_asset(
             tenant=self.tenant,
@@ -1450,7 +1457,7 @@ class TestDQRunPerformance(TestCase):
         # Create a DQ run first
         job = JobFactory.create_job(
             tenant=self.tenant,
-            job_type=JobType.DQ_RUN,
+            type=JobType.DQ_RUN,
             status=JobStatus.COMPLETED,
             created_by=self.user
         )
@@ -1499,6 +1506,7 @@ class TestDQRunEdgeCases(TestCase):
             tenant=self.tenant,
             status=UserStatus.ACTIVE.value
         )
+        ensure_user_has_data_provider_role(self.user)
 
     def test_create_dq_run_with_inactive_asset(self):
         """Test creating DQ run with inactive asset"""

@@ -16,22 +16,19 @@ User = get_user_model()
 class TransformationPipelineModelTest(TestCase):
     """Test cases for TransformationPipeline model."""
 
-    @classmethod
-    def setUpTestData(cls):
-        """Create Tenant and User once for the whole test class (read-only)."""
+    def setUp(self):
+        """Set up per-test fixtures."""
         uid = uuid.uuid4().hex[:8]
-        cls.tenant = Tenant.objects.create(
+        self.tenant = Tenant.objects.create(
             name=f"Test Tenant {uid}",
             slug=f"test-tenant-{uid}"
         )
-        cls.user = User.objects.create_user(
+        self.user = User.objects.create_user(
             email=f"test-{uid}@example.com",
             password="testpass123",
-            tenant=cls.tenant
+            tenant=self.tenant
         )
 
-    def setUp(self):
-        """Set up per-test fixtures."""
         self.valid_pipeline_definition = {
             "version": "1.0.0",
             "steps": [

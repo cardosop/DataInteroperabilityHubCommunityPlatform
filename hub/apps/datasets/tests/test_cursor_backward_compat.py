@@ -14,24 +14,17 @@ from unittest.mock import patch
 
 from django.test import TestCase
 from django.urls import reverse
+from rest_framework.test import APIClient
 
-from hub.apps.assets.models import Asset, DataStrategy
+from hub.apps.assets.models import Asset
 from hub.apps.datasets.models import Dataset
 from hub.apps.tenants.models import Tenant, TenantStatus
 from hub.apps.users.models import Role, User, UserRole
-
-
-def _encode_cursor(value):
-    """Encode a cursor value in StandardCursorPagination format (position tuple)."""
-    position = [value, value]
-    return base64.b64encode(json.dumps(position).encode("utf-8")).decode("utf-8")
+from hub.apps.warehouses.models import WarehouseConnection, WarehouseType
 
 
 class MockConnector:
-    """Simulates a warehouse connector for the LIVE_QUERY rows endpoint.
-
-    Parses the parameterised SQL to apply cursor filtering and limit.
-    """
+    """Simulates a warehouse connector for the LIVE_QUERY rows endpoint."""
 
     def __init__(self, rows):
         self._rows = rows
@@ -43,11 +36,6 @@ class MockConnector:
         pass
 
     def execute_query(self, sql):
-        # The view passes a parameterised statement: "SELECT ... WHERE id > %s ... LIMIT %s"
-        # together with params. Since this is a custom connector that receives raw SQL+params
-        # through the execute_query interface, we simulate cursor-aware row filtering.
-        # Actually, the view constructs the SQL string directly for this connector.
-        # Let's accept raw SQL and extract the WHERE id > '<value>' clause + LIMIT <n>.
         import re
         limit_match = re.search(r'LIMIT\s+(\d+)', sql, re.IGNORECASE)
         limit = int(limit_match.group(1)) if limit_match else 100
@@ -67,41 +55,57 @@ class MockConnector:
 
 
 class RecordsCursorBackwardCompatTests(TestCase):
-    @classmethod
-    def setUpTestData(cls):
-        cls.tenant = Tenant.objects.create(
-            name="Cursor Test", slug="cursor-test", status=TenantStatus.ACTIVE,
+    def setUp(self):
+        super().setUp()
+        import uuid as _uuid
+        _uid = _uuid.uuid4().hex[:8]
+        self.tenant = Tenant.objects.create(
+            name=f"Cursor Test {_uid}",
+            slug=f"cursor-test-{_uid}",
+            status=TenantStatus.ACTIVE,
         )
-        cls.platform_admin = User.objects.create_user(
-            email="admin@cursor.test", password="testpass",
+        self.platform_admin = User.objects.create_user(
+            email=f"admin-{_uid}@cursor.test", password="testpass",
+            tenant=self.tenant, status="ACTIVE",
         )
         admin_role, _ = Role.objects.get_or_create(
             name="PLATFORM_ADMIN",
+            tenant=self.tenant,
             defaults={"description": "Platform Administrator"},
         )
-        UserRole.objects.create(user=cls.platform_admin, role=admin_role)
+        UserRole.objects.create(user=self.platform_admin, role=admin_role)
+        from hub.apps.testing.billing_support import ensure_tenant_has_active_subscription
+        ensure_tenant_has_active_subscription(self.tenant)
 
-        cls.asset = Asset.objects.create(
-            tenant=cls.tenant,
+        self.wh_conn = WarehouseConnection.objects.create(
+            tenant=self.tenant,
+            name=f"cursor-wh-{_uid}",
+            warehouse_type=WarehouseType.SNOWFLAKE.value,
+        )
+        self.asset = Asset.objects.create(
+            tenant=self.tenant,
+            key=f"cursor-asset-{_uid}",
             name="cursor-asset",
-            data_strategy=DataStrategy.LIVE_QUERY,
+            data_strategy="LIVE_QUERY",
+            warehouse_connection=self.wh_conn,
         )
-        cls.dataset = Dataset.objects.create(
-            tenant=cls.tenant,
-            asset=cls.asset,
-            name="cursor-dataset",
+        self.dataset = Dataset.objects.create(
+            tenant=self.tenant,
+            asset=self.asset,
+            format="CSV",
         )
 
-    def setUp(self):
-        self.client.force_login(self.platform_admin)
+        self.client = APIClient()
+        self.client.force_authenticate(user=self.platform_admin)
         # 150 rows (id-000 through id-149)
         self.mock_rows = [
             [f"id-{i:03d}", f"name-{i}", str(i * 10)]
             for i in range(150)
         ]
+        self._connector = MockConnector(self.mock_rows)
         self._connector_patch = patch(
             "hub.apps.datasets.views.DatasetViewSet._resolve_connector",
-            return_value=MockConnector(self.mock_rows),
+            return_value=self._connector,
         )
         self._connector_patch.start()
         self.addCleanup(self._connector_patch.stop)

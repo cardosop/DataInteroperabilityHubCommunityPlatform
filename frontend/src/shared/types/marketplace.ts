@@ -46,6 +46,16 @@ export interface Listing {
   currency?: string;
   tags?: string[] | string;
   domain?: string;
+  // Annotated fields from API responses
+  provider_name?: string;
+  kyc_status?: string;
+  compliance_grade?: string;
+  sample_available?: boolean;
+  latest_compliance_run?: Record<string, unknown> | null;
+  // Phase 270.B.1 — contract linkage and drift bookkeeping
+  contract_id?: string | null;
+  contract_drift_detected_at?: string | null;
+  contract_drift_diff?: ContractDriftDiff | null;
 }
 
 export interface ListingCreateRequest {
@@ -177,4 +187,77 @@ export interface CheckAccessResponse {
   has_access: boolean;
   entitlement_id?: string | null;
   reason?: string;
+}
+
+export interface SavedSearch {
+  id: string;
+  name: string;
+  query: string;
+  filters: Record<string, unknown>;
+  frequency?: string;
+  enabled?: boolean;
+  last_triggered_at?: string | null;
+  last_matched_count?: number;
+  created_at: string;
+}
+
+export interface SavedSearchCreateRequest {
+  name: string;
+  query: string;
+  filters: Record<string, unknown>;
+  frequency?: string;
+}
+
+export interface SavedSearchUpdateRequest {
+  name?: string;
+  query?: string;
+  filters?: Record<string, unknown>;
+  frequency?: string;
+  enabled?: boolean;
+}
+
+/**
+ * Contract drift diff payload as returned by the backend.
+ *
+ * Backend shape (per migration 0013): ``{key: {old, new}}`` — a
+ * dictionary mapping drifted policy field names to their snapshot
+ * (old) and current contract (new) values.
+ *
+ * Example:
+ *   {
+ *     "license_summary": { "old": "CC-BY-4.0", "new": "CC-BY-NC-4.0" },
+ *     "price_amount":   { "old": 0, "new": 500 }
+ *   }
+ */
+export interface ContractDriftDiff {
+  [key: string]: {
+    old: unknown;
+    new: unknown;
+  };
+}
+
+export interface ListingPreview {
+  id: string;
+  listing_id?: string;
+  title: string;
+  price: string;
+  status: ListingStatus;
+  created_at: string;
+  domain?: string;
+  score?: number;
+  reasons?: Array<{ reason: string; type?: string }>;
+  sample_data?: { rows: Record<string, unknown>[]; sample_size: number; total_rows: number } | null;
+  quality_metrics?: { overall_score?: number; completeness?: number; freshness?: number; accuracy?: number; [key: string]: unknown } | null;
+  trust_signals?: Record<string, unknown>;
+  schema?: Record<string, unknown>;
+  preview_expires_at?: string | null;
+}
+
+export interface MarketplaceRecommendations {
+  id: string;
+  listing_id: string;
+  score: number;
+  reason: string;
+  you_might_also_like?: ListingPreview[];
+  trending?: ListingPreview[];
 }

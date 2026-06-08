@@ -18,6 +18,21 @@ from hub.apps.contracts.tests.test_base import ContractsTestBase
 from hub.apps.tenants.models import Tenant
 
 
+def _find_cycle_error(data):
+    """Recursively search for 'Cycle detected' error in nested traversal result."""
+    if isinstance(data, dict):
+        if data.get("error") and "Cycle detected" in str(data["error"]):
+            return True
+        for v in data.values():
+            if _find_cycle_error(v):
+                return True
+    elif isinstance(data, list):
+        for item in data:
+            if _find_cycle_error(item):
+                return True
+    return False
+
+
 class TestLineageTraversal(ContractsTestBase):
     """Tests for lineage traversal algorithms using real Contract objects."""
 
@@ -92,13 +107,95 @@ class TestLineageTraversal(ContractsTestBase):
         self.assertIn("Max contract depth exceeded", result["error"])
 
     def test_traverse_top_down_cycle_detection(self):
-        """Test cycle detection in top-down traversal using real Contract object."""
-        traverser = LineageTraverser(self.contract)
-        traverser.visited_contracts.add(str(self.contract.id))
+        """Top-down traversal detects a real 2-node field-level lineage cycle.
+
+        Contract A → field_a references B.model_b.field_b, and
+        Contract B → field_b references A.model_a.field_a.
+
+        Traversing from A follows the reference to B, which follows
+        the reference back to A — the visited_contracts guard must
+        detect the cycle instead of recursing infinitely.
+        """
+        unique = uuid.uuid4().hex[:8]
+
+        # Contract B (referenced by A, references A back → cycle)
+        contract_b = Contract.objects.create(
+            tenant=self.tenant,
+            version=1,
+            status=ContractStatus.DRAFT,
+            original_spec_type=OriginalSpecType.ODPS,
+            original_spec_version="3.0.0",
+            original_format=OriginalFormat.JSON,
+            original_raw='{"info":{"name":"cycle-b-' + unique + '"}}',
+            hub_contract_json={
+                "info": {"name": "cycle-b-" + unique, "domain": "ns1"},
+                "models": [
+                    {
+                        "name": "model_b",
+                        "fields": [
+                            {
+                                "name": "field_b",
+                                "lineage": {
+                                    "input_fields": [
+                                        {
+                                            "namespace": "ns1",
+                                            "name": "cycle-a-" + unique,
+                                            "model": "model_a",
+                                            "field": "field_a",
+                                        }
+                                    ]
+                                },
+                            }
+                        ],
+                    }
+                ],
+            },
+        )
+
+        # Contract A (references B, completing the cycle)
+        contract_a = Contract.objects.create(
+            tenant=self.tenant,
+            version=1,
+            status=ContractStatus.DRAFT,
+            original_spec_type=OriginalSpecType.ODPS,
+            original_spec_version="3.0.0",
+            original_format=OriginalFormat.JSON,
+            original_raw='{"info":{"name":"cycle-a-' + unique + '"}}',
+            hub_contract_json={
+                "info": {"name": "cycle-a-" + unique, "domain": "ns1"},
+                "models": [
+                    {
+                        "name": "model_a",
+                        "fields": [
+                            {
+                                "name": "field_a",
+                                "lineage": {
+                                    "input_fields": [
+                                        {
+                                            "namespace": "ns1",
+                                            "name": "cycle-b-" + unique,
+                                            "model": "model_b",
+                                            "field": "field_b",
+                                        }
+                                    ]
+                                },
+                            }
+                        ],
+                    }
+                ],
+            },
+        )
+
+        traverser = LineageTraverser(contract_a)
         result = traverser.traverse_top_down()
 
-        self.assertIn("error", result)
-        self.assertIn("Cycle detected", result["error"])
+        self.assertIsNotNone(result)
+        self.assertEqual(result["contract_id"], str(contract_a.id))
+        # The cycle must be detected somewhere in the nested traversal tree
+        self.assertTrue(
+            _find_cycle_error(result),
+            "Real 2-node cycle must produce 'Cycle detected' error in traversal result",
+        )
 
     def test_traverse_bottom_up_basic(self):
         """Test basic bottom-up traversal using real Contract object."""
@@ -108,6 +205,8 @@ class TestLineageTraversal(ContractsTestBase):
         self.assertIsNotNone(result)
         self.assertEqual(result["contract_id"], str(self.contract.id))
         self.assertIn("referenced_by", result)
+        self.assertIsInstance(result["referenced_by"], list,
+            "Bottom-up traversal 'referenced_by' must be a list")
 
     def test_traverse_bidirectional(self):
         """Test bidirectional traversal."""
@@ -144,26 +243,23 @@ class TestLineageTraversal(ContractsTestBase):
         self.assertEqual(len(result.get("models", [])), 0)
 
     def test_traverse_top_down_with_missing_hub_contract_json(self):
-        """Test top-down traversal with contract missing hub_contract_json (edge case)."""
+        """Traversal with hub_contract_json=None returns contract_id + empty models."""
         contract_no_json = Contract.objects.create(
-            tenant=self.tenant,
-            version=1,
-            status=ContractStatus.DRAFT,
-            original_spec_type=OriginalSpecType.ODPS,
-            original_spec_version="3.0.0",
+            tenant=self.tenant, version=1, status=ContractStatus.DRAFT,
+            original_spec_type=OriginalSpecType.ODPS, original_spec_version="3.0.0",
             original_format=OriginalFormat.JSON,
             original_raw='{"info": {"name": "no-json-contract"}}',
-            hub_contract_json=None,  # Missing hub_contract_json
+            hub_contract_json=None,
         )
 
         traverser = LineageTraverser(contract_no_json)
         result = traverser.traverse_top_down()
 
-        # Should handle missing hub_contract_json gracefully
         self.assertIsNotNone(result)
         self.assertEqual(result["contract_id"], str(contract_no_json.id))
-        # May have error or empty models
         self.assertIn("models", result)
+        self.assertEqual(result["models"], [],
+            "No hub_contract_json → no models to traverse")
 
     def test_traverse_top_down_with_invalid_lineage_references(self):
         """Test top-down traversal with invalid lineage references (edge case)."""
@@ -297,16 +393,96 @@ class TestLineageTraversal(ContractsTestBase):
         self.assertIsInstance(result["referenced_by"], (list, dict))
 
     def test_traverse_bidirectional_with_cycle(self):
-        """Test bidirectional traversal with cycle detection (edge case)."""
-        traverser = LineageTraverser(self.contract)
-        traverser.visited_contracts.add(str(self.contract.id))
+        """Bidirectional traversal detects a real 2-node field-level lineage cycle.
+
+        Creates contract A → field_a references B.model_b.field_b and
+        contract B → field_b references A.model_a.field_a.  The bidirectional
+        traversal must detect the cycle in the downstream (top-down) leg.
+
+        Previous version injected ``visited_contracts`` directly on the outer
+        traverser, but ``traverse_bidirectional`` creates fresh internal
+        traversers — the injection had no effect and the test was a no-op.
+        """
+        unique = uuid.uuid4().hex[:8]
+
+        contract_b = Contract.objects.create(
+            tenant=self.tenant,
+            version=1,
+            status=ContractStatus.DRAFT,
+            original_spec_type=OriginalSpecType.ODPS,
+            original_spec_version="3.0.0",
+            original_format=OriginalFormat.JSON,
+            original_raw='{"info":{"name":"bidir-cycle-b-' + unique + '"}}',
+            hub_contract_json={
+                "info": {"name": "bidir-cycle-b-" + unique, "domain": "ns1"},
+                "models": [
+                    {
+                        "name": "model_b",
+                        "fields": [
+                            {
+                                "name": "field_b",
+                                "lineage": {
+                                    "input_fields": [
+                                        {
+                                            "namespace": "ns1",
+                                            "name": "bidir-cycle-a-" + unique,
+                                            "model": "model_a",
+                                            "field": "field_a",
+                                        }
+                                    ]
+                                },
+                            }
+                        ],
+                    }
+                ],
+            },
+        )
+
+        contract_a = Contract.objects.create(
+            tenant=self.tenant,
+            version=1,
+            status=ContractStatus.DRAFT,
+            original_spec_type=OriginalSpecType.ODPS,
+            original_spec_version="3.0.0",
+            original_format=OriginalFormat.JSON,
+            original_raw='{"info":{"name":"bidir-cycle-a-' + unique + '"}}',
+            hub_contract_json={
+                "info": {"name": "bidir-cycle-a-" + unique, "domain": "ns1"},
+                "models": [
+                    {
+                        "name": "model_a",
+                        "fields": [
+                            {
+                                "name": "field_a",
+                                "lineage": {
+                                    "input_fields": [
+                                        {
+                                            "namespace": "ns1",
+                                            "name": "bidir-cycle-b-" + unique,
+                                            "model": "model_b",
+                                            "field": "field_b",
+                                        }
+                                    ]
+                                },
+                            }
+                        ],
+                    }
+                ],
+            },
+        )
+
+        traverser = LineageTraverser(contract_a)
         result = traverser.traverse_bidirectional()
 
-        # Should detect cycle and handle gracefully
         self.assertIsNotNone(result)
-        # May have error or empty results
-        if "error" in result:
-            self.assertIn("Cycle", result["error"])
+        self.assertIn("upstream", result)
+        self.assertIn("downstream", result)
+        # The cycle must be detected — bidirectional creates fresh internal
+        # traversers, so this verifies the real visited_contracts guard works.
+        self.assertTrue(
+            _find_cycle_error(result),
+            "Bidirectional traversal must detect the real 2-node cycle",
+        )
 
     def test_traverse_top_down_with_broken_references(self):
         """Test top-down traversal with broken lineage references (non-existent contracts)."""
@@ -351,62 +527,87 @@ class TestLineageTraversal(ContractsTestBase):
         self.assertEqual(result["contract_id"], str(contract_broken.id))
         self.assertIn("models", result)
 
-    def test_traverse_top_down_tenant_isolation(self):
-        """Test that traversal respects tenant isolation (edge case)."""
-        # Create another tenant
-        _uid = uuid.uuid4().hex[:8]
-        other_tenant = Tenant.objects.create(name=f"Other Tenant {_uid}", slug=f"other-tenant-{_uid}")
+    def test_traverse_top_down_with_disconnected_contract_lineage(self):
+        """Contract-level lineage references to non-existent contracts are handled gracefully.
 
-        # Create contract in other tenant (for cross-tenant reference test)
-        Contract.objects.create(
-            tenant=other_tenant,
-            version=1,
-            status=ContractStatus.DRAFT,
-            original_spec_type=OriginalSpecType.ODPS,
-            original_spec_version="3.0.0",
-            original_format=OriginalFormat.JSON,
-            original_raw='{"info": {"name": "other-tenant-contract"}}',
-            hub_contract_json={"info": {"name": "other-tenant-contract"}},
-        )
-
-        # Try to traverse from our tenant's contract referencing other tenant's contract
-        contract_cross_tenant = Contract.objects.create(
+        When a contract declares ``lineage.contracts`` pointing to a contract
+        that does not exist in the database, the traverser skips the broken
+        reference and returns only the root contract without crashing.
+        """
+        unique = uuid.uuid4().hex[:8]
+        contract = Contract.objects.create(
             tenant=self.tenant,
             version=1,
             status=ContractStatus.DRAFT,
             original_spec_type=OriginalSpecType.ODPS,
             original_spec_version="3.0.0",
             original_format=OriginalFormat.JSON,
-            original_raw='{"info": {"name": "cross-tenant-contract"}}',
+            original_raw='{"info":{"name":"disconnected-' + unique + '"}}',
             hub_contract_json={
-                "info": {"name": "cross-tenant-contract"},
-                "models": [
-                    {
-                        "name": "model1",
-                        "fields": [
-                            {
-                                "name": "field1",
-                                "lineage": {
-                                    "input_fields": [
-                                        {
-                                            "namespace": "other",
-                                            "name": "other-tenant-contract",
-                                            "model": "model1",
-                                            "field": "field1",
-                                        }
-                                    ],
-                                },
-                            }
-                        ],
-                    }
-                ],
+                "info": {"name": "disconnected-" + unique, "domain": "ns1"},
+                "lineage": {
+                    "contracts": [
+                        {"namespace": "ns1", "name": "ghost-contract"}
+                    ]
+                },
+                "models": [],
             },
+        )
+
+        traverser = LineageTraverser(contract)
+        result = traverser.traverse_top_down()
+
+        self.assertIsNotNone(result,
+            "Traversal with disconnected contract lineage must not crash")
+        self.assertEqual(result["contract_id"], str(contract.id),
+            "Root contract must appear in traversal result")
+        # Broken reference must not appear in contract_lineage
+        lineage_refs = result.get("contract_lineage", [])
+        self.assertEqual(len(lineage_refs), 0,
+            "Broken contract-level references to non-existent contracts must be absent")
+
+    def test_traverse_top_down_tenant_isolation(self):
+        """Lineage traversal documents current cross-tenant behavior.
+
+        When a contract references ``other-tenant-contract`` owned by a
+        different tenant, the lineage traverser may or may not resolve
+        it (tenant isolation in lineage resolution is not yet enforced).
+        This test creates that exact setup and verifies the traverser
+        doesn't crash — regardless of whether the reference resolves.
+        """
+        _uid = uuid.uuid4().hex[:8]
+        other_tenant = Tenant.objects.create(
+            name=f"Other Tenant {_uid}", slug=f"other-tenant-{_uid}",
+            status="ACTIVE", kyc_status="UNVERIFIED",
+        )
+
+        Contract.objects.create(
+            tenant=other_tenant, version=1, status=ContractStatus.DRAFT,
+            original_spec_type=OriginalSpecType.ODPS, original_spec_version="3.0.0",
+            original_format=OriginalFormat.JSON,
+            original_raw='{"info":{"name":"other-tenant-contract"}}',
+            hub_contract_json={"info":{"name":"other-tenant-contract"}},
+        )
+
+        contract_cross_tenant = Contract.objects.create(
+            tenant=self.tenant, version=1, status=ContractStatus.DRAFT,
+            original_spec_type=OriginalSpecType.ODPS, original_spec_version="3.0.0",
+            original_format=OriginalFormat.JSON,
+            original_raw='{"info":{"name":"cross-tenant-contract"}}',
+            hub_contract_json={
+                "info":{"name":"cross-tenant-contract"},
+                "models":[{"name":"model1","fields":[{
+                    "name":"field1","lineage":{"input_fields":[{
+                        "namespace":"other","name":"other-tenant-contract",
+                        "model":"model1","field":"field1"}]}}]}]},
         )
 
         traverser = LineageTraverser(contract_cross_tenant)
         result = traverser.traverse_top_down()
 
-        # Should handle cross-tenant references (may not resolve due to isolation)
         self.assertIsNotNone(result)
         self.assertEqual(result["contract_id"], str(contract_cross_tenant.id))
         self.assertIn("models", result)
+        # Verify the model list is returned regardless.
+        self.assertIsInstance(result["models"], list)
+        self.assertEqual(len(result["models"]), 1)

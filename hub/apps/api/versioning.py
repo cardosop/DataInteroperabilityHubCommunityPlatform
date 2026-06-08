@@ -6,6 +6,7 @@ Version management, backward compatibility, and deprecation handling.
 
 from __future__ import annotations
 
+import datetime
 from datetime import timedelta
 from typing import Any, Dict, List, Optional, Set
 
@@ -98,9 +99,9 @@ class DeprecatedEndpoint:
             now = timezone.now()
             # Ensure both datetimes are timezone-aware for comparison
             if timezone.is_naive(now):
-                now = timezone.make_aware(now, timezone.utc)
+                now = timezone.make_aware(now, datetime.timezone.utc)
             if timezone.is_naive(sunset):
-                sunset = timezone.make_aware(sunset, timezone.utc)
+                sunset = timezone.make_aware(sunset, datetime.timezone.utc)
             return now > sunset
         except (ValueError, AttributeError):
             return False
@@ -296,9 +297,8 @@ class APIVersionMiddleware:
 
         # Check if version is supported
         if not APIVersionManager.is_version_supported(version):
-            from django.http import JsonResponse
 
-            return JsonResponse(
+            return Response(
                 {
                     "error": {
                         "code": "UNSUPPORTED_API_VERSION",

@@ -21,10 +21,15 @@ class FilesAPI:
             "content_type": content_type,
             "size": size,
         }
-        return await self.client.post("files/", data=data)
+        return await self.client.post("files/init/", data=data)
 
-    async def complete_upload(self, file_id: str) -> Dict[str, Any]:
-        return await self.client.post(f"files/{file_id}/complete/")
+    async def complete_upload(
+        self, file_id: str, content_sha256: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        data: Dict[str, Any] = {}
+        if content_sha256:
+            data["content_sha256"] = content_sha256
+        return await self.client.post(f"files/{file_id}/complete/", data=data or None)
 
     async def list_files(
         self,

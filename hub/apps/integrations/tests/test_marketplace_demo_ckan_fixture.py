@@ -38,6 +38,12 @@ class MarketplaceDemoCkanFixtureTest(TestCase):
     """
 
     def setUp(self):
+        # Reset CKAN circuit breaker so prior test failures don't
+        # leave it OPEN for this test (get_or_create_demo_ckan_federated_asset
+        # calls CKAN connector operations internally).
+        from hub.apps.core.resilience.circuit_breaker import \
+            reset_circuit_breaker_by_name
+        reset_circuit_breaker_by_name("ckan-connector")
         # Disconnect semantic signals to prevent timeouts
         from django.db.models.signals import post_save
 
@@ -56,6 +62,8 @@ class MarketplaceDemoCkanFixtureTest(TestCase):
             name=f"Demo CKAN Fixture Test Tenant {uid}",
             slug=f"demo-ckan-fixture-test-{uid}",
             kyc_status=KYCStatus.VERIFIED,
+            marketplace_integrations_enabled=True,
+            federated_import_enabled=True,
         )
         from hub.apps.users.models import User, UserStatus
 

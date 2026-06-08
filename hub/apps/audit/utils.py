@@ -4,6 +4,7 @@ Audit Logging Utilities
 Helper functions for creating audit events with PII redaction.
 """
 
+import os
 import hashlib
 import re
 from typing import Any, Dict, Optional
@@ -357,7 +358,13 @@ def create_audit_event(
                 if ctx.is_valid:
                     raw = ctx.trace_id
                     if raw:
-                        trace_id = str(raw)
+                        # OTel trace_id is a 128-bit integer; format as
+                        # 32-char hex then convert to UUID hex format:
+                        # 8-4-4-4-12 chars with dashes.
+                        import uuid as _uuid
+
+                        hex_str = f"{int(raw):032x}"
+                        trace_id = str(_uuid.UUID(hex=hex_str))
         except Exception:
             pass  # OTel not available or span context invalid
 
@@ -413,24 +420,50 @@ def create_audit_event(
         # RLS WITH CHECK doesn't reject the NULL-tenant row. The
         # default connection sees its own committed-and-uncommitted
         # data, so the actor_user FK resolves.
+        #
+        # In test mode (SKIP_TEST_MIGRATIONS=1), TransactionTestCase
+        # forbids threaded connections to the `admin` alias because
+        # the alias creates a separate connection whose transaction
+        # is not tracked by the test runner.  Always route through
+        # ``default`` with ``row_security=off`` in test mode.
         from django.db import IntegrityError as _IE
-        try:
-            audit_event = AuditEvent.objects.db_manager("admin").create(
-                tenant=tenant,
-                actor_user=actor_user,
-                resource_type=resource_type,
-                resource_id=resource_id,
-                action=action,
-                result=result,
-                details_json=redacted_details,
-                full_details_json=full_details_dict,
-            )
-        except _IE as exc:
-            if "actor_user_id" not in str(exc):
-                raise
-            # Fall back to default connection with row_security off
-            # for the INSERT — same RLS-bypass effect, but on a
-            # connection whose snapshot can see the actor_user row.
+        _use_admin = not os.environ.get("SKIP_TEST_MIGRATIONS")
+        if _use_admin:
+            try:
+                audit_event = AuditEvent.objects.db_manager("admin").create(
+                    tenant=tenant,
+                    actor_user=actor_user,
+                    resource_type=resource_type,
+                    resource_id=resource_id,
+                    action=action,
+                    result=result,
+                    details_json=redacted_details,
+                    full_details_json=full_details_dict,
+                )
+            except _IE as exc:
+                if "actor_user_id" not in str(exc):
+                    raise
+                # Fall back to default connection with row_security off
+                # for the INSERT — same RLS-bypass effect, but on a
+                # connection whose snapshot can see the actor_user row.
+                from django.db import transaction as _txn
+                with _txn.atomic():
+                    with connection.cursor() as _c:
+                        _c.execute("SET LOCAL row_security = off")
+                    audit_event = AuditEvent.objects.create(
+                        tenant=tenant,
+                        actor_user=actor_user,
+                        resource_type=resource_type,
+                        resource_id=resource_id,
+                        action=action,
+                        result=result,
+                        details_json=redacted_details,
+                        full_details_json=full_details_dict,
+                    )
+        else:
+            # Test mode: always use default connection with
+            # row_security=off — the admin alias creates a
+            # separate connection not tracked by TransactionTestCase.
             from django.db import transaction as _txn
             with _txn.atomic():
                 with connection.cursor() as _c:

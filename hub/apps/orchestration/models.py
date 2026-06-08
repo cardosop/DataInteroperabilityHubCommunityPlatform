@@ -13,6 +13,33 @@ from django.db import models
 from django.utils import timezone
 
 
+class WorkflowType(models.TextChoices):
+    """Workflow type enumeration.
+
+    Maps to the conceptual workflow category, used for reporting,
+    alert routing, and business-rules dispatch.  Defined at module
+    level so test suites and downstream consumers can import it
+    directly from ``hub.apps.orchestration.models``.
+    """
+
+    ASSET_CREATION = "ASSET_CREATION", "Asset Creation"
+    CONTRACT_CREATION = "CONTRACT_CREATION", "Contract Creation"
+    DATASET_CREATION = "DATASET_CREATION", "Dataset Creation"
+    MARKETPLACE_PUBLICATION = "MARKETPLACE_PUBLICATION", "Marketplace Publication"
+    PRODUCT_CREATION = "PRODUCT_CREATION", "Product Creation"
+    SCHEDULED_INGESTION = "SCHEDULED_INGESTION", "Scheduled Ingestion"
+    SCHEDULED_EXPORT = "SCHEDULED_EXPORT", "Scheduled Export"
+    TRANSFORMATION = "TRANSFORMATION", "Transformation"
+    COMPLIANCE = "COMPLIANCE", "Compliance"
+    DQ = "DQ", "Data Quality"
+    ACCESS_REQUEST = "ACCESS_REQUEST", "Access Request"
+    API_KEY_MANAGEMENT = "API_KEY_MANAGEMENT", "API Key Management"
+    VERSION_CREATION = "VERSION_CREATION", "Version Creation"
+    VIRTUALIZATION = "VIRTUALIZATION", "Virtualization"
+    MODEL_INFERENCE = "MODEL_INFERENCE", "Model Inference"
+    MODEL_TRAINING = "MODEL_TRAINING", "Model Training"
+
+
 class WorkflowStatus(models.TextChoices):
     """Workflow instance status enumeration"""
 
@@ -452,3 +479,237 @@ class WorkflowState(models.Model):
 
     def __str__(self):
         return f"State snapshot for {self.workflow_instance.id} ({self.snapshot_type})"
+
+
+class PipelineDependency(models.Model):
+    """Directed dependency between two pipeline instances.
+
+    Declares that *pipeline_id* must complete successfully before
+    *downstream_pipeline_id* executes.  Supports DATA, TRIGGER, and
+    MANUAL dependency types and optional alert configuration.
+    """
+
+    class PipelineType(models.TextChoices):
+        SCHEDULED_INGESTION = "scheduled_ingestion", "Scheduled Ingestion"
+        SCHEDULED_EXPORT = "scheduled_export", "Scheduled Export"
+        TRANSFORMATION = "transformation", "Transformation"
+        DQ = "dq", "Data Quality"
+        COMPLIANCE = "compliance", "Compliance"
+
+    class DependencyType(models.TextChoices):
+        DATA = "DATA", "Data"
+        TRIGGER = "TRIGGER", "Trigger"
+        MANUAL = "MANUAL", "Manual"
+
+    class CreatedBy(models.TextChoices):
+        AUTO = "AUTO", "Auto"
+        MANUAL = "MANUAL", "Manual"
+        LINEAGE_SYNC = "LINEAGE_SYNC", "Lineage Sync"
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    pipeline_type = models.CharField(
+        max_length=50,
+        blank=True,
+        default="",
+        choices=PipelineType.choices,
+        help_text="Type of the upstream pipeline",
+    )
+    pipeline_id = models.CharField(
+        max_length=255,
+        blank=True,
+        default="",
+        help_text="Identifier of the upstream pipeline instance",
+    )
+    dependency_type = models.CharField(
+        max_length=50,
+        blank=True,
+        default="",
+        choices=DependencyType.choices,
+        help_text="Dependency relationship type",
+    )
+    downstream_pipeline_type = models.CharField(
+        max_length=50,
+        blank=True,
+        default="",
+        choices=PipelineType.choices,
+        help_text="Type of the downstream pipeline",
+    )
+    downstream_pipeline_id = models.CharField(
+        max_length=255,
+        blank=True,
+        default="",
+        help_text="Identifier of the downstream pipeline instance",
+    )
+    created_by = models.CharField(
+        max_length=255,
+        blank=True,
+        default="",
+        choices=CreatedBy.choices,
+        help_text="How this dependency was created",
+    )
+    priority = models.IntegerField(
+        default=0,
+    )
+    is_active = models.BooleanField(default=True)
+    alert_email = models.EmailField(
+        max_length=254,
+        blank=True,
+        default="",
+        help_text="Email address for dependency-failure alerts",
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    tenant = models.ForeignKey(
+        "tenants.Tenant",
+        on_delete=models.CASCADE,
+        related_name="pipeline_dependencies",
+        help_text="Tenant this dependency belongs to",
+    )
+
+    class Meta:
+        db_table = "pipeline_dependencies"
+        ordering = ["-priority", "-created_at"]
+        indexes = [
+            models.Index(
+                fields=["tenant", "pipeline_type", "pipeline_id"],
+                name="pipeline_de_tenant__2fe60d_idx",
+            ),
+            models.Index(
+                fields=["tenant", "downstream_pipeline_type", "downstream_pipeline_id"],
+                name="pipeline_de_tenant__9579b9_idx",
+            ),
+            models.Index(
+                fields=["tenant", "is_active"],
+                name="pipeline_de_tenant__5cbe50_idx",
+            ),
+        ]
+        constraints = [
+            models.UniqueConstraint(
+                fields=[
+                    "tenant",
+                    "pipeline_type",
+                    "pipeline_id",
+                    "dependency_type",
+                    "downstream_pipeline_type",
+                    "downstream_pipeline_id",
+                ],
+                name="uq_pipeline_dependency_scope",
+            ),
+        ]
+
+    def __str__(self):
+        return (
+            f"{self.pipeline_type}/{self.pipeline_id} "
+            f"→ {self.downstream_pipeline_type}/{self.downstream_pipeline_id}"
+        )
+
+
+class PipelineRunDependency(models.Model):
+    """Record of a dependency resolution at run-time.
+
+    Captures the terminal status of the upstream run at the moment the
+    downstream run was created, providing an audit trail for dependency
+    resolution decisions.
+    """
+
+    class RunType(models.TextChoices):
+        SCHEDULED_INGESTION = "scheduled_ingestion", "Scheduled Ingestion"
+        SCHEDULED_EXPORT = "scheduled_export", "Scheduled Export"
+        TRANSFORMATION = "transformation", "Transformation"
+        DQ = "dq", "Data Quality"
+        COMPLIANCE = "compliance", "Compliance"
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    upstream_run_type = models.CharField(
+        max_length=50,
+        blank=True,
+        default="",
+        choices=RunType.choices,
+        help_text="Type of the upstream run",
+    )
+    upstream_run_id = models.CharField(
+        max_length=255,
+        blank=True,
+        default="",
+        help_text="Identifier of the upstream run instance",
+    )
+    downstream_run_type = models.CharField(
+        max_length=50,
+        blank=True,
+        default="",
+        choices=RunType.choices,
+        help_text="Type of the downstream run",
+    )
+    downstream_run_id = models.CharField(
+        max_length=255,
+        blank=True,
+        default="",
+        help_text="Identifier of the downstream run instance",
+    )
+    upstream_status = models.CharField(
+        max_length=50,
+        blank=True,
+        default="",
+        help_text="Terminal status of the upstream run at resolution time",
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    pipeline_dependency = models.ForeignKey(
+        PipelineDependency,
+        on_delete=models.CASCADE,
+        blank=True,
+        null=True,
+        related_name="run_dependencies",
+        help_text="Parent PipelineDependency definition",
+    )
+    tenant = models.ForeignKey(
+        "tenants.Tenant",
+        on_delete=models.CASCADE,
+        related_name="pipeline_run_dependencies",
+        help_text="Tenant this run dependency belongs to",
+    )
+
+    class Meta:
+        db_table = "pipeline_run_dependencies"
+        ordering = ["-created_at"]
+        indexes = [
+            models.Index(
+                fields=["tenant", "upstream_run_type", "upstream_run_id"],
+                name="pipeline_ru_tenant__0bacbc_idx",
+            ),
+            models.Index(
+                fields=["tenant", "downstream_run_type", "downstream_run_id"],
+                name="pipeline_ru_tenant__b0c6e5_idx",
+            ),
+            models.Index(
+                fields=["pipeline_dependency"],
+                name="pipeline_ru_pipelin_42786d_idx",
+            ),
+        ]
+
+    def __str__(self):
+        return (
+            f"RunDependency {self.upstream_run_type}/{self.upstream_run_id} "
+            f"(status={self.upstream_status})"
+        )
+
+
+# ── Module-level re-exports ──────────────────────────────────────────
+# Inner classes on PipelineDependency are the canonical home for these
+# enumerations, but tests and non-model code (dependency_resolver,
+# dependency_executor, trigger_engine, admin, management commands)
+# import them directly from ``hub.apps.orchestration.models``.
+# These aliases keep the public API stable.
+
+DependencyType = PipelineDependency.DependencyType
+"""Dependency relationship type (DATA, TRIGGER, MANUAL)."""
+
+PipelineType = PipelineDependency.PipelineType
+"""Pipeline run type (SCHEDULED_INGESTION, DQ, COMPLIANCE, …)."""
+
+DependencySource = PipelineDependency.CreatedBy
+"""How a pipeline dependency was created (AUTO, MANUAL, LINEAGE_SYNC).
+
+Historically named ``DependencySource``; the model field was renamed to
+``CreatedBy`` during Phase 285.11. This alias preserves backward
+compatibility for all importers.
+"""

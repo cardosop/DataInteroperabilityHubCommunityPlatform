@@ -54,9 +54,20 @@ def _load_common_passwords() -> set[str]:
                 stripped = line.strip().lower()
                 if stripped and not stripped.startswith("#"):
                     passwords.add(stripped)
-    # Minimum baseline: Django's built-in common passwords
-    from django.contrib.auth.password_validation import common_passwords
-    passwords.update(common_passwords.COMMON_PASSWORDS)
+    # Minimum baseline: Django 6.0's built-in common passwords (bundled gzip file).
+    # Django 6.0 removed the ``common_passwords`` module; CommonPasswordValidator
+    # now reads directly from a gzipped file shipped alongside the module.
+    import gzip
+    from django.contrib.auth.password_validation import CommonPasswordValidator
+
+    _validator = CommonPasswordValidator()
+    try:
+        with gzip.open(
+            str(_validator.DEFAULT_PASSWORD_LIST_PATH), "rt", encoding="utf-8"
+        ) as _f:
+            passwords.update({x.strip() for x in _f})
+    except (OSError, gzip.BadGzipFile):
+        pass  # File missing or corrupt; use only the custom deny-list
 
     _COMMON_PASSWORDS = passwords
     return _COMMON_PASSWORDS
@@ -157,6 +168,13 @@ class HaveIBeenPwnedValidator:
         import logging
 
         logger = logging.getLogger(__name__)
+
+        # Honour the feature flag so CI/test environments can disable the
+        # external HIBP API call without mocking.  Tests that specifically
+        # exercise this validator can override via @override_settings.
+        from django.conf import settings as _django_settings
+        if not getattr(_django_settings, "HIBP_VALIDATOR_ENABLED", True):
+            return
 
         sha1 = hashlib.sha1(password.encode("utf-8")).hexdigest().upper()
         prefix, suffix = sha1[:5], sha1[5:]

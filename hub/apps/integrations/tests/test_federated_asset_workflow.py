@@ -58,6 +58,10 @@ class FederatedAssetWorkflowTest(TestCase):
 
     def setUp(self):
         """Set up test data"""
+        # Clear the process-wide workflow cache so AssetCreationWorkflow
+        # registration re-creates the DB row inside this test's transaction.
+        from hub.apps.orchestration.registry import reset_workflow_definition_cache
+        reset_workflow_definition_cache()
         # CRITICAL: Disconnect semantic service signals to prevent timeouts
         from django.db.models.signals import post_save
 
@@ -68,6 +72,18 @@ class FederatedAssetWorkflowTest(TestCase):
 
             post_save.disconnect(contract_saved, sender=Contract)
             post_save.disconnect(asset_saved, sender=Asset)
+        except (ImportError, AttributeError):
+            pass
+
+        # Reset semantic-service circuit breaker so semantic mappings succeed.
+        # With --reuse-db, previous tests may leave breakers in OPEN state.
+        # reset_circuit_breaker_by_name clears both shared-store AND
+        # directly-instantiated breakers (Redis keys + in-memory state).
+        try:
+            from hub.apps.core.resilience.circuit_breaker import (
+                reset_circuit_breaker_by_name,
+            )
+            reset_circuit_breaker_by_name("semantic-service-write")
         except (ImportError, AttributeError):
             pass
 
@@ -180,16 +196,14 @@ class FederatedAssetWorkflowTest(TestCase):
         )
         self.assertGreater(notification_steps.count(), 0)
 
-        # Verify asset status - should be ACTIVE if validation passed, DRAFT if failed
-        # For metadata-only with valid contract, should activate
-        if asset.contracts.filter(
-            status=ContractStatus.ACTIVE,
-            validation_status__in=[ValidationStatus.VALID, "VALID"],
-        ).exists():
-            self.assertEqual(asset.status, AssetStatus.ACTIVE)
-        else:
-            # If contract validation failed, asset should remain DRAFT
-            self.assertEqual(asset.status, AssetStatus.DRAFT)
+        # The workflow completed successfully — the asset MUST be ACTIVE.
+        # (Previously this was a bifurcated if/else that could never fail
+        # because it derived the expected value from the very DB state it
+        # was testing.)
+        self.assertEqual(
+            asset.status, AssetStatus.ACTIVE,
+            f"Asset should be ACTIVE after a COMPLETED workflow; got {asset.status}"
+        )
 
     def test_workflow_with_data_strategy(self):
         """Test workflow execution with data strategy (DOWNLOAD_ALL)"""
@@ -384,11 +398,15 @@ class FederatedAssetWorkflowTest(TestCase):
                 validation_status__in=[ValidationStatus.VALID, "VALID"],
             ).exists()
 
-            if has_valid_contract:
-                # Asset should be ACTIVE if validation passed
-                # Note: DQ/compliance checks might fail, but asset can still activate
-                # if they're not blocking
-                self.assertIn(asset.status, [AssetStatus.ACTIVE, AssetStatus.DRAFT])
+            # The test registers a valid contract — the asset MUST be ACTIVE.
+            self.assertTrue(
+                has_valid_contract,
+                "Test setup should create a valid contract"
+            )
+            self.assertEqual(
+                asset.status, AssetStatus.ACTIVE,
+                f"Asset should be ACTIVE with a valid contract; got {asset.status}"
+            )
 
         finally:
             # Restore original CKAN connector (other tests depend on it)

@@ -18,21 +18,26 @@ class ServiceToServiceIntegrationTest(TestCase):
 
     def setUp(self):
         """Set up test fixtures"""
-        # Mock Redis client for circuit breakers
-        with patch('hub.apps.dq.service_client.get_redis_client'), \
-             patch('hub.apps.compliance.service_client.get_redis_client'), \
+        # DQ and Compliance clients use in-memory circuit breakers
+        # (get_shared_circuit_breaker); Semantic uses Redis-backed
+        # circuit breaker (get_redis_client from
+        # core.resilience.circuit_breaker).
+        with patch('hub.apps.core.resilience.service_breakers.get_shared_circuit_breaker',
+                   return_value=Mock()), \
              patch('hub.apps.semantic.service_client.get_redis_client'):
             self.dq_client = DQServiceClient()
             self.compliance_client = ComplianceServiceClient()
             self.semantic_client = SemanticServiceClient()
 
+    @patch('hub.apps.dq.service_client.sleep_with_jitter')
     @patch('hub.apps.dq.service_client.httpx.Client')
     @patch('hub.apps.dq.service_client.cache')
-    def test_dq_service_integration(self, mock_cache, mock_client_class):
+    def test_dq_service_integration(self, mock_cache, mock_client_class, mock_sleep):
         """Test DQ service integration"""
         mock_cache.get.return_value = None
+        mock_sleep.return_value = None
 
-        # Mock successful response
+        # Mock successful response — DQ client uses build_request + send.
         mock_response = Mock()
         mock_response.json.return_value = {
             'overall_status': 'PASS',
@@ -42,7 +47,7 @@ class ServiceToServiceIntegrationTest(TestCase):
         mock_response.raise_for_status = Mock()
 
         mock_client = Mock()
-        mock_client.request.return_value = mock_response
+        mock_client.send.return_value = mock_response
         mock_client_class.return_value = mock_client
 
         self.dq_client.client = mock_client
@@ -56,8 +61,8 @@ class ServiceToServiceIntegrationTest(TestCase):
         self.assertIsNotNone(result)
         self.assertEqual(result['overall_status'], 'PASS')
 
-        # Verify endpoint construction
-        call_args = mock_client.request.call_args
+        # Verify endpoint construction — DQ client uses build_request.
+        call_args = mock_client.build_request.call_args
         self.assertEqual(call_args[0][0], 'POST')  # HTTP method
         self.assertEqual(call_args[0][1], '/run')  # Endpoint
         self.assertIn('files', call_args[1])  # File upload
@@ -169,17 +174,22 @@ class ServiceClientErrorHandlingTest(TestCase):
 
     def setUp(self):
         """Set up test fixtures"""
-        with patch('hub.apps.dq.service_client.get_redis_client'):
+        # DQ client uses in-memory circuit breaker, not Redis.
+        with patch('hub.apps.core.resilience.service_breakers.get_shared_circuit_breaker',
+                   return_value=Mock()):
             self.dq_client = DQServiceClient()
 
+    @patch('hub.apps.dq.service_client.sleep_with_jitter')
     @patch('hub.apps.dq.service_client.httpx.Client')
     @patch('hub.apps.dq.service_client.cache')
-    def test_dq_service_circuit_breaker_fallback(self, mock_cache, mock_client_class):
+    def test_dq_service_circuit_breaker_fallback(self, mock_cache, mock_client_class, mock_sleep):
         """Test DQ service circuit breaker fallback"""
         mock_cache.get.return_value = None
+        mock_sleep.return_value = None
 
         mock_client = Mock()
-        mock_client.request.side_effect = httpx.RequestError("Service unavailable")
+        # DQ client uses send(), not request().
+        mock_client.send.side_effect = httpx.RequestError("Service unavailable")
         mock_client_class.return_value = mock_client
 
         self.dq_client.client = mock_client
@@ -195,19 +205,21 @@ class ServiceClientErrorHandlingTest(TestCase):
         self.assertEqual(result['overall_status'], 'UNKNOWN')
         self.assertIn('error', result.get('metadata', {}))
 
+    @patch('hub.apps.dq.service_client.sleep_with_jitter')
     @patch('hub.apps.dq.service_client.httpx.Client')
     @patch('hub.apps.dq.service_client.cache')
-    def test_dq_service_retry_logic(self, mock_cache, mock_client_class):
+    def test_dq_service_retry_logic(self, mock_cache, mock_client_class, mock_sleep):
         """Test DQ service retry logic"""
         mock_cache.get.return_value = None
+        mock_sleep.return_value = None
 
-        # First call fails, second succeeds
+        # First call fails, second succeeds — DQ client uses send().
         mock_response = Mock()
         mock_response.json.return_value = {'overall_status': 'PASS'}
         mock_response.raise_for_status = Mock()
 
         mock_client = Mock()
-        mock_client.request.side_effect = [
+        mock_client.send.side_effect = [
             httpx.HTTPStatusError("500 Error", request=Mock(), response=Mock(status_code=500)),
             mock_response
         ]
@@ -218,10 +230,9 @@ class ServiceClientErrorHandlingTest(TestCase):
         self.dq_client._circuit_breaker.call = Mock(side_effect=lambda func, fallback: func())
 
         # Test retry logic
-        with patch('time.sleep'):  # Skip actual sleep in tests
-            result = self.dq_client.run_dq(b'test data', 'csv')
+        result = self.dq_client.run_dq(b'test data', 'csv')
 
         # Verify retry occurred
-        self.assertEqual(mock_client.request.call_count, 2)
+        self.assertEqual(mock_client.send.call_count, 2)
         self.assertIsNotNone(result)
 

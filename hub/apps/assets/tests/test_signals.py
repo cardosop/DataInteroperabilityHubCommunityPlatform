@@ -10,7 +10,7 @@ to seed assets with ``status=AssetStatus.ACTIVE`` so they continue to
 exercise the enqueue path. The DRAFT-suppression contract has its own
 dedicated suite at ``test_search_vector_signal_timing.py``.
 """
-from unittest.mock import patch, MagicMock
+from unittest.mock import patch
 
 import pytest
 from django.db.models.signals import post_save
@@ -41,30 +41,31 @@ class AssetSignalTest(TestCase):
         """Signal handler is connected to Asset post_save."""
         from hub.apps.assets.signals import rebuild_asset_search_vector
         receivers = [r[1]() for r in post_save.receivers if r[1]() is not None]
-        assert rebuild_asset_search_vector in receivers
+        self.assertIn(rebuild_asset_search_vector, receivers)
 
-    @patch("hub.apps.assets.signals.logger")
     @patch("hub.apps.search.tasks.enqueue_asset_search_vector_update")
-    def test_save_enqueues_search_vector_task(self, mock_enqueue, _mock_logger):
+    def test_save_enqueues_search_vector_task(self, mock_enqueue):
         """Asset save enqueues a search vector rebuild task."""
         tenant = self._create_tenant()
         with self.captureOnCommitCallbacks(execute=True):
             asset = self._create_active_asset(tenant, "sig-test-asset")
         mock_enqueue.assert_called_with(str(asset.pk))
 
-    @patch("hub.apps.assets.signals.logger")
     @patch(
         "hub.apps.search.tasks.enqueue_asset_search_vector_update",
         side_effect=RuntimeError("RQ unavailable"),
     )
-    def test_exception_logged_not_raised(self, _mock_enqueue, mock_logger):
+    def test_exception_logged_not_raised(self, _mock_enqueue):
         """Enqueue failure is logged at WARNING and does not propagate."""
         tenant = self._create_tenant()
         # Should NOT raise
-        with self.captureOnCommitCallbacks(execute=True):
-            self._create_active_asset(tenant, "sig-exc-test")
-        mock_logger.warning.assert_called_once()
-        assert "asset_search_vector_enqueue_failed" in str(mock_logger.warning.call_args)
+        with self.assertLogs("hub.apps.assets.signals", level="WARNING") as cm:
+            with self.captureOnCommitCallbacks(execute=True):
+                self._create_active_asset(tenant, "sig-exc-test")
+        self.assertTrue(
+            any("asset_search_vector_enqueue_failed" in r for r in cm.output),
+            f"Expected 'asset_search_vector_enqueue_failed' in WARNING log; got {cm.output}",
+        )
 
     @patch("hub.apps.search.tasks.enqueue_asset_search_vector_update")
     def test_update_triggers_signal(self, mock_enqueue):
@@ -86,9 +87,11 @@ class AssetSignalTest(TestCase):
         tenant = self._create_tenant()
         with self.captureOnCommitCallbacks(execute=True):
             asset = self._create_active_asset(tenant, "sig-both")
-        assert mock_enqueue.call_count >= 1
+        self.assertGreaterEqual(mock_enqueue.call_count, 1,
+            "ACTIVE asset create must enqueue a search vector rebuild")
         mock_enqueue.reset_mock()
         with self.captureOnCommitCallbacks(execute=True):
             asset.name = "sig-both-v2"
             asset.save()
-        assert mock_enqueue.call_count >= 1
+        self.assertGreaterEqual(mock_enqueue.call_count, 1,
+            "ACTIVE asset update must enqueue a search vector rebuild")

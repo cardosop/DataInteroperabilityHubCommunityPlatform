@@ -13,11 +13,21 @@ import pytest
 from django.test import TestCase
 
 from hub.apps.orchestration.business_rules import OrchestrationBusinessRules
-from hub.apps.orchestration.models import WorkflowInstance, WorkflowStatus, WorkflowType
+from hub.apps.orchestration.models import WorkflowDefinition, WorkflowInstance, WorkflowStatus
 from hub.apps.tenants.models import Tenant
 from hub.apps.users.models import User, UserStatus
 
 pytestmark = pytest.mark.django_db(transaction=True)
+
+
+def _make_workflow_definition():
+    """Create a minimal workflow definition for test instances to reference."""
+    uid = uuid.uuid4().hex[:8]
+    return WorkflowDefinition.objects.create(
+        name=f"test-dlq-{uid}",
+        version="1.0.0",
+        dsl_json={"version": "1.0.0", "steps": [{"name": "test_step"}]},
+    )
 
 
 class TestDLQSyncStatus(TestCase):
@@ -37,9 +47,12 @@ class TestDLQSyncStatus(TestCase):
 
     def test_failed_workflow_with_dlq_state_validates(self):
         """FAILED workflow with DLQ state_data returns structured result."""
+        wf_def = _make_workflow_definition()
         wf = WorkflowInstance.objects.create(
+            workflow_definition=wf_def,
+            workflow_name=wf_def.name,
+            workflow_version=wf_def.version,
             tenant=self.tenant,
-            workflow_type=WorkflowType.ASSET_CREATION,
             status=WorkflowStatus.FAILED,
             state_data={
                 "dlq_sync_status": "pending",
@@ -56,9 +69,12 @@ class TestDLQSyncStatus(TestCase):
 
     def test_failed_workflow_without_dlq_state_validates(self):
         """FAILED workflow without DLQ data also returns structured result."""
+        wf_def = _make_workflow_definition()
         wf = WorkflowInstance.objects.create(
+            workflow_definition=wf_def,
+            workflow_name=wf_def.name,
+            workflow_version=wf_def.version,
             tenant=self.tenant,
-            workflow_type=WorkflowType.ASSET_CREATION,
             status=WorkflowStatus.FAILED,
             state_data={},
             created_by=self.user,

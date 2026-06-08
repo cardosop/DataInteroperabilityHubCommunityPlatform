@@ -1,4 +1,6 @@
 """
+
+import uuid
 Comprehensive tests for SDK error handling.
 
 Tests network errors, API errors, retry logic, and timeouts.

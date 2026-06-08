@@ -50,6 +50,7 @@ from django.test import TestCase
 from hub.apps.assets.models import Asset, AssetStatus
 from hub.apps.audit import event_types as audit_event_types
 from hub.apps.audit.models import AuditEvent
+from hub.apps.contracts.models import Contract, ContractStatus
 from hub.apps.orchestration.models import (
     WorkflowDefinition,
     WorkflowInstance,
@@ -94,7 +95,7 @@ def _seed_asset_and_workflow(tenant, user, *, status=AssetStatus.DRAFT):
     wf_def = WorkflowDefinition.objects.create(
         name="asset_creation_test",
         version="2.0.0",
-        dsl_json={"version": "2.0.0", "steps": []},
+        dsl_json={"version": "2.0.0", "steps": [{"name": "test_step", "type": "task"}]},
         is_active=True,
         created_by=user,
     )
@@ -184,7 +185,7 @@ class IndexForSearchDegradedTest(TestCase):
         after = AuditEvent.objects.filter(
             action=audit_event_types.ASSET_SEMANTIC_DEGRADED,
             tenant=tenant,
-        ).order_by("-created_at")
+        ).order_by("-timestamp")
         assert after.count() - before == 1
         ev = after.first()
         assert ev.details_json["asset_id"] == str(asset.id)
@@ -218,10 +219,22 @@ class ActivationSemanticMappingDegradedTest(TestCase):
             compliance_status=ComplianceStatus.PASS,
             created_by=user,
         )
+        # Create an active contract — can_activate() now requires one.
+        Contract.objects.create(
+            tenant=tenant,
+            asset=asset,
+            original_spec_type="ODCS",
+            original_spec_version="3.0.2",
+            original_format="JSON",
+            original_raw='{"dataset": {"name": "test"}}',
+            status=ContractStatus.ACTIVE,
+            validation_status="VALID",
+            normalization_status="NORMALIZED_OK",
+        )
         wf_def = WorkflowDefinition.objects.create(
             name="asset_creation_test",
             version="2.0.0",
-            dsl_json={"version": "2.0.0", "steps": []},
+            dsl_json={"version": "2.0.0", "steps": [{"name": "test_step", "type": "task"}]},
             is_active=True,
             created_by=user,
         )
@@ -266,7 +279,7 @@ class ActivationSemanticMappingDegradedTest(TestCase):
         after = AuditEvent.objects.filter(
             action=audit_event_types.ASSET_SEMANTIC_DEGRADED,
             tenant=tenant,
-        ).order_by("-created_at")
+        ).order_by("-timestamp")
         assert after.count() - before == 1
         ev = after.first()
         assert ev.details_json["degraded_step"] == "activate_asset_semantic_map"

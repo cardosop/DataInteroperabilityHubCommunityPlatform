@@ -222,7 +222,7 @@ class RateLimitingValidationTest(ContractsAPITestBase):
                     response.status_code, 429, "Should return 429 when rate limit exceeded"
                 )
                 self.assertIn(
-                    "error", json.loads(response.content), "Should include error in response"
+                    "error", response.data, "Should include error in response"
                 )
 
     def test_rate_limit_reset_behavior(self):

@@ -1,4 +1,6 @@
 """
+
+import uuid
 Minimal test to debug timeout issues
 """
 import json
@@ -10,6 +12,7 @@ from rest_framework import status
 from django.urls import reverse
 from hub.apps.tenants.models import Tenant, TenantStatus, KYCStatus
 from hub.apps.testing.billing_support import ensure_tenant_has_active_subscription
+from hub.apps.testing.role_support import ensure_user_has_data_provider_role
 from hub.apps.users.models import User, Role, UserRole
 from hub.apps.contracts.models import Contract, OriginalFormat
 from hub.apps.assets.models import Asset, AssetStatus
@@ -75,6 +78,7 @@ class MinimalTimeoutTest(TestCase):
         print(f"[{time.time()}] Authenticating client...")
         start = time.time()
         self.client.force_authenticate(user=self.user)
+        ensure_user_has_data_provider_role(self.user)
         print(f"[{time.time()}] Client authenticated in {time.time() - start:.3f}s")
 
         print(f"[{time.time()}] setUp complete")

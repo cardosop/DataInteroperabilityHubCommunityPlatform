@@ -228,21 +228,22 @@ class LineageEventPublishingE2ETest(ContractsAPITestBase):
 
         response = self.client.get(f"/api/v1/contracts/{self.test_contract.id}/impact-analysis/")
 
-        # Impact analysis may return 200 or 404 depending on dependencies
-        # But if it succeeds, it should publish an event
-        if response.status_code == status.HTTP_200_OK:
-            # Verify lineage.updated event was published
-            event_count_after = Event.objects.filter(event_type="lineage.updated").count()
-            self.assertGreaterEqual(event_count_after, event_count_before)
+        # The contract is set up with valid lineage data — the endpoint must return 200.
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
 
-            # Check if any event was published
-            event = (
-                Event.objects.filter(event_type="lineage.updated").order_by("-timestamp").first()
-            )
-            if event:
-                self.assertEqual(event.data["contract_id"], str(self.test_contract.id))
-                self.assertEqual(event.data["lineage_type"], "impact_analysis")
-                self.assertEqual(event.source_service, "lineage_service")
+        # Verify lineage.updated event was published
+        event_count_after = Event.objects.filter(event_type="lineage.updated").count()
+        self.assertGreaterEqual(event_count_after, event_count_before)
+
+        event = (
+            Event.objects.filter(event_type="lineage.updated").order_by("-timestamp").first()
+        )
+        self.assertIsNotNone(
+            event, "Impact analysis endpoint must publish a lineage.updated event"
+        )
+        self.assertEqual(event.data["contract_id"], str(self.test_contract.id))
+        self.assertEqual(event.data["lineage_type"], "impact_analysis")
+        self.assertEqual(event.source_service, "lineage_service")
 
     def test_e2e_multiple_lineage_operations_publish_multiple_events(self):
         """Test that multiple lineage API calls publish multiple events."""
@@ -290,11 +291,13 @@ class LineageEventPublishingE2ETest(ContractsAPITestBase):
         event_count_after = Event.objects.filter(event_type="lineage.updated").count()
         self.assertEqual(event_count_after, event_count_before)
 
-    def test_e2e_lineage_event_publishing_failure_does_not_break_api(self):
-        """Test that event publishing failures don't break API operations."""
-        # This test verifies that if event publishing fails, the API still works
-        # The actual failure handling is tested in LineageService tests
-        # Here we just verify the API endpoint still returns data
+    def test_e2e_lineage_visualization_endpoint_returns_200(self):
+        """Test that the lineage visualization API endpoint returns data successfully.
+
+        Renamed from test_e2e_lineage_event_publishing_failure_does_not_break_api
+        because this test only exercises the happy path — it does not simulate
+        a publishing failure.
+        """
 
         response = self.client.get(f"/api/v1/contracts/{self.test_contract.id}/lineage/contracts/")
 

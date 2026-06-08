@@ -174,3 +174,16 @@ export const MARKETPLACE_PUBLISH_KYC_EN: Record<string, string> = {
   'marketplace.publish.kyc_blocked.aria_label':
     'KYC verification required to publish listing',
 };
+
+/**
+ * Aggregated English locale object merging all per-feature *_EN
+ * constants into a single lookup. Consumers that need the full
+ * bundle can import this one constant instead of piecing together
+ * individual exports.
+ */
+export const ALL_I18N_EN: Record<string, string> = {
+  ...LINEAGE_TIMETRAVEL_EN,
+  ...ASSETS_SCHEMA_DRIFT_EN,
+  ...ASSETS_TYPE_PICKER_EN,
+  ...MARKETPLACE_PUBLISH_KYC_EN,
+};

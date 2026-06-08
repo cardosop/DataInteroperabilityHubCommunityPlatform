@@ -14,6 +14,7 @@ from unittest.mock import patch
 
 from django.test import TestCase
 
+from hub.apps.contracts.models import SecurityAuditLog
 from hub.apps.contracts.odps_security_logging import (
     DEFAULT_ALERT_RULES,
     RefResolutionAuditLog,
@@ -114,6 +115,12 @@ class ODPSecurityLoggingTest(TestCase):
             self.assertIsInstance(violation_log, SecurityViolationLog)
             self.assertEqual(violation_log.event_type, SecurityEventType.PATH_TRAVERSAL.value)
 
+            # Also verify DB persistence happened (not just the mock)
+            self.assertTrue(
+                SecurityAuditLog.objects.filter(event_type=SecurityEventType.PATH_TRAVERSAL.value).exists(),
+                "Expected security event to be persisted to SecurityAuditLog",
+            )
+
     def test_log_security_violation_url_denied(self):
         """Test logging a URL denied security violation"""
         with patch.object(self.security_logger.logger, "warning") as mock_warning:
@@ -133,6 +140,12 @@ class ODPSecurityLoggingTest(TestCase):
             self.assertEqual(log_dict["attempted_url"], "https://malicious.com/schema.yaml")
             self.assertEqual(log_dict["url_pattern"], "https://*.malicious.com")
 
+            # Also verify DB persistence happened (not just the mock)
+            self.assertTrue(
+                SecurityAuditLog.objects.filter(event_type=SecurityEventType.URL_DENIED.value).exists(),
+                "Expected security event to be persisted to SecurityAuditLog",
+            )
+
     def test_log_security_violation_critical_severity(self):
         """Test that critical severity logs at error level"""
         with patch.object(self.security_logger.logger, "error") as mock_error:
@@ -146,6 +159,12 @@ class ODPSecurityLoggingTest(TestCase):
             mock_error.assert_called_once()
             self.assertEqual(mock_error.call_args[0][0], "odps_security_violation")
 
+            # Also verify DB persistence happened (not just the mock)
+            self.assertTrue(
+                SecurityAuditLog.objects.filter(event_type=SecurityEventType.PATH_TRAVERSAL.value).exists(),
+                "Expected security event to be persisted to SecurityAuditLog",
+            )
+
     def test_log_security_violation_low_severity(self):
         """Test that low severity logs at info level"""
         with patch.object(self.security_logger.logger, "info") as mock_info:
@@ -158,6 +177,12 @@ class ODPSecurityLoggingTest(TestCase):
 
             mock_info.assert_called_once()
             self.assertEqual(mock_info.call_args[0][0], "odps_security_violation")
+
+            # Also verify DB persistence happened (not just the mock)
+            self.assertTrue(
+                SecurityAuditLog.objects.filter(event_type=SecurityEventType.INVALID_URL.value).exists(),
+                "Expected security event to be persisted to SecurityAuditLog",
+            )
 
     def test_ref_resolution_audit_log_structure(self):
         """Test that audit trail logs have correct structure"""
@@ -219,6 +244,12 @@ class ODPSecurityLoggingTest(TestCase):
             # Verify returned log object
             self.assertIsInstance(audit_log, RefResolutionAuditLog)
 
+            # Also verify DB persistence happened (not just the mock)
+            self.assertTrue(
+                SecurityAuditLog.objects.filter(event_type="REF_RESOLUTION_AUDIT").exists(),
+                "Expected security audit event to be persisted to SecurityAuditLog",
+            )
+
     def test_log_ref_resolution_audit_failure(self):
         """Test logging a failed ref resolution audit"""
         with patch.object(self.security_logger.logger, "warning") as mock_warning:
@@ -239,6 +270,12 @@ class ODPSecurityLoggingTest(TestCase):
             self.assertEqual(log_dict["error_type"], "FileNotFoundError")
             self.assertEqual(log_dict["error_message"], "File not found: ./schema.yaml")
 
+            # Also verify DB persistence happened (not just the mock)
+            self.assertTrue(
+                SecurityAuditLog.objects.filter(event_type="REF_RESOLUTION_AUDIT").exists(),
+                "Expected security audit event to be persisted to SecurityAuditLog",
+            )
+
     def test_log_ref_resolution_audit_with_security_violations(self):
         """Test logging audit trail with security violations"""
         with patch.object(self.security_logger.logger, "warning") as mock_warning:
@@ -258,6 +295,12 @@ class ODPSecurityLoggingTest(TestCase):
             self.assertFalse(log_dict["security_checks_passed"])
             self.assertIn("security_violations", log_dict)
             self.assertEqual(log_dict["security_violations"], ["PATH_TRAVERSAL"])
+
+            # Also verify DB persistence happened (not just the mock)
+            self.assertTrue(
+                SecurityAuditLog.objects.filter(event_type="REF_RESOLUTION_AUDIT").exists(),
+                "Expected security audit event to be persisted to SecurityAuditLog",
+            )
 
     def test_security_alert_rule_matches_event_type(self):
         """Test that alert rule matches events by event type"""
@@ -355,6 +398,13 @@ class ODPSecurityLoggingTest(TestCase):
 
                 self.assertEqual(violation_log.event_type, event_type.value)
 
+        # Also verify DB persistence happened (not just the mock)
+        for event_type in SecurityEventType:
+            self.assertTrue(
+                SecurityAuditLog.objects.filter(event_type=event_type.value).exists(),
+                f"No SecurityAuditLog entry for event type {event_type.value}",
+            )
+
     def test_security_violation_log_all_severities(self):
         """Test that all security severity levels can be logged"""
         severity_log_methods = {
@@ -363,6 +413,11 @@ class ODPSecurityLoggingTest(TestCase):
             SecuritySeverity.MEDIUM: "warning",
             SecuritySeverity.LOW: "info",
         }
+
+        # Count before test to measure delta (avoid cross-test contamination).
+        before = SecurityAuditLog.objects.filter(
+            event_type=SecurityEventType.PATH_TRAVERSAL.value
+        ).count()
 
         for severity, expected_method in severity_log_methods.items():
             with patch.object(self.security_logger.logger, expected_method) as mock_log:
@@ -375,9 +430,24 @@ class ODPSecurityLoggingTest(TestCase):
 
                 mock_log.assert_called_once()
 
+        # Also verify DB persistence happened (not just the mock).
+        severity_count = len(list(SecuritySeverity))
+        after = SecurityAuditLog.objects.filter(
+            event_type=SecurityEventType.PATH_TRAVERSAL.value
+        ).count()
+        self.assertGreaterEqual(
+            after - before, severity_count,
+            f"Expected at least {severity_count} new PATH_TRAVERSAL entries",
+        )
+
     def test_ref_resolution_audit_all_ref_types(self):
         """Test that audit logs work for all ref types"""
         ref_types = ["internal", "local", "external"]
+
+        # Count entries before test to measure delta (avoid cross-test contamination).
+        before_count = SecurityAuditLog.objects.filter(
+            event_type="REF_RESOLUTION_AUDIT"
+        ).count()
 
         for ref_type in ref_types:
             with patch.object(self.security_logger.logger, "info"):
@@ -390,6 +460,16 @@ class ODPSecurityLoggingTest(TestCase):
                 )
 
                 self.assertEqual(audit_log.ref_type, ref_type)
+
+        # Verify at least the expected number of new entries were persisted
+        after_count = SecurityAuditLog.objects.filter(
+            event_type="REF_RESOLUTION_AUDIT"
+        ).count()
+        self.assertGreaterEqual(
+            after_count - before_count,
+            len(ref_types),
+            f"Expected at least {len(ref_types)} new REF_RESOLUTION_AUDIT entries",
+        )
 
     def test_audit_log_to_dict_removes_none(self):
         """Test that audit log to_dict() removes None values"""

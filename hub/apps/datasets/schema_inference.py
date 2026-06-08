@@ -443,19 +443,29 @@ def infer_type_from_values(values: List[Any]) -> Dict[str, Any]:
     }
 
 
-def infer_schema_from_csv(file_content: bytes, sample_size: int = DEFAULT_SAMPLE_SIZE) -> Dict[str, Any]:
+def infer_schema_from_csv(
+    file_content: bytes,
+    sample_size: int = DEFAULT_SAMPLE_SIZE,
+    encoding: str | None = None,
+) -> Dict[str, Any]:
     """
     Infer schema from CSV file.
-    
+
     Args:
         file_content: CSV file content as bytes
         sample_size: Number of rows to sample (default: 10,000)
-    
+        encoding: Optional pre-detected encoding. When provided, skips
+            the internal detection pass (caller has already gated the
+            encoding). When None, falls back to the legacy try-each
+            detector for backward-compat with callers not routed
+            through ``infer_schema_with_encoding_gate``.
+
     Returns:
         Dictionary with inferred schema
     """
     # Detect encoding and delimiter
-    encoding = detect_encoding(file_content)
+    if encoding is None:
+        encoding = detect_encoding(file_content)
     delimiter = detect_delimiter(file_content)
     
     # Decode content
@@ -561,18 +571,27 @@ def infer_schema_from_csv(file_content: bytes, sample_size: int = DEFAULT_SAMPLE
     }
 
 
-def infer_schema_from_json(file_content: bytes, sample_size: int = DEFAULT_SAMPLE_SIZE) -> Dict[str, Any]:
+def infer_schema_from_json(
+    file_content: bytes,
+    sample_size: int = DEFAULT_SAMPLE_SIZE,
+    encoding: str | None = None,
+) -> Dict[str, Any]:
     """
     Infer schema from JSON file (JSON Lines / NDJSON or single object/array).
-    
+
     Args:
         file_content: JSON file content as bytes
         sample_size: Number of objects to sample (default: 10,000)
-    
+        encoding: Optional pre-detected encoding. When provided, uses
+            this codec instead of the hardcoded ``utf-8`` default.
+            When None, defaults to ``utf-8`` with ``errors='ignore'``.
+
     Returns:
         Dictionary with inferred schema
     """
-    text_content = file_content.decode('utf-8', errors='ignore')
+    text_content = file_content.decode(
+        encoding or "utf-8", errors="ignore"
+    )
     
     # Try JSON Lines format (one JSON object per line)
     objects = []
@@ -702,7 +721,8 @@ def infer_schema_from_json(file_content: bytes, sample_size: int = DEFAULT_SAMPL
         'inference_metadata': {
             'sample_size': len(objects),
             'strategy': 'first_n_objects',
-            'format': 'JSON'
+            'format': 'JSON',
+            'encoding': encoding or 'utf-8',
         }
     }
 
@@ -997,4 +1017,60 @@ def extract_sample_data(file_content: bytes, format: str, sample_size: int = DEF
     
     else:
         raise ValueError(f"Unsupported format: {format}")
+
+
+def infer_schema_with_encoding_gate(
+    file_content: bytes,
+    file_format: str,
+) -> Dict[str, Any]:
+    """Phase 260.5.D.R1 — canonical schema inference entry-point with
+    encoding gate.
+
+    All dataset-creation AND refresh paths route through this helper
+    so that every text-format inference pass benefits from the same
+    :func:`hub.apps.datasets.encoding.validate_text_encoding` gate
+    that was previously applied only on the create path.
+
+    Args:
+        file_content: Raw file bytes.
+        file_format: One of ``"CSV"``, ``"JSON"``, ``"PARQUET"``.
+
+    Returns:
+        Inferred schema dict (the same shape ``infer_schema_from_csv`` /
+        ``infer_schema_from_json`` produce).
+
+    Raises:
+        ValidationError (from ``hub.apps.core.services.base``):
+            * ``code='FILE_ENCODING_UNSUPPORTED'`` — encoding gate
+              rejects the file (low confidence, BOM-less UTF-16, or
+              undetectable charset).
+            * ``code='UNSUPPORTED_FILE_FORMAT'`` — *file_format* is
+              not one of ``CSV / JSON / PARQUET``.
+    """
+    from hub.apps.core.services.base import ValidationError
+
+    fmt = (file_format or "").upper()
+
+    # Text formats: gate encoding before inference.
+    if fmt in ("CSV", "JSON"):
+        from hub.apps.datasets.encoding import validate_text_encoding
+
+        detection = validate_text_encoding(file_content, fmt)
+        gated_encoding = detection.encoding
+
+        if fmt == "CSV":
+            return infer_schema_from_csv(file_content, encoding=gated_encoding)
+        return infer_schema_from_json(file_content, encoding=gated_encoding)
+
+    # Parquet has its own magic-byte validation in infer_schema_from_parquet.
+    if fmt == "PARQUET":
+        return infer_schema_from_parquet(file_content)
+
+    raise ValidationError(
+        f"Unsupported file format: {file_format}. "
+        f"Supported formats: CSV, JSON, PARQUET.",
+        code="UNSUPPORTED_FILE_FORMAT",
+        details={"file_format": file_format},
+        http_status=400,
+    )
 

@@ -59,6 +59,7 @@ from hub.apps.contracts.models import (
 from hub.apps.contracts.services import ContractService, ODPSService
 from hub.apps.tenants.models import Tenant
 from hub.apps.testing.billing_support import ensure_e2e_tenant_ready
+from hub.apps.testing.role_support import ensure_user_has_data_provider_role
 from hub.apps.users.models import UserStatus
 from hub.apps.webhooks.models import (
     DeliveryStatus,
@@ -1211,6 +1212,7 @@ class GraphQLComprehensiveTest(TransactionTestCase):
         # Set up API client with authentication
         self.client = APIClient()
         self.client.force_authenticate(user=self.user)
+        ensure_user_has_data_provider_role(self.user)
 
         # Initialize services
         self.contract_service = ContractService(tenant_id=self.tenant_id, user_id=self.user_id)
@@ -2220,6 +2222,7 @@ class CrossInterfaceConsistencyTest(TransactionTestCase):
         # Set up API client
         self.api_client = APIClient()
         self.api_client.force_authenticate(user=self.user)
+        ensure_user_has_data_provider_role(self.user)
 
         # Sample contracts
         self.odcs_raw = json.dumps(

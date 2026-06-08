@@ -73,6 +73,7 @@ def _ensure_default_plans():
     SELECT ... first() queries that block on AccessShareLock contention).
     """
     from django.db import transaction as db_transaction
+    from django.db.utils import IntegrityError, OperationalError
 
     plans = [
         {"slug": "free", "name": "Free Plan", "tier": "FREE"},
@@ -90,7 +91,9 @@ def _ensure_default_plans():
                         "is_active": True,
                     },
                 )
-        except Exception:
+        except (IntegrityError, OperationalError):
+            # Plan already exists (race between parallel tests) or
+            # transient DB error — safe to ignore.
             pass
 
 
@@ -115,7 +118,7 @@ class RegisterEndpointTest(TestCase):
         """Test successful user registration returns 201."""
         response = self.client.post(
             "/api/v1/auth/register/",
-            {"email": "newuser@example.com", "password": "SecurePass123", "name": "New User"},
+            {"email": "newuser@example.com", "password": "SecureP@ss123!", "name": "New User"},
             format="json",
         )
 
@@ -125,7 +128,7 @@ class RegisterEndpointTest(TestCase):
         """Test successful user registration returns id."""
         response = self.client.post(
             "/api/v1/auth/register/",
-            {"email": "newuser@example.com", "password": "SecurePass123", "name": "New User"},
+            {"email": "newuser@example.com", "password": "SecureP@ss123!", "name": "New User"},
             format="json",
         )
 
@@ -135,7 +138,7 @@ class RegisterEndpointTest(TestCase):
         """Test successful user registration returns email."""
         response = self.client.post(
             "/api/v1/auth/register/",
-            {"email": "newuser@example.com", "password": "SecurePass123", "name": "New User"},
+            {"email": "newuser@example.com", "password": "SecureP@ss123!", "name": "New User"},
             format="json",
         )
 
@@ -145,7 +148,7 @@ class RegisterEndpointTest(TestCase):
         """Test successful user registration returns name."""
         response = self.client.post(
             "/api/v1/auth/register/",
-            {"email": "newuser@example.com", "password": "SecurePass123", "name": "New User"},
+            {"email": "newuser@example.com", "password": "SecureP@ss123!", "name": "New User"},
             format="json",
         )
 
@@ -155,7 +158,7 @@ class RegisterEndpointTest(TestCase):
         """Test successful user registration returns created_at."""
         response = self.client.post(
             "/api/v1/auth/register/",
-            {"email": "newuser@example.com", "password": "SecurePass123", "name": "New User"},
+            {"email": "newuser@example.com", "password": "SecureP@ss123!", "name": "New User"},
             format="json",
         )
 
@@ -165,7 +168,7 @@ class RegisterEndpointTest(TestCase):
         """Test successful user registration creates user with display_name."""
         self.client.post(
             "/api/v1/auth/register/",
-            {"email": "newuser@example.com", "password": "SecurePass123", "name": "New User"},
+            {"email": "newuser@example.com", "password": "SecureP@ss123!", "name": "New User"},
             format="json",
         )
 
@@ -176,7 +179,7 @@ class RegisterEndpointTest(TestCase):
         """Test successful user registration creates user with ACTIVE status."""
         self.client.post(
             "/api/v1/auth/register/",
-            {"email": "newuser@example.com", "password": "SecurePass123", "name": "New User"},
+            {"email": "newuser@example.com", "password": "SecureP@ss123!", "name": "New User"},
             format="json",
         )
 
@@ -187,12 +190,12 @@ class RegisterEndpointTest(TestCase):
         """Test successful user registration creates user with password."""
         self.client.post(
             "/api/v1/auth/register/",
-            {"email": "newuser@example.com", "password": "SecurePass123", "name": "New User"},
+            {"email": "newuser@example.com", "password": "SecureP@ss123!", "name": "New User"},
             format="json",
         )
 
         user = User.objects.get(email="newuser@example.com")
-        self.assertTrue(user.check_password("SecurePass123"))
+        self.assertTrue(user.check_password("SecureP@ss123!"))
 
     def test_register_with_tenant_returns_201(self):
         """Test registration with tenant returns 201."""
@@ -200,7 +203,7 @@ class RegisterEndpointTest(TestCase):
             "/api/v1/auth/register/",
             {
                 "email": "tenantuser@example.com",
-                "password": "SecurePass123",
+                "password": "SecureP@ss123!",
                 "name": "Tenant User",
                 "tenant_id": str(self.tenant.id),
             },
@@ -215,7 +218,7 @@ class RegisterEndpointTest(TestCase):
             "/api/v1/auth/register/",
             {
                 "email": "tenantuser@example.com",
-                "password": "SecurePass123",
+                "password": "SecureP@ss123!",
                 "name": "Tenant User",
                 "tenant_id": str(self.tenant.id),
             },
@@ -230,7 +233,7 @@ class RegisterEndpointTest(TestCase):
             "/api/v1/auth/register/",
             {
                 "email": "tenantuser@example.com",
-                "password": "SecurePass123",
+                "password": "SecureP@ss123!",
                 "name": "Tenant User",
                 "tenant_id": str(self.tenant.id),
             },
@@ -251,7 +254,7 @@ class RegisterEndpointTest(TestCase):
         # Try to register with the SAME email
         response = self.client.post(
             "/api/v1/auth/register/",
-            {"email": dup_email, "password": "SecurePass123", "name": "New User"},
+            {"email": dup_email, "password": "SecureP@ss123!", "name": "New User"},
             format="json",
         )
 
@@ -268,7 +271,7 @@ class RegisterEndpointTest(TestCase):
         # Try to register with the SAME email
         response = self.client.post(
             "/api/v1/auth/register/",
-            {"email": dup_email, "password": "SecurePass123", "name": "New User"},
+            {"email": dup_email, "password": "SecureP@ss123!", "name": "New User"},
             format="json",
         )
 
@@ -329,7 +332,7 @@ class RegisterEndpointTest(TestCase):
         """Test registration with invalid email returns 400."""
         response = self.client.post(
             "/api/v1/auth/register/",
-            {"email": "not-an-email", "password": "SecurePass123", "name": "User"},
+            {"email": "not-an-email", "password": "SecureP@ss123!", "name": "User"},
             format="json",
         )
 
@@ -339,7 +342,7 @@ class RegisterEndpointTest(TestCase):
         """Test registration with invalid email has email error."""
         response = self.client.post(
             "/api/v1/auth/register/",
-            {"email": "not-an-email", "password": "SecurePass123", "name": "User"},
+            {"email": "not-an-email", "password": "SecureP@ss123!", "name": "User"},
             format="json",
         )
 
@@ -355,7 +358,7 @@ class RegisterEndpointTest(TestCase):
             "/api/v1/auth/register/",
             {
                 "email": "user@example.com",
-                "password": "SecurePass123",
+                "password": "SecureP@ss123!",
                 "name": "User",
                 "tenant_id": str(invalid_tenant_id),
             },
@@ -374,7 +377,7 @@ class RegisterEndpointTest(TestCase):
             "/api/v1/auth/register/",
             {
                 "email": "user@example.com",
-                "password": "SecurePass123",
+                "password": "SecureP@ss123!",
                 "name": "User",
                 "tenant_id": str(invalid_tenant_id),
             },
@@ -396,7 +399,7 @@ class RegisterEndpointTest(TestCase):
             "/api/v1/auth/register/",
             {
                 "email": "user@example.com",
-                "password": "SecurePass123",
+                "password": "SecureP@ss123!",
                 "name": "User",
                 "tenant_id": str(inactive_tenant.id),
             },
@@ -418,7 +421,7 @@ class RegisterEndpointTest(TestCase):
             "/api/v1/auth/register/",
             {
                 "email": "user@example.com",
-                "password": "SecurePass123",
+                "password": "SecureP@ss123!",
                 "name": "User",
                 "tenant_id": str(inactive_tenant.id),
             },
@@ -430,7 +433,7 @@ class RegisterEndpointTest(TestCase):
     def test_register_missing_email_returns_400(self):
         """Test registration with missing email returns 400."""
         response = self.client.post(
-            "/api/v1/auth/register/", {"password": "SecurePass123", "name": "User"}, format="json"
+            "/api/v1/auth/register/", {"password": "SecureP@ss123!", "name": "User"}, format="json"
         )
 
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
@@ -447,7 +450,7 @@ class RegisterEndpointTest(TestCase):
         """Test registration with missing name returns 400."""
         response = self.client.post(
             "/api/v1/auth/register/",
-            {"email": "user@example.com", "password": "SecurePass123"},
+            {"email": "user@example.com", "password": "SecureP@ss123!"},
             format="json",
         )
 
@@ -485,7 +488,7 @@ class RegisterPersonalTenantTest(TestCase):
         email = "personal@example.com"
         response = self.client.post(
             "/api/v1/auth/register/",
-            {"email": email, "password": "SecurePass123", "name": "Personal User"},
+            {"email": email, "password": "SecureP@ss123!", "name": "Personal User"},
             format="json",
         )
 
@@ -500,7 +503,7 @@ class RegisterPersonalTenantTest(TestCase):
         email = "roles@example.com"
         self.client.post(
             "/api/v1/auth/register/",
-            {"email": email, "password": "SecurePass123", "name": "Roles User"},
+            {"email": email, "password": "SecureP@ss123!", "name": "Roles User"},
             format="json",
         )
 
@@ -513,7 +516,7 @@ class RegisterPersonalTenantTest(TestCase):
         """Registration without tenant_id returns tenant_id (personal tenant) in response."""
         response = self.client.post(
             "/api/v1/auth/register/",
-            {"email": "response@example.com", "password": "SecurePass123", "name": "Response User"},
+            {"email": "response@example.com", "password": "SecureP@ss123!", "name": "Response User"},
             format="json",
         )
 
@@ -526,7 +529,7 @@ class RegisterPersonalTenantTest(TestCase):
         email = "freeplan@example.com"
         self.client.post(
             "/api/v1/auth/register/",
-            {"email": email, "password": "SecurePass123", "name": "Free Plan User"},
+            {"email": email, "password": "SecureP@ss123!", "name": "Free Plan User"},
             format="json",
         )
 
@@ -538,7 +541,7 @@ class RegisterPersonalTenantTest(TestCase):
         email = "config@example.com"
         self.client.post(
             "/api/v1/auth/register/",
-            {"email": email, "password": "SecurePass123", "name": "Config User"},
+            {"email": email, "password": "SecureP@ss123!", "name": "Config User"},
             format="json",
         )
 
@@ -552,7 +555,7 @@ class RegisterPersonalTenantTest(TestCase):
         email = "sub@example.com"
         self.client.post(
             "/api/v1/auth/register/",
-            {"email": email, "password": "SecurePass123", "name": "Sub User"},
+            {"email": email, "password": "SecureP@ss123!", "name": "Sub User"},
             format="json",
         )
 
@@ -566,7 +569,7 @@ class RegisterPersonalTenantTest(TestCase):
             "/api/v1/auth/register/",
             {
                 "email": "tenantuser@example.com",
-                "password": "SecurePass123",
+                "password": "SecureP@ss123!",
                 "name": "Tenant User",
                 "tenant_id": str(self.tenant.id),
             },
@@ -585,7 +588,7 @@ class RegisterPersonalTenantTest(TestCase):
 
         response = self.client.post(
             "/api/v1/auth/register/",
-            {"email": email, "password": "SecurePass123", "name": "Event User"},
+            {"email": email, "password": "SecureP@ss123!", "name": "Event User"},
             format="json",
         )
 
@@ -610,7 +613,7 @@ class RegisterPersonalTenantTest(TestCase):
         """When PERSONAL_TENANT_ON_REGISTRATION=False, user gets tenant=None (legacy)."""
         response = self.client.post(
             "/api/v1/auth/register/",
-            {"email": "legacy@example.com", "password": "SecurePass123", "name": "Legacy User"},
+            {"email": "legacy@example.com", "password": "SecureP@ss123!", "name": "Legacy User"},
             format="json",
         )
 
@@ -650,7 +653,7 @@ class RegisterPlanNotFoundTest(TestCase):
     def test_register_without_free_plan_returns_503(self):
         response = self.client.post(
             "/api/v1/auth/register/",
-            {"email": "nofreeplan@example.com", "password": "SecurePass123", "name": "No Plan"},
+            {"email": "nofreeplan@example.com", "password": "SecureP@ss123!", "name": "No Plan"},
             format="json",
         )
         self.assertEqual(response.status_code, 503)
@@ -658,7 +661,7 @@ class RegisterPlanNotFoundTest(TestCase):
     def test_register_without_free_plan_returns_service_unavailable_code(self):
         response = self.client.post(
             "/api/v1/auth/register/",
-            {"email": "nofreeplan2@example.com", "password": "SecurePass123", "name": "No Plan"},
+            {"email": "nofreeplan2@example.com", "password": "SecureP@ss123!", "name": "No Plan"},
             format="json",
         )
         # api_error_response returns flat {"code": ..., "detail": ..., "details": {...}}
@@ -667,7 +670,7 @@ class RegisterPlanNotFoundTest(TestCase):
     def test_register_without_free_plan_does_not_leak_operator_hint(self):
         response = self.client.post(
             "/api/v1/auth/register/",
-            {"email": "nofreeplan3@example.com", "password": "SecurePass123", "name": "No Plan"},
+            {"email": "nofreeplan3@example.com", "password": "SecureP@ss123!", "name": "No Plan"},
             format="json",
         )
         body = str(response.data)
@@ -677,7 +680,7 @@ class RegisterPlanNotFoundTest(TestCase):
     def test_register_without_free_plan_does_not_create_user(self):
         self.client.post(
             "/api/v1/auth/register/",
-            {"email": "nofreeplan4@example.com", "password": "SecurePass123", "name": "No Plan"},
+            {"email": "nofreeplan4@example.com", "password": "SecureP@ss123!", "name": "No Plan"},
             format="json",
         )
         self.assertFalse(User.objects.filter(email="nofreeplan4@example.com").exists())
@@ -691,19 +694,13 @@ class RegisterEventPublishingTest(TestCase):
     """
     Test user registration event publishing using real EventPublisher.
 
-    Uses TransactionTestCase to keep database connections open for event publishing,
-    but overrides _fixture_teardown to skip database flush which causes timeouts and
-    foreign key constraint issues. Uses database transactions for test isolation.
+    Uses TestCase with standard transaction isolation.  Event publishing
+    runs synchronously in tests (EVENT_BUS_FORCE_SYNC_PERSISTENCE=True),
+    so no special connection management is needed.
     """
-
-    # Disable automatic database flush to avoid foreign key constraint issues and timeouts
-    # TransactionTestCase will still rollback transactions, but won't flush tables
-    reset_sequences = False
-    serialized_rollback = False
 
     def setUp(self):
         """Set up test fixtures"""
-        super().setUp()
         self.client = APIClient()
         _ensure_default_plans()
 
@@ -715,22 +712,6 @@ class RegisterEventPublishingTest(TestCase):
             status="ACTIVE",
             kyc_status="UNVERIFIED",
         )
-
-    @classmethod
-    def _fixture_teardown(cls):
-        """
-        Override to skip database flush for event publishing tests.
-
-        ROOT CAUSE: TransactionTestCase tries to flush the database between tests, but this:
-        1. Causes timeouts (10+ minutes) due to foreign key constraint handling
-        2. Can hang indefinitely if there are database locks
-        3. Is unnecessary since transaction rollback provides isolation
-
-        SOLUTION: Skip database flush - transactions are rolled back which provides isolation
-        without the performance penalty and timeout risk.
-        """
-        # Don't flush - transactions are rolled back which provides isolation
-        pass
 
     def test_register_publishes_event(self):
         """
@@ -746,7 +727,7 @@ class RegisterEventPublishingTest(TestCase):
             "/api/v1/auth/register/",
             {
                 "email": email,
-                "password": "SecurePass123",
+                "password": "SecureP@ss123!",
                 "name": "Event User",
                 "tenant_id": str(self.tenant.id),
             },
@@ -803,7 +784,7 @@ class RegisterEventPublishingTest(TestCase):
             "/api/v1/auth/register/",
             {
                 "email": email,
-                "password": "SecurePass123",
+                "password": "SecureP@ss123!",
                 "name": "Email User",
                 "tenant_id": str(self.tenant.id),
             },
@@ -832,7 +813,7 @@ class RegisterEventPublishingTest(TestCase):
                 j for j in jobs if "welcome" in str(j).lower() or "email" in str(j).lower()
             ]
             # At least one email-related job should be in queue
-            self.assertGreaterEqual(len(welcome_email_jobs), 0)  # May be 0 if already processed
+            self.assertGreater(len(welcome_email_jobs), 0)
 
 
 class MeEndpointTest(TestCase):
@@ -1097,7 +1078,7 @@ class RegisterMeSecurityTest(TestCase):
             "/api/v1/auth/register/",
             {
                 "email": "user'; DROP TABLE users; --@example.com",
-                "password": "SecurePass123",
+                "password": "SecureP@ss123!",
                 "name": "User",
             },
             format="json",
@@ -1117,7 +1098,7 @@ class RegisterMeSecurityTest(TestCase):
             "/api/v1/auth/register/",
             {
                 "email": "xss@example.com",
-                "password": "SecurePass123",
+                "password": "SecureP@ss123!",
                 "name": "<script>alert('XSS')</script>",
             },
             format="json",
@@ -1149,23 +1130,22 @@ class RegisterMeSecurityTest(TestCase):
         self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
 
     def test_register_rate_limiting(self):
-        """Test rate limiting on register endpoint"""
-        # Make multiple rapid requests
-        for i in range(15):
-            response = self.client.post(
-                "/api/v1/auth/register/",
-                {"email": f"user{i}@example.com", "password": "SecurePass123", "name": f"User {i}"},
-                format="json",
-            )
+        """Test rate limiting on register endpoint.
 
-        # At least one should be rate limited (if rate limiting is enabled)
-        # Note: Rate limiting is handled by middleware, so this test may pass
-        # even if rate limiting is disabled in test settings
-        pass  # Rate limiting test would need middleware configuration
+        Rate limiting on the register endpoint is handled by middleware
+        (RateLimitMiddleware), which is disabled in test settings
+        (RATE_LIMIT_ENABLED=False).  A proper rate-limiting integration
+        test should use @override_settings(RATE_LIMIT_ENABLED=True) and
+        verify 429 responses after exceeding the configured threshold.
+        """
+        # Rate limiting is tested at the middleware level in
+        # hub/apps/rate_limiting/tests/ — not here.
+        self.skipTest("Rate limiting disabled in test settings")
+
 
 
 class RegisterMePerformanceTest(TestCase):
-    """Performance tests for register and me endpoints"""
+    """Performance tests for register and me endpoints."""
 
     def setUp(self):
         """Set up test fixtures"""
@@ -1180,11 +1160,12 @@ class RegisterMePerformanceTest(TestCase):
         """Test register endpoint performance"""
         import time
 
+        perf_email = f"perf-{uuid.uuid4().hex[:8]}@example.com"
         start_time = time.time()
 
         response = self.client.post(
             "/api/v1/auth/register/",
-            {"email": "perf@example.com", "password": "SecurePass123", "name": "Performance User"},
+            {"email": perf_email, "password": "SecureP@ss123!", "name": "Performance User"},
             format="json",
         )
 

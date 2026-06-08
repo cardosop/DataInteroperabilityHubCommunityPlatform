@@ -208,6 +208,61 @@ def migrate_hubcontract_v1_to_v2(hub_contract_v1: Dict[str, Any]) -> Tuple[Dict[
     return hub_contract_v2, warnings
 
 
+def migrate_hubcontract_v0_to_v1(hub_contract_v0):
+    """
+    Migrate HubContract from pre-v1 to v1.0.0 format.
+
+    Handles migration of pre-v1 contracts to v1 format,
+    adding required sections and normalizing the structure.
+
+    Args:
+        hub_contract_v0: HubContract pre-v1.0.0 JSON
+
+    Returns:
+        Tuple of (hub_contract_v1, warnings)
+    """
+    warnings = []
+    hub_contract_v1 = hub_contract_v0.copy()
+
+    # Set to v1
+    hub_contract_v1['hub_contract_version'] = 1
+
+    # Remove legacy 'version' field if present
+    if 'version' in hub_contract_v1:
+        del hub_contract_v1['version']
+
+    # Ensure required v1 sections exist
+    if 'info' not in hub_contract_v1:
+        hub_contract_v1['info'] = {}
+        warnings.append("Missing 'info' section - created empty section")
+
+    # Ensure schema section with required arrays
+    if 'schema' not in hub_contract_v1:
+        hub_contract_v1['schema'] = {
+            'fields': [],
+            'primary_key': [],
+            'unique_constraints': [],
+            'indexes': [],
+        }
+        warnings.append("Missing 'schema' section - created empty section")
+    else:
+        schema = hub_contract_v1['schema']
+        if 'primary_key' not in schema:
+            schema['primary_key'] = []
+        if 'unique_constraints' not in schema:
+            schema['unique_constraints'] = []
+        if 'indexes' not in schema:
+            schema['indexes'] = []
+
+    # Add other standard v1 sections
+    for section in ['quality', 'privacy_compliance', 'lifecycle', 'marketplace']:
+        if section not in hub_contract_v1:
+            hub_contract_v1[section] = {}
+            warnings.append(f"Missing '{section}' section - created empty section")
+
+    return hub_contract_v1, warnings
+
+
 def migrate_hubcontract(
     hub_contract: Dict[str, Any],
     source_version: str,
@@ -253,6 +308,17 @@ def migrate_hubcontract(
         except Exception as e:
             errors.append(f"Migration failed: {str(e)}")
             logger.exception("HubContract migration failed")
+            return None, warnings, errors
+
+    # Migration path: pre-v1 (0.x) -> v1 (1.x)
+    if source_major == 0 and target_major == 1:
+        try:
+            migrated, migration_warnings = migrate_hubcontract_v0_to_v1(hub_contract)
+            warnings.extend(migration_warnings)
+            return migrated, warnings, errors
+        except Exception as e:
+            errors.append(f"Migration failed: {str(e)}")
+            logger.exception("HubContract v0->v1 migration failed")
             return None, warnings, errors
     
     # Future migration paths can be added here
@@ -311,7 +377,11 @@ def can_migrate(source_version: str, target_version: str) -> bool:
         # Support v1 -> v2
         if source_major == 1 and target_major == 2:
             return True
-        
+
+        # Support pre-v1 (0.x) -> v1 (1.x)
+        if source_major == 0 and target_major == 1:
+            return True
+
         # Add more migration paths as needed
         
         return False

@@ -24,9 +24,12 @@ def _execute_dq_run_job(job_obj: Job) -> dict:
         ConnectionError: If DQ service is unavailable
         Exception: For other errors
     """
-    # Get dq_run_id from job details or resource_id
-    # Handle None values explicitly (details_json can have None, resource_id can be None if model allows)
-    dq_run_id = job_obj.details_json.get("dq_run_id")
+    # Get dq_run_id from job details or resource_id.
+    # details_json is a JSONField that defaults to None — guard against
+    # jobs created without populating it (e.g. test fixtures, fast-fail).
+    dq_run_id = None
+    if isinstance(job_obj.details_json, dict):
+        dq_run_id = job_obj.details_json.get("dq_run_id")
     if not dq_run_id:  # None or empty string
         dq_run_id = job_obj.resource_id
 

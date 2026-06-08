@@ -61,7 +61,7 @@ class ContractSecurity401Test:
         from django.contrib.auth import get_user_model
 
         User = get_user_model()
-        tenant = Tenant.objects.create(name="Temp Tenant", slug="temp-tenant-dc")
+        tenant = Tenant.objects.create(name=f"Temp Tenant {uuid.uuid4().hex[:8]}", slug=f"temp-tenant-dc-{uuid.uuid4().hex[:8]}")
         user = User.objects.create_user(
             email=f"temp-dc-{uuid.uuid4().hex[:8]}@example.com",
             password="testpass123",

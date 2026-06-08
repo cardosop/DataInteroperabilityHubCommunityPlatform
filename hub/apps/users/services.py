@@ -269,10 +269,9 @@ class UserService(BaseService):
                 or UserTenantMembership.objects.filter(user=existing_user, tenant=tenant).exists()
             )
             if already_member:
-                raise ValidationError(
-                    f"User with email '{email}' already exists in this tenant.",
-                    code="USER_ALREADY_MEMBER",
-                )
+                # Idempotent: user already a member → return existing user with
+                # created=False, matching the non-member existing-user branch below.
+                return existing_user, False
             membership_service.add_membership(existing_user, tenant)
 
             if role_ids:

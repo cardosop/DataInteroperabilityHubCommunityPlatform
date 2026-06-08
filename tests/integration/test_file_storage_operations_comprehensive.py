@@ -26,6 +26,7 @@ from rest_framework.test import APIClient
 from hub.apps.files.models import File, FileStatus
 from hub.apps.tenants.models import Tenant
 from hub.apps.testing.billing_support import ensure_tenant_has_active_subscription
+from hub.apps.testing.role_support import ensure_user_has_data_provider_role
 from hub.apps.users.models import UserStatus
 from tests.factories import TenantFactory
 import uuid
@@ -50,6 +51,7 @@ class FileUploadTest(TestCase):
         )
         ensure_tenant_has_active_subscription(self.tenant)
         self.client.force_authenticate(user=self.user)
+        ensure_user_has_data_provider_role(self.user)
 
     def test_file_upload_init(self):
         """Test file upload initialization (POST /api/v1/files/init/)."""
@@ -96,6 +98,7 @@ class FileDownloadTest(TestCase):
             status=UserStatus.ACTIVE,
         )
         self.client.force_authenticate(user=self.user)
+        ensure_user_has_data_provider_role(self.user)
 
         # Create test file
         self.file_obj = File.objects.create(
@@ -135,6 +138,7 @@ class FileDeletionTest(TestCase):
         )
         ensure_tenant_has_active_subscription(self.tenant)
         self.client.force_authenticate(user=self.user)
+        ensure_user_has_data_provider_role(self.user)
 
         # Create test file
         self.file_obj = File.objects.create(
@@ -173,6 +177,7 @@ class FileStorageIntegrationTest(TestCase):
             status=UserStatus.ACTIVE,
         )
         self.client.force_authenticate(user=self.user)
+        ensure_user_has_data_provider_role(self.user)
 
     def test_s3_storage_client_initialization(self):
         """Test S3 storage client initialization"""
@@ -225,6 +230,7 @@ class FileStorageErrorHandlingTest(TestCase):
         )
         ensure_tenant_has_active_subscription(self.tenant)
         self.client.force_authenticate(user=self.user)
+        ensure_user_has_data_provider_role(self.user)
 
     def test_file_upload_invalid_data(self):
         """Test file upload with invalid data"""

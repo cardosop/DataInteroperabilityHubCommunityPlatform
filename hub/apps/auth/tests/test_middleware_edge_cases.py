@@ -346,7 +346,12 @@ class MiddlewareDirectUnitTests(TestCase):
     # --- process_request: X-Tenant-Id with JWT failure (lines 176-177) ---
 
     def test_x_tenant_id_with_bearer_jwt_failure(self):
-        """Lines 176-177: JWT decode failure during X-Tenant-Id processing."""
+        """Lines 176-177: JWT decode failure during X-Tenant-Id processing.
+
+        When JWT decode fails, the user is effectively unauthenticated.
+        The middleware returns 401 (not 403) so the frontend can retry
+        with a refreshed token.  403 would break automatic refresh.
+        """
         mw = self._get_middleware()
         request = self.factory.get("/api/v1/assets/")
         request.META["HTTP_X_TENANT_ID"] = str(self.tenant.id)
@@ -358,7 +363,7 @@ class MiddlewareDirectUnitTests(TestCase):
         ):
             result = mw.process_request(request)
         self.assertIsNotNone(result)
-        self.assertEqual(result.status_code, 403)
+        self.assertEqual(result.status_code, 401)
 
     # --- process_request: user fallback (lines 275, 289-296, 302-314) ---
 

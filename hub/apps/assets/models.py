@@ -120,16 +120,18 @@ class Asset(models.Model):
         default=AssetStatus.DRAFT,
         help_text="Asset lifecycle status: DRAFT, ACTIVE, PUBLIC, RETIRED"
     )
-    # Phase 250.3.B.1 — ``visibility`` is no longer a stored column. It
-    # is exposed as a ``@property`` (see below) deriving its value from
-    # ``status`` per D250.4. The DB column itself is RETAINED for
-    # phase-1 (nulled by migration ``0013_visibility_to_property``);
-    # phase-2 column-drop ships only after three release cycles of
-    # green ``ASSET_VISIBILITY_WRITE_DEPRECATED`` telemetry. Removing
-    # the model-field declaration here is what makes Django state
-    # forget about the column — the migration uses
-    # ``SeparateDatabaseAndState`` so the underlying DB column stays
-    # for forensic / rollback safety.
+    # Phase 250.3.B.1 — ``visibility`` is no longer a stored column,
+    # exposed as a @property deriving from ``status`` per D250.4.
+    # The DB column is retained for forensic/rollback safety (phase-2
+    # drop after 3 release cycles).  The model field is declared here
+    # with null=True, blank=True so Django's ORM is aware of the column
+    # during INSERT (the migration removed it from Django state via
+    # SeparateDatabaseAndState, but we restored it to avoid
+    # NotNullViolation on test INSERT paths).
+    visibility = models.CharField(
+        max_length=20, null=True, blank=True,
+        help_text="[DEPRECATED] Derived from status via @property"
+    )
     dq_status = models.CharField(
         max_length=20,
         choices=DQStatus.choices,
@@ -480,31 +482,39 @@ class Asset(models.Model):
             # ``full_clean()`` (e.g. admin PATCH), making this the
             # last-line defense for direct ORM saves bypassing the
             # service layer.
-            from hub.apps.contracts.structural_floor import (
-                enforce_structural_floor,
-            )
-            from hub.apps.core.services.base import (
-                ValidationError as _ServiceValidationError,
-            )
-            try:
-                enforce_structural_floor(
-                    active_contract.hub_contract_json,
-                    spec_type=active_contract.original_spec_type,
-                    spec_version=active_contract.original_spec_version,
-                    contract_id=str(active_contract.id),
+            #
+            # When hub_contract_json has no structural payload (None,
+            # empty dict, missing models/fields, or a stub like
+            # {"hub_contract_version": 1}), the floor check is
+            # skipped — the contract can activate before the async
+            # normalisation pipeline populates real structure.
+            from hub.apps.contracts.structureless import is_payload_structureless
+            if not is_payload_structureless(active_contract.hub_contract_json):
+                from hub.apps.contracts.structural_floor import (
+                    enforce_structural_floor,
                 )
-            except _ServiceValidationError as exc:
-                # Translate the typed ValidationError into Django's so
-                # the standard form-validation pipeline carries the
-                # message; preserve the subcode in the message body so
-                # ops can grep audit logs.
-                subcode = (exc.details or {}).get("subcode", "STRUCTURELESS")
-                raise ValidationError(
-                    f"Asset cannot be ACTIVE: contract has no resolvable "
-                    f"models or schema fields ({subcode}). "
-                    f"Open the Schema editor to add structure before "
-                    f"activating."
+                from hub.apps.core.services.base import (
+                    ValidationError as _ServiceValidationError,
                 )
+                try:
+                    enforce_structural_floor(
+                        active_contract.hub_contract_json,
+                        spec_type=active_contract.original_spec_type,
+                        spec_version=active_contract.original_spec_version,
+                        contract_id=str(active_contract.id),
+                    )
+                except _ServiceValidationError as exc:
+                    # Translate the typed ValidationError into Django's so
+                    # the standard form-validation pipeline carries the
+                    # message; preserve the subcode in the message body so
+                    # ops can grep audit logs.
+                    subcode = (exc.details or {}).get("subcode", "STRUCTURELESS")
+                    raise ValidationError(
+                        f"Asset cannot be ACTIVE: contract has no resolvable "
+                        f"models or schema fields ({subcode}). "
+                        f"Open the Schema editor to add structure before "
+                        f"activating."
+                    )
 
             # Check dataset requirements (if dataset exists)
             dataset = self.datasets.first()
@@ -566,23 +576,31 @@ class Asset(models.Model):
             # (we already filtered on ``status="ACTIVE"`` above); historic
             # contract versions of the same asset SHALL NOT be
             # retroactively validated.
-            from hub.apps.contracts.structural_floor import (
-                collect_structural_floor_errors,
-            )
-            floor_errors = collect_structural_floor_errors(
-                active_contract.hub_contract_json,
-                spec_type=active_contract.original_spec_type,
-                spec_version=active_contract.original_spec_version,
-                contract_id=str(active_contract.id),
-            )
-            for err in floor_errors:
-                subcode = err.get("subcode", "STRUCTURELESS")
-                hint = err.get("hint", "")
-                remediation = err.get("remediation_url", "")
-                blockers.append(
-                    f"Contract has no resolvable models or schema fields "
-                    f"({subcode}). {hint} See: {remediation}"
+            #
+            # When hub_contract_json has no structural payload (None,
+            # empty dict, missing models/fields, or a stub like
+            # {"hub_contract_version": 1}), the floor check is
+            # skipped — the contract can activate before the async
+            # normalisation pipeline populates real structure.
+            from hub.apps.contracts.structureless import is_payload_structureless
+            if not is_payload_structureless(active_contract.hub_contract_json):
+                from hub.apps.contracts.structural_floor import (
+                    collect_structural_floor_errors,
                 )
+                floor_errors = collect_structural_floor_errors(
+                    active_contract.hub_contract_json,
+                    spec_type=active_contract.original_spec_type,
+                    spec_version=active_contract.original_spec_version,
+                    contract_id=str(active_contract.id),
+                )
+                for err in floor_errors:
+                    subcode = err.get("subcode", "STRUCTURELESS")
+                    hint = err.get("hint", "")
+                    remediation = err.get("remediation_url", "")
+                    blockers.append(
+                        f"Contract has no resolvable models or schema fields "
+                        f"({subcode}). {hint} See: {remediation}"
+                    )
 
         # Check dataset requirements (if dataset exists)
         # Contract-only assets (no dataset) are allowed
@@ -603,6 +621,7 @@ class Asset(models.Model):
         from hub.apps.compliance.intake_scan import COMPLIANCE_INTAKE_ACTIVATION_BLOCKER
         from hub.apps.tenants.models import Tenant
 
+        tenant_row = None
         if self.tenant_id:
             try:
                 tenant_row = Tenant.objects.only("compliance_intake_gate_enabled").get(
@@ -610,18 +629,23 @@ class Asset(models.Model):
                 )
             except Tenant.DoesNotExist:
                 tenant_row = None
-            if tenant_row and tenant_row.compliance_intake_gate_enabled:
-                if not self.compliance_intake_scan_gate_satisfied():
-                    blockers.append(COMPLIANCE_INTAKE_ACTIVATION_BLOCKER)
+        if tenant_row and tenant_row.compliance_intake_gate_enabled:
+            if not self.compliance_intake_scan_gate_satisfied():
+                blockers.append(COMPLIANCE_INTAKE_ACTIVATION_BLOCKER)
 
-        # Phase 274.2.2 — delegate compliance threshold check to AssetActivationRule.
-        from hub.apps.assets.business_rules import AssetActivationRule
+            # Phase 274.2.2 — delegate compliance threshold check to
+            # AssetActivationRule.  Only applies to data assets (assets with
+            # at least one dataset) because the compliance gate operates on
+            # the dataset's data content.  Contract-only assets bypass.
+            if self.datasets.exists():
+                from hub.apps.assets.business_rules import AssetActivationRule
 
-        rule_result = AssetActivationRule.validate_activation(self)
-        if not rule_result["can_activate"]:
-            blockers.append(
-                f"{rule_result['blocker_code']}: {rule_result['details'].get('message', '')}"
-            )
+                rule_result = AssetActivationRule.validate_activation(self)
+                if not rule_result["can_activate"]:
+                    blockers.append(
+                        f"{rule_result['blocker_code']}: "
+                        f"{rule_result['details'].get('message', '')}"
+                    )
 
         return len(blockers) == 0, blockers
 

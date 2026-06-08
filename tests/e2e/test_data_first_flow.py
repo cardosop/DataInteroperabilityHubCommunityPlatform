@@ -230,7 +230,7 @@ class DataFirstE2ETest(TestCase):
             try:
                 from hub.apps.jobs.tasks import process_job
                 from hub.apps.jobs.models import JobType
-                process_job(str(compliance_run.job_id), job_type=JobType.COMPLIANCE_RUN)
+                process_job(str(compliance_run.job_id), type=JobType.COMPLIANCE_RUN)
             except Exception as exc:
                 import logging
                 logging.getLogger(__name__).warning("Inline job execution failed (expected if service unavailable): %s", exc)
@@ -259,7 +259,7 @@ class DataFirstE2ETest(TestCase):
             try:
                 from hub.apps.jobs.tasks import process_job
                 from hub.apps.jobs.models import JobType
-                process_job(str(dq_run.job_id), job_type=JobType.DQ_RUN)
+                process_job(str(dq_run.job_id), type=JobType.DQ_RUN)
             except Exception as exc:
                 import logging
                 logging.getLogger(__name__).warning("Inline job execution failed (expected if service unavailable): %s", exc)

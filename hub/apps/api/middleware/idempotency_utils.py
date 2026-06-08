@@ -62,8 +62,10 @@ def validate_idempotency_key(key: str) -> bool:
     if len(key) < 8 or len(key) > 256:
         return False
 
-    # Pattern: alphanumeric, hyphens, underscores, forward slashes
-    pattern = re.compile(r'^[a-zA-Z0-9\-_/]+$')
+    # Pattern: alphanumeric, hyphens, underscores, forward slashes, colons
+    # Colons are required for the canonical <tenant_uuid>:<sha256(body)> key
+    # format used by IdempotencyService and the SDK idempotency helpers.
+    pattern = re.compile(r'^[a-zA-Z0-9\-_/:]+$')
     return bool(pattern.match(key))
 
 

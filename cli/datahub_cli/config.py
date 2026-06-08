@@ -54,17 +54,22 @@ class Config:
             self._config = {}
 
     def _save(self):
-        """Save configuration to file"""
+        """Save configuration to file.
+
+        Writes the in-memory config dict to disk as YAML.  A ``flush()``
+        pushes the data from Python's stdio buffers to the OS; we
+        intentionally do **not** call ``os.fsync()`` here — it is a full
+        OS-buffer-to-storage barrier and would make every ``set()`` call
+        stall for 200+ ms on rotational media.  The CLI config file does
+        not need power-loss durability.
+        """
         config_dir = self._get_config_dir()
         config_file = self._get_config_file()
         config_dir.mkdir(parents=True, exist_ok=True)
         try:
             with open(config_file, 'w') as f:
                 yaml.dump(self._config, f, default_flow_style=False)
-                # Ensure file is flushed to disk
                 f.flush()
-                import os
-                os.fsync(f.fileno())
         except Exception as e:
             click.echo(f"Error: Failed to save config file: {e}", err=True)
             raise
@@ -79,8 +84,21 @@ class Config:
         self._save()
 
     def get_api_base_url(self) -> str:
-        """Get API base URL"""
-        return self.get('api_base_url', 'http://localhost:8000/api/v1')
+        """Get API base URL.
+
+        Checks the ``DATAHUB_BASE_URL`` and ``MESHANT_API_URL`` environment
+        variables before falling back to the config-file value, matching the
+        convention used by :meth:`get_api_key`.
+        """
+        import os
+        env_url = (
+            os.environ.get("DATAHUB_BASE_URL")
+            or os.environ.get("MESHANT_API_URL")
+            or os.environ.get("API_BASE_URL")
+        )
+        if env_url:
+            return env_url.rstrip("/")
+        return self.get("api_base_url", "http://localhost:8000/api/v1")
 
     def set_api_base_url(self, url: str):
         """Set API base URL"""
@@ -90,11 +108,16 @@ class Config:
         """Get API key from config file or environment variable"""
         # Check environment variable first (for testing/integration)
         import os
-        env_key = os.environ.get('DATAHUB_API_KEY') or os.environ.get('TEST_API_KEY')
+        env_key = (
+            os.environ.get("DATAHUB_API_KEY")
+            or os.environ.get("TEST_API_KEY")
+            or os.environ.get("DATAHUB_API_TOKEN")
+            or os.environ.get("E2E_TEST_USER_TOKEN")
+        )
         if env_key:
             return env_key
         # Fall back to config file
-        return self.get('api_key')
+        return self.get("api_key")
 
     def set_api_key(self, api_key: str):
         """Set API key"""

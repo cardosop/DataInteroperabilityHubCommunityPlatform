@@ -14,6 +14,29 @@ from .versioning import WorkflowVersionManager
 
 logger = logging.getLogger(__name__)
 
+# Module-level cache of (name, version) → WorkflowDefinition so that
+# repeated ``register_workflow`` calls within the same process (e.g. a
+# test run where every setUp creates a fresh ``WorkflowRegistry``) do
+# not hit the database at all.  This avoids the unique-index lock stall
+# that occurs when the ``workflow_definitions`` table/index is bloated
+# from many rolled-back inserts under ``--keepdb``.
+_process_workflow_cache: Dict[str, "WorkflowDefinition"] = {}
+
+
+def _cache_key(name: str, version: str) -> str:
+    return f"{name}:{version}"
+
+
+def reset_workflow_definition_cache() -> None:
+    """Clear the process-wide workflow-definition cache.
+
+    Test ``setUp`` methods should call this so a workflow definition
+    rolled back by a previous ``TestCase`` transaction is re-created
+    inside the new transaction rather than served from a stale
+    in-process cache.
+    """
+    _process_workflow_cache.clear()
+
 
 class WorkflowRegistry:
     """
@@ -67,7 +90,41 @@ class WorkflowRegistry:
             else:
                 version = "1.0.0"
 
-        # Check cache first to avoid database query
+        # ── Module-level (process-wide) cache ──────────────────────────
+        # Persists across registry instances so repeated test setUp
+        # calls skip the DB entirely — avoids index-lock timeout from
+        # bloated indexes under --keepdb.  The cached object is
+        # validated with a cheap ``SELECT … FOR UPDATE SKIP LOCKED``
+        # before it is returned; if the row was rolled back by a
+        # test transaction the cache entry is evicted and we fall
+        # through to the normal idempotent-create path.
+        proc_key = _cache_key(workflow_name, version)
+        if proc_key in _process_workflow_cache:
+            # Validate that the cached object still exists in the DB.
+            # Under Django TestCase each test is wrapped in a
+            # transaction that rolls back on teardown, so a cached
+            # object from a previous test may reference a row that no
+            # longer exists.  When the refresh fails we evict the
+            # stale entry and fall through to the normal create path.
+            cached = _process_workflow_cache[proc_key]
+            try:
+                cached.refresh_from_db()
+                logger.debug(
+                    f"Workflow {workflow_name} version {version} found in process cache"
+                )
+                dependencies = dsl_json.get("dependencies", [])
+                self._update_dependency_graph(workflow_name, dependencies)
+                return cached
+            except Exception:
+                # Row was deleted / rolled back — evict and re-create.
+                logger.debug(
+                    f"Workflow {workflow_name} version {version} cache entry "
+                    f"is stale; evicting."
+                )
+                _process_workflow_cache.pop(proc_key, None)
+                self._workflow_cache.pop(proc_key, None)
+
+        # ── Instance cache ────────────────────────────────────────────
         cache_key = f"{workflow_name}:{version}"
         if cache_key in self._workflow_cache:
             cached_workflow = self._workflow_cache[cache_key]
@@ -75,15 +132,16 @@ class WorkflowRegistry:
             try:
                 cached_workflow.refresh_from_db()
                 logger.debug(f"Workflow {workflow_name} version {version} found in cache")
+                _process_workflow_cache[proc_key] = cached_workflow
                 dependencies = dsl_json.get("dependencies", [])
                 self._update_dependency_graph(workflow_name, dependencies)
                 return cached_workflow
             except Exception:
                 # Workflow was deleted, remove from cache
                 del self._workflow_cache[cache_key]
+                _process_workflow_cache.pop(proc_key, None)
 
         # Check if workflow already exists (idempotent check)
-        from hub.apps.orchestration.models import WorkflowDefinition
         # Use select_for_update with skip_locked=True to avoid blocking on concurrent registrations
         # This prevents deadlocks and allows concurrent test execution
         try:
@@ -99,6 +157,7 @@ class WorkflowRegistry:
         if existing:
             # Cache the workflow definition for future use
             self._workflow_cache[cache_key] = existing
+            _process_workflow_cache[proc_key] = existing
             logger.debug(f"Workflow {workflow_name} version {version} already exists, returning existing workflow")
             # Update dependency graph even if workflow exists (in case dependencies changed)
             dependencies = dsl_json.get("dependencies", [])
@@ -124,6 +183,7 @@ class WorkflowRegistry:
             )
             # Cache the newly created workflow definition
             self._workflow_cache[cache_key] = workflow_def
+            _process_workflow_cache[proc_key] = workflow_def
             logger.debug(f"Successfully created workflow {workflow_name} version {version}")
         except (ValidationError, IntegrityError) as e:
             # Handle race condition: workflow might have been created by another process
@@ -164,6 +224,7 @@ class WorkflowRegistry:
                 if existing:
                     # Cache the workflow definition
                     self._workflow_cache[cache_key] = existing
+                    _process_workflow_cache[proc_key] = existing
                     logger.debug(f"Found existing workflow {workflow_name} version {version} via version_manager, returning it")
                     self._update_dependency_graph(workflow_name, dependencies)
                     return existing

@@ -329,7 +329,7 @@ class DataMeshBusinessRulesValidateMethodTest(TestCase):
 
         self.assertIsInstance(result, ValidationResult)
         self.assertFalse(result.is_valid)
-        self.assertGreater(len(result.errors), 0)
+        self.assertEqual(len(result.errors), 1)
         self.assertIn("required", result.errors[0].lower())
 
     def test_validate_with_validation_type_structure(self):
@@ -400,7 +400,7 @@ class DataMeshBusinessRulesValidateMethodTest(TestCase):
 
         self.assertIsInstance(result, ValidationResult)
         self.assertFalse(result.is_valid)
-        self.assertGreater(len(result.errors), 0)
+        self.assertEqual(len(result.errors), 4)
         self.assertIn("tenant", result.errors[0].lower())
 
 
@@ -506,7 +506,7 @@ class DataMeshBusinessRulesAllMethodsTest(TestCase):
 
         result = self.rules.validate_domain_boundary_definition(domain2)
         self.assertFalse(result.is_valid)
-        self.assertGreater(len(result.details["overlaps"]), 0)
+        self.assertEqual(len(result.details["overlaps"]), 1)
 
     def test_validate_asset_domain_boundary_comprehensive(self):
         """Test validate_asset_domain_boundary() comprehensively"""
@@ -592,7 +592,7 @@ class DataMeshBusinessRulesAllMethodsTest(TestCase):
 
         result = self.rules.validate_domain_resource_quota(self.domain)
         self.assertTrue(result.is_valid)
-        self.assertGreater(len(result.warnings), 0)
+        self.assertEqual(len(result.warnings), 1)
 
     def test_validate_domain_ownership_comprehensive(self):
         """Test validate_domain_ownership() comprehensively"""
@@ -693,7 +693,7 @@ class DataMeshBusinessRulesAllMethodsTest(TestCase):
 
         result = self.rules.validate_policy_conflicts(self.domain, new_policy)
         self.assertFalse(result.is_valid)
-        self.assertGreater(len(result.details["conflicts"]), 0)
+        self.assertEqual(len(result.details["conflicts"]), 1)
 
     def test_validate_policy_compatibility_comprehensive(self):
         """Test validate_policy_compatibility() comprehensively"""
@@ -784,7 +784,7 @@ class DataMeshBusinessRulesAllMethodsTest(TestCase):
 
         result = self.rules._check_condition_overlap_detailed(conditions1, conditions2)
         self.assertTrue(result["overlaps"])
-        self.assertGreater(len(result["overlapping_keys"]), 0)
+        self.assertEqual(len(result["overlapping_keys"]), 1)
 
         # Exact match
         conditions1 = {"user_roles": ["admin"]}

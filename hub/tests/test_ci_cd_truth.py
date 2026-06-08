@@ -112,12 +112,29 @@ class MakefileCIParityTest(TestCase):
     def test_backend_mirrors_ci_command(self):
         """test-ci-backend must use same pytest command as CI."""
         mk = _read_file("Makefile")
-        # Both CI and Makefile must use the same core command
-        self.assertIn(
-            "python -m pytest hub/apps/", mk,
+        # Isolate the test-ci-backend target recipe to avoid matching
+        # substrings from unrelated targets or comments.
+        import re
+        target_match = re.search(
+            r"^test-ci-backend:.*?\n(?:^\t.*\n?)*", mk, re.MULTILINE
         )
-        self.assertIn("--reuse-db", mk)
-        self.assertIn("docker-compose.test.yml", mk)
+        self.assertIsNotNone(target_match, "test-ci-backend target not found")
+        target_recipe = target_match.group(0)
+        # Both CI and Makefile must use the same core command.
+        # The Makefile uses ``python -u -m pytest`` (with -u for unbuffered),
+        # while CI may use ``python -m pytest``.  Match on the stable suffix.
+        self.assertIn(
+            "pytest hub/apps/", target_recipe,
+            f"test-ci-backend must run pytest hub/apps/\nTarget:\n{target_recipe}",
+        )
+        self.assertIn(
+            "--reuse-db", target_recipe,
+            f"test-ci-backend must use --reuse-db\nTarget:\n{target_recipe}",
+        )
+        self.assertIn(
+            "docker-compose.test.yml", target_recipe,
+            f"test-ci-backend must use docker-compose.test.yml\nTarget:\n{target_recipe}",
+        )
 
     def test_frontend_mirrors_ci_command(self):
         """test-ci-frontend must use same vitest command as CI."""

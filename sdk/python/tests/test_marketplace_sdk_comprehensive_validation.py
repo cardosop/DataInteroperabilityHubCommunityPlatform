@@ -34,14 +34,35 @@ def setup_authentication_for_sdk_tests(api_base_url: str) -> Optional[str]:
     """
     Set up authentication for SDK tests.
 
-    Tries multiple methods to get API key.
+    Creates a dedicated tenant with ``marketplace_integrations_enabled=True``
+    so marketplace endpoints are not blocked by the feature-flag gate.
+    Falls back to the canonical conftest helper, then env vars.
     """
-    # Method 1: Use environment variables
+    # Method 1: Create dedicated tenant via Django shell (PRIMARY).
+    key = _create_marketplace_comprehensive_tenant_and_key()
+    if key:
+        return key
+
+    # Method 2: Use canonical conftest helper
+    try:
+        from tests.conftest import get_api_key
+        canonical = get_api_key()
+        if canonical:
+            return canonical
+    except Exception:
+        pass
+
+    # Method 3: Fall back to env-var keys
     api_key = os.environ.get('TEST_API_KEY') or os.environ.get('DATAHUB_API_KEY')
     if api_key:
         return api_key
 
-    # Method 2: Try to create API key via Django shell (when running inside Docker)
+    return None
+
+
+def _create_marketplace_comprehensive_tenant_and_key() -> Optional[str]:
+    """Create a dedicated tenant with ``marketplace_integrations_enabled=True``."""
+    # Try inside-Docker path (Method 2 from original code)
     if os.path.exists('/app'):
         try:
             import subprocess
@@ -52,8 +73,11 @@ from hub.apps.auth.models import APIKey
 
 tenant, _ = Tenant.objects.get_or_create(
     slug='marketplace-sdk-comprehensive-test-tenant',
-    defaults={'name': 'Marketplace SDK Comprehensive Test Tenant'}
+    defaults={'name': 'Marketplace SDK Comprehensive Test Tenant', 'marketplace_integrations_enabled': True}
 )
+if not tenant.marketplace_integrations_enabled:
+    tenant.marketplace_integrations_enabled = True
+    tenant.save(update_fields=['marketplace_integrations_enabled'])
 user, _ = User.objects.get_or_create(
     email='marketplace-sdk-comprehensive-test@example.com',
     defaults={
@@ -113,13 +137,13 @@ print(api_key_value)
     return None
 
 
-@pytest.fixture(scope="session")
+@pytest.fixture
 def api_base_url():
     """Get API base URL from environment or use default"""
-    return os.environ.get('TEST_API_BASE_URL', 'http://localhost:8000/api/v1')
+    return os.environ.get('API_BASE_URL', 'http://localhost:8001/api/v1')
 
 
-@pytest.fixture(scope="session")
+@pytest.fixture
 def api_key(api_base_url):
     """Get or create API key for tests"""
     key = setup_authentication_for_sdk_tests(api_base_url)
@@ -128,7 +152,7 @@ def api_key(api_base_url):
     return key
 
 
-@pytest.fixture(scope="session")
+@pytest.fixture
 def real_api_config(api_base_url, api_key):
     """Create real API configuration"""
     return DataHubClientConfig(
@@ -140,7 +164,7 @@ def real_api_config(api_base_url, api_key):
     )
 
 
-@pytest.fixture(scope="session")
+@pytest.fixture
 async def real_client(real_api_config):
     """Create real API client"""
     client = DataHubClient(real_api_config)
@@ -153,7 +177,7 @@ async def real_client(real_api_config):
             pass
 
 
-@pytest.fixture(scope="session")
+@pytest.fixture
 def marketplace_api(real_client):
     """Create marketplace API instance"""
     return MarketplaceIntegrationAPI(real_client)

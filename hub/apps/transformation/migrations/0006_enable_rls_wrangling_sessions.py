@@ -9,7 +9,7 @@ from django.db import migrations
 
 class Migration(migrations.Migration):
     dependencies = [
-        ("transformation", "0005"),
+        ("transformation", "0005_enable_rls_transformation_pipelines"),
     ]
 
     operations = [

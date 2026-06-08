@@ -62,7 +62,8 @@ class AssetRecommendationsIntegrationTest(TestCase):
         )
 
     def test_recommendations_workflow_returns_recommendations(self):
-        """Test complete recommendations workflow returns recommendations."""
+        """Test complete recommendations workflow returns recommendations
+        that include the popular asset and respect the limit."""
         SearchAnalytics.objects.create(
             tenant=self.tenant,
             user=self.user,
@@ -77,53 +78,28 @@ class AssetRecommendationsIntegrationTest(TestCase):
         )
 
         self.assertGreater(len(recommendations), 0)
+        self.assertLessEqual(len(recommendations), 10)
 
-    def test_recommendations_workflow_includes_popular_asset(self):
-        """Test complete recommendations workflow includes popular asset."""
-        SearchAnalytics.objects.create(
-            tenant=self.tenant,
-            user=self.user,
-            query="test query",
-            clicked_result_id=self.asset.id,
-            clicked_result_type="ASSET",
-            clicked_at=timezone.now(),
-        )
-
-        recommendations = AssetRecommendationService.get_recommendations(
-            tenant_id=str(self.tenant.id), user_id=str(self.user.id), limit=10
-        )
-
+        # Popular asset should be among the recommendations
         asset_ids = [r["asset_id"] for r in recommendations]
         self.assertIn(str(self.popular_asset.id), asset_ids)
 
-    # ========== SUCCESS SCENARIOS ==========
-
-    def test_recommendations_integration_success(self):
-        """Test successful recommendations integration workflow (success scenario)"""
-        # Create search history
-        SearchAnalytics.objects.create(
-            tenant=self.tenant,
-            user=self.user,
-            query="test query",
-            clicked_result_id=self.asset.id,
-            clicked_result_type="ASSET",
-            clicked_at=timezone.now(),
-        )
-
-        # Get recommendations
-        recommendations = AssetRecommendationService.get_recommendations(
-            tenant_id=str(self.tenant.id), user_id=str(self.user.id), limit=10
-        )
-
-        # Should return recommendations
-        self.assertGreater(len(recommendations), 0)
+        # Each recommendation must have the required schema
+        for rec in recommendations:
+            self.assertIn("asset_id", rec)
+            self.assertIn("asset_name", rec)
+            self.assertIn("score", rec)
+            self.assertIn("reasons", rec)
 
     # ========== FAILURE SCENARIOS ==========
 
     def test_recommendations_integration_no_search_history(self):
-        """Test recommendations without search history (failure scenario)"""
-        # Don't create search history
+        """Test that recommendations still work without search history.
 
+        When user-behavior source is enabled but the user has no search
+        history, the service should fall back to other sources (usage
+        patterns, popularity) and still return results.
+        """
         recommendations = AssetRecommendationService.get_recommendations(
             tenant_id=str(self.tenant.id),
             user_id=str(self.user.id),
@@ -131,23 +107,35 @@ class AssetRecommendationsIntegrationTest(TestCase):
             include_user_behavior=True,
         )
 
-        # Should still return recommendations (from other sources)
         self.assertIsInstance(recommendations, list)
+        # Fallback to usage-pattern recommendations means the popular
+        # asset should still appear
+        asset_ids = [r["asset_id"] for r in recommendations]
+        self.assertIn(str(self.popular_asset.id), asset_ids)
 
     def test_recommendations_integration_nonexistent_user(self):
-        """Test recommendations with non-existent user returns empty recommendations"""
+        """Test recommendations with non-existent user falls back gracefully.
+
+        A fake user ID should not cause an error — the service should
+        fall back to tenant-wide recommendations.
+        """
         fake_user_id = str(uuid.uuid4())
 
         recommendations = AssetRecommendationService.get_recommendations(
             tenant_id=str(self.tenant.id), user_id=fake_user_id, limit=10
         )
         self.assertIsInstance(recommendations, list)
+        self.assertGreater(len(recommendations), 0)
 
     # ========== EDGE CASES ==========
 
     def test_recommendations_integration_old_search_history(self):
-        """Test recommendations with old search history (edge case)"""
-        # Create old search history
+        """Test that very old search history does not crash recommendations.
+
+        A search click from 365 days ago should be handled gracefully —
+        the result must be a valid list. The recommendation engine may
+        deprioritize or ignore stale history but must not error.
+        """
         SearchAnalytics.objects.create(
             tenant=self.tenant,
             user=self.user,
@@ -161,12 +149,16 @@ class AssetRecommendationsIntegrationTest(TestCase):
             tenant_id=str(self.tenant.id), user_id=str(self.user.id), limit=10
         )
 
-        # Should handle old history gracefully
         self.assertIsInstance(recommendations, list)
+        # Should still return something (the popular asset via usage-patterns)
+        self.assertGreater(len(recommendations), 0)
 
     def test_recommendations_integration_multiple_search_clicks(self):
-        """Test recommendations with multiple search clicks (edge case)"""
-        # Create multiple search clicks
+        """Test recommendations with multiple search clicks returns results.
+
+        Ten clicks over a 10-hour window should produce recommendations
+        without error. The clicked asset should appear prominently.
+        """
         for i in range(10):
             SearchAnalytics.objects.create(
                 tenant=self.tenant,
@@ -181,21 +173,9 @@ class AssetRecommendationsIntegrationTest(TestCase):
             tenant_id=str(self.tenant.id), user_id=str(self.user.id), limit=10
         )
 
-        # Should handle multiple clicks gracefully
         self.assertIsInstance(recommendations, list)
+        self.assertGreater(len(recommendations), 0)
+        # The repeatedly-clicked asset should be recommended
+        asset_ids = [r["asset_id"] for r in recommendations]
+        self.assertIn(str(self.asset.id), asset_ids)
 
-    # ========== ERROR HANDLING ==========
-
-    def test_recommendations_integration_error_handling(self):
-        """Test error handling in recommendations integration"""
-        # Use valid data
-        try:
-            recommendations = AssetRecommendationService.get_recommendations(
-                tenant_id=str(self.tenant.id), user_id=str(self.user.id), limit=10
-            )
-            # Should return recommendations
-            self.assertIsNotNone(recommendations)
-            self.assertIsInstance(recommendations, list)
-        except Exception:
-            # If raises exception, that's a problem
-            self.fail("get_recommendations should handle errors gracefully")

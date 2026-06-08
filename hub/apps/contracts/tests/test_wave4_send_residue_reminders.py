@@ -179,7 +179,7 @@ class Wave4ReminderActiveOnlyScopeTests(TestCase):
         # what we want here.  Verify the assumption.
         from hub.apps.contracts.models import Contract
         first = Contract.objects.filter(tenant=tenant).first()
-        assert first is not None, "fixture must have created a contract"
+        self.assertTrue(first is not None, "fixture must have created a contract")
         self.assertEqual(first.status, ContractStatus.DRAFT)
         _grant_tenant_admin(_create_admin("draft@example.com", tenant), tenant)
 

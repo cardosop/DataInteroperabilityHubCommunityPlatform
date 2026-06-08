@@ -47,90 +47,87 @@ User = get_user_model()
 class TransformationSecurityTest(TestCase):
     """Security tests for transformation service."""
 
-    @classmethod
-    def setUpTestData(cls):
-        """Create Tenants and Users once for the whole test class (read-only)."""
+    def setUp(self):
+        """Set up per-test fixtures."""
         uid = uuid.uuid4().hex[:8]
-        cls.tenant1 = Tenant.objects.create(
+        self.tenant1 = Tenant.objects.create(
             name=f"Tenant 1 {uid}",
             slug=f"tenant-1-{uid}"
         )
 
-        cls.tenant2 = Tenant.objects.create(
+        self.tenant2 = Tenant.objects.create(
             name=f"Tenant 2 {uid}",
             slug=f"tenant-2-{uid}"
         )
 
         # Create users for each tenant
-        cls.user1 = User.objects.create_user(
+        self.user1 = User.objects.create_user(
             email=f"u1-{uid}@test.com",
             password="testpass123",
-            tenant=cls.tenant1,
+            tenant=self.tenant1,
             status=UserStatus.ACTIVE
         )
 
-        cls.user2 = User.objects.create_user(
+        self.user2 = User.objects.create_user(
             email=f"u2-{uid}@test.com",
             password="testpass123",
-            tenant=cls.tenant2,
+            tenant=self.tenant2,
             status=UserStatus.ACTIVE
         )
 
         # Create DATA_PROVIDER role for each tenant
-        cls.role1, _ = Role.objects.get_or_create(
-            tenant=cls.tenant1,
+        self.role1, _ = Role.objects.get_or_create(
+            tenant=self.tenant1,
             name="DATA_PROVIDER",
             defaults={"description": "Data Provider"}
         )
 
-        cls.role2, _ = Role.objects.get_or_create(
-            tenant=cls.tenant2,
+        self.role2, _ = Role.objects.get_or_create(
+            tenant=self.tenant2,
             name="DATA_PROVIDER",
             defaults={"description": "Data Provider"}
         )
 
         # Assign roles
         UserRole.objects.get_or_create(
-            user=cls.user1,
-            role=cls.role1
+            user=self.user1,
+            role=self.role1
         )
 
         UserRole.objects.get_or_create(
-            user=cls.user2,
-            role=cls.role2
+            user=self.user2,
+            role=self.role2
         )
 
         # Create access policies for each tenant
         AccessPolicy.objects.get_or_create(
-            tenant=cls.tenant1,
+            tenant=self.tenant1,
             name="Allow Pipeline Operations",
             defaults={
                 "conditions": {
-                    "user": {"tenant_id": str(cls.tenant1.id)}
+                    "user": {"tenant_id": str(self.tenant1.id)}
                 },
                 "effect": "ALLOW",
                 "priority": 100,
                 "enabled": True,
-                "created_by": cls.user1
+                "created_by": self.user1
             }
         )
 
         AccessPolicy.objects.get_or_create(
-            tenant=cls.tenant2,
+            tenant=self.tenant2,
             name="Allow Pipeline Operations",
             defaults={
                 "conditions": {
-                    "user": {"tenant_id": str(cls.tenant2.id)}
+                    "user": {"tenant_id": str(self.tenant2.id)}
                 },
                 "effect": "ALLOW",
                 "priority": 100,
                 "enabled": True,
-                "created_by": cls.user2
+                "created_by": self.user2
             }
         )
 
-    def setUp(self):
-        """Set up per-test fixtures."""
         # Create services for each tenant
         self.service1 = TransformationService(
             tenant_id=str(self.tenant1.id),

@@ -3,7 +3,9 @@ Email Sending Tasks
 
 Async tasks for sending emails via job queue.
 """
-from typing import Dict, Any, Optional
+import contextlib
+from typing import Any, Callable, Dict, Optional, TypeVar
+
 from django_rq import job, get_queue
 from django.conf import settings
 from django.utils import timezone
@@ -27,6 +29,27 @@ from .models import EmailDelivery, EmailType, EmailDeliveryStatus
 
 User = get_user_model()
 logger = structlog.get_logger(__name__)
+
+_T = TypeVar("_T")
+
+
+def _run_with_tenant_context(
+    tenant_id: Optional[str],
+    func: Callable[[], _T],
+) -> _T:
+    """Run *func* inside ``tenant_context(tenant_id)`` when *tenant_id*
+    is provided, or directly when it is ``None``.
+
+    Worker/signal code that touches tenant-scoped models MUST use this
+    helper so that RLS policies (which reference
+    ``current_setting('app.current_tenant_id')``) can resolve rows.
+    """
+    if tenant_id is None:
+        return func()
+    from hub.apps.tenants.request_tenant import tenant_context
+
+    with tenant_context(tenant_id):
+        return func()
 
 
 def _serialize_context_for_json(context: Dict[str, Any]) -> Dict[str, Any]:
@@ -137,6 +160,57 @@ def send_email_async(
             f"Notification business rules validation failed: "
             f"{error_msg}"
         )
+
+    # ── Phase 277.B.097: marketing opt-out enforcement ──────────────
+    from .models import is_marketing_email
+
+    if is_marketing_email(email_type):
+        # Check if the user has opted out of marketing.
+        if user_id:
+            try:
+                user = User.objects.only("id", "preferences").get(id=user_id)
+            except User.DoesNotExist:
+                user = None
+            if (
+                user is not None
+                and (user.preferences or {})
+                .get("notifications", {})
+                .get("marketing_opt_out")
+            ):
+                return {
+                    "success": False,
+                    "skipped_reason": "marketing_opt_out",
+                }
+
+        # Generate / refresh the 1-click unsubscribe token and inject
+        # the URL into the template context so every marketing email
+        # carries its own opt-out link.
+        import uuid as _uuid
+        import hashlib as _hashlib
+
+        if user_id:
+            try:
+                user = User.objects.only(
+                    "id", "unsubscribe_token", "unsubscribe_token_created_at",
+                ).get(id=user_id)
+            except User.DoesNotExist:
+                user = None
+            if user is not None:
+                plaintext = str(_uuid.uuid4())
+                user.unsubscribe_token = _hashlib.sha256(
+                    plaintext.encode()
+                ).hexdigest()
+                user.unsubscribe_token_created_at = timezone.now()
+                user.save(
+                    update_fields=[
+                        "unsubscribe_token",
+                        "unsubscribe_token_created_at",
+                    ]
+                )
+                site_url = getattr(settings, "SITE_URL", "").rstrip("/")
+                context["unsubscribe_url"] = (
+                    f"{site_url}/api/v1/notifications/unsubscribe/{plaintext}/"
+                )
 
     try:
         # Get email service
@@ -983,21 +1057,29 @@ def send_odps_linking_status_email(
 
 
 @job('job_low', timeout=60)
-def send_marketplace_sync_completion_email(sync_job_id: str):
+def send_marketplace_sync_completion_email(
+    sync_job_id: str,
+    *,
+    tenant_id: Optional[str] = None,
+):
     """
     Send marketplace sync completion notification email.
 
     Args:
         sync_job_id: Marketplace sync job UUID
+        tenant_id: Optional tenant UUID for RLS-scoped DB lookup
     """
     if sync_job_id is None:
         raise ValueError("sync_job_id is required")
     try:
         from hub.apps.integrations.models import MarketplaceSyncJob
 
-        sync_job = MarketplaceSyncJob.objects.select_related(
-            'connection', 'connection__tenant', 'tenant'
-        ).get(id=sync_job_id)
+        sync_job = _run_with_tenant_context(
+            tenant_id,
+            lambda: MarketplaceSyncJob.objects.select_related(
+                'connection', 'connection__tenant', 'tenant'
+            ).get(id=sync_job_id),
+        )
 
         # Get user from connection or tenant
         user = None
@@ -1083,21 +1165,29 @@ def send_marketplace_sync_completion_email(sync_job_id: str):
 
 
 @job('job_low', timeout=60)
-def send_marketplace_sync_failure_email(sync_job_id: str):
+def send_marketplace_sync_failure_email(
+    sync_job_id: str,
+    *,
+    tenant_id: Optional[str] = None,
+):
     """
     Send marketplace sync failure notification email.
 
     Args:
         sync_job_id: Marketplace sync job UUID
+        tenant_id: Optional tenant UUID for RLS-scoped DB lookup
     """
     if sync_job_id is None:
         raise ValueError("sync_job_id is required")
     try:
         from hub.apps.integrations.models import MarketplaceSyncJob
 
-        sync_job = MarketplaceSyncJob.objects.select_related(
-            'connection', 'connection__tenant', 'tenant'
-        ).get(id=sync_job_id)
+        sync_job = _run_with_tenant_context(
+            tenant_id,
+            lambda: MarketplaceSyncJob.objects.select_related(
+                'connection', 'connection__tenant', 'tenant'
+            ).get(id=sync_job_id),
+        )
 
         # Get user from connection or tenant
         user = None
@@ -1207,7 +1297,10 @@ def send_marketplace_connection_test_failure_email(
 
         User = get_user_model()
 
-        connection = MarketplaceConnection.objects.select_related('tenant').get(id=connection_id)
+        connection = _run_with_tenant_context(
+            tenant_id,
+            lambda: MarketplaceConnection.objects.select_related('tenant').get(id=connection_id),
+        )
 
         # Determine user - prefer provided user_id, fallback to connection.created_by
         user = None

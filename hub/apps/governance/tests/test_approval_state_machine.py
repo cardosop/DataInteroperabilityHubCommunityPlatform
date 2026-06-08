@@ -76,7 +76,7 @@ class TestApprovalRules(TestCase):
         self.inactive_user = User.objects.create_user(
             email=f"asm-inactive-{uid}@meshant.test",
             password="testpass", tenant=self.tenant,
-            status=UserStatus.INACTIVE,
+            status=UserStatus.DISABLED,
         )
 
     def test_approver_identity_active_user_passes(self):
@@ -146,6 +146,83 @@ class TestApprovalRules(TestCase):
         )
         result = rule.validate(ar, self.tenant)
         assert not result.is_valid
+
+    def test_approval_quorum_allows_different_user_approver(self):
+        """Quorum rule allows a different approver than the requester."""
+        from hub.apps.governance.models import AccessRequest
+        # Create a second active user to serve as approver
+        approver = User.objects.create_user(
+            email=f"asm-approver-{uuid.uuid4().hex[:8]}@meshant.test",
+            password="testpass", tenant=self.tenant,
+            status=UserStatus.ACTIVE,
+        )
+        # requested_by is active_user, approved_by is a different user → should pass
+        ar = AccessRequest(
+            tenant=self.tenant,
+            requested_by=self.active_user,
+            approved_by=approver,
+        )
+        rule = ApprovalQuorumRule(
+            tenant_id=str(self.tenant.id), user_id=str(approver.id),
+        )
+        result = rule.validate(ar, self.tenant)
+        assert result.is_valid, (
+            f"Different-user approver should pass quorum, got errors: {result.errors}"
+        )
+
+    def test_multi_step_chain_different_approvers(self):
+        """Multi-step chain: different approver per step is valid."""
+        from hub.apps.governance.models import AccessPolicy, AccessRequest
+        # Create two approvers for the chain
+        approver_1 = User.objects.create_user(
+            email=f"asm-step1-{uuid.uuid4().hex[:8]}@meshant.test",
+            password="testpass", tenant=self.tenant,
+            status=UserStatus.ACTIVE,
+        )
+        approver_2 = User.objects.create_user(
+            email=f"asm-step2-{uuid.uuid4().hex[:8]}@meshant.test",
+            password="testpass", tenant=self.tenant,
+            status=UserStatus.ACTIVE,
+        )
+
+        # Create an AccessPolicy with a 2-step required approval chain
+        policy = AccessPolicy.objects.create(
+            tenant=self.tenant,
+            name="Multi-Step Approval Policy",
+            conditions={"user": {"tenant_id": str(self.tenant.id)}},
+            effect="ALLOW",
+            priority=100,
+            enabled=True,
+            required_approval_chain=[
+                {"step": 1, "approvers": [str(approver_1.id)], "required_count": 1},
+                {"step": 2, "approvers": [str(approver_2.id)], "required_count": 1},
+            ],
+        )
+
+        # Simulate first step approval by approver_1
+        ar = AccessRequest(
+            tenant=self.tenant,
+            requested_by=self.active_user,
+            approved_by=approver_1,
+            status="PENDING_NEXT_APPROVER",
+        )
+        # Set approval_workflow to reflect we're on step 1→2
+        ar.approval_workflow = policy.required_approval_chain
+
+        # approver_1 is the previous approver, approver_2 is the current one
+        # Anti-self-dealing: approver_2 != previous_approver → should pass
+        rule = ApprovalQuorumRule(
+            tenant_id=str(self.tenant.id), user_id=str(approver_2.id),
+        )
+        result = rule.validate(ar, self.tenant)
+        assert result.is_valid, (
+            f"Different approver per step should pass quorum, got errors: {result.errors}"
+        )
+
+        # Verify the chain contains the expected steps
+        assert len(ar.approval_workflow) == 2
+        assert ar.approval_workflow[0]["step"] == 1
+        assert ar.approval_workflow[1]["step"] == 2
 
     # ── Phase 277.4.4 — depth expansion ────────────────────────────
 

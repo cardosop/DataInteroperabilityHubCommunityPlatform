@@ -25,7 +25,7 @@ from hub.apps.core.resilience.circuit_breaker import (
     CircuitBreaker,
     get_redis_client,
 )
-from hub.apps.core.services.base import NotFoundError
+from hub.apps.core.services.base import ConnectionError, NotFoundError
 from hub.apps.integrations.base import (
     DataMarketplaceConnector,
     MarketplaceAssetMapping,
@@ -777,13 +777,18 @@ class DadosGovBrConnector(DataMarketplaceConnector):
             "dados.gov.br is a public data portal that should be harvested FROM, not pushed TO."
         )
 
-    def download_resource(self, resource_id: str, destination_path: str) -> str:
+    def download_resource(self, resource_id: str, destination_path: str, **kwargs) -> str:
         """
         Download a resource from dados.gov.br.
 
         Args:
             resource_id: Resource ID
             destination_path: Local filesystem path where resource should be saved
+            **kwargs: Additional connector-specific options.
+                - listing_id: Optional dataset/listing ID that contains the
+                  resource. When provided, the resource is looked up through
+                  the dataset endpoint per the Swagger spec instead of the
+                  (unreliable) direct-resource endpoints.
 
         Returns:
             Path to the downloaded file
@@ -794,9 +799,14 @@ class DadosGovBrConnector(DataMarketplaceConnector):
             IOError: If unable to write to destination path
             PermissionError: If user lacks permission to download resource
         """
+        listing_id = kwargs.get("listing_id")
         try:
-            # Get resource details
-            response_data = self.client.get_resource(resource_id)
+            # Get resource details — use dataset-scoped lookup when
+            # listing_id is available, since the Swagger API nests
+            # resources inside datasets.
+            response_data = self.client.get_resource(
+                resource_id, dataset_id=listing_id
+            )
 
             if not response_data.get("success"):
                 error_msg = response_data.get("error", {}).get("message", "Unknown error")

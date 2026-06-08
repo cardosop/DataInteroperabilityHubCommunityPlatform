@@ -110,7 +110,6 @@ class Command(BaseCommand):
             WebhookSigningKey,
             WebhookSigningKeyStatus,
         )
-        from hub.apps.webhooks.webhook_signing import HMACSignatureGenerator
 
         key_qs = WebhookSigningKey.objects.filter(webhook=webhook)
         active_key = key_qs.filter(status=WebhookSigningKeyStatus.ACTIVE).first()
@@ -136,7 +135,21 @@ class Command(BaseCommand):
             )
             return
 
-        # ── Step 1: Generate new signing key ────────────────
+        # ── Step 1: Retire previous active key FIRST ─────────
+        # The model has a partial unique index (at most one ACTIVE per
+        # webhook). Retire the old key BEFORE creating the new one so
+        # we never have two ACTIVE keys simultaneously.
+        previous_key = active_key
+        if previous_key:
+            previous_key.status = WebhookSigningKeyStatus.RETIRING
+            previous_key.retired_at = timezone.now() + timezone.timedelta(hours=24)
+            previous_key.save(update_fields=["status", "retired_at"])
+            self.stdout.write(
+                f"  Webhook {webhook.id}: retired key {previous_key.key_id} → RETIRING "
+                f"(overlap until {previous_key.retired_at.isoformat()})"
+            )
+
+        # ── Step 2: Generate new signing key ──────────────────
         new_secret = secrets.token_hex(32)
         new_key = WebhookSigningKey.objects.create(
             webhook=webhook,
@@ -144,28 +157,18 @@ class Command(BaseCommand):
             status=WebhookSigningKeyStatus.ACTIVE,
         )
         self.stdout.write(
-            f"  Webhook {webhook.id}: created key {new_key.key_id} (ACTIVE)"
+            f"    Created key {new_key.key_id} (ACTIVE)"
         )
         summary["keys_cycled"] += 1
 
-        # ── Step 2: Retire previous active key ──────────────
-        if active_key and active_key.id != new_key.id:
-            active_key.status = WebhookSigningKeyStatus.RETIRING
-            active_key.retired_at = timezone.now() + timezone.timedelta(hours=24)
-            active_key.save(update_fields=["status", "retired_at"])
-            self.stdout.write(
-                f"    Previous key {active_key.key_id} → RETIRING "
-                f"(overlap until {active_key.retired_at.isoformat()})"
-            )
-
-        # ── Step 3: Verify signatures ────────────────────────
+        # ── Step 3: Verify signatures ──────────────────────────
         test_payload = f"drill-{time.monotonic()}"
         sig_new = new_key.generate_signature(test_payload)
         assert sig_new, f"New key {new_key.key_id} produced empty signature"
 
-        if active_key and active_key.id != new_key.id:
-            sig_old = active_key.generate_signature(test_payload)
-            assert sig_old, f"Old key {active_key.key_id} produced empty signature"
+        if previous_key:
+            sig_old = previous_key.generate_signature(test_payload)
+            assert sig_old, f"Old key {previous_key.key_id} produced empty signature"
             assert sig_new != sig_old, "Old and new signatures must differ"
             self.stdout.write(f"    HMAC signatures verified (new + old)")
         else:

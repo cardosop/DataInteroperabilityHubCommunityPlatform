@@ -497,26 +497,27 @@ class MarketplaceEventPublisherE2ETest(TransactionTestCase):
         self.assertIn("marketplace.mapping.created", event_types)
 
     def test_event_publishing_with_invalid_connection_id(self):
-        """Test event publishing error handling with invalid connection ID"""
-        # Try to publish event for non-existent connection
+        """Test event publishing with non-existent connection ID.
+
+        Event publishing does NOT validate connection existence — it's
+        a fire-and-forget notification, not a domain gate.
+        """
         fake_connection_id = "00000000-0000-0000-0000-000000000000"
-        try:
-            event_id = self.publisher.publish_connection_created(
-                connection_id=fake_connection_id,
-                marketplace_type=MarketplaceType.SNOWFLAKE_DATA_MARKETPLACE.value,
-                name="Fake Connection",
-                tenant_id=str(self.tenant.id),
-                user_id=str(self.user.id),
-            )
-            # Should still publish event (event publishing doesn't validate connection existence)
-            self.assertIsNotNone(event_id)
-        except Exception:
-            # Expected if validation is strict
-            pass
+        event_id = self.publisher.publish_connection_created(
+            connection_id=fake_connection_id,
+            marketplace_type=MarketplaceType.SNOWFLAKE_DATA_MARKETPLACE.value,
+            name="Fake Connection",
+            tenant_id=str(self.tenant.id),
+            user_id=str(self.user.id),
+        )
+        self.assertIsNotNone(event_id)
 
     def test_event_publishing_with_empty_event_data(self):
-        """Test event publishing error handling with empty event data"""
-        # Create connection first
+        """Test event publishing with empty name field.
+
+        Event publishing does NOT enforce business-level validation on
+        field values — it's a fire-and-forget notification layer.
+        """
         connection = self.service.create_connection(
             tenant_id=str(self.tenant.id),
             user_id=str(self.user.id),
@@ -525,20 +526,14 @@ class MarketplaceEventPublisherE2ETest(TransactionTestCase):
             config=self.config,
         )
 
-        # Try to publish event with empty data
-        try:
-            event_id = self.publisher.publish_connection_created(
-                connection_id=str(connection.id),
-                marketplace_type=MarketplaceType.SNOWFLAKE_DATA_MARKETPLACE.value,
-                name="",  # Empty name
-                tenant_id=str(self.tenant.id),
-                user_id=str(self.user.id),
-            )
-            # Should handle gracefully
-            self.assertIsNotNone(event_id)
-        except (ValueError, TypeError):
-            # Expected if validation is strict
-            pass
+        event_id = self.publisher.publish_connection_created(
+            connection_id=str(connection.id),
+            marketplace_type=MarketplaceType.SNOWFLAKE_DATA_MARKETPLACE.value,
+            name="",  # Empty name — publisher doesn't enforce business validation
+            tenant_id=str(self.tenant.id),
+            user_id=str(self.user.id),
+        )
+        self.assertIsNotNone(event_id)
 
     def test_event_publishing_with_none_tenant_id(self):
         """Test event publishing error handling with None tenant ID"""
@@ -564,18 +559,17 @@ class MarketplaceEventPublisherE2ETest(TransactionTestCase):
         self.assertEqual(event.event_type, "marketplace.connection.created")
 
     def test_event_publishing_with_invalid_sync_job_id(self):
-        """Test event publishing error handling with invalid sync job ID"""
+        """Test event publishing with non-existent sync job ID.
+
+        Event publishing does NOT validate sync job existence — it's
+        a fire-and-forget notification, not a domain gate.
+        """
         fake_sync_job_id = "00000000-0000-0000-0000-000000000000"
-        try:
-            event_id = self.publisher.publish_sync_started(
-                sync_job_id=fake_sync_job_id,
-                connection_id="test-connection-id",
-                direction=SyncDirection.PULL.value,
-                tenant_id=str(self.tenant.id),
-                user_id=str(self.user.id),
-            )
-            # Should still publish event (event publishing doesn't validate sync job existence)
-            self.assertIsNotNone(event_id)
-        except Exception:
-            # Expected if validation is strict
-            pass
+        event_id = self.publisher.publish_sync_started(
+            sync_job_id=fake_sync_job_id,
+            connection_id="test-connection-id",
+            direction=SyncDirection.PULL.value,
+            tenant_id=str(self.tenant.id),
+            user_id=str(self.user.id),
+        )
+        self.assertIsNotNone(event_id)

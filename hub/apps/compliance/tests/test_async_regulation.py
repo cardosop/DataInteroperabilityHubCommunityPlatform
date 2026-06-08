@@ -15,15 +15,17 @@ class TestComplianceAsyncScanning(TestCase):
 
     def setUp(self):
         from hub.apps.tenants.models import Tenant
-        from hub.apps.users.models import User
+        from hub.apps.users.models import User, UserStatus
 
         self.tenant = Tenant.objects.create(
             name=f"test-tenant-comp-{uuid.uuid4().hex[:8]}",
             slug=f"comp-{uuid.uuid4().hex[:8]}",
         )
-        self.user = User.objects.create(
+        self.user = User.objects.create_user(
             email=f"comp-{uuid.uuid4().hex[:6]}@example.com",
+            password="testpass123",
             tenant=self.tenant,
+            status=UserStatus.ACTIVE,
         )
 
     def test_compliance_run_starts_as_pending(self):

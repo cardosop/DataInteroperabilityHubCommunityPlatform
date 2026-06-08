@@ -165,7 +165,7 @@ class MarketplaceDashboardsIntegrationTest(TestCase):
 
             if found_any:
                 # Great! Metrics are already exposed
-                self.assertTrue(True, "Marketplace metrics are exposed")
+                self.assertTrue(has_prometheus_format, "Marketplace metrics should be exposed in Prometheus format")
             else:
                 # Metrics not exposed yet - this is expected if no operations have occurred
                 # The metrics endpoint is still valid and will expose metrics once operations start
@@ -221,7 +221,7 @@ class MarketplaceDashboardsIntegrationTest(TestCase):
             raise unittest.SkipTest(f"Prometheus not accessible: {e}")
 
     def test_dashboards_can_be_imported_via_api(self):
-        """Test that dashboards can be imported into Grafana via API"""
+        """Test that dashboard JSON structure is valid for Grafana import"""
         try:
             # First verify Grafana is accessible
             health_response = requests.get(
@@ -274,6 +274,7 @@ class MarketplaceDashboardsIntegrationTest(TestCase):
                     dashboard = json.load(f)
 
                 panels = dashboard["dashboard"].get("panels", [])
+                has_marketplace_metric = False
 
                 for panel in panels:
                     targets = panel.get("targets", [])
@@ -303,8 +304,12 @@ class MarketplaceDashboardsIntegrationTest(TestCase):
                                     "marketplace_api_call",
                                 ]
                             ):
-                                # Valid marketplace query
-                                self.assertTrue(True, "Query references marketplace metrics")
+                                has_marketplace_metric = True
+
+                self.assertTrue(
+                    has_marketplace_metric,
+                    f"Dashboard {dashboard_name} should have at least one panel referencing marketplace metrics",
+                )
 
     def test_all_dashboards_have_valid_prometheus_queries(self):
         """Test that all dashboards have valid Prometheus query syntax"""

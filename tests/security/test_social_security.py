@@ -8,6 +8,7 @@ Uses real API client and backend; no mocks or stubs.
 """
 
 import pytest
+import uuid
 from django.test import TestCase
 from rest_framework import status
 from rest_framework.test import APIClient
@@ -28,13 +29,13 @@ class SocialSecurityTestBase(TestCase):
         self.client = APIClient()
         self.tenant_a = Tenant.objects.create(
             name="Social Security Tenant A",
-            slug="social-security-tenant-a",
+            slug=f"social-security-tenant-a-{uuid.uuid4().hex[:8]}",
             status=TenantStatus.ACTIVE,
             kyc_status=KYCStatus.VERIFIED,
         )
         self.tenant_b = Tenant.objects.create(
             name="Social Security Tenant B",
-            slug="social-security-tenant-b",
+            slug=f"social-security-tenant-b-{uuid.uuid4().hex[:8]}",
             status=TenantStatus.ACTIVE,
             kyc_status=KYCStatus.VERIFIED,
         )

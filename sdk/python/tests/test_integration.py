@@ -24,7 +24,6 @@ Option 3: Manual setup via Django shell:
 """
 import os
 import pytest
-import requests
 from datahub_interoperability import DataHubClient, DataHubClientConfig
 from datahub_interoperability.errors import (
     ODPSValidationError,
@@ -32,175 +31,68 @@ from datahub_interoperability.errors import (
     ODPSLinkingError,
     NotFoundError,
 )
+from tests._sdk_test_helpers import (
+    check_api_available,
+    create_real_api_config,
+)
 
-
-def setup_authentication_for_sdk_tests(api_base_url: str) -> str | None:
-    """
-    Set up authentication for SDK tests.
-
-    Tries multiple methods:
-    1. Use TEST_API_KEY environment variable if available
-    2. Use TEST_USER_EMAIL and TEST_USER_PASSWORD to login and get JWT token
-    3. Try to create API key (requires tenant, may fail)
-
-    Note: SDK client supports both API keys and JWT tokens, so we can use JWT tokens
-    directly if API key creation fails (e.g., user doesn't have a tenant).
-
-    Args:
-        api_base_url: API base URL
-
-    Returns:
-        API key or JWT token string if successful, None otherwise
-    """
-    # Method 1: Use API key from environment variable
-    api_key = os.getenv("TEST_API_KEY")
-    if api_key:
-        # Verify it works
-        try:
-            response = requests.get(
-                f"{api_base_url}/contracts/",
-                headers={"X-API-Key": api_key},
-                timeout=5
-            )
-            if response.status_code in [200, 401]:  # 401 is OK, means auth is working
-                return api_key
-        except Exception:
-            pass
-
-    # Method 2: Use credentials from environment to login and get JWT token
-    email = os.getenv("TEST_USER_EMAIL", "sdk-test@example.com")
-    password = os.getenv("TEST_USER_PASSWORD", "TestPass123!")
-
-    try:
-        # Try to login directly (API endpoints should work without CSRF)
-        # Use headers to ensure we're making an API request
-        login_response = requests.post(
-            f"{api_base_url}/auth/login/",
-            json={"email": email, "password": password},
-            headers={"Content-Type": "application/json", "Accept": "application/json"},
-            timeout=5
-        )
-
-        access_token = None
-        if login_response.status_code == 200:
-            # Login successful, get access token
-            try:
-                # Check if response is JSON
-                content_type = login_response.headers.get("Content-Type", "")
-                if "application/json" not in content_type:
-                    # Response is not JSON (might be HTML CSRF error page)
-                    return None
-                login_data = login_response.json()
-                access_token = login_data.get("access_token")
-            except (ValueError, KeyError):
-                # Response is not valid JSON, skip
-                return None
-        else:
-            # Login failed - check if it's a CSRF error or other issue
-            # For API endpoints, CSRF should not be required, so this might indicate
-            # the API is not accessible or there's a configuration issue
-            return None
-
-        if access_token:
-            # Try to create API key first (preferred for SDK tests)
-            try:
-                api_key_response = requests.post(
-                    f"{api_base_url}/auth/api-keys/",
-                    json={"name": "SDK Test API Key"},
-                    headers={"Authorization": f"Bearer {access_token}"},
-                    timeout=5
-                )
-
-                if api_key_response.status_code == 201:
-                    api_key_data = api_key_response.json()
-                    api_key = api_key_data.get("api_key")
-                    if api_key:
-                        return api_key
-            except Exception:
-                # API key creation failed (e.g., user needs tenant)
-                # Fall through to use JWT token instead
-                pass
-
-            # If API key creation fails, use JWT token directly
-            # SDK client supports JWT tokens (they contain dots)
-            if access_token:
-                return access_token
-    except Exception as e:
-        # If any step fails, return None
-        # Don't print exception here to avoid cluttering test output
-        pass
-
-    return None
+# File-specific tenant parameters for ODPS/contracts tests
+_ODPS_TENANT_SLUG = "odps-sdk-test-tenant"
+_ODPS_TENANT_NAME = "ODPS SDK Test Tenant"
+_ODPS_API_KEY_NAME = "odps-sdk-test-key"
+_ODPS_SCOPES = ["contracts:write", "contracts:read", "files:write", "assets:write"]
 
 
 @pytest.fixture
 def config():
-    """Create test config."""
+    """Create test config for unit tests."""
     return DataHubClientConfig(
         base_url="https://api.example.com/api/v1",
         api_token="test-token",
     )
 
 
-@pytest.fixture
+@pytest.fixture(scope="module")
 def real_api_config():
-    """Create config for real API (if available)."""
-    api_url = os.getenv("TEST_API_URL", "http://localhost:8000/api/v1")
-
-    # Try to get API key from environment or set it up automatically
-    api_token = os.getenv("TEST_API_KEY")
-
-    if not api_token:
-        # Try to set up authentication automatically
-        api_token = setup_authentication_for_sdk_tests(api_url)
-
-    if not api_token:
-        pytest.skip(
-            "Could not set up authentication for SDK tests. "
-            "Set TEST_API_KEY environment variable or ensure API is accessible at http://localhost:8000"
-        )
-
-    return DataHubClientConfig(
-        base_url=api_url,
-        api_token=api_token,
+    """Create config for real API (module-scoped — provisions key once)."""
+    return create_real_api_config(
+        tenant_slug=_ODPS_TENANT_SLUG,
+        tenant_name=_ODPS_TENANT_NAME,
+        api_key_name=_ODPS_API_KEY_NAME,
+        scopes=_ODPS_SCOPES,
     )
+
+
+@pytest.fixture
+async def real_client(real_api_config):
+    """Create SDK client with real API configuration and proper cleanup."""
+    import asyncio
+    async with DataHubClient(real_api_config) as client:
+        yield client
+        # Small delay between heavy ODPS tests to avoid overwhelming
+        # the server (gunicorn worker recovery after large payloads).
+        await asyncio.sleep(0.3)
 
 
 def test_client_initialization(config):
     """Test that client initializes with all API modules."""
     client = DataHubClient(config)
 
-    assert client.contracts is not None
-    assert client.lineage is not None
-    assert client.scheduled_ingestion is not None
-    assert client.versioning is not None
-    assert client.governance is not None
-    assert client.mesh is not None
-    assert client.search is not None
-    assert client.observability is not None
-    assert client.webhooks is not None
-
-
-def test_client_api_access(config):
-    """Test that all APIs are accessible from client."""
-    client = DataHubClient(config)
-
-    # Verify all APIs are initialized
-    assert hasattr(client, "contracts")
-    assert hasattr(client, "lineage")
-    assert hasattr(client, "scheduled_ingestion")
-    assert hasattr(client, "versioning")
-    assert hasattr(client, "governance")
-    assert hasattr(client, "mesh")
-    assert hasattr(client, "search")
-    assert hasattr(client, "observability")
-    assert hasattr(client, "webhooks")
+    expected_apis = [
+        "contracts", "lineage", "scheduled_ingestion", "versioning",
+        "governance", "mesh", "search", "observability", "webhooks",
+    ]
+    for api_name in expected_apis:
+        assert hasattr(client, api_name), f"Missing API module: {api_name}"
+        assert getattr(client, api_name) is not None, (
+            f"API module is None: {api_name}"
+        )
 
 
 @pytest.mark.asyncio
-async def test_create_odps_integration(real_api_config):
+async def test_create_odps_integration(real_client):
     """Integration test for creating ODPS contract via SDK with real API."""
-    client = DataHubClient(real_api_config)
+    client = real_client
 
     odps_content = """{
   "schema": "https://opendataproducts.org/schema/v4.1",
@@ -268,9 +160,9 @@ async def test_create_odps_integration(real_api_config):
 
 
 @pytest.mark.asyncio
-async def test_create_odps_link_flow_integration(real_api_config):
+async def test_create_odps_link_flow_integration(real_client):
     """Integration test for creating ODPS contract with link flow via SDK."""
-    client = DataHubClient(real_api_config)
+    client = real_client
 
     # First, create an ODCS contract
     odcs_content = """{
@@ -360,7 +252,7 @@ async def test_create_odps_link_flow_integration(real_api_config):
 
 @pytest.mark.asyncio
 @pytest.mark.e2e
-async def test_create_odps_product_first_flow_e2e(real_api_config):
+async def test_create_odps_product_first_flow_e2e(real_client):
     """
     E2E test for Product-First flow via SDK.
 
@@ -369,7 +261,7 @@ async def test_create_odps_product_first_flow_e2e(real_api_config):
     2. Verify both ODPS and ODCS contracts are created
     3. Verify they are linked bidirectionally
     """
-    client = DataHubClient(real_api_config)
+    client = real_client
 
     odps_content = """{
   "schema": "https://opendataproducts.org/schema/v4.1",
@@ -479,9 +371,9 @@ async def test_create_odps_product_first_flow_e2e(real_api_config):
 
 
 @pytest.mark.asyncio
-async def test_export_odps_integration(real_api_config):
+async def test_export_odps_integration(real_client):
     """Integration test for exporting ODPS contract via SDK with real API."""
-    client = DataHubClient(real_api_config)
+    client = real_client
 
     # First, create an ODPS contract
     odps_content = """{
@@ -571,9 +463,9 @@ async def test_export_odps_integration(real_api_config):
 
 
 @pytest.mark.asyncio
-async def test_download_odps_integration(real_api_config):
+async def test_download_odps_integration(real_client):
     """Integration test for downloading ODPS contract via SDK with real API."""
-    client = DataHubClient(real_api_config)
+    client = real_client
 
     # First, create an ODPS contract
     odps_content = """{
@@ -670,9 +562,9 @@ async def test_download_odps_integration(real_api_config):
 
 
 @pytest.mark.asyncio
-async def test_export_odps_error_scenarios(real_api_config):
+async def test_export_odps_error_scenarios(real_client):
     """Integration test for ODPS export error scenarios."""
-    client = DataHubClient(real_api_config)
+    client = real_client
 
     # Test 1: Invalid contract ID
     try:
@@ -681,9 +573,11 @@ async def test_export_odps_error_scenarios(real_api_config):
     except ODPSValidationError as e:
         assert e.code in ["INVALID_VALUE", "REQUIRED_FIELD_MISSING"]
         assert "uuid" in e.message.lower() or "contract_id" in e.message.lower()
-    except NotFoundError:
+    except NotFoundError as e:
         # API may return 404 for invalid UUID, which is also acceptable
-        pass
+        assert hasattr(e, 'http_status') and e.http_status == 404, (
+            f"Expected 404 NotFoundError, got {type(e).__name__}: {e}"
+        )
 
     # Test 2: Invalid format
     try:
@@ -709,15 +603,23 @@ async def test_export_odps_error_scenarios(real_api_config):
     try:
         await client.contracts.export_odps("00000000-0000-0000-0000-000000000000", format="json")
         pytest.fail("Should have raised NotFoundError or ODPSExportError")
-    except (NotFoundError, ODPSExportError, ODPSValidationError):
-        # All of these are acceptable error types for non-existent contract
-        pass
+    except NotFoundError as e:
+        assert hasattr(e, 'http_status') and e.http_status == 404
+    except ODPSExportError as e:
+        assert hasattr(e, 'code')
+    except ODPSValidationError as e:
+        assert hasattr(e, 'code')
+    except Exception as e:
+        pytest.fail(
+            f"Unexpected exception type for non-existent contract: "
+            f"{type(e).__name__}: {e}"
+        )
 
 
 @pytest.mark.asyncio
-async def test_download_odps_error_scenarios(real_api_config):
+async def test_download_odps_error_scenarios(real_client):
     """Integration test for ODPS download error scenarios."""
-    client = DataHubClient(real_api_config)
+    client = real_client
 
     # Test 1: Invalid contract ID
     try:
@@ -738,15 +640,23 @@ async def test_download_odps_error_scenarios(real_api_config):
     try:
         await client.contracts.download_odps("00000000-0000-0000-0000-000000000000", format="json")
         pytest.fail("Should have raised NotFoundError or ODPSExportError")
-    except (NotFoundError, ODPSExportError, ODPSValidationError):
-        # All of these are acceptable error types for non-existent contract
-        pass
+    except NotFoundError as e:
+        assert hasattr(e, 'http_status') and e.http_status == 404
+    except ODPSExportError as e:
+        assert hasattr(e, 'code')
+    except ODPSValidationError as e:
+        assert hasattr(e, 'code')
+    except Exception as e:
+        pytest.fail(
+            f"Unexpected exception for non-existent contract: "
+            f"{type(e).__name__}: {e}"
+        )
 
 
 @pytest.mark.asyncio
-async def test_create_odps_error_scenarios(real_api_config):
+async def test_create_odps_error_scenarios(real_client):
     """Integration test for ODPS creation error scenarios."""
-    client = DataHubClient(real_api_config)
+    client = real_client
 
     # Test 1: Empty content
     try:
@@ -799,9 +709,9 @@ async def test_create_odps_error_scenarios(real_api_config):
 
 
 @pytest.mark.asyncio
-async def test_link_odps_error_scenarios(real_api_config):
+async def test_link_odps_error_scenarios(real_client):
     """Integration test for ODPS linking error scenarios."""
-    client = DataHubClient(real_api_config)
+    client = real_client
 
     # Test 1: Invalid ODCS contract ID
     try:

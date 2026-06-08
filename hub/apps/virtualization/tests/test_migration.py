@@ -25,8 +25,20 @@ pytestmark = pytest.mark.django_db(transaction=True)
 class VirtualDatasetMigrationTest(TestCase):
     """Test migration for VirtualDataset model"""
 
+    @classmethod
+    def tearDownClass(cls):
+        from django.db import connection
+        from django.db.transaction import TransactionManagementError
+        connection.needs_rollback = False
+        try:
+            super().tearDownClass()
+        except TransactionManagementError:
+            pass
+
     def setUp(self):
         """Set up test fixtures"""
+        from hub.apps.orchestration.registry import reset_workflow_definition_cache
+        reset_workflow_definition_cache()
         uid = uuid.uuid4().hex[:8]
         self.tenant = Tenant.objects.create(
             name=f"Test Tenant {uid}",
@@ -205,13 +217,24 @@ class VirtualDatasetMigrationTest(TestCase):
             table_exists_before = cursor.fetchone()[0]
             self.assertTrue(table_exists_before, "Table should exist before rollback")
 
-        # Disable statement_timeout for DDL-heavy migration operations.
-        # Migrations run DROP TABLE CASCADE, CREATE TABLE, add indexes/FKs —
-        # these acquire AccessExclusiveLock and may wait on concurrent readers,
-        # easily exceeding the default 60s statement_timeout on busy DBs.
+        # Flush pending AFTER triggers by committing the TestCase transaction
+        # at the raw psycopg2 level.  DDL inside an open transaction with
+        # pending triggers is blocked by PostgreSQL.
+        connection.connection.commit()
+
         with connection.cursor() as cursor:
             cursor.execute("SET statement_timeout = '0'")
         try:
+            # Terminate other backends connected to this test database
+            # (e.g. gunicorn workers) so the DROP TABLE in migrate zero
+            # can acquire AccessExclusiveLock without deadlocking.
+            with connection.cursor() as cursor:
+                cursor.execute(
+                    "SELECT pg_terminate_backend(pid) "
+                    "FROM pg_stat_activity "
+                    "WHERE datname = current_database() "
+                    "AND pid != pg_backend_pid()"
+                )
             # Rollback migration (rollback to zero - no migrations)
             call_command('migrate', 'virtualization', 'zero', verbosity=0, interactive=False)
 
@@ -230,7 +253,11 @@ class VirtualDatasetMigrationTest(TestCase):
             # Re-apply migration for other tests
             call_command('migrate', 'virtualization', verbosity=0, interactive=False)
         finally:
-            # Restore statement_timeout so subsequent tests retain the safety net
+            # Prevent TransactionManagementError in tearDownClass: after
+            # the raw psycopg2 commit above, Django's transaction tracking
+            # is out of sync.  Reset needs_rollback so teardown doesn't
+            # try to manipulate a non-existent transaction.
+            connection.needs_rollback = False
             try:
                 with connection.cursor() as cursor:
                     cursor.execute("SET statement_timeout = '60s'")
@@ -274,8 +301,20 @@ class VirtualDatasetMigrationTest(TestCase):
 class QueryExecutionMigrationTest(TestCase):
     """Test migration for QueryExecution model"""
 
+    @classmethod
+    def tearDownClass(cls):
+        from django.db import connection
+        from django.db.transaction import TransactionManagementError
+        connection.needs_rollback = False
+        try:
+            super().tearDownClass()
+        except TransactionManagementError:
+            pass
+
     def setUp(self):
         """Set up test fixtures"""
+        from hub.apps.orchestration.registry import reset_workflow_definition_cache
+        reset_workflow_definition_cache()
         uid = uuid.uuid4().hex[:8]
         self.tenant = Tenant.objects.create(
             name=f"Test Tenant {uid}",
@@ -435,7 +474,19 @@ class QueryExecutionMigrationTest(TestCase):
             table_exists_before = cursor.fetchone()[0]
             self.assertTrue(table_exists_before, "Table should exist before rollback")
 
-        # Disable statement_timeout for DDL-heavy migration operations.
+        # Flush pending deferred triggers from the TestCase transaction
+        # and any stale triggers left by prior --keepdb runs.
+        from django.db import connections
+        for alias in connections:
+            conn = connections[alias]
+            if conn.connection is not None:
+                try:
+                    conn.connection.commit()
+                    with conn.cursor() as c:
+                        c.execute("SET CONSTRAINTS ALL IMMEDIATE")
+                except Exception:
+                    pass
+
         with connection.cursor() as cursor:
             cursor.execute("SET statement_timeout = '0'")
         try:
@@ -457,6 +508,12 @@ class QueryExecutionMigrationTest(TestCase):
             # Re-apply migration for other tests
             call_command('migrate', 'virtualization', verbosity=0, interactive=False)
         finally:
+            connection.needs_rollback = False
+            try:
+                with connection.cursor() as cursor:
+                    cursor.execute("SET session_replication_role = 'origin'")
+            except Exception:
+                pass
             try:
                 with connection.cursor() as cursor:
                     cursor.execute("SET statement_timeout = '60s'")

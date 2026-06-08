@@ -64,6 +64,18 @@ class ValidationError(DataHubError):
         super().__init__(message, "VALIDATION_ERROR", 400, request_id, None, details)
 
 
+class UnprocessableEntityError(DataHubError):
+    """Unprocessable entity error (422)"""
+
+    def __init__(
+        self,
+        message: str,
+        request_id: Optional[str] = None,
+        details: Optional[Dict[str, Any]] = None,
+    ):
+        super().__init__(message, "UNPROCESSABLE_ENTITY", 422, request_id, None, details)
+
+
 class UnauthorizedError(DataHubError):
     """Authentication error (401)"""
 
@@ -133,6 +145,45 @@ class MVPGatedFeatureError(NotFoundError):
         self.prefix = prefix
         self.endpoint = endpoint
         self.environment_url = environment_url
+
+
+class FeatureNotEnabledError(NotFoundError):
+    """
+    Raised when a capability-gated feature is not enabled for the tenant/plan.
+
+    Subclass of :class:`NotFoundError` so existing ``except NotFoundError:``
+    handlers continue to catch it unchanged. Carries the stable
+    ``code='FEATURE_NOT_ENABLED'`` plus structured fields (``feature``,
+    ``reason``) so programmatic consumers can branch on ``error.code``
+    without parsing the rendered message.
+    """
+
+    # NotFoundError.__init__ does not accept ``code`` (it hardcodes
+    # ``"NOT_FOUND"``), so we override and call DataHubError.__init__
+    # directly to pass the FEATURE_NOT_ENABLED code through cleanly.
+    def __init__(
+        self,
+        feature: str,
+        message: Optional[str] = None,
+        reason: Optional[str] = None,
+        request_id: Optional[str] = None,
+    ):
+        rendered = message or f"Feature '{feature}' is not enabled"
+        if reason:
+            rendered = f"{rendered}: {reason}"
+        DataHubError.__init__(
+            self,
+            message=rendered,
+            code="FEATURE_NOT_ENABLED",
+            http_status=404,
+            request_id=request_id,
+            details={
+                "feature": feature,
+                "reason": reason,
+            },
+        )
+        self.feature = feature
+        self.reason = reason
 
 
 class ConflictError(DataHubError):
@@ -565,80 +616,46 @@ class ODCSExportError(ODCSError):
         self.field_path = field_path
 
 
-def parse_error(response_data: Any) -> DataHubError:
+def _extract_error_detail(obj: Any) -> Dict[str, Any]:
+    """Extract error info from an object that may be a DRF ErrorDetail.
+
+    DRF's ErrorDetail has ``.code`` and ``.string`` attributes but is
+    neither a ``str`` nor a ``dict``.  This helper normalises such
+    objects — and plain strings / dicts — into a ``{"message": ...,
+    "code": ...}`` dict suitable for the ``error`` envelope.
     """
-    Parse API error response and return appropriate error class
+    # DRF ErrorDetail / Pydantic error wrapper: has .code and .string attrs
+    if hasattr(obj, "code") and hasattr(obj, "string"):
+        return {"message": obj.string, "code": str(obj.code)}
+    # Object with .code but no .string — use str(obj) as message
+    if hasattr(obj, "code") and not hasattr(obj, "string"):
+        return {"message": str(obj), "code": str(obj.code)}
+    if isinstance(obj, str):
+        return {"message": obj, "code": "ERROR"}
+    if isinstance(obj, dict):
+        return obj
+    return {"message": str(obj), "code": "ERROR"}
 
-    Args:
-        response_data: Error response from API (dict, str, or other)
 
-    Returns:
-        Appropriate DataHubError subclass
+def _error_for_status(
+    http_status: int,
+    message: str,
+    code: str = "UNKNOWN_ERROR",
+    request_id: Optional[str] = None,
+    timestamp: Optional[str] = None,
+    response_data: Optional[Dict[str, Any]] = None,
+    details: Optional[Dict[str, Any]] = None,
+) -> DataHubError:
+    """Map an HTTP status code to the appropriate :class:`DataHubError` subclass.
+
+    This is the single source of truth for status→error-class routing,
+    used by both the string-error and dict-error branches of
+    :func:`parse_error`.
     """
-    # Handle case where response_data is a string
-    if isinstance(response_data, str):
-        return ServerError(f"Unexpected error: {response_data}", "UNEXPECTED_ERROR", 500)
-
-    # Handle case where response_data is not a dict
-    if not isinstance(response_data, dict):
-        return ServerError(f"Unexpected error: {response_data}", "UNEXPECTED_ERROR", 500)
-
-    # Handle FastAPI/DRF style {"detail": "..."} format
-    if "detail" in response_data and "error" not in response_data:
-        detail = response_data["detail"]
-        http_status = response_data.get("http_status", 500)
-        # Convert detail to error format for consistent handling
-        if isinstance(detail, str):
-            response_data = {
-                "error": {
-                    "message": detail,
-                    "code": "ERROR",
-                    "http_status": http_status,
-                }
-            }
-        elif isinstance(detail, dict):
-            response_data = {"error": detail}
-        else:
-            response_data = {
-                "error": {
-                    "message": str(detail),
-                    "code": "ERROR",
-                    "http_status": http_status,
-                }
-            }
-
-    if "error" not in response_data:
-        return ServerError("Unexpected error format", "UNKNOWN_ERROR", 500)
-
-    error = response_data["error"]
-
-    # Handle case where error is a string instead of dict
-    # This happens when API returns {"error": "message"} format
-    if isinstance(error, str):
-        # Try to get http_status from response_data if available
-        http_status = response_data.get("http_status", 500)
-        # Default to 400 for string errors (common for validation errors)
-        if http_status == 500:
-            http_status = 400
-        return (
-            ValidationError(error)
-            if http_status == 400
-            else ServerError(error, "UNKNOWN_ERROR", http_status)
-        )
-
-    if not isinstance(error, dict):
-        return ServerError(f"Unexpected error format: {error}", "UNKNOWN_ERROR", 500)
-
-    code = error.get("code", "UNKNOWN_ERROR")
-    http_status = error.get("http_status", 500)
-    message = error.get("message", "An error occurred")
-    request_id = error.get("request_id")
-    timestamp = error.get("timestamp")
-    details = error.get("details")
-
-    # Map error codes to specific error classes
     if http_status == 400:
         return ValidationError(message, request_id, details)
+    elif http_status == 422:
+        return UnprocessableEntityError(message, request_id, details)
     elif http_status == 401:
         return UnauthorizedError(message, request_id)
     elif http_status == 403:
@@ -649,34 +666,141 @@ def parse_error(response_data: Any) -> DataHubError:
         return ConflictError(message, request_id, details)
     elif http_status == 429:
         retry_after = None
-        # Check details dict first
         if isinstance(details, dict):
             retry_after = details.get("retry_after")
-        # Also check top-level error dict (DRF format)
-        if retry_after is None and isinstance(error, dict):
-            retry_after = error.get("retry_after")
-        # Also check top-level response_data (some API formats)
+        if retry_after is None and isinstance(response_data, dict):
+            # Check top-level error dict (DRF format)
+            error = response_data.get("error", {})
+            if isinstance(error, dict):
+                retry_after = error.get("retry_after")
         if retry_after is None and isinstance(response_data, dict):
             retry_after = response_data.get("retry_after")
-
-        # Convert to int if it's a string or ErrorDetail-like object
+        # Fallback: parse retry_after from the DRF throttle detail message.
+        # DRF emits: "Request was throttled. Expected available in N seconds."
+        if retry_after is None:
+            import re as _re
+            _match = _re.search(
+                r"Expected available in (\d+)\s*seconds?", message or ""
+            )
+            if _match:
+                retry_after = int(_match.group(1))
         if retry_after is not None:
             try:
                 if isinstance(retry_after, str):
                     retry_after = int(retry_after.strip())
-                elif hasattr(retry_after, '__str__'):
-                    # Handle ErrorDetail objects
+                elif hasattr(retry_after, "__str__"):
                     retry_after = int(str(retry_after).strip())
                 else:
                     retry_after = int(retry_after)
             except (ValueError, TypeError):
                 retry_after = None
-
         return RateLimitError(message, request_id, retry_after)
     elif http_status >= 500:
         return ServerError(message, code, http_status, request_id)
     else:
         return DataHubError(message, code, http_status, request_id, timestamp, details)
+
+
+def parse_error(
+    response_data: Any,
+    http_status: Optional[int] = None,
+) -> DataHubError:
+    """
+    Parse API error response and return appropriate error class.
+
+    Args:
+        response_data: Error response from API (dict, str, or other).
+        http_status: Actual HTTP status code from the response.  When
+            provided it takes precedence over any ``http_status``
+            embedded in *response_data*, preventing the parser from
+            misclassifying e.g. a 403 as a 500 when the body omits the
+            status.
+
+    Returns:
+        Appropriate DataHubError subclass
+    """
+    # ── Normalise raw types ──────────────────────────────────────────
+    if isinstance(response_data, str):
+        return ServerError(
+            f"Unexpected error: {response_data}", "UNEXPECTED_ERROR",
+            http_status or 500,
+        )
+    if not isinstance(response_data, dict):
+        return ServerError(
+            f"Unexpected error: {response_data}", "UNEXPECTED_ERROR",
+            http_status or 500,
+        )
+
+    # ── Phase 285 feature-gate format ────────────────────────────────
+    # Backend feature-flag gates return {"error_code": "...", "detail": "..."}
+    # (no "error" envelope).  Normalise into the standard envelope.
+    if "detail" in response_data and "error" not in response_data:
+        detail = response_data["detail"]
+        # If the caller passed the real HTTP status, use it; otherwise
+        # try the body, falling back to 500.
+        effective_status = (
+            http_status
+            if http_status is not None
+            else response_data.get("http_status", 500)
+        )
+        error_code = response_data.get("error_code", None)
+        extracted = _extract_error_detail(detail)
+        response_data = {
+            "error": {
+                "message": extracted.get("message", str(detail)),
+                "code": (
+                    str(error_code) if error_code is not None
+                    else extracted.get("code", "ERROR")
+                ),
+                "http_status": effective_status,
+            }
+        }
+
+    if "error" not in response_data:
+        return ServerError("Unexpected error format", "UNKNOWN_ERROR", http_status or 500)
+
+    error = response_data["error"]
+
+    # Handle case where error is a string instead of dict
+    # This happens when API returns {"error": "message"} format
+    if isinstance(error, str):
+        # Use caller-provided http_status if available, otherwise
+        # try the body.  Only default to 400 when *neither* source
+        # provided a real status (500 means "unknown").
+        body_status = response_data.get("http_status", 500)
+        if http_status is not None:
+            effective_status = http_status
+        elif body_status != 500:
+            effective_status = body_status
+        else:
+            effective_status = 400  # default string errors to 400
+        # Route through the same status → error-class mapping used for
+        # dict errors, so a 403 string error becomes ForbiddenError
+        # rather than a misleading ServerError.
+        return _error_for_status(effective_status, error, "UNKNOWN_ERROR", None, None, response_data, None)
+
+    if not isinstance(error, dict):
+        return ServerError(
+            f"Unexpected error format: {error}", "UNKNOWN_ERROR",
+            http_status or 500,
+        )
+
+    # When caller provides the real HTTP status, it wins over the body.
+    code = error.get("code", "UNKNOWN_ERROR")
+    resolved_http_status = (
+        http_status
+        if http_status is not None
+        else error.get("http_status", 500)
+    )
+    message = error.get("message", "An error occurred")
+    request_id = error.get("request_id")
+    timestamp = error.get("timestamp")
+    details = error.get("details")
+
+    return _error_for_status(
+        resolved_http_status, message, code, request_id, timestamp,
+        response_data, details,
+    )
 
 
 def parse_odcs_error(response_data: Any) -> ODCSError:

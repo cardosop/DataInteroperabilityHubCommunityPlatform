@@ -350,7 +350,7 @@ EVENT_TYPE_SCHEMAS: Dict[str, Dict[str, Any]] = {
                 "files_processed": {"type": "integer"},
                 "files_succeeded": {"type": "integer"},
                 "files_failed": {"type": "integer"},
-                "duration_ms": {"type": "integer"},
+                "duration_ms": {"type": ["integer", "null"]},
                 "datasets_created": {"type": "integer"},
             },
         }
@@ -990,6 +990,47 @@ EVENT_TYPE_SCHEMAS: Dict[str, Dict[str, Any]] = {
                 "operation": {"type": "string"},
                 "api_key_id": {"type": ["string", "null"], "format": "uuid"},
                 "status": {"type": "string"},
+            },
+        }
+    },
+    "workflow.model_training.started": {
+        "data": {
+            "type": "object",
+            "required": ["workflow_instance_id"],
+            "properties": {
+                "workflow_instance_id": {"type": "string", "format": "uuid"},
+                "asset_id": {"type": ["string", "null"]},
+                "dataset_id": {"type": ["string", "null"]},
+                "training_config": {"type": "object"},
+            },
+        }
+    },
+    "workflow.model_training.step_completed": {
+        "data": {
+            "type": "object",
+            "required": ["workflow_instance_id"],
+            "properties": {
+                "workflow_instance_id": {"type": "string", "format": "uuid"},
+                "model_id": {"type": ["string", "null"]},
+                "training_job_id": {"type": ["string", "null"]},
+                "progress_percent": {"type": "number"},
+                "current_step": {"type": "string"},
+                "total_steps": {"type": ["integer", "null"]},
+                "completed_steps": {"type": ["integer", "null"]},
+                "elapsed_time_ms": {"type": ["integer", "null"]},
+                "status": {"type": "string"},
+            },
+        }
+    },
+    "workflow.model_training.completed": {
+        "data": {
+            "type": "object",
+            "required": ["workflow_instance_id"],
+            "properties": {
+                "workflow_instance_id": {"type": "string", "format": "uuid"},
+                "model_id": {"type": "string"},
+                "training_job_id": {"type": ["string", "null"]},
+                "duration_ms": {"type": ["integer", "null"]},
             },
         }
     },
@@ -2225,6 +2266,153 @@ EVENT_TYPE_SCHEMAS: Dict[str, Dict[str, Any]] = {
                 "report_id": {"type": "string", "format": "uuid"},
                 "customer_id": {"type": "string"},
                 "customer_email": {"type": "string"},
+            },
+        }
+    },
+    # Phase 240.5.A — DQ run completion billing event.
+    # Payload contract mirrors hub.apps.billing.event_types.DQ_RUN_COMPLETED.
+    "billing.dq.run.completed": {
+        "data": {
+            "type": "object",
+            "required": [
+                "tenant_id",
+                "dq_run_id",
+                "engine",
+                "rows_inspected",
+                "columns_inspected",
+                "execution_time_seconds",
+            ],
+            "properties": {
+                "tenant_id": {"type": "string", "format": "uuid"},
+                "dq_run_id": {"type": "string", "format": "uuid"},
+                "engine": {"type": "string"},
+                "rows_inspected": {"type": "integer"},
+                "columns_inspected": {"type": "integer"},
+                "execution_time_seconds": {"type": "number"},
+                "quality_score": {"type": ["number", "null"]},
+            },
+        }
+    },
+    # Notification Events
+    "notification.created": {
+        "data": {
+            "type": "object",
+            "required": ["id", "user_id"],
+            "properties": {
+                "id": {"type": "string", "format": "uuid"},
+                "user_id": {"type": "string", "format": "uuid"},
+                "category": {"type": "string"},
+                "notification_type": {"type": "string"},
+                "title": {"type": "string"},
+                "resource_type": {"type": "string"},
+                "resource_id": {"type": ["string", "null"], "format": "uuid"},
+            },
+        }
+    },
+
+    # ── Social Events ────────────────────────────────────────────────
+    # Schemas mirror the data dicts published by social/views.py.
+    # user_id is carried as event metadata (Event.user_id column), NOT
+    # inside the data payload — do NOT add it as a required field here.
+    "social.rating.created": {
+        "data": {
+            "type": "object",
+            "required": ["rating_id", "asset_id"],
+            "properties": {
+                "rating_id": {"type": "string", "format": "uuid"},
+                "asset_id": {"type": "string", "format": "uuid"},
+                "rating": {"type": "integer"},
+            },
+        }
+    },
+    "social.review.created": {
+        "data": {
+            "type": "object",
+            "required": ["review_id", "asset_id"],
+            "properties": {
+                "review_id": {"type": "string", "format": "uuid"},
+                "asset_id": {"type": "string", "format": "uuid"},
+            },
+        }
+    },
+    "social.comment.created": {
+        "data": {
+            "type": "object",
+            "required": ["comment_id", "asset_id"],
+            "properties": {
+                "comment_id": {"type": "string", "format": "uuid"},
+                "asset_id": {"type": "string", "format": "uuid"},
+                "parent_comment_id": {"type": ["string", "null"], "format": "uuid"},
+            },
+        }
+    },
+    "social.community.created": {
+        "data": {
+            "type": "object",
+            "required": ["community_id"],
+            "properties": {
+                "community_id": {"type": "string", "format": "uuid"},
+                "name": {"type": "string"},
+            },
+        }
+    },
+    "social.community.joined": {
+        "data": {
+            "type": "object",
+            "required": ["community_id"],
+            "properties": {
+                "community_id": {"type": "string", "format": "uuid"},
+                "name": {"type": "string"},
+            },
+        }
+    },
+
+    # ── ML Model Events ──────────────────────────────────────────────
+    "ml.model.linked": {
+        "data": {
+            "type": "object",
+            "required": ["model_id", "odh_model_id"],
+            "properties": {
+                "model_id": {"type": "string", "format": "uuid"},
+                "odh_model_id": {"type": "string"},
+                "asset_id": {"type": ["string", "null"], "format": "uuid"},
+                "contract_id": {"type": ["string", "null"], "format": "uuid"},
+                "linked_at": {"type": "string", "format": "date-time"},
+            },
+        }
+    },
+    "ml.model.synced": {
+        "data": {
+            "type": "object",
+            "required": ["model_id", "odh_model_id", "sync_status"],
+            "properties": {
+                "model_id": {"type": "string", "format": "uuid"},
+                "odh_model_id": {"type": "string"},
+                "sync_status": {"type": "string"},
+                "synced_at": {"type": "string", "format": "date-time"},
+            },
+        }
+    },
+    "ml.dataset.linked": {
+        "data": {
+            "type": "object",
+            "required": ["model_id", "dataset_id", "role"],
+            "properties": {
+                "model_id": {"type": "string", "format": "uuid"},
+                "dataset_id": {"type": "string", "format": "uuid"},
+                "role": {"type": "string"},
+                "linked_at": {"type": "string", "format": "date-time"},
+            },
+        }
+    },
+    "ml.model.asset.created": {
+        "data": {
+            "type": "object",
+            "required": ["model_id", "asset_id"],
+            "properties": {
+                "model_id": {"type": "string", "format": "uuid"},
+                "asset_id": {"type": "string", "format": "uuid"},
+                "created_at": {"type": "string", "format": "date-time"},
             },
         }
     },

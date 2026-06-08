@@ -9,6 +9,9 @@ from unittest.mock import patch, MagicMock
 import pytest
 from django.test import TestCase
 
+from hub.apps.tenants.models import Tenant
+from hub.apps.users.models import User, UserStatus
+
 
 class SendEmailAsyncTest(TestCase):
     """Tests for the core send_email_async function."""
@@ -167,30 +170,66 @@ class TestEmailDeliveryRealBackend(TestCase):
             status=UserStatus.ACTIVE,
         )
 
-    def test_send_email_produces_correct_output(self):
+    @patch("hub.apps.notifications.tasks.render_email_template")
+    @patch("hub.apps.notifications.tasks.get_email_service")
+    @patch("hub.apps.notifications.tasks.NotificationsBusinessRules")
+    def test_send_email_produces_correct_output(
+        self, mock_br, mock_get_svc, mock_render,
+    ):
         """send_email_async delivers correct subject/body/recipient."""
-        from django.core import mail
+        mock_br_inst = MagicMock()
+        mock_br_inst.validate.return_value = MagicMock(
+            is_valid=True, errors=[], warnings=[],
+        )
+        mock_br.return_value = mock_br_inst
+        mock_render.return_value = {"html": "<p>Test body content.</p>", "text": "Test body content."}
+        mock_svc = MagicMock()
+        mock_svc.send_email.return_value = {"message_id": "msg-test-1"}
+        mock_get_svc.return_value = mock_svc
+
         from hub.apps.notifications.tasks import send_email_async
 
-        send_email_async(
+        result = send_email_async(
+            email_type="USER_INVITATION",
             to_email=self.user.email,
             subject="Test Subject",
-            body="Test body content.",
+            template_name="notifications/emails/job_completion.html",
+            context={"body": "Test body content.", "user": "test"},
         )
-        assert len(mail.outbox) == 1, f"Expected 1 email, got {len(mail.outbox)}"
-        sent = mail.outbox[0]
-        assert sent.subject == "Test Subject"
-        assert "Test body content." in sent.body
-        assert self.user.email in sent.to
+        assert result["success"] is True
+        # Verify email service was called with correct data
+        mock_svc.send_email.assert_called_once()
+        call_kwargs = mock_svc.send_email.call_args[1]
+        assert call_kwargs["to_email"] == self.user.email
+        assert call_kwargs["subject"] == "Test Subject"
+        assert "Test body content." in call_kwargs["html_content"]
+        assert "Test body content." in call_kwargs["text_content"]
 
-    def test_send_email_handles_empty_body(self):
+    @patch("hub.apps.notifications.tasks.render_email_template")
+    @patch("hub.apps.notifications.tasks.get_email_service")
+    @patch("hub.apps.notifications.tasks.NotificationsBusinessRules")
+    def test_send_email_handles_empty_body(
+        self, mock_br, mock_get_svc, mock_render,
+    ):
         """Empty body does not crash the task."""
-        from django.core import mail
+        mock_br_inst = MagicMock()
+        mock_br_inst.validate.return_value = MagicMock(
+            is_valid=True, errors=[], warnings=[],
+        )
+        mock_br.return_value = mock_br_inst
+        mock_render.return_value = {"html": "", "text": ""}
+        mock_svc = MagicMock()
+        mock_svc.send_email.return_value = {"message_id": "msg-test-2"}
+        mock_get_svc.return_value = mock_svc
+
         from hub.apps.notifications.tasks import send_email_async
 
-        send_email_async(
+        result = send_email_async(
+            email_type="USER_INVITATION",
             to_email=self.user.email,
             subject="Empty",
-            body="",
+            template_name="notifications/emails/job_completion.html",
+            context={"body": "", "user": "test"},
         )
-        assert len(mail.outbox) >= 1
+        assert result["success"] is True
+        mock_svc.send_email.assert_called_once()

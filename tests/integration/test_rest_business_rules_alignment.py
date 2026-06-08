@@ -30,6 +30,7 @@ from hub.apps.scheduled_ingestion.models import (
 from hub.apps.tenants.models import KYCStatus
 from hub.apps.users.models import Role, UserRole, UserStatus
 from hub.apps.testing.billing_support import ensure_tenant_has_active_subscription
+from hub.apps.testing.role_support import ensure_user_has_data_provider_role
 from tests.factories import TenantFactory, UserFactory
 
 

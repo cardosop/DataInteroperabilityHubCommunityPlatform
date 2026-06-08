@@ -20,12 +20,14 @@ ITERATIONS = 10
 def _measure_init_ms() -> float:
     start = time.perf_counter()
     try:
-        from datahub_sdk import DataHubClient
-        _ = DataHubClient(base_url="http://localhost:8000/api/v1", api_key="perf-test-key")
+        from datahub_interoperability import DataHubClient, DataHubClientConfig
     except ImportError:
-        pytest.skip("datahub_sdk not installed")
-    except Exception:
-        pass  # Init may fail (no backend) — we only care about speed
+        pytest.skip("datahub_interoperability not installed")
+    config = DataHubClientConfig(base_url="http://localhost:8000/api/v1", api_token="perf-test-key")
+    client = DataHubClient(config)
+    # Verify construction actually succeeded — don't measure time-to-throw.
+    assert client is not None
+    assert client.config is not None
     return (time.perf_counter() - start) * 1000
 
 

@@ -3,6 +3,7 @@ Integration tests for API error handling.
 
 Verifies 400, 401, 403, 404, and validation error responses with real client (no mocks/stubs).
 """
+from hub.apps.testing.role_support import ensure_user_has_data_provider_role
 
 import pytest
 from django.test import TestCase
@@ -23,6 +24,7 @@ class APIErrorHandlingIntegrationTest(TestCase):
         self.tenant = TenantFactory.create_tenant()
         self.user = UserFactory.create_user(tenant=self.tenant, status=UserStatus.ACTIVE)
         self.client.force_authenticate(user=self.user)
+        ensure_user_has_data_provider_role(self.user)
 
     def test_404_for_nonexistent_resource(self):
         """GET nonexistent resource returns 404."""

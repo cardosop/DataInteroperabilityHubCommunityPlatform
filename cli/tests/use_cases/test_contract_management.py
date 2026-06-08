@@ -197,7 +197,7 @@ schema:
         asset_result = runner.invoke(cli, [
             'assets', 'create',
             '--name', 'Contract Asset',
-            '--key', 'contract-asset-key'
+            '--key', 'contract-asset-key'  # noqa: PHASE216-STATIC-ID
         ])
 
         asset_id = None

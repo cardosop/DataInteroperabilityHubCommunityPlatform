@@ -195,7 +195,7 @@ class CKANConnector(DataMarketplaceConnector):
         try:
             return self._circuit_breaker.call(execute_request)
         except Exception as e:
-            logger.error(f"CKAN connector request failed: {e}")
+            logger.warning(f"CKAN connector request failed: {e}")
             raise
 
     @property
@@ -264,7 +264,7 @@ class CKANConnector(DataMarketplaceConnector):
                 return False
         except Exception as e:
             self._authenticated = False
-            logger.error(f"CKAN authentication failed: {e}")
+            logger.warning(f"CKAN authentication failed: {e}")
             raise HubConnectionError(f"Unable to authenticate with CKAN instance: {e}") from e
 
     def test_connection(self) -> bool:
@@ -293,7 +293,7 @@ class CKANConnector(DataMarketplaceConnector):
                 logger.warning("Connection test failed: Invalid response format")
                 return False
         except Exception as e:
-            logger.error(f"Connection test failed for CKAN instance: {e}")
+            logger.warning(f"Connection test failed for CKAN instance: {e}")
             raise HubConnectionError(f"Unable to connect to CKAN instance: {e}") from e
 
     def list_listings(
@@ -1455,14 +1455,14 @@ class CKANConnector(DataMarketplaceConnector):
                         failed_items += 1
                         error_msg = f"Failed to fetch listing {listing_id}: {e}"
                         errors.append(error_msg)
-                        logger.error(error_msg)
+                        logger.warning(error_msg)
             else:
                 # Fetch listings using filters
                 listings = self.list_listings(filters=filters, limit=limit)
         except Exception as e:
             error_msg = f"Failed to fetch listings: {e}"
             errors.append(error_msg)
-            logger.error(error_msg)
+            logger.warning(error_msg)
             return SyncResult(
                 status=SyncStatus.FAILED,
                 total_items=0,
@@ -1539,14 +1539,14 @@ class CKANConnector(DataMarketplaceConnector):
                     failed_items += 1
                     error_msg = f"Listing {listing.marketplace_id}: Failed to map to Hub asset: {e}"
                     errors.append(error_msg)
-                    logger.error(error_msg)
+                    logger.warning(error_msg)
                     continue
 
             except Exception as e:
                 failed_items += 1
                 error_msg = f"Listing {listing.marketplace_id}: Unexpected error: {e}"
                 errors.append(error_msg)
-                logger.error(error_msg, exc_info=True)
+                logger.warning(error_msg, exc_info=True)
 
         completed_at = timezone.now()
         status = SyncStatus.COMPLETED if failed_items == 0 else SyncStatus.PARTIAL if successful_items > 0 else SyncStatus.FAILED

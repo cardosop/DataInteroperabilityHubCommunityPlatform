@@ -88,7 +88,7 @@ class AssetRecommendationServiceTest(TestCase):
         )
 
     def test_get_recommendations_usage_patterns_returns_recommendations(self):
-        """Test usage pattern-based recommendations returns recommendations."""
+        """Test usage pattern-based recommendations are sorted by score descending."""
         recommendations = AssetRecommendationService.get_recommendations(
             tenant_id=str(self.tenant.id),
             limit=10,
@@ -98,6 +98,10 @@ class AssetRecommendationServiceTest(TestCase):
         )
 
         self.assertGreater(len(recommendations), 0)
+        # Usage-pattern recommendations should be sorted by score descending
+        scores = [r["score"] for r in recommendations]
+        self.assertEqual(scores, sorted(scores, reverse=True),
+                         "usage-pattern recommendations must be sorted by score descending")
 
     def test_get_recommendations_usage_patterns_sorted_by_score(self):
         """Test usage pattern-based recommendations are sorted by score descending."""
@@ -129,8 +133,8 @@ class AssetRecommendationServiceTest(TestCase):
             self.assertIn("reasons", rec)
 
     def test_get_recommendations_lineage(self):
-        """Test lineage-based recommendations"""
-        # Create contract with lineage
+        """Test lineage-based recommendations return target assets."""
+        # Create contract with lineage pointing to a target contract
         contract = Contract.objects.create(
             tenant=self.tenant,
             asset=self.asset1,
@@ -145,7 +149,7 @@ class AssetRecommendationServiceTest(TestCase):
             created_by=self.user,
         )
 
-        # Create target asset with contract
+        # Create target asset with the referenced contract
         target_asset = Asset.objects.create(
             tenant=self.tenant,
             key="target-asset",
@@ -174,16 +178,19 @@ class AssetRecommendationServiceTest(TestCase):
             include_user_behavior=False,
         )
 
-        # Should find target asset via lineage
+        # Should find recommendations via lineage
         self.assertGreater(len(recommendations), 0)
+        # The target asset should be among the recommendations
+        target_ids = [r["asset_id"] for r in recommendations]
+        self.assertIn(str(target_asset.id), target_ids)
 
     def test_get_recommendations_user_behavior(self):
-        """Test user behavior-based recommendations"""
-        # Create search analytics with clicks
+        """Test user behavior-based recommendations include clicked/similar assets."""
+        # Create search analytics with clicks on asset2
         SearchAnalytics.objects.create(
             tenant=self.tenant,
             user=self.user,
-            query="test query",
+            query="finance data",
             clicked_result_id=self.asset2.id,
             clicked_result_type="ASSET",
             clicked_at=timezone.now(),
@@ -200,6 +207,15 @@ class AssetRecommendationServiceTest(TestCase):
 
         # Should find recommendations based on user behavior
         self.assertGreater(len(recommendations), 0)
+        # At least one recommendation should be scoped to the same tenant
+        recommended_ids = [r["asset_id"] for r in recommendations]
+        tenant_asset_ids = set(
+            str(a.id) for a in Asset.objects.filter(tenant=self.tenant)
+        )
+        self.assertTrue(
+            any(rid in tenant_asset_ids for rid in recommended_ids),
+            "Recommendations must include assets from the user's tenant",
+        )
 
     def test_get_recommendations_combined(self):
         """Test combined recommendations from all sources"""
@@ -234,10 +250,18 @@ class AssetRecommendationServiceTest(TestCase):
             tenant_id=str(self.tenant.id), limit=10
         )
 
-        # Should return recommendations
-        self.assertIsNotNone(recommendations)
+        # Should return recommendations for assets in the tenant
         self.assertIsInstance(recommendations, list)
-        self.assertGreaterEqual(len(recommendations), 0)
+        self.assertGreater(len(recommendations), 0)
+        # Each recommendation must have the required schema fields
+        for rec in recommendations:
+            self.assertIn("asset_id", rec)
+            self.assertIn("asset_name", rec)
+            self.assertIn("score", rec)
+            self.assertIn("reasons", rec)
+        # Scores should be non-negative
+        for rec in recommendations:
+            self.assertGreaterEqual(rec["score"], 0)
 
     # ========== FAILURE SCENARIOS ==========
 
@@ -250,18 +274,27 @@ class AssetRecommendationServiceTest(TestCase):
         )
         self.assertEqual(len(recommendations), 0)
 
-    def test_get_recommendations_nonexistent_asset(self):
-        """Test recommendations with non-existent asset returns empty list"""
+    def test_get_recommendations_unknown_asset_id_falls_back_to_tenant_wide(self):
+        """Test that a non-matching asset_id returns tenant-wide recommendations.
+
+        When the given asset_id doesn't match any asset, the service falls back
+        to returning all tenant assets (the fake UUID is simply excluded from
+        personalized filtering, not treated as an error)."""
         fake_asset_id = str(uuid.uuid4())
 
         recommendations = AssetRecommendationService.get_recommendations(
             tenant_id=str(self.tenant.id), asset_id=fake_asset_id, limit=10
         )
-        # Service returns tenant-wide recommendations excluding the given
-        # asset_id.  A fake UUID matches nothing, so all tenant assets
-        # are returned — the result is NOT empty.
+        # Service returns tenant-wide recommendations because the given
+        # asset_id matches nothing — the result is NOT empty.
         self.assertIsInstance(recommendations, list)
         self.assertGreater(len(recommendations), 0)
+        # All returned assets must belong to the tenant
+        tenant_asset_ids = set(
+            str(a.id) for a in Asset.objects.filter(tenant=self.tenant)
+        )
+        for rec in recommendations:
+            self.assertIn(rec["asset_id"], tenant_asset_ids)
 
     # ========== EDGE CASES ==========
 
@@ -300,7 +333,7 @@ class AssetRecommendationServiceTest(TestCase):
         self.assertEqual(len(recommendations), 0)
 
     def test_get_recommendations_all_filters_disabled(self):
-        """Test recommendations with all filters disabled (edge case)"""
+        """Test recommendations with all sources disabled returns empty list."""
         recommendations = AssetRecommendationService.get_recommendations(
             tenant_id=str(self.tenant.id),
             limit=10,
@@ -309,29 +342,27 @@ class AssetRecommendationServiceTest(TestCase):
             include_user_behavior=False,
         )
 
-        # Should return empty list or handle gracefully
+        # With all recommendation sources disabled, the result must be empty
         self.assertIsInstance(recommendations, list)
-
-    # ========== ERROR HANDLING ==========
-
-    def test_get_recommendations_database_error_handling(self):
-        """Test error handling when database query fails"""
-        # Use valid tenant
-        try:
-            recommendations = AssetRecommendationService.get_recommendations(
-                tenant_id=str(self.tenant.id), limit=10
-            )
-            # Should return list
-            self.assertIsNotNone(recommendations)
-            self.assertIsInstance(recommendations, list)
-        except Exception:
-            # If raises exception, that's a problem
-            self.fail("get_recommendations should handle database errors gracefully")
+        self.assertEqual(len(recommendations), 0)
 
     def test_get_recommendations_invalid_parameters(self):
-        """Test error handling with invalid parameters raises ValueError or returns empty list"""
+        """Test recommendations with invalid tenant_id returns empty list."""
         recommendations = AssetRecommendationService.get_recommendations(
-            tenant_id="invalid-uuid", limit=-1
+            tenant_id="invalid-uuid", limit=10
         )
         self.assertIsInstance(recommendations, list)
         self.assertEqual(len(recommendations), 0)
+
+    def test_get_recommendations_negative_limit(self):
+        """Test recommendations with negative limit raises ValueError.
+
+        Django querysets do not support negative indexing ([:limit] with
+        limit < 0 raises ValueError).  The recommendation service should
+        validate the limit parameter before slicing, but currently passes
+        the raw value through to the queryset.
+        """
+        with self.assertRaises(ValueError):
+            AssetRecommendationService.get_recommendations(
+                tenant_id=str(self.tenant.id), limit=-1
+            )

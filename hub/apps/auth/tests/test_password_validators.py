@@ -8,7 +8,7 @@ from unittest.mock import patch
 
 from django.contrib.auth import get_user_model
 from django.core.exceptions import ValidationError
-from django.test import TestCase
+from django.test import TestCase, override_settings
 
 from hub.apps.auth.password_validators import (
     CommonPasswordDenyListValidator,
@@ -70,7 +70,8 @@ class PasswordComplexityValidatorTests(TestCase):
         v = PasswordComplexityValidator(min_length=12)
         with self.assertRaises(ValidationError):
             v.validate("Abcdef1!")  # 8 chars — should fail with min_length=12
-        v.validate("Abcdefgh1!2")  # 11 chars — should pass
+        # 12 chars (meets the custom min_length), has upper, lower, digit, special
+        v.validate("Abcdefgh1!23")
 
 
 class CommonPasswordDenyListValidatorTests(TestCase):
@@ -114,6 +115,7 @@ class HaveIBeenPwnedValidatorTests(TestCase):
         resp.read = resp.read  # already a method
         return resp
 
+    @override_settings(HIBP_VALIDATOR_ENABLED=True)
     @patch("urllib.request.urlopen")
     def test_rejects_pwned_password(self, mock_urlopen):
         """Password 'password123' is in the HIBP corpus."""
@@ -138,6 +140,7 @@ class HaveIBeenPwnedValidatorTests(TestCase):
             self.validator.validate("password123")
         self.assertIn("breach", str(ctx.exception).lower())
 
+    @override_settings(HIBP_VALIDATOR_ENABLED=True)
     @patch("urllib.request.urlopen")
     def test_accepts_non_pwned_password(self, mock_urlopen):
         """A password not in the HIBP corpus should pass."""

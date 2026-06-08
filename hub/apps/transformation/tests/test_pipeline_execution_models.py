@@ -24,22 +24,19 @@ User = get_user_model()
 class PipelineExecutionModelTest(TestCase):
     """Test cases for PipelineExecution model."""
 
-    @classmethod
-    def setUpTestData(cls):
-        """Create Tenant and User once for the whole test class (read-only)."""
+    def setUp(self):
+        """Set up per-test fixtures."""
         uid = uuid.uuid4().hex[:8]
-        cls.tenant = Tenant.objects.create(
+        self.tenant = Tenant.objects.create(
             name=f"Test Tenant {uid}",
             slug=f"test-tenant-{uid}"
         )
-        cls.user = User.objects.create_user(
+        self.user = User.objects.create_user(
             email=f"test-{uid}@example.com",
             password="testpass123",
-            tenant=cls.tenant
+            tenant=self.tenant
         )
 
-    def setUp(self):
-        """Set up per-test fixtures."""
         self.valid_pipeline_definition = {
             "version": "1.0.0",
             "steps": [
@@ -502,32 +499,40 @@ class PipelineExecutionModelTest(TestCase):
 
     def test_execution_ordering(self):
         """Test execution ordering by started_at and created_at."""
+        now = timezone.now()
         # Create executions with different timestamps
         execution1 = PipelineExecution.objects.create(
             pipeline=self.pipeline,
             asset=self.source_asset,
-            started_at=timezone.now() - timedelta(hours=2)
+            started_at=now - timedelta(hours=3)
         )
         execution2 = PipelineExecution.objects.create(
             pipeline=self.pipeline,
             asset=self.source_asset,
-            started_at=timezone.now() - timedelta(hours=1)
+            started_at=now - timedelta(hours=2)
         )
         execution3 = PipelineExecution.objects.create(
             pipeline=self.pipeline,
             asset=self.source_asset,
-            started_at=None  # No started_at
+            started_at=now - timedelta(hours=1)
         )
 
-        # Query should order by -started_at, -created_at
+        # Query ordered by -started_at, -created_at (most recent first)
         executions = list(PipelineExecution.objects.all())
 
-        # Executions with started_at should be ordered by started_at descending
-        # Execution without started_at should be last (ordered by created_at)
-        self.assertGreater(execution2.started_at, execution1.started_at)
-        if execution3.started_at is None:
-            # execution3 should be last
-            self.assertIn(execution3, executions)
+        # Most recent started_at should be first
+        self.assertGreaterEqual(
+            executions[0].started_at,
+            executions[1].started_at,
+        )
+        self.assertGreaterEqual(
+            executions[1].started_at,
+            executions[2].started_at,
+        )
+        # Verify the expected descending order
+        self.assertEqual(executions[0].id, execution3.id)
+        self.assertEqual(executions[1].id, execution2.id)
+        self.assertEqual(executions[2].id, execution1.id)
 
     def test_execution_foreign_key_to_pipeline(self):
         """Test foreign key relationship to TransformationPipeline."""

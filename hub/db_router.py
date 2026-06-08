@@ -138,15 +138,6 @@ class ManagementCommandAdminRouter:
         return None
 
 
-class PrimaryReplicaRouter:
-    """
-    Route reads for read-heavy apps to the replica; all writes to primary.
-
-    When ``DATABASE_REPLICA_URL`` is not set the router is a transparent
-    no-op — all methods return ``None`` so Django uses its default routing.
-    """
-
-
 class ReadReplicaRouter:
     """Route reads to replica when configured, writes to primary."""
 
@@ -190,3 +181,14 @@ class ReadReplicaRouter:
             return False
         # Let other routers decide for non-replica databases.
         return None
+
+
+class PrimaryReplicaRouter(ReadReplicaRouter):
+    """
+    Route reads for read-heavy apps to the replica; all writes to primary.
+
+    When ``DATABASE_REPLICA_URL`` is not set the router is a transparent
+    no-op — all methods return ``None`` so Django uses its default routing.
+
+    Delegates to ``ReadReplicaRouter`` for all method implementations.
+    """

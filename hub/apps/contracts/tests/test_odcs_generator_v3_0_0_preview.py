@@ -315,9 +315,12 @@ class ODCSGeneratorV3_0_0_PreviewEdgeCasesTest(TestCase):
         hub_contract = self.base_hub_contract.copy()
         hub_contract["info"]["owners"] = []
         odcs_doc = self.generator.generate_odcs_from_hubcontract(hub_contract)
-        # Empty list should not be included
-        if "info" in odcs_doc:
-            self.assertNotIn("owners", odcs_doc.get("info", {}))
+        # Empty owners list must not produce owners key in output.
+        # The generator may omit the info section entirely (when no info fields
+        # are populated) or include it without the owners key.  Use .get() so
+        # the assertion runs unconditionally.
+        self.assertNotIn("owners", odcs_doc.get("info", {}),
+            "Empty owners list must not produce owners key in output")
 
     def test_handles_missing_optional_fields(self):
         """Test handling of missing optional fields"""
@@ -428,16 +431,14 @@ class ODCSGeneratorV3_0_0_PreviewRoundTripTest(TestCase):
             "schema": {"fields": [{"name": "id", "data_type": "string"}]},
         }
 
-        # Should handle large documents gracefully
-        try:
-            result = self.generator.generate_odcs_from_hubcontract(hub_contract)
-            # If generation succeeds, verify structure
-            self.assertIn("name", result)
-        except Exception as e:
-            # If generation fails, it should fail gracefully
-            self.assertIsInstance(
-                e, ODCSGenerationError, "Should raise ODCSGenerationError for very large documents"
-            )
+        result = self.generator.generate_odcs_from_hubcontract(hub_contract)
+        # Verify the generator handles the large input and preserves the data
+        self.assertIn("name", result)
+        self.assertEqual(result["name"], "Test Product")
+        self.assertIn("description", result,
+            "Large description must be present in output")
+        self.assertEqual(result["description"], large_description,
+            "Large description value must be preserved exactly")
 
     def test_generation_handles_none_values(self):
         """Test that generation handles None values correctly."""
@@ -447,16 +448,14 @@ class ODCSGeneratorV3_0_0_PreviewRoundTripTest(TestCase):
             "schema": {"fields": [{"name": "id", "data_type": "string"}]},
         }
 
-        # Should handle None values gracefully
-        try:
-            result = self.generator.generate_odcs_from_hubcontract(hub_contract)
-            # If generation succeeds, None values may be omitted or handled
-            self.assertIsNotNone(result)
-        except Exception as e:
-            # If generation fails, it should fail gracefully
-            self.assertIsInstance(
-                e, ODCSGenerationError, "Should raise ODCSGenerationError for None values"
-            )
+        # None values should be omitted or handled gracefully
+        result = self.generator.generate_odcs_from_hubcontract(hub_contract)
+        self.assertIsNotNone(result)
+        self.assertIn("name", result)
+        self.assertEqual(result["name"], "Test Product")
+        # None-valued fields must be absent from output
+        self.assertNotIn("description", result,
+            "None description field must be omitted from output")
 
     def test_generation_handles_nested_structures(self):
         """Test that generation handles nested structures correctly."""
@@ -471,6 +470,12 @@ class ODCSGeneratorV3_0_0_PreviewRoundTripTest(TestCase):
 
         result = self.generator.generate_odcs_from_hubcontract(hub_contract)
 
-        # Verify nested structure is preserved
-        self.assertIn("name", result)
+        # Verify the generator doesn't crash and preserves known fields.
         self.assertIsNotNone(result)
+        self.assertIn("name", result)
+        self.assertEqual(result["name"], "Test Product",
+            "Name must be correctly extracted from deeply nested hub_contract info")
+        # Verify the generator produces a structurally valid ODCS doc
+        self.assertIn("apiVersion", result)
+        self.assertIn("kind", result)
+        self.assertEqual(result["kind"], "DataContract")

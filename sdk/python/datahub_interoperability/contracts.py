@@ -18,6 +18,9 @@ from .errors import (
     parse_odcs_error,
     ValidationError,
     NotFoundError,
+    ForbiddenError,
+    UnauthorizedError,
+    NetworkError,
 )
 
 
@@ -267,6 +270,14 @@ class ContractsAPI:
         if isinstance(error, (ODPSValidationError, ODPSExportError, ODPSLinkingError)):
             return error
 
+        # Preserve auth errors — they are not ODPS business errors
+        if isinstance(error, (ForbiddenError, UnauthorizedError)):
+            return error
+
+        # Preserve NetworkError — connectivity is not an ODPS concern
+        if isinstance(error, NetworkError):
+            return error
+
         # Preserve NotFoundError for 404 cases
         if isinstance(error, NotFoundError):
             return error
@@ -277,6 +288,10 @@ class ContractsAPI:
                 error.message,
                 error.request_id,
             )
+
+        # If it's a DataHubError with 403/401 status, preserve the auth error
+        if isinstance(error, DataHubError) and error.http_status in (401, 403):
+            return error
 
         # If it's a DataHubError, try to parse as ODPS error
         if isinstance(error, DataHubError):
@@ -314,18 +329,22 @@ class ContractsAPI:
         Returns:
             Mapped ODCS error or original error
         """
-        from .errors import DataHubError, NotFoundError, NetworkError
+        from .errors import DataHubError, NotFoundError
 
         # If it's already an ODCS error, return it
         if isinstance(error, (ODCSValidationError, ODCSExportError)):
             return error
 
-        # Preserve NotFoundError for 404 cases
-        if isinstance(error, NotFoundError):
+        # Preserve auth errors — they are not ODCS business errors
+        if isinstance(error, (ForbiddenError, UnauthorizedError)):
             return error
 
         # Preserve NetworkError for network/timeout errors
         if isinstance(error, NetworkError):
+            return error
+
+        # Preserve NotFoundError for 404 cases
+        if isinstance(error, NotFoundError):
             return error
 
         # If it's a DataHubError with 404 status, return NotFoundError
@@ -334,6 +353,10 @@ class ContractsAPI:
                 error.message,
                 error.request_id,
             )
+
+        # If it's a DataHubError with 403/401 status, preserve the auth error
+        if isinstance(error, DataHubError) and error.http_status in (401, 403):
+            return error
 
         # If it's a DataHubError, try to parse as ODCS error
         if isinstance(error, DataHubError):

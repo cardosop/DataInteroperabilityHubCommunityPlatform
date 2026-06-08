@@ -13,6 +13,7 @@ First run: session-scoped DB create+migrate runs during first test's setup
 (~5 min in this project). Test bodies finish in seconds. Per-test timeout 600s
 accommodates that one-time setup; use --reuse-db so reruns complete in under a minute.
 """
+from hub.apps.testing.role_support import ensure_user_has_data_provider_role
 
 import uuid
 

@@ -41,28 +41,36 @@ def pytest_sessionfinish(session, exitstatus):  # noqa: ARG001
                 f"[Phase 216 persona teardown] {name}: {exc!r}"
             )
 
-# Ensure Django is initialized for CLI integration tests that use Django
-# This is needed when tests are run from CLI directory with CLI's pytest.ini
-# Note: For proper Django test support, run tests from Django project root
+# ── Optional Django bootstrap ──────────────────────────────────────────────
+# The CLI test suite is designed to run standalone (without Django), but some
+# test files import Django models to verify cross-package contracts.  When
+# Django *is* available in the environment we configure it early so those
+# tests don't have to set up settings themselves.
+#
+# We distinguish three outcomes:
+#  1. Django not installed          → skip silently (standalone CLI mode)
+#  2. Django installed + config OK  → proceed with Django available
+#  3. Django installed + config bad → surface the error (it's a real bug)
 try:
-    import django
-    from django.conf import settings
-    if not settings.configured:
-        # Only configure if not already configured (e.g., by pytest-django)
-        os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'hub.settings')
-        django.setup()
-except (ImportError, RuntimeError):
-    # Django not available or already configured - that's OK
-    pass
-
-# Register pytest-django marker if pytest-django is available
-# This prevents warnings when using @pytest.mark.django_db
-try:
-    import pytest_django
-    # pytest-django will handle Django initialization
+    import django  # noqa: F401 — checked via sys.modules below
 except ImportError:
-    # pytest-django not available - tests should be run from Django project root
-    pass
+    django = None  # type: ignore[assignment]
+
+if django is not None:
+    # Only configure if not already configured (e.g. by pytest-django)
+    from django.conf import settings
+
+    if not settings.configured:
+        os.environ.setdefault("DJANGO_SETTINGS_MODULE", "hub.settings")
+        try:
+            django.setup()
+        except RuntimeError as exc:
+            # Django raises RuntimeError when setup() is called a second
+            # time (e.g. pytest-django already called it).  That is safe.
+            # Any *other* exception during setup is a real configuration
+            # error and MUST propagate.
+            if "populate()" not in str(exc):
+                raise
 
 
 @pytest.fixture

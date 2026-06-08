@@ -182,8 +182,8 @@ class JourneyPA001OnboardNewTenantTests(E2ETestBase):
         Test suspending a tenant
         """
         tenant = Tenant.objects.create(
-            name='Suspendable Tenant',
-            slug='suspendable-tenant',
+            name=f"Suspendable Tenant {uuid.uuid4().hex[:8]}",
+            slug=f"suspendable-tenant-{uuid.uuid4().hex[:8]}",
             kyc_status=KYCStatus.VERIFIED
         )
 
@@ -210,8 +210,8 @@ class JourneyPA001OnboardNewTenantTests(E2ETestBase):
         Test reactivating a suspended tenant
         """
         tenant = Tenant.objects.create(
-            name='Reactivable Tenant',
-            slug='reactivable-tenant',
+            name=f"Reactivable Tenant {uuid.uuid4().hex[:8]}",
+            slug=f"reactivable-tenant-{uuid.uuid4().hex[:8]}",
             kyc_status=KYCStatus.VERIFIED
         )
         tenant.suspend()
@@ -236,7 +236,7 @@ class JourneyPA001OnboardNewTenantTests(E2ETestBase):
         """
         Test error scenario: Creating tenant with duplicate slug
         """
-        Tenant.objects.create(name='Existing Tenant', slug='existing-tenant')
+        Tenant.objects.create(name=f"Existing Tenant {uuid.uuid4().hex[:8]}", slug=f"existing-tenant-{uuid.uuid4().hex[:8]}")
 
         response = self.client.post(
             '/api/v1/tenants/',
@@ -294,8 +294,8 @@ class JourneyMPA001ManageMarketplaceListingsTests(E2ETestBase):
 
         # Create provider tenant and user
         self.provider_tenant = Tenant.objects.create(
-            name="Provider Tenant",
-            slug="provider-tenant",
+            name=f"Provider Tenant {uuid.uuid4().hex[:8]}",
+            slug=f"provider-tenant-{uuid.uuid4().hex[:8]}",
             kyc_status=KYCStatus.VERIFIED
         )
         from hub.apps.testing.billing_support import ensure_tenant_has_active_subscription
@@ -335,7 +335,7 @@ class JourneyMPA001ManageMarketplaceListingsTests(E2ETestBase):
         # Create another tenant and listing
         tenant2 = Tenant.objects.create(
             name="Provider Tenant 2",
-            slug="provider-tenant-2",
+            slug=f"provider-tenant-2-{uuid.uuid4().hex[:8]}",
             kyc_status=KYCStatus.VERIFIED
         )
         asset2 = Asset.objects.create(
@@ -484,13 +484,13 @@ class JourneyMPA002ProcessMarketplaceOrdersTests(E2ETestBase):
 
         # Create provider and consumer tenants
         self.provider_tenant = Tenant.objects.create(
-            name="Provider Tenant",
-            slug="provider-tenant",
+            name=f"Provider Tenant {uuid.uuid4().hex[:8]}",
+            slug=f"provider-tenant-{uuid.uuid4().hex[:8]}",
             kyc_status=KYCStatus.VERIFIED
         )
         self.consumer_tenant = Tenant.objects.create(
-            name="Consumer Tenant",
-            slug="consumer-tenant",
+            name=f"Consumer Tenant {uuid.uuid4().hex[:8]}",
+            slug=f"consumer-tenant-{uuid.uuid4().hex[:8]}",
             kyc_status=KYCStatus.VERIFIED
         )
 
@@ -745,8 +745,8 @@ class JourneyMPA003MonitorPlatformHealthTests(E2ETestBase):
         Test platform admin can view all tenants for monitoring purposes
         """
         # Create multiple tenants
-        Tenant.objects.create(name='Monitor Tenant 1', slug='monitor-tenant-1')
-        Tenant.objects.create(name='Monitor Tenant 2', slug='monitor-tenant-2')
+        Tenant.objects.create(name='Monitor Tenant 1', slug=f"monitor-tenant-1-{uuid.uuid4().hex[:8]}")
+        Tenant.objects.create(name='Monitor Tenant 2', slug=f"monitor-tenant-2-{uuid.uuid4().hex[:8]}")
 
         # List all tenants
         response = self.client.get('/api/v1/tenants/')
@@ -911,13 +911,13 @@ class PlatformAdminUseCasesTests(E2ETestBase):
 
         # Create test tenants
         self.provider_tenant = Tenant.objects.create(
-            name="Provider Tenant",
-            slug="provider-tenant",
+            name=f"Provider Tenant {uuid.uuid4().hex[:8]}",
+            slug=f"provider-tenant-{uuid.uuid4().hex[:8]}",
             kyc_status=KYCStatus.VERIFIED
         )
         self.consumer_tenant = Tenant.objects.create(
-            name="Consumer Tenant",
-            slug="consumer-tenant",
+            name=f"Consumer Tenant {uuid.uuid4().hex[:8]}",
+            slug=f"consumer-tenant-{uuid.uuid4().hex[:8]}",
             kyc_status=KYCStatus.VERIFIED
         )
 

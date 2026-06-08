@@ -260,15 +260,17 @@ class FileSizeValidationTest(FileUploadValidationTest):
         result = self.rules._validate_tenant_quota(
             file_size=int(quota_limit * 0.1), tenant=self.tenant  # Try to add 10% more
         )
-        # The new implementation uses GovernanceService which may return errors or warnings
-        # Check that validation was attempted
+        # Quota at 95% + 10% more must trigger governance validation
         self.assertIn("governance_service_validation", result.details)
-        # If validation passed, should be valid; if failed, may have errors or warnings
-        if result.details.get("governance_service_validation") == "passed":
+        validation_status = result.details["governance_service_validation"]
+        if validation_status == "passed":
             self.assertTrue(result.is_valid)
-        elif result.details.get("governance_service_validation") == "failed":
-            # May have errors or warnings depending on GovernanceService response
+        elif validation_status == "failed":
+            self.assertFalse(result.is_valid,
+                "Quota-exceeding validation must be invalid")
             self.assertTrue(len(result.errors) > 0 or len(result.warnings) > 0)
+        else:
+            self.fail(f"Unexpected governance validation status: {validation_status}")
 
 
 class FileTypeValidationTest(FileUploadValidationTest):
@@ -391,9 +393,11 @@ class FileContentValidationTest(FileUploadValidationTest):
             content_type="text/csv",
             tenant=self.tenant,
         )
-        # Content validation may have warnings if compliance service unavailable
-        # but should not have errors for valid content
-        self.assertTrue(result.is_valid or len(result.errors) == 0)
+        # Valid CSV content must be valid with zero errors
+        self.assertTrue(result.is_valid,
+            "Valid CSV content must be valid")
+        self.assertEqual(len(result.errors), 0,
+            "Valid CSV content must have zero errors")
 
     def test_validate_file_content_missing(self):
         """Test file content validation with missing content"""
@@ -1008,8 +1012,9 @@ class FilesBusinessRulesStorageQuotaValidationTest(FilesTestBase):
         # Since we can't easily patch tenant config, we'll test the normal case
         # and verify the logic works correctly
         result = self.rules._validate_file_count_quota(tenant=self.tenant, file=file)
-        # Should pass if under limit
-        self.assertTrue(result.is_valid or result.details.get("file_count_quota_exceeded", False))
+        # Under normal conditions (1 file, default 10000 limit), must be valid
+        self.assertTrue(result.is_valid,
+            "Single file must be under count quota limit")
         self.assertIn("current_file_count", result.details)
         self.assertIn("projected_file_count", result.details)
 
@@ -1018,12 +1023,13 @@ class FilesBusinessRulesStorageQuotaValidationTest(FilesTestBase):
         # Create files to approach limit (90% threshold)
         # For testing, we'll verify the warning logic works
         result = self.rules._validate_file_count_quota(tenant=self.tenant, file=None)
-        # Should have usage percentage if under limit
-        if result.details.get("file_count_quota_valid", False):
-            self.assertIn("usage_percentage", result.details)
-            # If approaching limit, should have warning
-            if result.details.get("file_count_warning", False):
-                self.assertGreater(len(result.warnings), 0)
+        # Must be valid with usage_percentage present
+        self.assertTrue(result.is_valid,
+            "File count quota check must be valid with 0-1 files")
+        self.assertIn("usage_percentage", result.details)
+        self.assertIn("file_count_quota_valid", result.details)
+        if result.details.get("file_count_warning", False):
+            self.assertGreater(len(result.warnings), 0)
 
     def test_validate_quota_exceeded_handling(self):
         """Test _validate_quota_exceeded_handling"""

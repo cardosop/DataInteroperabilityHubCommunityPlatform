@@ -36,7 +36,7 @@ def _auth_headers(token: str) -> dict:
 
 def _tenant_admin_creds() -> PersonaCredentials:
     """Provision a tenant_admin who typically manages billing."""
-    return provision_persona("tenant_admin")
+    return provision_persona("tenant_admin")  # noqa: PHASE216-STATIC-ID
 
 
 def _platform_admin_creds() -> PersonaCredentials:

@@ -38,14 +38,6 @@ pytestmark = [
 class ScheduledExportServiceTest(TestCase):
     """Tests for ScheduledExportService create/update methods."""
 
-    reset_sequences = False
-    serialized_rollback = False
-
-    @classmethod
-    def _fixture_teardown(cls):
-        """Override to skip database flush for service tests."""
-        pass
-
     def setUp(self):
         unique_id = uuid.uuid4().hex[:8]
         self.tenant = Tenant.objects.create(
@@ -318,14 +310,6 @@ class ScheduledExportServiceTest(TestCase):
 
 class ScheduledExportBusinessRulesTest(TestCase):
     """Tests for ScheduledExportBusinessRules validation."""
-
-    reset_sequences = False
-    serialized_rollback = False
-
-    @classmethod
-    def _fixture_teardown(cls):
-        """Override to skip database flush for business rules tests."""
-        pass
 
     def setUp(self):
         unique_id = uuid.uuid4().hex[:8]

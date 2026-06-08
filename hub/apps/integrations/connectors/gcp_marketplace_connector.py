@@ -91,6 +91,32 @@ from hub.apps.integrations.base import (
 logger = logging.getLogger(__name__)
 
 
+def _camel_to_snake_keys(obj: Any) -> Any:
+    """Recursively convert camelCase dict keys to snake_case.
+
+    Needed because ``MessageToDict`` returns camelCase proto field names
+    while the upstream ``to_dict()`` (proto-plus) returns snake_case.
+    This keeps the dict shape consistent regardless of the conversion
+    path taken.
+
+    Handles acronyms correctly: ``productID`` → ``product_id`` (not
+    ``product_i_d``).
+    """
+    import re
+    if isinstance(obj, dict):
+        result = {}
+        for k, v in obj.items():
+            # Insert underscore before capital letters, then collapse
+            # consecutive underscores from acronym runs (e.g. "ID" in
+            # "productID" → "product_id" not "product_i_d").
+            snake = re.sub(r"([A-Z]+)", r"_\1", k).lower().strip("_")
+            result[snake] = _camel_to_snake_keys(v)
+        return result
+    if isinstance(obj, list):
+        return [_camel_to_snake_keys(i) for i in obj]
+    return obj
+
+
 class GCPMarketplaceConnector(DataMarketplaceConnector):
     """
     Connector for Google Cloud Platform Marketplace (Analytics Hub).
@@ -870,9 +896,9 @@ class GCPMarketplaceConnector(DataMarketplaceConnector):
                     continue
 
             # Apply pagination
-            if offset is not None and offset > 0:
+            if offset is not None:
                 all_listings = all_listings[offset:]
-            if limit is not None and limit > 0:
+            if limit is not None:
                 all_listings = all_listings[:limit]
 
             return all_listings
@@ -1004,8 +1030,18 @@ class GCPMarketplaceConnector(DataMarketplaceConnector):
 
             listing_path = self._get_listing_path(data_exchange_id, listing_id)
             listing = client.get_listing(name=listing_path)
-            # Convert protobuf message to dictionary
-            listing_dict = listing.to_dict()
+            # Convert protobuf message to dictionary with snake_case keys.
+            # Proto-plus' .to_dict() normalises to snake_case but some
+            # Analytics Hub generated wrappers don't expose .to_dict() at
+            # all ("Unknown field for Listing: to_dict").  MessageToDict
+            # works everywhere but returns camelCase.  We route through a
+            # camelCase→snake_case converter so the downstream dict-access
+            # code sees the same keys regardless of the code-path taken.
+            from google.protobuf.json_format import MessageToDict
+            import re
+            raw = listing._pb if hasattr(listing, '_pb') else listing
+            camel_dict = MessageToDict(raw)
+            listing_dict = _camel_to_snake_keys(camel_dict)
             return listing_dict
 
         # Execute with retry logic and circuit breaker protection
@@ -1142,7 +1178,7 @@ class GCPMarketplaceConnector(DataMarketplaceConnector):
         description = listing_details.get("description", "")
 
         product_details: Dict[str, Any] = {
-            "productID": listing_id,
+            "product_id": listing_id,
             "product_name": display_name or listing_id,
             "product_description": description or "",
         }
@@ -1197,8 +1233,12 @@ class GCPMarketplaceConnector(DataMarketplaceConnector):
                 pricing_plans.extend(metadata_pricing)
                 has_odps_data = True
 
+        # Always include pricing_plans — consumers should be able to
+        # check for the key regardless of whether the listing has
+        # commercial info (empty list is valid for "no pricing data").
+        odps_metadata["pricing_plans"] = pricing_plans
         if pricing_plans:
-            odps_metadata["pricing_plans"] = pricing_plans
+            has_odps_data = True
 
         # Extract access methods
         # Analytics Hub listings provide BigQuery dataset access
@@ -1399,20 +1439,37 @@ class GCPMarketplaceConnector(DataMarketplaceConnector):
                 )
                 return []
 
-            # Parse dataset reference (format: project.dataset or just dataset)
-            dataset_parts = dataset_ref.split(".")
-            if len(dataset_parts) == 2:
-                dataset_project, dataset_id = dataset_parts
-            else:
-                # Use current project if not specified
-                dataset_project = self.project_id
-                dataset_id = dataset_ref
+            # Parse dataset reference from the Analytics Hub protobuf.
+            # The ``dataset`` field arrives as a GCP resource path:
+            #   projects/<project-id>/datasets/<dataset-name>
+            # BigQuery's list_tables() needs the plain dataset name and
+            # an optional project override.
+            dataset_project = self.project_id
+            dataset_id = dataset_ref
+            if "/" in dataset_ref:
+                # Extract just the dataset name from the resource path.
+                parts = dataset_ref.rstrip("/").split("/")
+                dataset_id = parts[-1]
+                # If the path follows the canonical form, also extract
+                # the project id.
+                for i, seg in enumerate(parts):
+                    if seg == "projects" and i + 1 < len(parts):
+                        dataset_project = parts[i + 1]
+                        break
+            elif "." in dataset_ref:
+                parts = dataset_ref.split(".")
+                if len(parts) == 2:
+                    dataset_project, dataset_id = parts
 
             # Query BigQuery INFORMATION_SCHEMA.TABLES
             bq_client = self._get_bigquery_client()
             resources = []
 
-            # Query INFORMATION_SCHEMA.TABLES for the dataset
+            # Query INFORMATION_SCHEMA.TABLES for the dataset.
+            # ``description`` is NOT a column in TABLES — we coalesce
+            # later from the table-options if available.  The DDL often
+            # contains the CREATE TABLE statement which is a useful
+            # metadata hint for downstream consumers.
             query = f"""
                 SELECT
                     table_catalog,
@@ -1420,8 +1477,7 @@ class GCPMarketplaceConnector(DataMarketplaceConnector):
                     table_name,
                     table_type,
                     creation_time,
-                    ddl,
-                    description
+                    ddl
                 FROM `{dataset_project}.{dataset_id}.INFORMATION_SCHEMA.TABLES`
                 ORDER BY table_schema, table_name
             """
@@ -1434,7 +1490,9 @@ class GCPMarketplaceConnector(DataMarketplaceConnector):
                     table_schema = row.get("table_schema", "")
                     table_name = row.get("table_name", "")
                     table_type = row.get("table_type", "BASE TABLE")
-                    description = row.get("description", "")
+                    # description is not in INFORMATION_SCHEMA.TABLES —
+                    # use DDL or table name as fallback.
+                    description = row.get("ddl") or ""
                     creation_time = row.get("creation_time")
 
                     # Build resource ID
@@ -2299,8 +2357,8 @@ class GCPMarketplaceConnector(DataMarketplaceConnector):
 
             # Get listings to sync
             try:
-                if listing_ids:
-                    # Fetch specific listings
+                if listing_ids is not None:
+                    # Fetch specific listings (empty list means sync nothing).
                     listings = []
                     for listing_id in listing_ids:
                         try:

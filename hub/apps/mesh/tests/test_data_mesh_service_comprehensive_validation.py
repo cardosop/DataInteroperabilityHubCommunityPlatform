@@ -1,6 +1,13 @@
 """
 Comprehensive Validation Tests for Data Mesh Service
 
+.. note::
+    This file duplicates tests from ``test_services.py``, ``test_business_rules.py``,
+    ``test_views.py``, ``test_compliance_topology.py``, and ``test_topology_endpoints.py``.
+    It is marked ``@pytest.mark.slow`` and intended for CI nightly runs as an
+    integration-level validation superset.  When updating mesh behaviour, prefer
+    the canonical per-file tests; this file should eventually be deduplicated.
+
 This test suite provides engineering-grade validation for:
 - 10.1.33.1: Domain Management Testing
 - 10.1.33.2: Federated Governance Testing

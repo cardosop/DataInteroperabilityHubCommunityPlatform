@@ -64,24 +64,30 @@ class TestCKANConnectorSyncOperations(TestCase):
     @classmethod
     def setUpClass(cls):
         """Set up test class with real CKAN instance."""
-        super().setUpClass()
-
-        # Use centralized test utilities
+        # Check skip conditions BEFORE super().setUpClass() so that if we
+        # raise SkipTest, no class-level atomics are opened and the PG
+        # connection is not left in a stale transaction for the next class.
         if not marketplace_available():
             raise unittest.SkipTest("No CKAN instance available for testing")
 
-        # Create connector using centralized utility
-        cls.connector = create_test_connector(verify_connection=True)
+        super().setUpClass()
 
-        if not cls.connector:
-            raise unittest.SkipTest("Cannot create or connect to CKAN instance for testing")
+        try:
+            # Create connector using centralized utility
+            cls.connector = create_test_connector(verify_connection=True)
 
-        # Cache connector URL and API key for backward compatibility
-        cls.ckan_url = cls.connector.base_url
-        cls.ckan_api_key = cls.connector.api_key
+            if not cls.connector:
+                raise unittest.SkipTest("Cannot create or connect to CKAN instance for testing")
 
-        # Track created packages for cleanup
-        cls.created_package_ids = []
+            # Cache connector URL and API key for backward compatibility
+            cls.ckan_url = cls.connector.base_url
+            cls.ckan_api_key = cls.connector.api_key
+
+            # Track created packages for cleanup
+            cls.created_package_ids = []
+        except Exception:
+            cls._rollback_atomics(cls.cls_atomics)
+            raise
 
     def setUp(self):
         """Set up test fixtures."""

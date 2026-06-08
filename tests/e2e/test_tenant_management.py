@@ -84,7 +84,7 @@ class TenantManagementE2ETest(E2ETestBase):
         """Test creating tenant with duplicate slug fails"""
         # Create first tenant
         tenant1 = Tenant.objects.create(
-            name='First Tenant',
+            name=f"First Tenant {uuid.uuid4().hex[:8]}",
             slug='duplicate-slug',
             kyc_status=KYCStatus.VERIFIED
         )
@@ -112,7 +112,7 @@ class TenantManagementE2ETest(E2ETestBase):
         unique_name = f'Test Tenant Get {uuid.uuid4().hex[:8]}'
         tenant = Tenant.objects.create(
             name=unique_name,
-            slug='test-tenant-get',
+            slug=f"test-tenant-get-{uuid.uuid4().hex[:8]}",
             kyc_status=KYCStatus.VERIFIED
         )
         
@@ -130,7 +130,7 @@ class TenantManagementE2ETest(E2ETestBase):
         """Test updating tenant name and description"""
         tenant = Tenant.objects.create(
             name='Original Name',
-            slug='test-tenant-update',
+            slug=f"test-tenant-update-{uuid.uuid4().hex[:8]}",
             kyc_status=KYCStatus.UNVERIFIED
         )
         
@@ -165,7 +165,7 @@ class TenantManagementE2ETest(E2ETestBase):
         """Test suspending a tenant"""
         tenant = Tenant.objects.create(
             name=f'Test Tenant {uuid.uuid4().hex[:8]}',
-            slug='test-tenant-suspend',
+            slug=f"test-tenant-suspend-{uuid.uuid4().hex[:8]}",
             kyc_status=KYCStatus.VERIFIED
         )
         
@@ -198,7 +198,7 @@ class TenantManagementE2ETest(E2ETestBase):
         """Test suspending a deleted tenant fails"""
         tenant = Tenant.objects.create(
             name=f'Test Tenant {uuid.uuid4().hex[:8]}',
-            slug='test-tenant-suspend-deleted',
+            slug=f"test-tenant-suspend-deleted-{uuid.uuid4().hex[:8]}",
             kyc_status=KYCStatus.VERIFIED
         )
         tenant.soft_delete()
@@ -219,7 +219,7 @@ class TenantManagementE2ETest(E2ETestBase):
         unique_name = f'Test Tenant Reactivate {uuid.uuid4().hex[:8]}'
         tenant = Tenant.objects.create(
             name=unique_name,
-            slug='test-tenant-reactivate',
+            slug=f"test-tenant-reactivate-{uuid.uuid4().hex[:8]}",
             kyc_status=KYCStatus.VERIFIED
         )
         tenant.suspend()
@@ -252,7 +252,7 @@ class TenantManagementE2ETest(E2ETestBase):
         unique_name = f'Test Tenant Reactivate Active {uuid.uuid4().hex[:8]}'
         tenant = Tenant.objects.create(
             name=unique_name,
-            slug='test-tenant-reactivate-active',
+            slug=f"test-tenant-reactivate-active-{uuid.uuid4().hex[:8]}",
             kyc_status=KYCStatus.VERIFIED
         )
         
@@ -273,7 +273,7 @@ class TenantManagementE2ETest(E2ETestBase):
         """Test deleting a tenant (soft delete)"""
         tenant = Tenant.objects.create(
             name=f'Test Tenant {uuid.uuid4().hex[:8]}',
-            slug='test-tenant-delete',
+            slug=f"test-tenant-delete-{uuid.uuid4().hex[:8]}",
             kyc_status=KYCStatus.VERIFIED
         )
         
@@ -300,8 +300,8 @@ class TenantManagementE2ETest(E2ETestBase):
     def test_suspended_tenant_blocks_writes(self):
         """Test that suspended tenant cannot perform write operations"""
         suspended_tenant = Tenant.objects.create(
-            name='Suspended Tenant',
-            slug='suspended-tenant',
+            name=f"Suspended Tenant {uuid.uuid4().hex[:8]}",
+            slug=f"suspended-tenant-{uuid.uuid4().hex[:8]}",
             kyc_status=KYCStatus.VERIFIED
         )
         suspended_tenant.suspend()
@@ -338,7 +338,7 @@ class TenantManagementE2ETest(E2ETestBase):
         # Create tenant and give it a subscription so the user can create resources
         suspended_tenant = Tenant.objects.create(
             name='Suspended Tenant Reads',
-            slug='suspended-tenant-reads',
+            slug=f"suspended-tenant-reads-{uuid.uuid4().hex[:8]}",
             kyc_status=KYCStatus.VERIFIED
         )
         ensure_tenant_has_active_subscription(suspended_tenant)
@@ -382,8 +382,8 @@ class TenantManagementE2ETest(E2ETestBase):
 
         # Create tenant with UNVERIFIED KYC status (subscription needed to pass middleware; KYC intentionally unverified)
         unverified_tenant = Tenant.objects.create(
-            name='Unverified Tenant',
-            slug='unverified-tenant',
+            name=f"Unverified Tenant {uuid.uuid4().hex[:8]}",
+            slug=f"unverified-tenant-{uuid.uuid4().hex[:8]}",
             kyc_status=KYCStatus.UNVERIFIED
         )
         ensure_tenant_has_active_subscription(unverified_tenant)

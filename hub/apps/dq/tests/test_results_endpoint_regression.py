@@ -166,6 +166,7 @@ class TestResultsEndpointRegression(DQAPITestBase):
         breakdown = resp.data["score_breakdown"]
         self.assertEqual(breakdown["passed_checks"], 0)
         self.assertEqual(breakdown["failed_checks"], 0)
+        self.assertEqual(breakdown["total_checks"], 0)
         self.assertEqual(len(resp.data["recommendations"]), 0)
 
     # ------------------------------------------------------------------

@@ -26,6 +26,8 @@ class TestDatabricksConnectorSyncPull(TestCase):
 
     def setUp(self):
         """Set up test fixtures."""
+        from hub.apps.core.resilience.circuit_breaker import reset_circuit_breaker_by_name
+        reset_circuit_breaker_by_name('databricks-connector')
         self.connector = DatabricksConnector(
             host="https://test-workspace.cloud.databricks.com",
             token="test-token"
@@ -217,6 +219,8 @@ class TestDatabricksConnectorMapToHubAsset(TestCase):
 
     def setUp(self):
         """Set up test fixtures."""
+        from hub.apps.core.resilience.circuit_breaker import reset_circuit_breaker_by_name
+        reset_circuit_breaker_by_name('databricks-connector')
         self.connector = DatabricksConnector(
             host="https://test-workspace.cloud.databricks.com",
             token="test-token"

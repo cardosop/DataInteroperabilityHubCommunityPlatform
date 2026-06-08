@@ -16,10 +16,10 @@ class UsersAPI:
         offset: int = 0,
     ) -> Dict[str, Any]:
         params: Dict[str, Any] = {"limit": limit, "offset": offset}
-        return await self.client.get("auth/users/", params=params)
+        return await self.client.get("users/", params=params)
 
     async def get_user(self, user_id: str) -> Dict[str, Any]:
-        return await self.client.get(f"auth/users/{user_id}/")
+        return await self.client.get(f"users/{user_id}/")
 
     async def create_user(
         self,
@@ -32,10 +32,10 @@ class UsersAPI:
             "display_name": display_name,
             "role": role,
         }
-        return await self.client.post("auth/users/", data=data)
+        return await self.client.post("users/", data=data)
 
     async def update_user(self, user_id: str, **kwargs: Any) -> Dict[str, Any]:
-        return await self.client.patch(f"auth/users/{user_id}/", data=kwargs)
+        return await self.client.patch(f"users/{user_id}/", data=kwargs)
 
     async def list_invitations(self) -> Dict[str, Any]:
         return await self.client.get("auth/invitations/")

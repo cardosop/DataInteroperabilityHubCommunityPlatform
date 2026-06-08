@@ -1,4 +1,6 @@
 """
+
+import uuid
 Comprehensive Scheduled Export API Integration Tests
 
 Tests all scheduled export API endpoints with real DB and real services.
@@ -12,6 +14,7 @@ Coverage:
 - Plan limit enforcement
 - Worker API authentication
 """
+from hub.apps.testing.role_support import ensure_user_has_data_provider_role
 
 import pytest
 

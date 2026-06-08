@@ -55,14 +55,16 @@ class VirtualizationViewsIntegrationTest(TestCase):
         self.tenant = Tenant.objects.create(
             name=f"Test Tenant {uid}",
             slug=f"test-tenant-{uid}",
-            kyc_status=KYCStatus.VERIFIED
+            kyc_status=KYCStatus.VERIFIED,
+            virtualization_enabled=True,
         )
 
         _uid = uuid.uuid4().hex[:8]
         self.other_tenant = Tenant.objects.create(
             name=f"Other Tenant {_uid}",
             slug=f"other-tenant-{_uid}",
-            kyc_status=KYCStatus.VERIFIED
+            kyc_status=KYCStatus.VERIFIED,
+            virtualization_enabled=True,
         )
 
         # Create platform admin
@@ -481,15 +483,22 @@ class VirtualizationViewsIntegrationTest(TestCase):
     # ==================== RATE LIMITING TESTS ====================
 
     def test_list_datasets_rate_limit_headers(self):
-        """Test that rate limit headers are included in list response"""
+        """Test that rate limit headers are included in list response."""
         self.client.force_authenticate(user=self.data_provider_user)
 
         response = self.client.get('/api/v1/virtualization/datasets/')
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        # Rate limit headers may or may not be present depending on implementation
-        # This test verifies the endpoint is accessible
-        self.assertIsNotNone(response)
+        rate_limit_headers = [
+            "X-RateLimit-Limit", "X-RateLimit-Remaining", "X-RateLimit-Reset",
+            "RateLimit-Limit", "RateLimit-Remaining", "RateLimit-Reset",
+        ]
+        has_header = any(h in response.headers for h in rate_limit_headers)
+        self.assertTrue(
+            has_header,
+            f"At least one rate-limit header must be present. "
+            f"Got: {dict(response.headers)}"
+        )
 
     def test_create_dataset_rate_limit_check(self):
         """Test that rate limiting is checked for dataset creation"""

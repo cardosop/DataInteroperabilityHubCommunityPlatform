@@ -249,14 +249,13 @@ class VersionImpactAnalyzerTest(DatasetsTestBase):
 
         analyzer = VersionImpactAnalyzer()
 
-        # Non-existent dataset must either return None or raise
-        try:
-            result = analyzer.analyze_impact(fake_dataset_id)
-            # If the service returns gracefully, result must be None
-            self.assertIsNone(result)
-        except Exception:
-            # Raising for non-existent dataset is acceptable
-            pass
+        # Non-existent dataset — the analyzer returns a dict with an error
+        # key rather than raising.
+        result = analyzer.analyze_impact(fake_dataset_id)
+        self.assertIsNotNone(result,
+            "analyze_impact must return a result dict for non-existent dataset_id")
+        self.assertIn("error", result,
+            "analyze_impact must include an 'error' key for non-existent dataset")
 
     def test_version_impact_failure_invalid_dataset_id(self):
         """Test version impact analysis with invalid dataset_id (failure scenario)"""
@@ -310,7 +309,7 @@ class VersionImpactAnalyzerTest(DatasetsTestBase):
 
     # ========== ERROR HANDLING ==========
 
-    def test_version_impact_error_handling(self):
+    def test_analyze_impact_valid_dataset(self):
         """Test error handling in version impact analysis"""
         dataset = Dataset.objects.create(
             tenant=self.tenant,
@@ -324,11 +323,6 @@ class VersionImpactAnalyzerTest(DatasetsTestBase):
 
         analyzer = VersionImpactAnalyzer()
 
-        # Should handle errors gracefully
-        try:
-            result = analyzer.analyze_impact(str(dataset.id))
-            # Should return result
-            self.assertIsNotNone(result)
-        except Exception:
-            # If raises exception, that's a problem
-            self.fail("analyze_impact should handle errors gracefully")
+        result = analyzer.analyze_impact(str(dataset.id))
+        self.assertIsNotNone(result,
+            "analyze_impact must return a result for a valid persisted dataset")

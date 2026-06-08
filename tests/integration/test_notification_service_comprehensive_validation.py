@@ -69,8 +69,8 @@ class NotificationDeliveryVerificationTest(TestCase):
         cache.clear()
 
         self.tenant = Tenant.objects.create(
-            name="Notification Test Tenant",
-            slug="notification-test-tenant",
+            name=f"Notification Test Tenant {uuid.uuid4().hex[:8]}",
+            slug=f"notification-test-tenant-{uuid.uuid4().hex[:8]}",
             status="ACTIVE",
             kyc_status="UNVERIFIED"
         )
@@ -373,8 +373,8 @@ class NotificationTemplateTest(TestCase):
         cache.clear()
 
         self.tenant = Tenant.objects.create(
-            name="Template Test Tenant",
-            slug="template-test-tenant",
+            name=f"Template Test Tenant {uuid.uuid4().hex[:8]}",
+            slug=f"template-test-tenant-{uuid.uuid4().hex[:8]}",
             status="ACTIVE",
             kyc_status="UNVERIFIED"
         )
@@ -565,8 +565,8 @@ class NotificationChannelTest(TestCase):
         cache.clear()
 
         self.tenant = Tenant.objects.create(
-            name="Channel Test Tenant",
-            slug="channel-test-tenant",
+            name=f"Channel Test Tenant {uuid.uuid4().hex[:8]}",
+            slug=f"channel-test-tenant-{uuid.uuid4().hex[:8]}",
             status="ACTIVE",
             kyc_status="UNVERIFIED"
         )
@@ -686,8 +686,8 @@ class NotificationFailureHandlingTest(TestCase):
         cache.clear()
 
         self.tenant = Tenant.objects.create(
-            name="Failure Test Tenant",
-            slug="failure-test-tenant",
+            name=f"Failure Test Tenant {uuid.uuid4().hex[:8]}",
+            slug=f"failure-test-tenant-{uuid.uuid4().hex[:8]}",
             status="ACTIVE",
             kyc_status="UNVERIFIED"
         )

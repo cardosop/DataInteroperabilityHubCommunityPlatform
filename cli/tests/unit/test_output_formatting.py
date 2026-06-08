@@ -388,13 +388,18 @@ class TestOutputFormatEdgeCases:
             ]
         }
         mock_api_client.get.return_value = mock_data
-        
+
         result = runner.invoke(cli, ['contracts', 'list'])
-        
+
         assert result.exit_code == 0
-        # Long values should be truncated in table format
-        # ID column is 40 chars, so should be truncated
-        assert len(long_id[:36]) < len(long_id)
+        # Long values should be truncated in table output — the full 100-char
+        # ID must not appear verbatim, but the truncated prefix must.
+        assert long_id not in result.output, (
+            f"Full {len(long_id)}-char ID should be truncated in table output"
+        )
+        assert long_id[:36] in result.output, (
+            "Truncated ID prefix should appear in table output"
+        )
     
     def test_json_output_with_none_values(self, runner, mock_api_client):
         """Test JSON output with None values"""

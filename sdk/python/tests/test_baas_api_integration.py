@@ -45,11 +45,12 @@ def setup_authentication_for_sdk_tests(api_base_url: str) -> Optional[str]:
     """
     Set up authentication for SDK tests.
 
-    Tries multiple methods:
-    1. Use TEST_API_KEY environment variable if available
-    2. Use DATAHUB_API_KEY environment variable
-    3. Try to create API key via Django shell (if Docker Compose is available)
-    4. Return None if no key available
+    Priority order:
+    1. Create a dedicated tenant+key via Django shell — this is PRIMARY
+       because BaaS endpoints are gated behind ``Tenant.baas_enabled``,
+       which the auto-provisioned platform-admin tenant may lack.
+    2. Use the canonical conftest helper (validates token, auto-provisions).
+    3. Read TEST_API_KEY / DATAHUB_API_KEY from the environment.
 
     Args:
         api_base_url: API base URL
@@ -57,12 +58,41 @@ def setup_authentication_for_sdk_tests(api_base_url: str) -> Optional[str]:
     Returns:
         API key string or None
     """
-    # Method 1: Use environment variables
+    # Method 1: Create dedicated tenant + API key via Django shell (PRIMARY).
+    # This ensures ``baas_enabled`` is set and isolates rate-limit quotas.
+    try:
+        key = _create_baas_tenant_and_key()
+        if key:
+            return key
+    except Exception as exc:
+        import sys as _sys
+        print(f"[BaaS SDK] Django shell tenant creation failed ({exc!r}), "
+              f"falling back to canonical helper.", file=_sys.stderr)
+
+    # Method 2: Use canonical conftest helper (validates token, auto-provisions)
+    try:
+        from tests.conftest import get_api_key
+        canonical = get_api_key()
+        if canonical:
+            return canonical
+    except Exception as exc:
+        import sys as _sys
+        print(f"[BaaS SDK] Canonical helper failed ({exc!r}), "
+              f"falling back to env vars.", file=_sys.stderr)
+
+    # Method 3: Use environment variables (last resort)
     api_key = os.environ.get('TEST_API_KEY') or os.environ.get('DATAHUB_API_KEY')
     if api_key:
         return api_key
 
-    # Method 2: Try to create API key via Django shell in Docker Compose
+    return None
+
+
+def _create_baas_tenant_and_key() -> Optional[str]:
+    """Create a dedicated tenant with ``baas_enabled=True`` and return an API key."""
+    import subprocess as _sp
+
+    unique_id = uuid.uuid4().hex[:8]
     try:
         unique_id = uuid.uuid4().hex[:8]
         django_shell_script = f"""
@@ -75,8 +105,11 @@ import os
 # Get or create tenant
 tenant, _ = Tenant.objects.get_or_create(
     slug=f'baas-sdk-test-tenant-{{unique_id}}',
-    defaults={{'name': f'BaaS SDK Test Tenant {{unique_id}}'}}
+    defaults={{'name': f'BaaS SDK Test Tenant {{unique_id}}', 'baas_enabled': True}}
 )
+if not tenant.baas_enabled:
+    tenant.baas_enabled = True
+    tenant.save(update_fields=['baas_enabled'])
 
 # Get or create user
 user, _ = User.objects.get_or_create(
@@ -127,7 +160,7 @@ print(api_key_value)
 print('API_KEY_END')
 """
         result = subprocess.run(
-            ['docker', 'compose', 'exec', '-T', 'api-service', 'python', 'hub/manage.py', 'shell'],
+                        ['docker', 'compose', '-f', 'docker-compose.test.yml', 'exec', '-T', 'api-service-test', 'python', 'hub/manage.py', 'shell'],
             input=django_shell_script,
             text=True,
             capture_output=True,
@@ -188,7 +221,7 @@ print('API_KEY_END')
 @pytest.fixture
 def real_api_config():
     """Fixture for real API configuration"""
-    api_base_url = os.environ.get('API_BASE_URL', 'http://localhost:8000/api/v1')
+    api_base_url = os.environ.get('API_BASE_URL', 'http://localhost:8001/api/v1')
     api_key = setup_authentication_for_sdk_tests(api_base_url)
 
     if not api_key:

@@ -1813,7 +1813,8 @@ class AssetCreationWorkflowDataFirstFlowE2ETest(TestCase):
             name=f"Test Tenant Data First {unique_id}",
             slug=f"test-tenant-data-first-{unique_id}",
             status="ACTIVE",
-            kyc_status="UNVERIFIED"
+            kyc_status="UNVERIFIED",
+            compliance_fail_closed_enabled=False,
         )
         self.user = User.objects.create_user(
             email=f"test-data-first-{unique_id}@example.com",

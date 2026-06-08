@@ -148,3 +148,44 @@ export interface ComplianceRunResults {
   started_at?: string;
   completed_at?: string;
 }
+
+export interface ComplianceCrossBorderAlert {
+  id?: string;
+  regulation?: string;
+  severity?: string;
+  message?: string;
+  created_at?: string;
+  applicable?: boolean;
+  applicable_regulations?: string[];
+  regulations?: string[];
+  requires_safeguards?: boolean;
+  [key: string]: unknown;
+}
+
+export interface ComplianceLocalisationAlert {
+  id?: string;
+  regulation?: string;
+  country?: string;
+  message?: string;
+  applicable?: boolean;
+  applicable_regulations?: string[];
+  regulations?: string[];
+  [key: string]: unknown;
+}
+
+export interface ComplianceLegalBasisViolation {
+  id: string;
+  regulation: string;
+  violation_type: string;
+  violation?: string;
+  basis?: string;
+  message: string;
+}
+
+export interface ComplianceRegulationSummaryRow {
+  regulation: string;
+  status: string;
+  alert_count: number;
+  violations?: number;
+  last_updated: string;
+}

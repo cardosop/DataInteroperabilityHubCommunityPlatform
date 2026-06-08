@@ -4,7 +4,7 @@ Performance tests for virtualization operations.
 Tests query execution performance, caching effectiveness, and result size handling.
 """
 import time
-from django.test import TestCase, override_settings
+from django.test import TestCase, TransactionTestCase, override_settings
 from django.utils import timezone
 from django.core.cache import cache
 import pytest
@@ -182,37 +182,6 @@ class VirtualizationPerformanceTest(TestCase):
         self.assertEqual(execution.get_metric("rows_processed"), row_count)
         self.assertEqual(execution.get_metric("result_size_bytes"), large_result_size)
 
-    def test_concurrent_query_execution(self):
-        """Test that multiple concurrent queries can be executed."""
-        dataset = VirtualDataset.objects.create(
-            tenant=self.tenant,
-            created_by=self.user,
-            name="Concurrent Test Dataset",
-            query="SELECT 1",
-            query_type=QueryType.SQL,
-            status=VirtualDatasetStatus.ACTIVE
-        )
-
-        # Create multiple executions
-        executions = []
-        for i in range(5):
-            execution = QueryExecution.objects.create(
-                virtual_dataset=dataset,
-                query=f"SELECT {i}",
-                execution_mode=QueryExecutionMode.SYNC,
-                status=QueryExecutionStatus.COMPLETED,
-                started_at=timezone.now(),
-                completed_at=timezone.now(),
-                metrics={"duration_ms": 100 + i}
-            )
-            executions.append(execution)
-
-        # Verify all executions were created
-        self.assertEqual(len(executions), 5)
-        for execution in executions:
-            self.assertIsNotNone(execution)
-            self.assertEqual(execution.status, QueryExecutionStatus.COMPLETED)
-
     def test_query_execution_timeout_handling(self):
         """Test that query timeouts are handled properly."""
         dataset = VirtualDataset.objects.create(
@@ -242,4 +211,87 @@ class VirtualizationPerformanceTest(TestCase):
         # Verify timeout is tracked
         self.assertEqual(execution.status, QueryExecutionStatus.FAILED)
         self.assertTrue(execution.get_metric("timeout", False))
+
+
+class ConcurrentQueryExecutionTest(TransactionTestCase):
+    """Concurrent execution tests use TransactionTestCase (not TestCase)
+    because each worker thread needs its own database connection outside
+    of any transaction wrapping."""
+
+    def setUp(self):
+        uid = uuid.uuid4().hex[:8]
+        self.tenant = Tenant.objects.create(
+            name=f"Test Tenant {uid}",
+            slug=f"test-tenant-{uid}"
+        )
+        self.user = User.objects.create_user(
+            email=f"test-{uid}@example.com",
+            password="testpass123",
+            tenant=self.tenant
+        )
+
+    def test_concurrent_query_execution(self):
+        """Test that multiple operations execute concurrently without
+        deadlocks or race conditions."""
+        import threading
+        from concurrent.futures import ThreadPoolExecutor, as_completed
+        from django.db import connections
+
+        errors: list = []
+        lock = threading.Lock()
+        concurrency = 5
+
+        def _execute_one(idx: int):
+            for alias in connections:
+                connections[alias].close()
+            try:
+                ds = VirtualDataset.objects.create(
+                    tenant_id=self.tenant.id,
+                    created_by_id=self.user.id,
+                    name=f"Concurrent DS {idx}",
+                    query=f"SELECT {idx}",
+                    query_type=QueryType.SQL,
+                    status=VirtualDatasetStatus.ACTIVE,
+                )
+                execution = QueryExecution.objects.create(
+                    virtual_dataset=ds,
+                    query=f"SELECT {idx}",
+                    execution_mode=QueryExecutionMode.SYNC,
+                    status=QueryExecutionStatus.COMPLETED,
+                    started_at=timezone.now(),
+                    completed_at=timezone.now(),
+                    metrics={"duration_ms": 100 + idx},
+                )
+                return execution
+            except Exception as e:
+                with lock:
+                    errors.append((idx, str(e)))
+                return None
+            finally:
+                for alias in connections:
+                    connections[alias].close()
+
+        executions = []
+        with ThreadPoolExecutor(max_workers=concurrency) as pool:
+            futures = {pool.submit(_execute_one, i): i for i in range(concurrency)}
+            for future in as_completed(futures):
+                result = future.result()
+                if result is not None:
+                    executions.append(result)
+
+        for alias in connections:
+            connections[alias].close()
+
+        self.assertEqual(
+            len(errors), 0,
+            f"Concurrent operations should not produce errors; got {errors}"
+        )
+        self.assertEqual(
+            len(executions), concurrency,
+            f"All {concurrency} concurrent operations must complete; "
+            f"only {len(executions)} succeeded"
+        )
+        for execution in executions:
+            self.assertIsNotNone(execution)
+            self.assertEqual(execution.status, QueryExecutionStatus.COMPLETED)
 

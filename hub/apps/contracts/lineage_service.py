@@ -994,6 +994,12 @@ class LineageService(BaseService, LineageEventPublisher):
                                 "label": "External contract",
                             }
 
+                    # The serializer expects ``source`` / ``target`` graph-node
+                    # IDs; the raw edge dict carries ``source_contract`` /
+                    # ``target_contract``.  Add the graph-level keys so the
+                    # serializers (summary *and* full) can read them.
+                    edge["source"] = src_id or ""
+                    edge["target"] = tgt_id or ""
                     links.append(edge)
 
                     if (

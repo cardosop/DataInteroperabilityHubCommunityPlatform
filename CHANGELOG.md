@@ -7,6 +7,26 @@ project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added — Phase 285.6: Data Movement (dlt) Feature Wiring (2026-06-05)
+
+- **DataMovementPipeline integrated.** The `hub/data_movement/` dlt-based pipeline
+  is now wired into `ScheduledIngestion` and `ScheduledExport` execution paths,
+  gated behind the `Tenant.data_movement_enabled` feature flag.
+- **credential_ref model fields.** Added nullable `credential_ref` (AWS SM ARN or
+  prefect:// block reference) to `ScheduledIngestion` and `ScheduledExport`.
+- **Warehouse source types.** Added `SNOWFLAKE_SOURCE`, `BIGQUERY_SOURCE`,
+  `DATABRICKS_SOURCE`, `ATHENA_SOURCE` to `SourceType` enum with corresponding
+  business rule validators.
+- **Internal pipeline config API.** `GET /api/v1/data-movement/internal/config/{direction}/{id}/`
+  provides Prefect workers with dlt pipeline parameters and resolved credentials.
+- **Management commands.** `migrate_credentials_to_refs` (inline creds → AWS SM)
+  and `cleanup_dlt_state_tables` (orphaned `_dlt_*` table sweep) created.
+- **Frontend.** Source type dropdowns updated with warehouse options. `credential_ref`
+  input field added to ingestion create/edit pages.
+- **Infrastructure.** `DLT_LOG_LEVEL` and `DLT_DEV_MODE` environment variables
+  added to `docker-compose.test.yml`.
+- **CI/CD.** `hub/data_movement/` added to test batch 8-2.
+
 ### Added — Phase 274: Business Rules Hardening (2026-05-12)
 
 - **BR1 — Marketplace compliance threshold gate.** Listing publication now

@@ -13,6 +13,8 @@ from rest_framework.decorators import action
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
+from drf_spectacular.utils import extend_schema
+
 from hub.apps.core.responses import handle_service_exception
 from hub.apps.core.services.base import NotFoundError
 from hub.apps.core.services.base import ValidationError as ServiceValidationError
@@ -38,6 +40,20 @@ class PlatformTenantViewSet(viewsets.ReadOnlyModelViewSet):
     serializer_class = TenantSerializer
     permission_classes = [IsAuthenticated, IsPlatformAdmin]
     lookup_field = "id"
+
+    @extend_schema(
+        summary="List all tenants",
+        description="Platform-admin only. Returns paginated list of all tenants.",
+    )
+    def list(self, request, *args, **kwargs):
+        return super().list(request, *args, **kwargs)
+
+    @extend_schema(
+        summary="Retrieve a tenant",
+        description="Platform-admin only. Returns a single tenant by ID.",
+    )
+    def retrieve(self, request, *args, **kwargs):
+        return super().retrieve(request, *args, **kwargs)
 
     @transaction.atomic
     @action(detail=True, methods=["post"], url_path="suspend")

@@ -26,8 +26,14 @@ def _execute_compliance_run_job(job_obj: Job) -> dict:
         ConnectionError: If compliance service is unavailable
         Exception: For other errors
     """
-    # Get compliance_run_id from job details or resource_id
-    compliance_run_id = job_obj.details_json.get("compliance_run_id") or job_obj.resource_id
+    # Get compliance_run_id from job details or resource_id.
+    # details_json is a JSONField that defaults to None — guard against
+    # jobs created without populating it (e.g. test fixtures, fast-fail).
+    compliance_run_id = None
+    if isinstance(job_obj.details_json, dict):
+        compliance_run_id = job_obj.details_json.get("compliance_run_id")
+    if not compliance_run_id:
+        compliance_run_id = job_obj.resource_id
 
     # Convert to string if it's a UUID object
     if compliance_run_id:

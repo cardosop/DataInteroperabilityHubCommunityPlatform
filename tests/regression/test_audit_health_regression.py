@@ -28,7 +28,7 @@ class AuditHealthRegressionTestBase(TestCase):
         super().setUp()
         self.client = APIClient()
         self.tenant = Tenant.objects.create(
-            name="Audit Health Regression Tenant",
+            name=f"Audit Health Regression Tenant {uuid.uuid4().hex[:8]}",
             slug="audit-health-regression",
         )
         self.user = User.objects.create_user(

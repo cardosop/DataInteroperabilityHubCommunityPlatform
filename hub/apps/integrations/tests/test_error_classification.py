@@ -13,11 +13,26 @@ import httpx
 import pytest
 from django.test import TestCase
 
-from hub.apps.integrations.base import SyncStatus
+from hub.apps.core.services.base import ServiceError
+from hub.apps.integrations.base import (
+    DataMarketplaceConnector,
+    MarketplaceListing,
+    MarketplaceType,
+    SyncDirection,
+    SyncResult,
+    SyncStatus,
+)
 from hub.apps.integrations.error_classification import (
     ConnectorErrorType,
     classify_connector_error,
 )
+from hub.apps.integrations.factory import MarketplaceConnectorFactory
+from hub.apps.integrations.models import (
+    MarketplaceConnection,
+    MarketplaceSyncJob,
+)
+from hub.apps.tenants.models import Tenant
+from hub.apps.users.models import User, UserStatus
 from hub.apps.integrations.models import MarketplaceSyncJob
 from hub.apps.tenants.models import Tenant, KYCStatus
 from hub.apps.testing.billing_support import (
@@ -341,99 +356,218 @@ class NoDuplicateErrorOnMarkFailedTest(TestCase):
 
 
 class TaskErrorClassificationWiringTest(TestCase):
-    """Verify that execute_marketplace_sync uses
-    classify_connector_error and the error_class span attribute
-    is present in the error-handling code path."""
+    """Verify at runtime that execute_marketplace_sync correctly wires
+    classify_connector_error into the retry / abort decision logic."""
 
-    def test_tasks_imports_error_classification(self):
-        """tasks.py imports classify_connector_error and
-        ConnectorErrorType at module level."""
-        import inspect
+    def setUp(self):
+        uid = uuid.uuid4().hex[:8]
+        self.tenant = Tenant.objects.create(
+            name=f"T-{uid}", slug=f"t-{uid}",
+        )
+        self.user = User.objects.create_user(
+            email=f"u-{uid}@example.com", tenant=self.tenant, status=UserStatus.ACTIVE,
+        )
+        self.connection = MarketplaceConnection.objects.create(
+            tenant=self.tenant,
+            marketplace_type=MarketplaceType.SNOWFLAKE_DATA_MARKETPLACE.value,
+            name=f"conn-{uid}",
+            config={"api_key": "test-key"},
+        )
+
+    # ── helpers ────────────────────────────────────────────────────
+
+    class _SimpleTestConnector(DataMarketplaceConnector):
+        """Minimal connector for wiring tests."""
+
+        @property
+        def marketplace_type(self) -> MarketplaceType:
+            return MarketplaceType.SNOWFLAKE_DATA_MARKETPLACE
+
+        @property
+        def supported_sync_directions(self):
+            return [SyncDirection.PUSH, SyncDirection.PULL]
+
+        def authenticate(self, credentials):
+            return True
+
+        def test_connection(self):
+            return True
+
+        def list_listings(self, filters=None, limit=None, offset=None):
+            return []
+
+        def get_listing(self, listing_id):
+            return MarketplaceListing(
+                marketplace_id=listing_id,
+                marketplace_type=MarketplaceType.SNOWFLAKE_DATA_MARKETPLACE,
+                title="Test",
+            )
+
+        def list_resources(self, listing_id):
+            return []
+
+        def create_listing(self, listing):
+            return listing
+
+        def update_listing(self, listing_id, listing):
+            return listing
+
+        def publish_resource(self, listing_id, resource):
+            return resource
+
+        def download_resource(self, resource_id, destination_path):
+            return destination_path
+
+        def map_to_hub_asset(self, listing, sync_job_id=None):
+            from hub.apps.assets.models import AssetSourceType
+            from hub.apps.integrations.base import MarketplaceAssetMapping
+            return MarketplaceAssetMapping(
+                asset_data={"name": listing.title},
+                source_type=AssetSourceType.FEDERATED,
+                source_metadata={},
+            )
+
+        def map_from_hub_asset(self, asset_data, **kwargs):
+            return MarketplaceListing(
+                marketplace_id=asset_data.get("id", "test"),
+                marketplace_type=MarketplaceType.SNOWFLAKE_DATA_MARKETPLACE,
+                title=asset_data.get("name", "Unknown"),
+            )
+
+        def sync_push(self, asset_ids, options=None):
+            return SyncResult(
+                status=SyncStatus.COMPLETED,
+                total_items=len(asset_ids),
+                successful_items=len(asset_ids),
+            )
+
+        def sync_pull(self, listing_ids=None, filters=None, options=None):
+            return SyncResult(
+                status=SyncStatus.COMPLETED,
+                total_items=0, successful_items=0,
+            )
+
+    @staticmethod
+    def _register_test_connector(connector_cls):
+        MarketplaceConnectorFactory.register_connector(
+            MarketplaceType.SNOWFLAKE_DATA_MARKETPLACE, connector_cls,
+        )
+
+    @staticmethod
+    def _unregister_test_connector():
+        try:
+            MarketplaceConnectorFactory.unregister_connector(
+                MarketplaceType.SNOWFLAKE_DATA_MARKETPLACE,
+            )
+        except ValueError:
+            pass
+
+    # ── tests ──────────────────────────────────────────────────────
+
+    def test_imports_present(self):
+        """tasks.py module-level imports are available."""
+        from hub.apps.integrations.tasks import (
+            classify_connector_error,
+            ConnectorErrorType,
+        )
+        self.assertTrue(callable(classify_connector_error))
+        self.assertIsNotNone(ConnectorErrorType)
+
+    def test_classify_is_called_for_connector_error(self):
+        """classify_connector_error is called when a connector raises
+        an exception during sync execution."""
         import hub.apps.integrations.tasks as tasks_mod
 
-        source = inspect.getsource(tasks_mod)
-        self.assertIn(
-            "classify_connector_error",
-            source,
-            "tasks.py must import classify_connector_error",
-        )
-        self.assertIn(
-            "ConnectorErrorType",
-            source,
-            "tasks.py must import ConnectorErrorType",
-        )
+        class _TransientConnector(self._SimpleTestConnector):
+            def sync_push(self, asset_ids, options=None):
+                raise ConnectionError("Connection timeout")
 
-    def test_tasks_classifies_before_retry_decision(self):
-        """The error-handling block in execute_marketplace_sync
-        calls classify_connector_error and branches on the
-        result."""
-        import inspect
+        self._register_test_connector(_TransientConnector)
+        try:
+            sync_job = MarketplaceSyncJob.objects.create(
+                tenant=self.tenant, connection=self.connection,
+                direction=SyncDirection.PUSH.value,
+                status=SyncStatus.PENDING.value,
+                metadata={"asset_ids": ["a-1"]},
+            )
+            with self.assertRaises(ConnectionError):
+                tasks_mod.execute_marketplace_sync(str(sync_job.id))
+        finally:
+            self._unregister_test_connector()
+
+    def test_permanent_error_raises_service_error(self):
+        """When a connector returns None (classifier → PERMANENT),
+        the task raises ServiceError."""
         import hub.apps.integrations.tasks as tasks_mod
 
-        source = inspect.getsource(
-            tasks_mod.execute_marketplace_sync,
-        )
-        # Must call the classifier
-        self.assertIn("classify_connector_error(", source)
-        # Must branch on PERMANENT
-        self.assertIn("ConnectorErrorType.PERMANENT", source)
-        # Must branch on TRANSIENT
-        self.assertIn("ConnectorErrorType.TRANSIENT", source)
-        # Must handle UNKNOWN with max retries
-        self.assertIn("max_unknown_retries", source)
+        class _NoResultConnector(self._SimpleTestConnector):
+            def sync_push(self, asset_ids, options=None):
+                return None
 
-    def test_permanent_error_no_retry_in_logic(self):
-        """PERMANENT branch sets error.retryable=False and
-        raises ServiceError (not re-raise)."""
-        import inspect
+        self._register_test_connector(_NoResultConnector)
+        try:
+            sync_job = MarketplaceSyncJob.objects.create(
+                tenant=self.tenant, connection=self.connection,
+                direction=SyncDirection.PUSH.value,
+                status=SyncStatus.PENDING.value,
+                metadata={"asset_ids": ["a-1"]},
+            )
+            with self.assertRaises(ServiceError) as cm:
+                tasks_mod.execute_marketplace_sync(str(sync_job.id))
+            self.assertIn("no result", str(cm.exception).lower())
+
+            sync_job.refresh_from_db()
+            self.assertEqual(sync_job.status, SyncStatus.FAILED.value)
+        finally:
+            self._unregister_test_connector()
+
+    def test_transient_error_is_re_raised(self):
+        """TRANSIENT errors are re-raised (bare raise) so the caller
+        can retry — they are not wrapped in ServiceError."""
         import hub.apps.integrations.tasks as tasks_mod
 
-        source = inspect.getsource(
-            tasks_mod.execute_marketplace_sync,
-        )
-        # After PERMANENT, must mark retryable false
-        perm_idx = source.index(
-            "ConnectorErrorType.PERMANENT"
-        )
-        perm_block = source[perm_idx:perm_idx + 800]
-        self.assertIn(
-            '"error.retryable": False',
-            perm_block,
-        )
-        self.assertIn("mark_failed", perm_block)
+        class _TransientConnector(self._SimpleTestConnector):
+            def sync_push(self, asset_ids, options=None):
+                raise ConnectionError("Connection timeout")
 
-    def test_permanent_no_duplicate_error_entry(self):
-        """PERMANENT branch calls mark_failed() WITHOUT
-        error_message to avoid duplicate error entries."""
-        import inspect
+        self._register_test_connector(_TransientConnector)
+        try:
+            sync_job = MarketplaceSyncJob.objects.create(
+                tenant=self.tenant, connection=self.connection,
+                direction=SyncDirection.PUSH.value,
+                status=SyncStatus.PENDING.value,
+                metadata={"asset_ids": ["a-1"]},
+            )
+            with self.assertRaises(ConnectionError):
+                tasks_mod.execute_marketplace_sync(str(sync_job.id))
+
+            sync_job.refresh_from_db()
+            # The job should have the error recorded
+            self.assertGreater(len(sync_job.errors), 0)
+        finally:
+            self._unregister_test_connector()
+
+    def test_permanent_error_marks_job_failed(self):
+        """PERMANENT errors mark the sync job as FAILED."""
         import hub.apps.integrations.tasks as tasks_mod
 
-        source = inspect.getsource(
-            tasks_mod.execute_marketplace_sync,
-        )
-        perm_idx = source.index(
-            "ConnectorErrorType.PERMANENT"
-        )
-        perm_block = source[perm_idx:perm_idx + 800]
-        # mark_failed must be called without error_message
-        self.assertIn("mark_failed()", perm_block)
+        class _NoResultConnector(self._SimpleTestConnector):
+            def sync_push(self, asset_ids, options=None):
+                return None
 
-    def test_transient_error_retried_in_logic(self):
-        """TRANSIENT branch sets error.retryable=True and
-        re-raises (bare raise, not ServiceError)."""
-        import inspect
-        import hub.apps.integrations.tasks as tasks_mod
+        self._register_test_connector(_NoResultConnector)
+        try:
+            sync_job = MarketplaceSyncJob.objects.create(
+                tenant=self.tenant, connection=self.connection,
+                direction=SyncDirection.PUSH.value,
+                status=SyncStatus.PENDING.value,
+                metadata={"asset_ids": ["a-1"]},
+            )
+            with self.assertRaises(ServiceError):
+                tasks_mod.execute_marketplace_sync(str(sync_job.id))
 
-        source = inspect.getsource(
-            tasks_mod.execute_marketplace_sync,
-        )
-        trans_idx = source.index(
-            "ConnectorErrorType.TRANSIENT"
-        )
-        trans_block = source[trans_idx:trans_idx + 600]
-        self.assertIn(
-            '"error.retryable": True',
-            trans_block,
-        )
-        # Must re-raise (bare raise), NOT wrap in ServiceError
-        self.assertIn("raise\n", trans_block)
+            sync_job.refresh_from_db()
+            self.assertEqual(sync_job.status, SyncStatus.FAILED.value,
+                             "PERMANENT error must mark job as FAILED")
+        finally:
+            self._unregister_test_connector()

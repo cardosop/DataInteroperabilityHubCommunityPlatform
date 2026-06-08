@@ -32,6 +32,8 @@ _datacontract_service_path = (
 if _datacontract_service_path.exists() and str(_datacontract_service_path) not in sys.path:
     sys.path.insert(0, str(_datacontract_service_path))
 
+import warnings
+
 try:
     from normalize import detect_spec_type as detect_odcs_spec_type
     from normalize import normalize_contract
@@ -42,7 +44,18 @@ except ImportError:
     ODCS_NORMALIZATION_AVAILABLE = False
     normalize_contract = None
     detect_odcs_spec_type = None
+    warnings.warn(
+        "ODCS normalization module (datacontract-service) not available — "
+        "all ODCS backward-compatibility tests will be silently skipped. "
+        "In CI this should be a hard failure.",
+        RuntimeWarning,
+    )
 
+# For future CI integration, add @pytest.mark.skipif on ODCS test classes:
+# pytestmark = pytest.mark.skipif(
+#     not ODCS_NORMALIZATION_AVAILABLE,
+#     reason="ODCS normalization module (datacontract-service) not available",
+# )
 
 # Supported ODPS versions
 ODPS_VERSIONS = ["4.1", "4.0", "3.x", "2.x", "1.x"]
@@ -512,11 +525,20 @@ class TestCrossFormatBackwardCompatibility(TestCase):
         odcs_json = json.dumps(odcs_contract)
         odcs_hub_contract, _, _, _ = normalize_contract(odcs_json, format="json")
 
-        # Version-specific fields should be preserved in extensions
+        # Version-specific fields should be preserved in extensions.
+        # ODPS: verify customField is preserved in the normalized output.
         if odps_result.hub_contract.get("extensions"):
-            # ODPS extensions should contain custom fields
-            pass  # Extensions structure may vary
+            odps_extensions = odps_result.hub_contract["extensions"]
+            self.assertTrue(
+                any(
+                    "customField" in str(v)
+                    for v in odps_extensions.values()
+                ),
+                "ODPS custom fields should be preserved in extensions: "
+                f"{odps_extensions}",
+            )
 
+        # ODCS: verify customField is preserved in the normalized output.
         if odcs_hub_contract.extensions and odcs_hub_contract.extensions.odcs:
             self.assertTrue(
                 "customField" in odcs_hub_contract.extensions.odcs,

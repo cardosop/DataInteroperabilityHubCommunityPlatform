@@ -20,7 +20,7 @@ from io import StringIO
 
 import pytest
 
-pytestmark = pytest.mark.slow
+pytestmark = [pytest.mark.slow, pytest.mark.django_db(transaction=True)]
 from django.core.exceptions import ValidationError
 from django.core.management import call_command
 from django.db import connection, transaction
@@ -39,8 +39,6 @@ from hub.apps.contracts.models import Contract, ContractStatus, OriginalSpecType
 from hub.apps.contracts.tests.test_base import ContractsTestBase
 from hub.apps.tenants.models import KYCStatus, Tenant, TenantStatus
 from hub.apps.users.models import User, UserStatus
-
-pytestmark = pytest.mark.django_db(transaction=True)
 
 
 class MigrationValidationTestBase(ContractsTestBase):
@@ -63,18 +61,21 @@ class MigrationValidationTestBase(ContractsTestBase):
 class MigrationPrerequisitesValidationTest(MigrationValidationTestBase):
     """Tests for migration script prerequisite validation (Task 10.1.21.1)."""
 
-    def test_migration_validates_database_connection(self):
-        """Test that migration validates database connection."""
-        # Arrange
-        # (database connection is implicitly tested by Django's test framework)
-
-        # Act
-        # This is implicitly tested by Django's test framework
-        # which ensures database connectivity before tests run
-        current_version = get_current_hubcontract_version()
+    def test_migration_validates_database_connectivity(self):
+        """Test that migration validates database connectivity."""
+        # Act: verify DB connection via a simple query
+        with connection.cursor() as cursor:
+            cursor.execute("SELECT 1")
+            result = cursor.fetchone()
 
         # Assert
+        self.assertIsNotNone(result, "Database should be reachable")
+        self.assertEqual(result[0], 1, "Simple query should succeed")
+
+        # Also verify current version is accessible
+        current_version = get_current_hubcontract_version()
         self.assertIsNotNone(current_version, "Should be able to get current version")
+        self.assertEqual(current_version, "1.0.0", "Current version should be 1.0.0")
 
     def test_migration_validates_contract_exists(self):
         """Test that migration validates contract exists before migrating."""
@@ -197,11 +198,11 @@ class MigrationDataIntegrityValidationTest(MigrationValidationTestBase):
         # Perform migration
         migrated, migrated_data, warnings = ContractMigrationManager.migrate_on_write(contract)
 
-        if migrated:
-            # Refresh from database
-            contract.refresh_from_db()
-            self.assertEqual(contract.id, contract_id, "Contract ID should be preserved")
-            self.assertIsNotNone(contract.hub_contract_json, "Hub contract JSON should exist")
+        self.assertTrue(migrated, "Migration should have occurred for old version contract")
+        # Refresh from database
+        contract.refresh_from_db()
+        self.assertEqual(contract.id, contract_id, "Contract ID should be preserved")
+        self.assertIsNotNone(contract.hub_contract_json, "Hub contract JSON should exist")
 
     def test_migration_preserves_tenant_association(self):
         """Test that migration preserves tenant association."""
@@ -211,8 +212,8 @@ class MigrationDataIntegrityValidationTest(MigrationValidationTestBase):
             original_spec_type=OriginalSpecType.ODCS,
             original_format="json",
             original_raw=json.dumps({"apiVersion": "odcs.io/v3.0.2", "kind": "DataContract"}),
-            hub_contract_version=get_current_hubcontract_version(),
-            hub_contract_json={"version": get_current_hubcontract_version()},
+            hub_contract_version="0.9.0",
+            hub_contract_json={"version": "0.9.0"},
             status=ContractStatus.ACTIVE,
             created_by=self.user,
         )
@@ -222,12 +223,12 @@ class MigrationDataIntegrityValidationTest(MigrationValidationTestBase):
         # Perform migration
         migrated, migrated_data, warnings = ContractMigrationManager.migrate_on_write(contract)
 
-        if migrated:
-            # Refresh from database
-            contract.refresh_from_db()
-            self.assertEqual(
-                contract.tenant.id, original_tenant_id, "Tenant association should be preserved"
-            )
+        self.assertTrue(migrated, "Migration should have occurred for old version contract")
+        # Refresh from database
+        contract.refresh_from_db()
+        self.assertEqual(
+            contract.tenant.id, original_tenant_id, "Tenant association should be preserved"
+        )
 
     def test_migration_preserves_asset_association(self):
         """Test that migration preserves asset association."""
@@ -237,8 +238,8 @@ class MigrationDataIntegrityValidationTest(MigrationValidationTestBase):
             original_spec_type=OriginalSpecType.ODCS,
             original_format="json",
             original_raw=json.dumps({"apiVersion": "odcs.io/v3.0.2", "kind": "DataContract"}),
-            hub_contract_version=get_current_hubcontract_version(),
-            hub_contract_json={"version": get_current_hubcontract_version()},
+            hub_contract_version="0.9.0",
+            hub_contract_json={"version": "0.9.0"},
             status=ContractStatus.ACTIVE,
             created_by=self.user,
         )
@@ -248,12 +249,12 @@ class MigrationDataIntegrityValidationTest(MigrationValidationTestBase):
         # Perform migration
         migrated, migrated_data, warnings = ContractMigrationManager.migrate_on_write(contract)
 
-        if migrated:
-            # Refresh from database
-            contract.refresh_from_db()
-            self.assertEqual(
-                contract.asset.id, original_asset_id, "Asset association should be preserved"
-            )
+        self.assertTrue(migrated, "Migration should have occurred for old version contract")
+        # Refresh from database
+        contract.refresh_from_db()
+        self.assertEqual(
+            contract.asset.id, original_asset_id, "Asset association should be preserved"
+        )
 
     def test_migration_validates_data_completeness(self):
         """Test that migration validates data completeness."""
@@ -264,8 +265,8 @@ class MigrationDataIntegrityValidationTest(MigrationValidationTestBase):
             original_spec_type=OriginalSpecType.ODCS,
             original_format="json",
             original_raw=json.dumps({"apiVersion": "odcs.io/v3.0.2", "kind": "DataContract"}),
-            hub_contract_version=get_current_hubcontract_version(),
-            hub_contract_json={"version": get_current_hubcontract_version()},  # Minimal data
+            hub_contract_version="0.9.0",
+            hub_contract_json={"version": "0.9.0"},  # Minimal data
             status=ContractStatus.ACTIVE,
             created_by=self.user,
         )
@@ -273,12 +274,10 @@ class MigrationDataIntegrityValidationTest(MigrationValidationTestBase):
         # Migration should handle minimal data gracefully
         migrated, migrated_data, warnings = ContractMigrationManager.migrate_on_write(contract)
 
-        # Should either migrate successfully or provide warnings
-        if migrated:
-            self.assertIsNotNone(migrated_data, "Migrated data should exist")
-        else:
-            # If migration failed, warnings should explain why
-            self.assertIsInstance(warnings, list, "Warnings should be a list")
+        # Migration should succeed for old version contract
+        self.assertTrue(migrated, "Migration should have occurred for old version contract")
+        self.assertIsNotNone(migrated_data, "Migrated data should exist")
+        self.assertIsInstance(warnings, list, "Warnings should be a list")
 
     def test_migration_validates_referential_integrity(self):
         """Test that migration validates referential integrity."""
@@ -289,8 +288,8 @@ class MigrationDataIntegrityValidationTest(MigrationValidationTestBase):
             original_spec_type=OriginalSpecType.ODCS,
             original_format="json",
             original_raw=json.dumps({"apiVersion": "odcs.io/v3.0.2", "kind": "DataContract"}),
-            hub_contract_version=get_current_hubcontract_version(),
-            hub_contract_json={"version": get_current_hubcontract_version()},
+            hub_contract_version="0.9.0",
+            hub_contract_json={"version": "0.9.0"},
             status=ContractStatus.ACTIVE,
             created_by=self.user,
         )
@@ -301,15 +300,15 @@ class MigrationDataIntegrityValidationTest(MigrationValidationTestBase):
         # Perform migration
         migrated, migrated_data, warnings = ContractMigrationManager.migrate_on_write(contract)
 
-        if migrated:
-            # Refresh from database
-            contract.refresh_from_db()
-            # Verify asset reference is still valid
-            self.assertIsNotNone(contract.asset, "Asset reference should be preserved")
-            self.assertTrue(
-                Asset.objects.filter(id=contract.asset.id).exists(),
-                "Referenced asset should still exist",
-            )
+        self.assertTrue(migrated, "Migration should have occurred for old version contract")
+        # Refresh from database
+        contract.refresh_from_db()
+        # Verify asset reference is still valid
+        self.assertIsNotNone(contract.asset, "Asset reference should be preserved")
+        self.assertTrue(
+            Asset.objects.filter(id=contract.asset.id).exists(),
+            "Referenced asset should still exist",
+        )
 
 
 class MigrationErrorHandlingTest(MigrationValidationTestBase):
@@ -372,8 +371,8 @@ class MigrationErrorHandlingTest(MigrationValidationTestBase):
             original_spec_type=OriginalSpecType.ODCS,
             original_format="json",
             original_raw=json.dumps({"apiVersion": "odcs.io/v3.0.2", "kind": "DataContract"}),
-            hub_contract_version=get_current_hubcontract_version(),
-            hub_contract_json={"version": get_current_hubcontract_version()},
+            hub_contract_version="0.9.0",
+            hub_contract_json={"version": "0.9.0"},
             status=ContractStatus.ACTIVE,
             created_by=self.user,
         )
@@ -389,10 +388,8 @@ class MigrationErrorHandlingTest(MigrationValidationTestBase):
         # Should handle gracefully (either succeed or fail with appropriate error)
         self.assertIsInstance(warnings, list, "Warnings should be a list")
 
-    def test_migration_handles_database_errors(self):
-        """Test that migration handles database errors."""
-        # This test verifies that migration handles database errors
-        # In a real scenario, this might involve connection failures, constraint violations, etc.
+    def test_migration_handles_normal_flow(self):
+        """Test that migration handles the normal migration flow."""
 
         contract = Contract.objects.create(
             tenant=self.tenant,
@@ -400,27 +397,25 @@ class MigrationErrorHandlingTest(MigrationValidationTestBase):
             original_spec_type=OriginalSpecType.ODCS,
             original_format="json",
             original_raw=json.dumps({"apiVersion": "odcs.io/v3.0.2", "kind": "DataContract"}),
-            hub_contract_version=get_current_hubcontract_version(),
-            hub_contract_json={"version": get_current_hubcontract_version()},
+            hub_contract_version="0.9.0",
+            hub_contract_json={"version": "0.9.0"},
             status=ContractStatus.ACTIVE,
             created_by=self.user,
         )
 
-        # Normal migration should work
-        try:
-            migrated, migrated_data, warnings = ContractMigrationManager.migrate_on_write(contract)
-            # If successful, verify contract was updated
-            if migrated:
-                contract.refresh_from_db()
-                current_version = get_current_hubcontract_version()
-                self.assertEqual(
-                    contract.hub_contract_version,
-                    current_version,
-                    "Contract version should be updated",
-                )
-        except Exception as e:
-            # Database errors should be handled gracefully
-            self.assertIsInstance(e, Exception, "Should raise appropriate exception")
+        # Normal migration should work without raising exceptions
+        migrated, migrated_data, warnings = ContractMigrationManager.migrate_on_write(contract)
+
+        self.assertTrue(migrated, "Migration should have occurred for old version contract")
+        # Verify contract was updated
+        contract.refresh_from_db()
+        current_version = get_current_hubcontract_version()
+        self.assertEqual(
+            contract.hub_contract_version,
+            current_version,
+            "Contract version should be updated",
+        )
+        self.assertIsInstance(warnings, list, "Warnings should be a list")
 
 
 class MigrationRollbackCapabilityTest(ContractsTestBase):
@@ -441,10 +436,9 @@ class MigrationRollbackCapabilityTest(ContractsTestBase):
 
     def test_migration_provides_rollback_capability(self):
         """Test that migration provides rollback capability."""
-        # Create contract with current version
-        current_version = get_current_hubcontract_version()
-        original_version = current_version
-        original_hub_contract = {"version": current_version, "test": "data"}
+        # Create contract with old version
+        original_version = "0.9.0"
+        original_hub_contract = {"version": "0.9.0", "test": "data"}
 
         contract = Contract.objects.create(
             tenant=self.tenant,
@@ -467,39 +461,39 @@ class MigrationRollbackCapabilityTest(ContractsTestBase):
         # Perform migration
         migrated, migrated_data, warnings = ContractMigrationManager.migrate_on_write(contract)
 
-        if migrated:
-            # Verify migration occurred
-            contract.refresh_from_db()
-            current_version = get_current_hubcontract_version()
-            self.assertEqual(
-                contract.hub_contract_version, current_version, "Contract should be migrated"
-            )
+        self.assertTrue(migrated, "Migration should have occurred for old version contract")
+        # Verify migration occurred
+        contract.refresh_from_db()
+        current_version = get_current_hubcontract_version()
+        self.assertEqual(
+            contract.hub_contract_version, current_version, "Contract should be migrated"
+        )
 
-            # Rollback: restore original version
-            contract.hub_contract_version = original_state["version"]
-            if original_state["json"]:
-                contract.hub_contract_json = json.loads(original_state["json"])
-            contract.save()
+        # Rollback: restore original version
+        contract.hub_contract_version = original_state["version"]
+        if original_state["json"]:
+            contract.hub_contract_json = json.loads(original_state["json"])
+        contract.save()
 
-            # Verify rollback
-            contract.refresh_from_db()
-            self.assertEqual(
-                contract.hub_contract_version,
-                original_version,
-                "Contract should be rolled back to original version",
-            )
+        # Verify rollback
+        contract.refresh_from_db()
+        self.assertEqual(
+            contract.hub_contract_version,
+            original_version,
+            "Contract should be rolled back to original version",
+        )
 
     def test_migration_tracks_version_history(self):
         """Test that migration tracks version history for rollback."""
-        # Create contract
+        # Create contract with old version
         contract = Contract.objects.create(
             tenant=self.tenant,
             asset=self.asset,
             original_spec_type=OriginalSpecType.ODCS,
             original_format="json",
             original_raw=json.dumps({"apiVersion": "odcs.io/v3.0.2", "kind": "DataContract"}),
-            hub_contract_version=get_current_hubcontract_version(),
-            hub_contract_json={"version": get_current_hubcontract_version()},
+            hub_contract_version="0.9.0",
+            hub_contract_json={"version": "0.9.0"},
             status=ContractStatus.ACTIVE,
             created_by=self.user,
         )
@@ -509,23 +503,22 @@ class MigrationRollbackCapabilityTest(ContractsTestBase):
         # Perform migration
         migrated, migrated_data, warnings = ContractMigrationManager.migrate_on_write(contract)
 
-        if migrated:
-            # Version should be updated
-            contract.refresh_from_db()
-            current_version = get_current_hubcontract_version()
-            self.assertNotEqual(
-                contract.hub_contract_version,
-                original_version,
-                "Version should be updated after migration",
-            )
+        self.assertTrue(migrated, "Migration should have occurred for old version contract")
+        # Version should be updated
+        contract.refresh_from_db()
+        current_version = get_current_hubcontract_version()
+        self.assertNotEqual(
+            contract.hub_contract_version,
+            original_version,
+            "Version should be updated after migration",
+        )
 
-            # Original version should be recoverable from audit logs or history
-            # (This depends on audit implementation)
-            self.assertIsNotNone(original_version, "Original version should be trackable")
+        # Original version should be recoverable from audit logs or history
+        # (This depends on audit implementation)
+        self.assertIsNotNone(original_version, "Original version should be trackable")
 
     def test_migration_supports_transaction_rollback(self):
         """Test that migration supports transaction rollback."""
-        current_version = get_current_hubcontract_version()
 
         try:
             with transaction.atomic():
@@ -538,8 +531,8 @@ class MigrationRollbackCapabilityTest(ContractsTestBase):
                     original_raw=json.dumps(
                         {"apiVersion": "odcs.io/v3.0.2", "kind": "DataContract"}
                     ),
-                    hub_contract_version=current_version,
-                    hub_contract_json={"version": current_version},
+                    hub_contract_version="0.9.0",
+                    hub_contract_json={"version": "0.9.0"},
                     status=ContractStatus.ACTIVE,
                     created_by=self.user,
                 )
@@ -570,26 +563,34 @@ class MigrationRollbackCapabilityTest(ContractsTestBase):
                 contract.hub_contract_version, "Contract should have a version if it exists"
             )
 
-    def test_migration_validates_user_permissions(self):
-        """Test that migration validates user permissions."""
-        # Create contract
+    def test_migration_user_can_create_contracts(self):
+        """Test that a user can create contracts and they are properly associated."""
+        # Create contract with old version to test migration eligibility
         contract = Contract.objects.create(
             tenant=self.tenant,
             asset=self.asset,
             original_spec_type=OriginalSpecType.ODCS,
             original_format="json",
             original_raw=json.dumps({"apiVersion": "odcs.io/v3.0.2", "kind": "DataContract"}),
-            hub_contract_version=get_current_hubcontract_version(),
-            hub_contract_json={"version": get_current_hubcontract_version()},
+            hub_contract_version="0.9.0",
+            hub_contract_json={"version": "0.9.0"},
             status=ContractStatus.ACTIVE,
             created_by=self.user,
         )
 
-        # Verify user has permission to migrate (user created the contract)
+        # Verify user created the contract
         self.assertEqual(contract.created_by, self.user, "Contract should be created by user")
 
-        # Migration should proceed if user has permission
+        # Verify contract needs migration due to old version
+        self.assertTrue(
+            needs_migration(contract.hub_contract_version),
+            "Old version contract should need migration",
+        )
+
+        # Migration should proceed
         migrated, migrated_data, warnings = ContractMigrationManager.migrate_on_write(contract)
+
+        self.assertTrue(migrated, "Migration should have occurred for old version contract")
         self.assertIsInstance(warnings, list, "Warnings should be a list")
 
     def test_migration_handles_unicode_characters(self):
@@ -601,8 +602,8 @@ class MigrationRollbackCapabilityTest(ContractsTestBase):
             original_spec_type=OriginalSpecType.ODCS,
             original_format="json",
             original_raw=json.dumps({"apiVersion": "odcs.io/v3.0.2", "kind": "DataContract"}),
-            hub_contract_version=get_current_hubcontract_version(),
-            hub_contract_json={"version": get_current_hubcontract_version(), "name": "测试合同 🏢"},
+            hub_contract_version="0.9.0",
+            hub_contract_json={"version": "0.9.0", "name": "测试合同 🏢"},
             status=ContractStatus.ACTIVE,
             created_by=self.user,
         )
@@ -610,15 +611,15 @@ class MigrationRollbackCapabilityTest(ContractsTestBase):
         # Migration should handle unicode characters
         migrated, migrated_data, warnings = ContractMigrationManager.migrate_on_write(contract)
 
-        if migrated:
-            contract.refresh_from_db()
-            # Verify unicode characters are preserved
-            if "name" in contract.hub_contract_json:
-                self.assertEqual(
-                    contract.hub_contract_json["name"],
-                    "测试合同 🏢",
-                    "Unicode characters should be preserved",
-                )
+        self.assertTrue(migrated, "Migration should have occurred for old version contract")
+        contract.refresh_from_db()
+        # Verify unicode characters are preserved
+        if "name" in contract.hub_contract_json:
+            self.assertEqual(
+                contract.hub_contract_json["name"],
+                "测试合同 🏢",
+                "Unicode characters should be preserved",
+            )
 
     def test_migration_handles_special_characters(self):
         """Test that migration handles special characters correctly."""
@@ -629,9 +630,9 @@ class MigrationRollbackCapabilityTest(ContractsTestBase):
             original_spec_type=OriginalSpecType.ODCS,
             original_format="json",
             original_raw=json.dumps({"apiVersion": "odcs.io/v3.0.2", "kind": "DataContract"}),
-            hub_contract_version=get_current_hubcontract_version(),
+            hub_contract_version="0.9.0",
             hub_contract_json={
-                "version": get_current_hubcontract_version(),
+                "version": "0.9.0",
                 "name": "Test & Co. (Special)",
             },
             status=ContractStatus.ACTIVE,
@@ -641,20 +642,20 @@ class MigrationRollbackCapabilityTest(ContractsTestBase):
         # Migration should handle special characters
         migrated, migrated_data, warnings = ContractMigrationManager.migrate_on_write(contract)
 
-        if migrated:
-            contract.refresh_from_db()
-            # Verify special characters are preserved
-            if "name" in contract.hub_contract_json:
-                self.assertEqual(
-                    contract.hub_contract_json["name"],
-                    "Test & Co. (Special)",
-                    "Special characters should be preserved",
-                )
+        self.assertTrue(migrated, "Migration should have occurred for old version contract")
+        contract.refresh_from_db()
+        # Verify special characters are preserved
+        if "name" in contract.hub_contract_json:
+            self.assertEqual(
+                contract.hub_contract_json["name"],
+                "Test & Co. (Special)",
+                "Special characters should be preserved",
+            )
 
     def test_migration_handles_very_large_documents(self):
         """Test that migration handles very large documents correctly."""
         # Create contract with very large hub_contract_json
-        large_data = {"version": get_current_hubcontract_version()}
+        large_data = {"version": "0.9.0"}
         large_data["large_field"] = "A" * 100000  # 100KB string
 
         contract = Contract.objects.create(
@@ -663,7 +664,7 @@ class MigrationRollbackCapabilityTest(ContractsTestBase):
             original_spec_type=OriginalSpecType.ODCS,
             original_format="json",
             original_raw=json.dumps({"apiVersion": "odcs.io/v3.0.2", "kind": "DataContract"}),
-            hub_contract_version=get_current_hubcontract_version(),
+            hub_contract_version="0.9.0",
             hub_contract_json=large_data,
             status=ContractStatus.ACTIVE,
             created_by=self.user,
@@ -677,7 +678,6 @@ class MigrationRollbackCapabilityTest(ContractsTestBase):
 
     def test_migration_preserves_created_at_timestamp(self):
         """Test that migration preserves created_at timestamp."""
-        import time
         from datetime import datetime, timezone
 
         # Create contract
@@ -688,8 +688,8 @@ class MigrationRollbackCapabilityTest(ContractsTestBase):
             original_spec_type=OriginalSpecType.ODCS,
             original_format="json",
             original_raw=json.dumps({"apiVersion": "odcs.io/v3.0.2", "kind": "DataContract"}),
-            hub_contract_version=get_current_hubcontract_version(),
-            hub_contract_json={"version": get_current_hubcontract_version()},
+            hub_contract_version="0.9.0",
+            hub_contract_json={"version": "0.9.0"},
             status=ContractStatus.ACTIVE,
             created_by=self.user,
         )
@@ -700,12 +700,12 @@ class MigrationRollbackCapabilityTest(ContractsTestBase):
         # Perform migration
         migrated, migrated_data, warnings = ContractMigrationManager.migrate_on_write(contract)
 
-        if migrated:
-            contract.refresh_from_db()
-            # Verify created_at is preserved
-            self.assertEqual(
-                contract.created_at, original_created_at, "Created_at timestamp should be preserved"
-            )
+        self.assertTrue(migrated, "Migration should have occurred for old version contract")
+        contract.refresh_from_db()
+        # Verify created_at is preserved
+        self.assertEqual(
+            contract.created_at, original_created_at, "Created_at timestamp should be preserved"
+        )
 
     def test_migration_handles_none_values(self):
         """Test that migration handles None values correctly."""
@@ -716,9 +716,9 @@ class MigrationRollbackCapabilityTest(ContractsTestBase):
             original_spec_type=OriginalSpecType.ODCS,
             original_format="json",
             original_raw=json.dumps({"apiVersion": "odcs.io/v3.0.2", "kind": "DataContract"}),
-            hub_contract_version=get_current_hubcontract_version(),
+            hub_contract_version="0.9.0",
             hub_contract_json={
-                "version": get_current_hubcontract_version(),
+                "version": "0.9.0",
                 "optional_field": None,
             },
             status=ContractStatus.ACTIVE,
@@ -735,7 +735,7 @@ class MigrationRollbackCapabilityTest(ContractsTestBase):
         """Test that migration handles nested structures correctly."""
         # Create contract with deeply nested hub_contract_json
         nested_data = {
-            "version": get_current_hubcontract_version(),
+            "version": "0.9.0",
             "level1": {"level2": {"level3": {"level4": {"value": "deep"}}}},
         }
 
@@ -745,7 +745,7 @@ class MigrationRollbackCapabilityTest(ContractsTestBase):
             original_spec_type=OriginalSpecType.ODCS,
             original_format="json",
             original_raw=json.dumps({"apiVersion": "odcs.io/v3.0.2", "kind": "DataContract"}),
-            hub_contract_version=get_current_hubcontract_version(),
+            hub_contract_version="0.9.0",
             hub_contract_json=nested_data,
             status=ContractStatus.ACTIVE,
             created_by=self.user,
@@ -754,15 +754,15 @@ class MigrationRollbackCapabilityTest(ContractsTestBase):
         # Migration should handle nested structures
         migrated, migrated_data, warnings = ContractMigrationManager.migrate_on_write(contract)
 
-        if migrated:
-            contract.refresh_from_db()
-            # Verify nested structure is preserved
-            if "level1" in contract.hub_contract_json:
-                self.assertIn(
-                    "level2",
-                    contract.hub_contract_json["level1"],
-                    "Nested structures should be preserved",
-                )
+        self.assertTrue(migrated, "Migration should have occurred for old version contract")
+        contract.refresh_from_db()
+        # Verify nested structure is preserved
+        if "level1" in contract.hub_contract_json:
+            self.assertIn(
+                "level2",
+                contract.hub_contract_json["level1"],
+                "Nested structures should be preserved",
+            )
 
     def test_migration_handles_list_values(self):
         """Test that migration handles list values correctly."""
@@ -773,9 +773,9 @@ class MigrationRollbackCapabilityTest(ContractsTestBase):
             original_spec_type=OriginalSpecType.ODCS,
             original_format="json",
             original_raw=json.dumps({"apiVersion": "odcs.io/v3.0.2", "kind": "DataContract"}),
-            hub_contract_version=get_current_hubcontract_version(),
+            hub_contract_version="0.9.0",
             hub_contract_json={
-                "version": get_current_hubcontract_version(),
+                "version": "0.9.0",
                 "tags": ["tag1", "tag2", "tag3"],
             },
             status=ContractStatus.ACTIVE,
@@ -785,16 +785,16 @@ class MigrationRollbackCapabilityTest(ContractsTestBase):
         # Migration should handle list values
         migrated, migrated_data, warnings = ContractMigrationManager.migrate_on_write(contract)
 
-        if migrated:
-            contract.refresh_from_db()
-            # Verify list values are preserved
-            if "tags" in contract.hub_contract_json:
-                self.assertIsInstance(
-                    contract.hub_contract_json["tags"], list, "List values should be preserved"
-                )
-                self.assertEqual(
-                    len(contract.hub_contract_json["tags"]), 3, "List length should be preserved"
-                )
+        self.assertTrue(migrated, "Migration should have occurred for old version contract")
+        contract.refresh_from_db()
+        # Verify list values are preserved
+        if "tags" in contract.hub_contract_json:
+            self.assertIsInstance(
+                contract.hub_contract_json["tags"], list, "List values should be preserved"
+            )
+            self.assertEqual(
+                len(contract.hub_contract_json["tags"]), 3, "List length should be preserved"
+            )
 
     def test_migration_validates_contract_status(self):
         """Test that migration validates contract status."""
@@ -806,8 +806,8 @@ class MigrationRollbackCapabilityTest(ContractsTestBase):
                 original_spec_type=OriginalSpecType.ODCS,
                 original_format="json",
                 original_raw=json.dumps({"apiVersion": "odcs.io/v3.0.2", "kind": "DataContract"}),
-                hub_contract_version=get_current_hubcontract_version(),
-                hub_contract_json={"version": get_current_hubcontract_version()},
+                hub_contract_version="0.9.0",
+                hub_contract_json={"version": "0.9.0"},
                 status=status,
                 created_by=self.user,
             )
@@ -879,8 +879,8 @@ class MigrationRollbackCapabilityTest(ContractsTestBase):
             original_spec_type=OriginalSpecType.ODCS,
             original_format="json",
             original_raw=json.dumps({"apiVersion": "odcs.io/v3.0.2", "kind": "DataContract"}),
-            hub_contract_version=get_current_hubcontract_version(),
-            hub_contract_json={"version": get_current_hubcontract_version()},
+            hub_contract_version="0.9.0",
+            hub_contract_json={"version": "0.9.0"},
             status=ContractStatus.ACTIVE,
             created_by=self.user,
         )
@@ -891,8 +891,8 @@ class MigrationRollbackCapabilityTest(ContractsTestBase):
             original_spec_type=OriginalSpecType.ODCS,
             original_format="json",
             original_raw=json.dumps({"apiVersion": "odcs.io/v3.0.2", "kind": "DataContract"}),
-            hub_contract_version=get_current_hubcontract_version(),
-            hub_contract_json={"version": get_current_hubcontract_version()},
+            hub_contract_version="0.9.0",
+            hub_contract_json={"version": "0.9.0"},
             status=ContractStatus.ACTIVE,
             created_by=user2,
         )

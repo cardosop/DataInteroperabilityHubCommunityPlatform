@@ -28,7 +28,9 @@ from typing import Dict
 
 import pytest
 from django.contrib.auth import get_user_model
-from django.test import TestCase, TransactionTestCase
+from django.test import TestCase
+
+from hub.apps.contracts.tests.test_base import ContractsTransactionTestBase
 
 from hub.apps.assets.models import Asset, AssetStatus
 from hub.apps.contracts.lineage_impact_dispatcher import (
@@ -294,7 +296,7 @@ class DispatcherDebounceTests(TestCase):
 # ---------------------------------------------------------------------------
 
 
-class DispatcherRateLimitTests(TransactionTestCase):
+class DispatcherRateLimitTests(ContractsTransactionTestBase):
     """``TransactionTestCase`` (not ``TestCase``) because the
     rate-limit drop emits an audit row via ``create_audit_event(
     tenant=None, action='DISPATCH_RATE_LIMITED', ...)`` which routes

@@ -100,20 +100,21 @@ class AssetScopeEnforcementTest(TestCase):
 
     @override_settings(ENFORCE_JWT_SCOPES=True)
     def test_data_provider_can_create_asset(self):
-        """DATA_PROVIDER must NOT get 403 on POST /api/v1/assets/ when scopes enforced."""
+        """DATA_PROVIDER with write scopes MUST be able to create an asset."""
         resp = self.provider_client.post(
             "/api/v1/assets/",
             self.asset_payload,
             format="json",
             **self.tenant_header,
         )
-        # Should succeed (201) or fail for non-permission reasons (400 validation).
-        # The key assertion: it must NOT be 403.
-        self.assertNotEqual(
+        self.assertEqual(
             resp.status_code,
-            status.HTTP_403_FORBIDDEN,
-            f"DATA_PROVIDER should not be denied by scope check: {resp.data}",
+            status.HTTP_201_CREATED,
+            f"DATA_PROVIDER must be able to create assets; "
+            f"got {resp.status_code}: {resp.data}",
         )
+        self.assertIn("id", resp.data,
+            "Created asset response must include the asset id")
 
     # ---- Write operations (PUT/PATCH/DELETE) ----
 
@@ -190,12 +191,23 @@ class AssetScopeEnforcementTest(TestCase):
 
     @override_settings(ENFORCE_JWT_SCOPES=False)
     def test_data_consumer_allowed_when_flag_off(self):
-        """Legacy mode: DATA_CONSUMER can create assets when enforcement is off."""
-        resp = self.consumer_client.post(
-            "/api/v1/assets/",
-            self.asset_payload,
-            format="json",
-            **self.tenant_header,
-        )
-        # Should NOT be 403 (legacy permissive mode)
-        self.assertNotEqual(resp.status_code, status.HTTP_403_FORBIDDEN)
+        """Legacy mode: when ENFORCE_JWT_SCOPES is off, DATA_CONSUMER
+        passes the JWT-scope gate but still needs DATA_PROVIDER for the
+        view-level role check (which is independent of the JWT flag).
+        We add the role in-band so the flag is the only variable.
+        """
+        from hub.apps.testing.role_support import ensure_user_has_data_provider_role
+        ensure_user_has_data_provider_role(self.consumer)
+        try:
+            resp = self.consumer_client.post(
+                "/api/v1/assets/",
+                self.asset_payload,
+                format="json",
+                **self.tenant_header,
+            )
+            # Should NOT be 403 (legacy permissive mode for JWT scopes)
+            self.assertNotEqual(resp.status_code, status.HTTP_403_FORBIDDEN)
+        finally:
+            UserRole.objects.filter(
+                user=self.consumer, role=self.provider_role, tenant=self.tenant
+            ).delete()

@@ -71,6 +71,51 @@ def test_detect_returns_none_for_non_gated_paths(path: str) -> None:
     assert detect_mvp_gated_feature(path) is None
 
 
+@pytest.mark.parametrize("prefix", sorted(MVP_GATED_RELATIVE_PREFIXES))
+def test_detect_matches_double_slash_url(prefix: str) -> None:
+    """A double-slash in the API path must still match (regression for Fix 1)."""
+    result = detect_mvp_gated_feature(f"/api/v1//{prefix}list")
+    assert result is not None, f"double-slash /api/v1//{prefix} should be detected"
+    assert result[0] == prefix
+
+
+@pytest.mark.parametrize(
+    "path",
+    [
+        None,
+        "",
+        # Query strings
+        "mesh/?page=1",
+        "mesh/clusters?tenant=abc",
+        # URL fragments
+        "mesh/#section",
+        "mesh/clusters#details",
+        # Whitespace-only
+        "   ",
+        # Encoded characters
+        "mesh%2Fclusters",
+        "mesh%2fclusters",
+        # Multi-slash (double and triple)
+        "/api/v1///mesh/clusters",
+        # Deeply nested path
+        "/api/v1/mesh/clusters/prod/us-east-1/nodes",
+    ],
+)
+def test_detect_edge_cases(path: str | None) -> None:
+    """Edge cases must not crash and must produce deterministic results."""
+    if path is None:
+        assert detect_mvp_gated_feature(path) is None  # type: ignore[arg-type]
+    else:
+        result = detect_mvp_gated_feature(path)
+        # Must not crash, must return None or a valid tuple
+        assert result is None or (
+            isinstance(result, tuple)
+            and len(result) == 2
+            and isinstance(result[0], str)
+            and isinstance(result[1], str)
+        )
+
+
 def test_detect_is_deterministic_under_multiple_matches() -> None:
     """If the input were to match multiple prefixes, the longest one wins.
 

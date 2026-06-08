@@ -24,6 +24,11 @@ class SourceType(models.TextChoices):
     FTP = "FTP", "FTP"
     SFTP = "SFTP", "SFTP"
     DATABASE = "DATABASE", "Database"
+    # Phase 285.6 — warehouse sources via dlt sql_database verified source
+    SNOWFLAKE_SOURCE = "SNOWFLAKE_SOURCE", "Snowflake Source"
+    BIGQUERY_SOURCE = "BIGQUERY_SOURCE", "BigQuery Source"
+    DATABRICKS_SOURCE = "DATABRICKS_SOURCE", "Databricks Source"
+    ATHENA_SOURCE = "ATHENA_SOURCE", "Athena Source"
 
 
 class ScheduleType(models.TextChoices):
@@ -196,6 +201,15 @@ class ScheduledIngestion(models.Model):
         null=True,
         blank=True,
         help_text="Timestamp of the last failure (Phase 71)",
+    )
+    credential_ref = models.CharField(
+        max_length=1024,
+        null=True,
+        blank=True,
+        help_text=(
+            "AWS SM ARN (arn:aws:secretsmanager:...) or "
+            "prefect://block-slug for dlt credential resolution"
+        ),
     )
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)

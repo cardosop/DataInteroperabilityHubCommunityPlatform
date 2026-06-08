@@ -280,15 +280,22 @@ class XTenantIdMiddlewareTest(TestCase):
 
         self.assertEqual(str(request.tenant_id), str(self.tenant_a.id))
 
-    def test_x_tenant_id_unauthenticated_returns_403(self):
-        """X-Tenant-Id with no user (no session, no JWT) returns 403."""
+    def test_x_tenant_id_unauthenticated_returns_401(self):
+        """X-Tenant-Id with no user (no session, no JWT) returns 401.
+
+        The middleware returns 401 (not 403) so that the frontend's
+        automatic refresh-on-401 → retry path can transparently
+        re-authenticate on token expiry.  403 would break this flow
+        because it means "your credentials are valid but insufficient"
+        — which the frontend correctly does not retry.
+        """
         request = self.factory.get("/api/v1/assets/")
         request.user = None
         request.META["HTTP_X_TENANT_ID"] = str(self.tenant_b.id)
 
         response = self.middleware(request)
 
-        self.assertEqual(response.status_code, 403)
+        self.assertEqual(response.status_code, 401)
 
     def test_x_tenant_id_with_jwt_valid_membership_sets_request_tenant_id(self):
         """X-Tenant-Id with JWT (no force_authenticate) and valid membership sets request.tenant_id."""

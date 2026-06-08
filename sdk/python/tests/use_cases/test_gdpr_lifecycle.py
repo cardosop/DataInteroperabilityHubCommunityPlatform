@@ -110,7 +110,7 @@ def test_gdpr_erasure_request():
     """POST /users/me/erasure-requests/request-erasure/ by an
     authenticated user should return 201 or 202.
     """
-    creds = provision_persona("tenant_admin")
+    creds = provision_persona("tenant_admin")  # noqa: PHASE216-STATIC-ID
     base = api_base_url()
 
     resp = requests.post(
@@ -141,7 +141,7 @@ def test_gdpr_erasure_list_returns_requests():
     """GET /users/me/erasure-requests/ should return the user's
     erasure request history.
     """
-    creds = provision_persona("tenant_admin")
+    creds = provision_persona("tenant_admin")  # noqa: PHASE216-STATIC-ID
     base = api_base_url()
 
     resp = requests.get(

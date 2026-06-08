@@ -30,9 +30,9 @@ from hub.apps.observability.otel_metrics import (
 
 from .internal_auth import WorkerAPIKeyAuthentication, WorkerInternalAPIPermission
 from .internal_serializers import (
-    InternalCreateRunSerializer,
+    InternalCreateExportRunSerializer,
     InternalProcessExportSerializer,
-    InternalUpdateRunSerializer,
+    InternalUpdateExportRunSerializer,
 )
 from .models import (
     ScheduledExport,
@@ -83,7 +83,7 @@ class InternalRunViewSet(ViewSet):
             "Idempotent by idempotency_key or prefect_flow_run_id. "
             "Requires worker authentication and X-Tenant-ID header."
         ),
-        request=InternalCreateRunSerializer,
+        request=InternalCreateExportRunSerializer,
         responses={
             201: OpenApiResponse(description="Run created successfully"),
             200: OpenApiResponse(description="Run already exists (idempotent replay)"),
@@ -95,7 +95,7 @@ class InternalRunViewSet(ViewSet):
     )
     def create(self, request):
         """POST .../internal/runs/ — create ScheduledExportRun (status RUNNING). Idempotent by idempotency_key or prefect_flow_run_id."""
-        serializer = InternalCreateRunSerializer(data=request.data)
+        serializer = InternalCreateExportRunSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         data = serializer.validated_data
         tenant_id = _get_tenant_id(request)
@@ -226,7 +226,7 @@ class InternalRunViewSet(ViewSet):
             "cost tracking, domain events). "
             "Requires worker authentication and X-Tenant-ID header."
         ),
-        request=InternalUpdateRunSerializer,
+        request=InternalUpdateExportRunSerializer,
         responses={
             200: OpenApiResponse(description="Run updated successfully"),
             400: OpenApiResponse(description="Validation error"),
@@ -256,7 +256,7 @@ class InternalRunViewSet(ViewSet):
                 status=status.HTTP_403_FORBIDDEN,
             )
 
-        serializer = InternalUpdateRunSerializer(data=request.data, partial=True)
+        serializer = InternalUpdateExportRunSerializer(data=request.data, partial=True)
         serializer.is_valid(raise_exception=True)
         data = serializer.validated_data
 
@@ -425,7 +425,7 @@ class InternalProcessExportView(APIView):
                 user_id=str(request.user.id) if request.user else None,
             )
         except Exception as e:
-            logger.exception("process_export_item failed")
+            logger.warning("process_export_item failed", exc_info=True)
             try:
                 scheduled_export_items_failed_total.labels(
                     scheduled_export_id=scheduled_export_id,

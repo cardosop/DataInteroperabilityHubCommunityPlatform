@@ -56,6 +56,7 @@ class ScheduledIngestionSerializer(serializers.ModelSerializer):
             'last_processed_timestamp',
             'ingestion_state',
             'error_message',
+            'credential_ref',
             'created_by',
             'created_by_username',
             'created_at',
@@ -155,7 +156,19 @@ class ScheduledIngestionSerializer(serializers.ModelSerializer):
         elif source_type == SourceType.DATABASE:
             if not value.get('host') or not value.get('database'):
                 raise serializers.ValidationError("Database host and database name are required")
-        
+        elif source_type == SourceType.SNOWFLAKE_SOURCE:
+            if not value.get('host') or not value.get('database') or not value.get('schema'):
+                raise serializers.ValidationError("Snowflake host, database, and schema are required")
+        elif source_type == SourceType.BIGQUERY_SOURCE:
+            if not value.get('project_id') or not value.get('dataset_id'):
+                raise serializers.ValidationError("BigQuery project_id and dataset_id are required")
+        elif source_type == SourceType.DATABRICKS_SOURCE:
+            if not value.get('host') or not value.get('http_path') or not value.get('catalog') or not value.get('schema'):
+                raise serializers.ValidationError("Databricks host, http_path, catalog, and schema are required")
+        elif source_type == SourceType.ATHENA_SOURCE:
+            if not value.get('database') or not value.get('s3_staging_dir'):
+                raise serializers.ValidationError("Athena database and s3_staging_dir are required")
+
         return value
     
     def validate(self, attrs):

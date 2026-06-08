@@ -152,13 +152,35 @@ class ContractImpactMixin:
                     raise NotFound("Contract not found")
 
         # Get parameters (use "output" to avoid DRF content negotiation using "format" query param)
-        depth = int(request.query_params.get("depth", 10))
+        try:
+            depth = int(request.query_params.get("depth", 10))
+        except (ValueError, TypeError):
+            from rest_framework.exceptions import ValidationError as DRFValidationError
+            raise DRFValidationError(
+                {"depth": "Must be a valid integer."},
+                code="invalid",
+            )
+        if depth < 0:
+            from rest_framework.exceptions import ValidationError as DRFValidationError
+            raise DRFValidationError(
+                {"depth": "Must be a non-negative integer."},
+                code="invalid",
+            )
         model_name = request.query_params.get("model_name")
         field_name = request.query_params.get("field_name")
         include_fields = request.query_params.get("include_fields", "true").lower() == "true"
         format_type = (
             request.query_params.get("output") or request.query_params.get("format") or "json"
         ).lower()
+
+        # Validate output format — reject unknown formats
+        VALID_FORMATS = {"json", "csv", "dot", "mermaid", "paths"}
+        if format_type not in VALID_FORMATS:
+            from rest_framework.exceptions import ValidationError as DRFValidationError
+            raise DRFValidationError(
+                {"output": f"Invalid format '{format_type}'. Valid formats: {sorted(VALID_FORMATS)}"},
+                code="invalid_choice",
+            )
 
         # Initialize LineageService with tenant_id and user_id
         tenant_id = _get_tenant_id_from_request(request)

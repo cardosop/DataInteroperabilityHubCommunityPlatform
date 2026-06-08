@@ -10,6 +10,7 @@ import './Breadcrumbs.css';
 export interface BreadcrumbItem {
   label: string;
   href?: string;
+  to?: string;
 }
 
 export interface BreadcrumbsProps {
@@ -27,15 +28,21 @@ export function Breadcrumbs({ items }: BreadcrumbsProps) {
             key={index}
             className={`breadcrumbs-item ${index < items.length - 1 ? 'breadcrumbs-item-with-sep' : ''}`}
           >
-            {item.href ? (
-              <Link to={item.href} className="breadcrumbs-link">
-                {item.label}
-              </Link>
-            ) : (
-              <span className="breadcrumbs-current" aria-current="page">
-                {item.label}
-              </span>
-            )}
+            {(() => {
+              const linkTarget = item.href ?? item.to;
+              if (linkTarget) {
+                return (
+                  <Link to={linkTarget} className="breadcrumbs-link">
+                    {item.label}
+                  </Link>
+                );
+              }
+              return (
+                <span className="breadcrumbs-current" aria-current="page">
+                  {item.label}
+                </span>
+              );
+            })()}
           </li>
         ))}
       </ol>

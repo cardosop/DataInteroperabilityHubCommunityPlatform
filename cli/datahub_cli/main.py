@@ -10,27 +10,54 @@ from .auth import auth_manager
 from .commands import (
     assets,
     audit,
+    auth as auth_cmd,
     baas,
     billing,
+    breach,
+    capabilities,
     compliance,
+    consent,
     contracts,
+    datasets,
+    developer,
+    dpia,
     dq,
+    drafts,
+    dsar,
+    events,
+    federated_import,
     files,
     gdpr,
     governance,
+    graphql as graphql_cmd,
     health,
+    integrations,
     jobs,
     lineage,
+    lineage_subscriptions,
     marketplace,
     mesh,
     ml,
+    notifications,
+    observability,
+    openlineage,
+    orchestration,
+    platform,
+    processor_agreements,
+    retention,
+    ropa,
     scheduled_export,
     scheduled_ingestion,
     search,
+    security,
+    social,
     semantic,
     tenants,
     transformation,
+    users,
+    versioning,
     virtualization,
+    warehouses,
     webhooks,
 )
 from .commands import config as config_cmd
@@ -75,6 +102,7 @@ def logout():
 
 
 # Add command groups
+cli.add_command(auth_cmd.auth, name="auth")
 cli.add_command(assets.assets, name="assets")
 cli.add_command(contracts.contracts, name="contracts")
 cli.add_command(lineage.lineage, name="lineage")
@@ -92,14 +120,44 @@ cli.add_command(ml.ml, name="ml")
 cli.add_command(scheduled_ingestion.scheduled_ingestion, name="scheduled-ingestion")
 cli.add_command(scheduled_export.scheduled_export, name="scheduled-export")
 cli.add_command(webhooks.webhooks, name="webhooks")
+cli.add_command(warehouses.warehouses, name="warehouses")
 cli.add_command(audit.audit, name="audit")
 cli.add_command(health.health, name="health")
 cli.add_command(billing.billing, name="billing")
 cli.add_command(tenants.tenants, name="tenants")
 cli.add_command(gdpr.gdpr, name="gdpr")
+cli.add_command(social.social, name="social")
 cli.add_command(search.search, name="search")
 cli.add_command(transformation.transformation, name="transformation")
 cli.add_command(semantic.semantic, name="semantic")
+cli.add_command(graphql_cmd.graphql, name="graphql")
+cli.add_command(developer.developer, name="developer")
+cli.add_command(platform.platform, name="platform")
+cli.add_command(security.security, name="security")
+# Register versioning WITHOUT rollback until Phase 286 backend endpoint
+# exists.  The rollback command code is preserved for future activation.
+versioning.versioning.commands.pop("rollback", None)
+cli.add_command(versioning.versioning, name="versioning")
+# Phase 0: Register 16 previously-unregistered CLI modules.
+cli.add_command(breach.breach, name="breach")
+cli.add_command(capabilities.capabilities, name="capabilities")
+cli.add_command(consent.consent, name="consent")
+cli.add_command(datasets.datasets, name="datasets")
+cli.add_command(dpia.dpia, name="dpia")
+cli.add_command(drafts.drafts, name="drafts")
+cli.add_command(dsar.dsar, name="dsar")
+cli.add_command(events.events, name="events")
+cli.add_command(federated_import.federated_import, name="federated-import")
+cli.add_command(integrations.integrations, name="integrations")
+cli.add_command(lineage_subscriptions.lineage_subscriptions, name="lineage-subscriptions")
+cli.add_command(observability.observability, name="observability")
+cli.add_command(openlineage.openlineage, name="openlineage")
+cli.add_command(notifications.notifications, name="notifications")
+cli.add_command(orchestration.orchestration, name="orchestration")
+cli.add_command(processor_agreements.processor_agreements, name="processor-agreements")
+cli.add_command(retention.retention, name="retention")
+cli.add_command(ropa.ropa, name="ropa")
+cli.add_command(users.users, name="users")
 
 
 def main():

@@ -70,6 +70,7 @@ from hub.apps.semantic.signals import asset_saved, contract_saved
 from hub.apps.tenants.models import KYCStatus, Tenant, TenantStatus
 from hub.apps.tenants.signals import create_default_roles
 from hub.apps.testing.billing_support import ensure_tenant_has_active_subscription
+from hub.apps.testing.role_support import ensure_user_has_data_provider_role
 from hub.apps.users.models import Role, UserRole
 from tests.fixtures.test_data_factories import (
     AssetFactory,

@@ -827,7 +827,10 @@ class TestAWSDataExchangeConnectorDiscoveryOperations(TestCase):
 
         call_args = mock_client.list_data_sets.call_args
         self.assertEqual(call_args[1]["Origin"], "OWNED")
-        self.assertEqual(call_args[1]["Name"], "Dataset")
+        # ``Name`` is applied client-side (AWS ListDataSets does not
+        # accept a Name parameter), so it must NOT appear in the API
+        # call.  Verify it is absent from the boto3 call.
+        self.assertNotIn("Name", call_args[1])
 
     @patch(
         "hub.apps.integrations.connectors.aws_data_exchange_connector.AWSDataExchangeConnector._get_dataset_details"

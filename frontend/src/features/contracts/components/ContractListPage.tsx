@@ -203,8 +203,7 @@ export function ContractListPage() {
         </div>
         <BulkActionBar
           selectedCount={selection.selectedCount}
-          onDeselectAll={selection.deselectAll}
-          description="Only DRAFT contracts may be bulk-deleted."
+          onClear={selection.deselectAll}
           actions={[
             {
               label: `Delete ${selection.selectedCount}`,

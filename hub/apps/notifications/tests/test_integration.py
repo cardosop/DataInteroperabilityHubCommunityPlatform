@@ -109,7 +109,7 @@ class EmailSendingIntegrationTest(TestCase):
         """Test email retry logic on transient failure"""
         from django_rq import get_queue
         from unittest.mock import call
-        
+
         # Setup mock to fail first time, succeed second time
         mock_service = Mock()
         mock_service.send_email.side_effect = [
@@ -117,14 +117,15 @@ class EmailSendingIntegrationTest(TestCase):
             {'success': True, 'message_id': 'retry-success'}
         ]
         mock_get_service.return_value = mock_service
-        
+
         # Send email (will fail first time)
         with patch('hub.apps.notifications.tasks.get_queue') as mock_get_queue:
             mock_queue = Mock()
             mock_queue.enqueue_in = Mock()
             mock_get_queue.return_value = mock_queue
-            
-            result = send_email_async(
+
+            with self.assertLogs('hub.apps.notifications.tasks', level='ERROR'):
+                result = send_email_async(
                 email_type=EmailType.USER_INVITATION,
                 to_email='test@example.com',
                 subject='Test Email',
@@ -161,17 +162,18 @@ class EmailSendingIntegrationTest(TestCase):
         mock_get_service.return_value = mock_service
         
         # Send email with max retries reached
-        result = send_email_async(
-            email_type=EmailType.USER_INVITATION,
-            to_email='test@example.com',
-            subject='Test Email',
-            template_name='notifications/emails/user_invitation.html',
-            context={'user': self.user, 'tenant': self.tenant},
-            tenant_id=str(self.tenant.id),
-            user_id=str(self.user.id),
-            retry_count=3,  # Already at max retries
-            max_retries=3
-        )
+        with self.assertLogs('hub.apps.notifications.tasks', level='ERROR'):
+            result = send_email_async(
+                email_type=EmailType.USER_INVITATION,
+                to_email='test@example.com',
+                subject='Test Email',
+                template_name='notifications/emails/user_invitation.html',
+                context={'user': self.user, 'tenant': self.tenant},
+                tenant_id=str(self.tenant.id),
+                user_id=str(self.user.id),
+                retry_count=3,  # Already at max retries
+                max_retries=3
+            )
         
         # Verify email failed
         self.assertFalse(result['success'])

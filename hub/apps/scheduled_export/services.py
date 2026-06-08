@@ -302,6 +302,18 @@ class ScheduledExportService(BaseService):
             result["upload_headers"] = {
                 "Content-Type": result.get("file_content_type", "application/octet-stream"),
             }
+        elif destination_type in (
+            DestinationType.SNOWFLAKE_TABLE,
+            DestinationType.BIGQUERY_TABLE,
+            DestinationType.DATABRICKS_TABLE,
+            DestinationType.ATHENA_TABLE,
+        ):
+            # Phase 285.6 — warehouse destinations use dlt DataMovementPipeline.
+            # No upload URL is generated; the Prefect worker calls the
+            # internal config endpoint and uses dlt verified destinations.
+            result["upload_method"] = "DLT_PIPELINE"
+            result["dlt_destination"] = destination_type
+            result["upload_url"] = None
 
         # Add destination options
         if destination_options:

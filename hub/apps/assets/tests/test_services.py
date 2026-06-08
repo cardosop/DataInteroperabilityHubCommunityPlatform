@@ -295,7 +295,7 @@ class AssetServiceTest(TestCase):
         """Very long key (300 chars) is rejected by service validation."""
         long_key = "a" * 300  # Exceeds CharField max_length=255
 
-        with self.assertRaises((ValidationError, Exception)):
+        with self.assertRaises(ValidationError):
             self.service.create_asset(
                 tenant_id=str(self.tenant.id),
                 user_id=str(self.user.id),
@@ -304,7 +304,14 @@ class AssetServiceTest(TestCase):
             )
 
     def test_create_asset_special_characters_in_key(self):
-        """Key with hyphens, underscores, dots is accepted by service."""
+        """Service layer accepts non-standard key chars (no model-level validator).
+
+        NOTE: The AssetCreateSerializer enforces a strict ^[a-z0-9]+(-[a-z0-9]+)*$
+        key format at the API boundary.  The service layer and model CharField do
+        NOT independently revalidate this constraint — internal callers (management
+        commands, signals) that bypass the serializer could create assets with keys
+        that API consumers cannot reference.  This is a known defense-in-depth gap.
+        """
         special_key = "test-asset_123.test"
         asset = self.service.create_asset(
             tenant_id=str(self.tenant.id),
@@ -359,16 +366,16 @@ class AssetServiceTest(TestCase):
             tenant=self.tenant, key="test-asset", name="Test Asset", status=AssetStatus.DRAFT
         )
 
-        # Try with very large version number
-        try:
-            updated = self.service.update_asset(
+        # Try with very large version number — must raise ConflictError
+        with self.assertRaises(ConflictError) as cm:
+            self.service.update_asset(
                 asset_id=str(asset.id),
                 tenant_id=str(self.tenant.id),
                 user_id=str(self.user.id),
                 name="Updated Name",
                 version=999999999,
             )
-            # Should fail with conflict error
-            self.fail("Should have raised ConflictError")
-        except ConflictError as e:
-            self.assertIn(e.code, ("CONFLICT", "ASSET_CONCURRENT_MODIFICATION"))
+        self.assertIn(
+            cm.exception.code,
+            ("CONFLICT", "ASSET_CONCURRENT_MODIFICATION"),
+        )

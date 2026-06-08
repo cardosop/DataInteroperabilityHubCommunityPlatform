@@ -115,8 +115,8 @@ class DQAlertingIntegrationTest(TestCase):
         # Evaluate rules
         alerts = DQAlertingService.evaluate_rules(dq_run)
         
-        # Verify alert was triggered
-        self.assertGreater(len(alerts), 0)
+        # Verify alert was triggered — exactly 1 alert for 1 rule.
+        self.assertEqual(len(alerts), 1)
         self.assertEqual(alerts[0]["rule_id"], str(rule.id))
         self.assertEqual(alerts[0]["severity"], DQAnomalySeverity.HIGH)
         self.assertEqual(alerts[0]["metric_value"], 70.0)

@@ -69,7 +69,7 @@ class PollComplianceJobTest(TestCase):
         from hub.apps.compliance.tasks import poll_compliance_job
         poll_compliance_job(str(run.id))
         run.save.assert_called_once()
-        assert run.status == "FAILED"
+        self.assertEqual(run.status, "FAILED")
 
     @override_settings(COMPLIANCE_POLL_MAX_SECONDS=0)
     @patch(f"{_MODELS}.ComplianceRun.objects")
@@ -79,9 +79,9 @@ class PollComplianceJobTest(TestCase):
         mock_qs.select_related.return_value.get.return_value = run
         from hub.apps.compliance.tasks import poll_compliance_job
         poll_compliance_job(str(run.id))
-        assert run.status == "FAILED"
-        assert run.risk_level == "UNKNOWN"
-        assert run.allowed_to_store is False
+        self.assertEqual(run.status, "FAILED")
+        self.assertEqual(run.risk_level, "UNKNOWN")
+        self.assertFalse(run.allowed_to_store)
 
     @patch("hub.apps.compliance.tasks._reenqueue")
     @patch(f"{_CLIENT}.ComplianceServiceClient")
@@ -122,16 +122,16 @@ class PollComplianceJobTest(TestCase):
         from hub.apps.compliance.tasks import poll_compliance_job
         poll_compliance_job(str(run.id))
 
-        assert run.status == "FAILED"
-        assert run.regulation_mapping_json is not None
-        assert (
-            run.regulation_mapping_json["error"]
-            == "scan worker crashed: KeyError 'tenant_id'"
+        self.assertEqual(run.status, "FAILED")
+        self.assertIsNotNone(run.regulation_mapping_json)
+        self.assertEqual(
+            run.regulation_mapping_json["error"],
+            "scan worker crashed: KeyError 'tenant_id'",
         )
-        assert run.regulation_mapping_json["error_type"] == "REMOTE_FAILURE"
+        self.assertEqual(run.regulation_mapping_json["error_type"], "REMOTE_FAILURE")
         # Save must include regulation_mapping_json so the error reaches DB.
         save_kwargs = run.save.call_args.kwargs
-        assert "regulation_mapping_json" in save_kwargs["update_fields"]
+        self.assertIn("regulation_mapping_json", save_kwargs["update_fields"])
 
     @patch(f"{_CLIENT}.ComplianceServiceClient")
     @patch(f"{_MODELS}.ComplianceRun.objects")
@@ -152,10 +152,10 @@ class PollComplianceJobTest(TestCase):
         poll_compliance_job(str(run.id))
 
         # Pre-existing keys are preserved.
-        assert run.regulation_mapping_json["GDPR"] == {"articles": ["Art. 6"]}
+        self.assertEqual(run.regulation_mapping_json["GDPR"], {"articles": ["Art. 6"]})
         # And error fields are added on top.
-        assert run.regulation_mapping_json["error"] == "boom"
-        assert run.regulation_mapping_json["error_type"] == "REMOTE_FAILURE"
+        self.assertEqual(run.regulation_mapping_json["error"], "boom")
+        self.assertEqual(run.regulation_mapping_json["error_type"], "REMOTE_FAILURE")
 
     @patch("hub.apps.compliance.tasks._reenqueue")
     @patch(f"{_CLIENT}.ComplianceServiceClient")

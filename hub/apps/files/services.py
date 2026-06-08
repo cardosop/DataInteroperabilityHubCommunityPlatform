@@ -219,7 +219,7 @@ class FileService(BaseService, FileEventPublisher):
         # G2.1 (glittery-herding-graham): sanitize user-provided filename to
         # prevent path traversal (../../etc/passwd → passwd). Also strip null
         # bytes and normalize backslashes.
-        safe_name = os.path.basename((name or "").replace("\x00", "").replace("\\", "/")) or "unnamed"
+        safe_name = os.path.basename((name or "").replace("\x00", "").replace("\\", "/")).strip() or "unnamed"
         storage_path = f"{tenant_id}/{file_id}/{safe_name}"
         metadata_json = {
             "upload_method": upload_method,
@@ -334,7 +334,7 @@ class FileService(BaseService, FileEventPublisher):
             # via validate_no_broken_transaction(), corrupting the connection for
             # all subsequent queries in the same request cycle.
             if (
-                new_status in (FileStatus.ACTIVE, FileStatus.COMPLETED)
+                new_status == FileStatus.ACTIVE
                 and content_sha256
             ):
                 try:
@@ -372,7 +372,7 @@ class FileService(BaseService, FileEventPublisher):
             # Malware scan after any terminal upload-with-hash (ACTIVE or COMPLETED).
             scan_after_upload = bool(
                 content_sha256
-                and new_status in (FileStatus.ACTIVE, FileStatus.COMPLETED)
+                and new_status == FileStatus.ACTIVE
             )
             if scan_after_upload:
                 from django.conf import settings as dj_settings
@@ -458,13 +458,16 @@ class FileService(BaseService, FileEventPublisher):
 
         def _delete():
             file_obj.refresh_from_db()
-            try:
-                storage_client = S3StorageClient()
-                storage_client.delete_file(file_obj.storage_path)
-            except Exception:
-                pass
-            file_obj.status = FileStatus.DELETED
-            file_obj.save(update_fields=["status", "updated_at"])
+            # Phase 260.1.C — soft-delete: transition to DELETING (not DELETED)
+            # so the grace-window / purge pipeline can distinguish files that
+            # are still within the reversal window from those past the
+            # tenant's retention days.  Hard-delete (and the accompanying
+            # Dataset retirement cascade) runs later via the
+            # ``purge_deleted_files`` management command.
+            from django.utils import timezone as _tz
+            file_obj.status = FileStatus.DELETING
+            file_obj.deleted_at = _tz.now()
+            file_obj.save(update_fields=["status", "deleted_at", "updated_at"])
             try:
                 self.publish_file_deleted(
                     file_id=str(file_obj.id),

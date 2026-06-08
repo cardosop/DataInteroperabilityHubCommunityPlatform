@@ -96,9 +96,10 @@ class StagingHelmTest(TestCase):
         c = _read("helm/values.staging.yaml")
         self.assertIn("tls", c.lower())
 
-    def test_staging_has_vault(self):
+    def test_staging_has_aws_secrets_manager(self):
+        """Phase 211: Vault replaced by AWS Secrets Manager + IRSA."""
         c = _read("helm/values.staging.yaml")
-        self.assertIn("vault", c.lower())
+        self.assertIn("awsSecretsManager", c)
 
     def test_staging_has_external_secrets(self):
         c = _read("helm/values.staging.yaml")

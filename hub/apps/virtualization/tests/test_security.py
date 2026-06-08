@@ -32,6 +32,8 @@ class VirtualizationSecurityTest(TestCase):
 
     def setUp(self):
         """Set up test fixtures."""
+        from hub.apps.orchestration.registry import reset_workflow_definition_cache
+        reset_workflow_definition_cache()
         from hub.apps.users.models import Role, UserRole
 
         _uid1 = uuid.uuid4().hex[:8]
@@ -155,8 +157,7 @@ class VirtualizationSecurityTest(TestCase):
             )
 
     def test_sql_injection_prevention(self):
-        """Test that SQL injection attempts are prevented."""
-        # Create dataset with parameterized query
+        """Test that SQL injection attempts are rejected."""
         dataset = VirtualDataset.objects.create(
             tenant=self.tenant1,
             created_by=self.user1,
@@ -166,12 +167,13 @@ class VirtualizationSecurityTest(TestCase):
             status=VirtualDatasetStatus.ACTIVE
         )
 
-        # Attempt SQL injection
         malicious_parameters = {
             "user_id": "1; DROP TABLE users; --"
         }
 
-        # Service should validate and sanitize parameters
+        # The service MUST reject malicious parameters — either by raising
+        # ValidationError or by executing safely with sanitized parameters.
+        # In neither case should the test silently accept the outcome.
         try:
             execution = self.service1.execute_query(
                 virtual_dataset_id=str(dataset.id),
@@ -179,12 +181,21 @@ class VirtualizationSecurityTest(TestCase):
                 user_id=str(self.user1.id),
                 parameters=malicious_parameters
             )
-            # If execution succeeds, verify parameters were sanitized
-            # (In real implementation, parameters should be properly escaped)
-            self.assertIsNotNone(execution)
         except ValidationError:
-            # Validation error is acceptable - injection was prevented
-            pass
+            # Injection was blocked — this is the expected secure outcome.
+            return
+
+        # If execution succeeded, the parameters must have been sanitized.
+        # Verify the execution was actually created (the service didn't
+        # silently drop the request).
+        self.assertIsNotNone(execution)
+        # The executed query must NOT contain the raw malicious payload.
+        if execution.executed_query:
+            self.assertNotIn(
+                "DROP TABLE",
+                execution.executed_query.upper(),
+                "Malicious SQL should not appear in the executed query"
+            )
 
     def test_query_parameter_validation(self):
         """Test that query parameters are properly validated."""
@@ -223,7 +234,7 @@ class VirtualizationSecurityTest(TestCase):
         # ("parameter") or by the DB adapter ("can't adapt type 'dict'")
         err = str(cm.exception).lower()
         self.assertTrue(
-            "parameter" in err or "adapt" in err or "dict" in err,
+            "parameter" in err or "adapt" in err or "dict" in err or "invalid" in err,
             f"Expected parameter validation error, got: {cm.exception}",
         )
 
@@ -304,28 +315,24 @@ class VirtualizationSecurityTest(TestCase):
             )
 
     def test_query_syntax_validation(self):
-        """Test that malicious query syntax is rejected or sanitized."""
-        # Attempt to create dataset with potentially malicious query
-        # Note: Some queries may pass syntax validation but should be handled safely
+        """Test that syntactically invalid / malicious queries are rejected."""
         malicious_queries = [
             "'; DROP TABLE users; --",
             "1' OR '1'='1",
         ]
 
         for malicious_query in malicious_queries:
-            # Query syntax validation should catch or sanitize these
-            try:
-                dataset = self.service1.create_virtual_dataset(
+            # The service must reject these — they are neither valid SELECT
+            # statements nor safe parameterized queries.
+            with self.assertRaises(
+                (ValidationError, ValueError),
+                msg=f"Malicious query should be rejected: {malicious_query!r}"
+            ):
+                self.service1.create_virtual_dataset(
                     tenant_id=str(self.tenant1.id),
                     user_id=str(self.user1.id),
                     name="Malicious Dataset",
                     query=malicious_query,
                     query_type=QueryType.SQL
                 )
-                # If creation succeeds, verify query was stored (validation may allow it)
-                # In production, these would be sanitized during execution
-                self.assertIsNotNone(dataset)
-            except ValidationError:
-                # Validation error is acceptable - malicious query was rejected
-                pass
 

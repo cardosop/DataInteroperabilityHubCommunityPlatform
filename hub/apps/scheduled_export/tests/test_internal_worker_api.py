@@ -8,6 +8,7 @@ import uuid
 from datetime import timedelta
 
 import pytest
+from django.db.transaction import TransactionManagementError
 from django.test import TestCase
 from django.utils import timezone
 from rest_framework import status
@@ -56,14 +57,32 @@ class InternalWorkerAPITest(TestCase):
     Covers: run lifecycle, auth, config masking, process-export.
     """
 
-    # Disable automatic database flush to avoid foreign key constraint issues
-    reset_sequences = False
-    serialized_rollback = False
+    @classmethod
+    def tearDownClass(cls):
+        try:
+            super().tearDownClass()
+        except TransactionManagementError:
+            pass
 
     @classmethod
-    def _fixture_teardown(cls):
-        """Override to skip database flush for internal API tests."""
-        pass
+    def setUpClass(cls):
+        # Recover from a poisoned connection left by a prior test class's
+        # teardown (see TestHubAPIConnectivity for the full explanation).
+        from django.db import connections
+        for alias in connections:
+            conn = connections[alias]
+            conn.closed_in_transaction = False
+            conn.in_atomic_block = False
+            conn.needs_rollback = False
+            conn.savepoint_ids = []
+            conn.atomic_blocks = []
+            if conn.connection is not None and conn.connection.closed:
+                conn.connection = None
+            try:
+                conn.ensure_connection()
+            except Exception:
+                pass
+        super().setUpClass()
 
     def setUp(self):
         self.client = APIClient()
@@ -204,6 +223,12 @@ class InternalWorkerAPITest(TestCase):
         r2 = self.client.post("/api/v1/scheduled-exports/internal/runs/", payload, format="json")
         self.assertEqual(r2.status_code, status.HTTP_200_OK)
         self.assertEqual(r2.data["id"], run_id)
+        # Idempotency: exactly one run exists, not two
+        self.assertEqual(
+            ScheduledExportRun.objects.filter(scheduled_export=self.scheduled_export).count(),
+            1,
+            "Idempotency key replay must not create a second run",
+        )
 
     def test_patch_run_completed(self):
         """PATCH run to COMPLETED updates last_run_at and last_run_status."""
@@ -567,8 +592,8 @@ class InternalWorkerAPITest(TestCase):
         )
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
 
-    def test_patch_run_invalid_completed_at_ignored_or_400(self):
-        """PATCH run with invalid completed_at returns 200 (ignored) or 400."""
+    def test_patch_run_invalid_completed_at_rejected_by_serializer(self):
+        """PATCH run with invalid completed_at returns 400 (serializer DateTimeField rejects it)."""
         self._auth()
         r_create = self.client.post(
             "/api/v1/scheduled-exports/internal/runs/",
@@ -581,10 +606,12 @@ class InternalWorkerAPITest(TestCase):
             {"completed_at": "not-a-date"},
             format="json",
         )
-        self.assertIn(
-            response.status_code,
-            (status.HTTP_200_OK, status.HTTP_400_BAD_REQUEST),
-        )
+        # Serializer DateTimeField rejects "not-a-date" before it reaches
+        # the service-layer parse_datetime guard
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        # Verify completed_at was NOT updated on the run
+        run = ScheduledExportRun.objects.get(id=run_id)
+        self.assertIsNone(run.completed_at)
 
 
 class InternalWorkerAPIIntegrationTest(TestCase):

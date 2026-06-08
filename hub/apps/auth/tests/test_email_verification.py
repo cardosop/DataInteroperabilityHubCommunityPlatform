@@ -8,7 +8,7 @@ import uuid
 from datetime import timedelta
 
 from django.core.cache import cache
-from django.test import TestCase
+from django.test import TestCase, override_settings
 from django.utils import timezone
 from rest_framework import status
 from rest_framework.test import APIClient
@@ -66,7 +66,7 @@ class EmailVerificationFlowTests(TestCase):
             "/api/v1/auth/register/",
             {
                 "email": email,
-                "password": "SecurePass123",
+                "password": "SecureP@ss123!",
                 "name": "Reg User",
                 "tenant_id": str(self.tenant.id),
             },
@@ -89,7 +89,7 @@ class EmailVerificationFlowTests(TestCase):
             "/api/v1/auth/register/",
             {
                 "email": email,
-                "password": "SecurePass123",
+                "password": "SecureP@ss123!",
                 "name": "Delivery User",
                 "tenant_id": str(self.tenant.id),
             },
@@ -169,6 +169,7 @@ class EmailVerificationFlowTests(TestCase):
         user.refresh_from_db()
         self.assertNotEqual(user.email_verification_token, h1)
 
+    @override_settings(RATE_LIMIT_ENABLED=True)
     def test_resend_rate_limit_fourth_request_429(self):
         email = f"rl-{uuid.uuid4().hex[:8]}@example.com"
         user = User.objects.create_user(

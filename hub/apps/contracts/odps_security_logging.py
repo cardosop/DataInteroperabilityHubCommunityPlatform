@@ -987,7 +987,7 @@ class SecurityIncidentDetector:
             return incident
 
         except Exception as e:
-            self.logger.error(
+            self.logger.warning(
                 "odps_security_incident_detection_failed",
                 error=str(e),
                 event_type=violation_log.event_type,
@@ -1082,7 +1082,7 @@ class SecurityIncidentDetector:
                 return incident
 
         except Exception as e:
-            self.logger.error(
+            self.logger.warning(
                 "odps_security_incident_detection_error",
                 error=str(e),
                 pattern="rate_limit_abuse",
@@ -1174,7 +1174,7 @@ class SecurityIncidentDetector:
                 return incident
 
         except Exception as e:
-            self.logger.error(
+            self.logger.warning(
                 "odps_security_incident_detection_error",
                 error=str(e),
                 pattern="path_traversal",
@@ -1275,7 +1275,7 @@ class SecurityIncidentDetector:
                 return incident
 
         except Exception as e:
-            self.logger.error(
+            self.logger.warning(
                 "odps_security_incident_detection_error",
                 error=str(e),
                 pattern="url_violation",
@@ -1354,7 +1354,7 @@ class SecurityIncidentDetector:
                     }
                 )
 
-                self.logger.error(
+                self.logger.warning(
                     "odps_security_incident_detected",
                     incident_id=str(incident.id),
                     event_type=violation_log.event_type,
@@ -1366,7 +1366,7 @@ class SecurityIncidentDetector:
                 return incident
 
         except Exception as e:
-            self.logger.error(
+            self.logger.warning(
                 "odps_security_incident_detection_error",
                 error=str(e),
                 pattern="high_severity",

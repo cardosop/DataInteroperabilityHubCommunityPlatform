@@ -3,6 +3,8 @@ Edge case tests for worker service.
 
 Tests worker restart, Redis connection loss, concurrent job creation, and invalid job data.
 """
+import uuid
+
 import pytest
 import time
 import threading

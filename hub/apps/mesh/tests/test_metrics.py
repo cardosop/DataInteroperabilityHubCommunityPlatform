@@ -186,20 +186,20 @@ class MeshMetricsTest(TestCase):
         )
 
         # The service must have called .labels().inc() on the created counter
-        self.assertGreaterEqual(spy_created.call_count, 1,
-                                "mesh_domain_created_total.labels() was never called")
-        self.assertGreater(spy_created.total_inc, 0,
-                           "mesh_domain_created_total was not incremented")
+        self.assertEqual(spy_created.call_count, 1,
+                         "mesh_domain_created_total.labels() was never called")
+        self.assertEqual(spy_created.total_inc, 1,
+                         "mesh_domain_created_total was not incremented")
 
         # Duration histogram must have been observed
-        self.assertGreaterEqual(spy_duration.call_count, 1,
-                                "mesh_domain_creation_duration_seconds.labels() was never called")
+        self.assertEqual(spy_duration.call_count, 1,
+                         "mesh_domain_creation_duration_seconds.labels() was never called")
 
         # Domain gauge must have been incremented
-        self.assertGreaterEqual(spy_count.call_count, 1,
-                                "mesh_domain_count.labels() was never called")
-        self.assertGreater(spy_count.total_inc, 0,
-                           "mesh_domain_count was not incremented")
+        self.assertEqual(spy_count.call_count, 1,
+                         "mesh_domain_count.labels() was never called")
+        self.assertEqual(spy_count.total_inc, 1,
+                         "mesh_domain_count was not incremented")
 
         # Verify correct tenant_id label was passed
         tenant_labels = [c for c in spy_created.label_calls
@@ -229,13 +229,13 @@ class MeshMetricsTest(TestCase):
             name="Updated Name"
         )
 
-        self.assertGreaterEqual(spy_updated.call_count, 1,
-                                "mesh_domain_updated_total.labels() was never called")
-        self.assertGreater(spy_updated.total_inc, 0,
-                           "mesh_domain_updated_total was not incremented")
+        self.assertEqual(spy_updated.call_count, 1,
+                         "mesh_domain_updated_total.labels() was never called")
+        self.assertEqual(spy_updated.total_inc, 1,
+                         "mesh_domain_updated_total was not incremented")
 
-        self.assertGreaterEqual(spy_duration.call_count, 1,
-                                "mesh_domain_update_duration_seconds.labels() was never called")
+        self.assertEqual(spy_duration.call_count, 1,
+                         "mesh_domain_update_duration_seconds.labels() was never called")
 
     # ------------------------------------------------------------------
     # Policy application metrics
@@ -267,13 +267,13 @@ class MeshMetricsTest(TestCase):
             policy_id=str(policy.id)
         )
 
-        self.assertGreaterEqual(spy_applied.call_count, 1,
-                                "mesh_policy_applied_total.labels() was never called")
-        self.assertGreater(spy_applied.total_inc, 0,
-                           "mesh_policy_applied_total was not incremented")
+        self.assertEqual(spy_applied.call_count, 1,
+                         "mesh_policy_applied_total.labels() was never called")
+        self.assertEqual(spy_applied.total_inc, 1,
+                         "mesh_policy_applied_total was not incremented")
 
-        self.assertGreaterEqual(spy_duration.call_count, 1,
-                                "mesh_policy_application_duration_seconds.labels() was never called")
+        self.assertEqual(spy_duration.call_count, 1,
+                         "mesh_policy_application_duration_seconds.labels() was never called")
 
     # ------------------------------------------------------------------
     # Compliance check metrics
@@ -296,18 +296,18 @@ class MeshMetricsTest(TestCase):
             domain_id=str(domain.id)
         )
 
-        self.assertGreaterEqual(spy_checks.call_count, 1,
-                                "mesh_compliance_checks_total.labels() was never called")
-        self.assertGreater(spy_checks.total_inc, 0,
-                           "mesh_compliance_checks_total was not incremented")
+        self.assertEqual(spy_checks.call_count, 1,
+                         "mesh_compliance_checks_total.labels() was never called")
+        self.assertEqual(spy_checks.total_inc, 1,
+                         "mesh_compliance_checks_total was not incremented")
 
-        self.assertGreaterEqual(spy_duration.call_count, 1,
-                                "mesh_compliance_check_duration_seconds.labels() was never called")
+        self.assertEqual(spy_duration.call_count, 1,
+                         "mesh_compliance_check_duration_seconds.labels() was never called")
 
-        self.assertGreaterEqual(spy_report.call_count, 1,
-                                "mesh_compliance_report_generated_total.labels() was never called")
-        self.assertGreater(spy_report.total_inc, 0,
-                           "mesh_compliance_report_generated_total was not incremented")
+        self.assertEqual(spy_report.call_count, 1,
+                         "mesh_compliance_report_generated_total.labels() was never called")
+        self.assertEqual(spy_report.total_inc, 1,
+                         "mesh_compliance_report_generated_total was not incremented")
 
     # ------------------------------------------------------------------
     # Topology update metrics
@@ -329,13 +329,13 @@ class MeshMetricsTest(TestCase):
             tenant_id=str(self.tenant.id)
         )
 
-        self.assertGreaterEqual(spy_updates.call_count, 1,
-                                "mesh_topology_updates_total.labels() was never called")
-        self.assertGreater(spy_updates.total_inc, 0,
-                           "mesh_topology_updates_total was not incremented")
+        self.assertEqual(spy_updates.call_count, 1,
+                         "mesh_topology_updates_total.labels() was never called")
+        self.assertEqual(spy_updates.total_inc, 1,
+                         "mesh_topology_updates_total was not incremented")
 
-        self.assertGreaterEqual(spy_duration.call_count, 1,
-                                "mesh_topology_update_duration_seconds.labels() was never called")
+        self.assertEqual(spy_duration.call_count, 1,
+                         "mesh_topology_update_duration_seconds.labels() was never called")
 
     # ------------------------------------------------------------------
     # Health status metrics
@@ -360,11 +360,11 @@ class MeshMetricsTest(TestCase):
             health_metrics={"cpu": 50, "memory": 60}
         )
 
-        self.assertGreaterEqual(spy_status.call_count, 1,
-                                "mesh_domain_health_status.labels() was never called")
+        self.assertEqual(spy_status.call_count, 1,
+                         "mesh_domain_health_status.labels() was never called")
 
-        self.assertGreaterEqual(spy_duration.call_count, 1,
-                                "mesh_domain_health_check_duration_seconds.labels() was never called")
+        self.assertEqual(spy_duration.call_count, 1,
+                         "mesh_domain_health_check_duration_seconds.labels() was never called")
 
         # Verify the health_status label was passed correctly
         status_labels = [c for c in spy_status.label_calls
@@ -379,29 +379,31 @@ class MeshMetricsTest(TestCase):
         """Test that domain deletion records real metrics"""
         from hub.apps.mesh import metrics as mesh_metrics_mod
 
+        # Spy on mesh_domain_count BEFORE create_domain so both inc and dec
+        # are captured — total_inc will be 0 (1 inc + 1 dec).
+        spy_count = self._spy(mesh_metrics_mod.mesh_domain_count)
+
         domain = self.service.create_domain(
             tenant_id=str(self.tenant.id),
             name="Test Domain"
         )
 
         spy_deleted = self._spy(mesh_metrics_mod.mesh_domain_deleted_total)
-        spy_count = self._spy(mesh_metrics_mod.mesh_domain_count)
 
         self.service.delete_domain(
             domain_id=str(domain.id),
             reason="Test deletion"
         )
 
-        # Deletion counter must have been incremented
-        self.assertGreaterEqual(spy_deleted.call_count, 1,
-                                "mesh_domain_deleted_total.labels() was never called")
-        self.assertGreater(spy_deleted.total_inc, 0,
-                           "mesh_domain_deleted_total was not incremented")
+        # Deletion counter must have been incremented exactly once
+        self.assertEqual(spy_deleted.call_count, 1,
+                         "mesh_domain_deleted_total.labels() was never called")
+        self.assertEqual(spy_deleted.total_inc, 1,
+                         "mesh_domain_deleted_total was not incremented")
 
-        # Domain gauge must have been decremented (negative total_inc)
-        count_decrements = [lm for lm in spy_count.captured if lm._value._count < 0]
-        self.assertTrue(count_decrements,
-                        "mesh_domain_count was not decremented on deletion")
+        # Domain gauge net should be 0 (1 inc from create + 1 dec from delete)
+        self.assertEqual(spy_count.total_inc, 0,
+                         "mesh_domain_count net should be 0 after create+delete")
 
         # Verify the reason label was passed
         reason_labels = [c for c in spy_deleted.label_calls

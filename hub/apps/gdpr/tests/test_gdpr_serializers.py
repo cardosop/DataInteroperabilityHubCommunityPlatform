@@ -152,7 +152,8 @@ class DataExportJobSerializerTest(TestCase):
         )
 
         # Read-only fields should be ignored during update
-        serializer.is_valid()
+        self.assertTrue(serializer.is_valid(),
+            "Serializer should accept valid data")
         # Original values should remain (compare same types: UUID to UUID)
         self.assertEqual(self.job.id, serializer.instance.id)
         self.assertEqual(self.job.status, serializer.instance.status)
@@ -167,7 +168,8 @@ class DataExportJobSerializerTest(TestCase):
         # In practice, objects are created via service layer, not serializer
         read_only_count = sum(1 for f in serializer.fields.values() if f.read_only)
         total = len(serializer.fields)
-        self.assertGreater(read_only_count, total // 2, "Majority of fields should be read-only")
+        self.assertGreater(read_only_count, total // 2,
+            f"Majority of fields must be read-only (got {read_only_count}/{total})")
 
     # ========== EDGE CASES TESTS ==========
 
@@ -340,7 +342,8 @@ class ErasureRequestSerializerTest(TestCase):
         )
 
         # Read-only fields should be ignored during update
-        serializer.is_valid()
+        self.assertTrue(serializer.is_valid(),
+            "Serializer should accept valid data")
         # Original values should remain (compare same types: UUID to UUID)
         self.assertEqual(self.request.id, serializer.instance.id)
         self.assertEqual(self.request.status, serializer.instance.status)
@@ -355,7 +358,8 @@ class ErasureRequestSerializerTest(TestCase):
         # In practice, objects are created via service layer, not serializer
         read_only_count = sum(1 for f in serializer.fields.values() if f.read_only)
         total = len(serializer.fields)
-        self.assertGreater(read_only_count, total // 2, "Majority of fields should be read-only")
+        self.assertGreater(read_only_count, total // 2,
+            f"Majority of fields must be read-only (got {read_only_count}/{total})")
 
     # ========== EDGE CASES TESTS ==========
 

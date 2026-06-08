@@ -418,8 +418,8 @@ class JourneyDPO002MarketplacePublicationTests(E2ETestBase):
         """Test error scenario: Tenant not verified - eligibility failure"""
         # Create tenant without KYC verification
         unverified_tenant = Tenant.objects.create(
-            name="Unverified Tenant",
-            slug="unverified-tenant",
+            name=f"Unverified Tenant {uuid.uuid4().hex[:8]}",
+            slug=f"unverified-tenant-{uuid.uuid4().hex[:8]}",
             status="ACTIVE",
             kyc_status=KYCStatus.UNVERIFIED
         )

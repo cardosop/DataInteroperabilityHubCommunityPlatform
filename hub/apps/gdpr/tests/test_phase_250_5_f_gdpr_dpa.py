@@ -242,9 +242,8 @@ class TestGDPRErasureAssetCascade(TestCase):
             tenant_id=str(tenant.id),
             user_id=str(user.id),
         )
-        return service.create_erasure_request(
+        return service.create_request(
             user_id=str(user.id),
-            tenant_id=str(tenant.id),
         )
 
     def test_user_owned_assets_are_anonymized_not_hard_deleted(self):
@@ -474,8 +473,8 @@ class TestGDPRErasureAuditEventScrubbing(TestCase):
         service = ErasureService(
             tenant_id=str(tenant.id), user_id=str(user.id),
         )
-        return service.create_erasure_request(
-            user_id=str(user.id), tenant_id=str(tenant.id),
+        return service.create_request(
+            user_id=str(user.id),
         )
 
     def test_extended_pii_keys_scrubbed(self):
@@ -509,20 +508,15 @@ class TestGDPRErasureAuditEventScrubbing(TestCase):
         details = scrubbed.details_json or {}
 
         # Every PII key MUST be scrubbed (replaced with a sentinel
-        # OR removed).
+        # OR removed).  The scrubbing implementation uses
+        # "deleted@deleted.local" for all PII field values.
         for pii_key in (
             "email", "display_name", "phone",
             "ip_address", "user_agent",
         ):
             value = details.get(pii_key)
-            assert (
-                value is None
-                or value == "deleted@deleted.local"
-                or value == "[REDACTED]"
-                or original_email not in str(value)
-            ), (
-                f"PII key {pii_key!r} not scrubbed; got {value!r}"
-            )
+            self.assertIn(value, (None, "deleted@deleted.local"),
+                f"PII key {pii_key!r} must be None or 'deleted@deleted.local'; got {value!r}")
 
         # Non-PII keys MUST be preserved.
         assert details.get("non_pii_metadata") == {

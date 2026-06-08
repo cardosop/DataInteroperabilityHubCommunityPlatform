@@ -91,8 +91,8 @@ class AssetDependencyServiceTest(TestCase):
         self.assertGreater(len(graph.nodes), 0)
         self.assertIn(str(self.asset1.id), graph.nodes)
 
-    def test_dependency_graph_to_dict_returns_json_format(self):
-        """Test dependency graph to_dict returns JSON format."""
+    def test_dependency_graph_format_outputs(self):
+        """Test to_dict returns JSON-serializable structure with correct keys."""
         graph = AssetDependencyGraph()
         graph.add_node("node1", self.asset1)
         graph.add_node("node2", self.asset2)
@@ -101,9 +101,11 @@ class AssetDependencyServiceTest(TestCase):
         json_data = graph.to_dict()
         self.assertIn("nodes", json_data)
         self.assertIn("edges", json_data)
+        self.assertEqual(len(json_data["nodes"]), 2)
+        self.assertEqual(len(json_data["edges"]), 1)
 
-    def test_dependency_graph_to_d3_format_returns_d3_structure(self):
-        """Test dependency graph to_d3_format returns D3 structure."""
+    def test_dependency_graph_to_d3_format(self):
+        """Test to_d3_format returns D3-compatible structure."""
         graph = AssetDependencyGraph()
         graph.add_node("node1", self.asset1)
         graph.add_node("node2", self.asset2)
@@ -112,9 +114,12 @@ class AssetDependencyServiceTest(TestCase):
         d3_data = graph.to_d3_format()
         self.assertIn("nodes", d3_data)
         self.assertIn("links", d3_data)
+        # nodes in D3 format should be a list
+        self.assertIsInstance(d3_data["nodes"], list)
+        self.assertIsInstance(d3_data["links"], list)
 
-    def test_dependency_graph_to_dot_format_returns_dot_string(self):
-        """Test dependency graph to_dot_format returns DOT string."""
+    def test_dependency_graph_to_dot_format(self):
+        """Test to_dot_format returns valid DOT digraph string."""
         graph = AssetDependencyGraph()
         graph.add_node("node1", self.asset1)
         graph.add_node("node2", self.asset2)
@@ -122,9 +127,11 @@ class AssetDependencyServiceTest(TestCase):
 
         dot_data = graph.to_dot_format()
         self.assertIn("digraph", dot_data)
+        self.assertIn("node1", dot_data)
+        self.assertIn("node2", dot_data)
 
-    def test_dependency_graph_to_mermaid_format_returns_mermaid_string(self):
-        """Test dependency graph to_mermaid_format returns Mermaid string."""
+    def test_dependency_graph_to_mermaid_format(self):
+        """Test to_mermaid_format returns valid Mermaid graph string."""
         graph = AssetDependencyGraph()
         graph.add_node("node1", self.asset1)
         graph.add_node("node2", self.asset2)
@@ -132,9 +139,11 @@ class AssetDependencyServiceTest(TestCase):
 
         mermaid_data = graph.to_mermaid_format()
         self.assertIn("graph", mermaid_data)
+        self.assertIn("node1", mermaid_data)
+        self.assertIn("node2", mermaid_data)
 
-    def test_dependency_stats_returns_node_count(self):
-        """Test dependency stats returns node_count."""
+    def test_dependency_stats_returns_correct_counts(self):
+        """Test dependency stats returns correct node_count and edge_count."""
         graph = AssetDependencyGraph()
         graph.add_node("node1", self.asset1)
         graph.add_node("node2", self.asset2)
@@ -142,69 +151,14 @@ class AssetDependencyServiceTest(TestCase):
 
         stats = AssetDependencyService.get_dependency_stats(graph)
         self.assertIn("node_count", stats)
-
-    def test_dependency_stats_returns_edge_count(self):
-        """Test dependency stats returns edge_count."""
-        graph = AssetDependencyGraph()
-        graph.add_node("node1", self.asset1)
-        graph.add_node("node2", self.asset2)
-        graph.add_edge("node1", "node2", metadata={"direction": "downstream"})
-
-        stats = AssetDependencyService.get_dependency_stats(graph)
         self.assertIn("edge_count", stats)
-
-    def test_dependency_stats_returns_correct_node_count(self):
-        """Test dependency stats returns correct node_count."""
-        graph = AssetDependencyGraph()
-        graph.add_node("node1", self.asset1)
-        graph.add_node("node2", self.asset2)
-        graph.add_edge("node1", "node2", metadata={"direction": "downstream"})
-
-        stats = AssetDependencyService.get_dependency_stats(graph)
         self.assertEqual(stats["node_count"], 2)
-
-    def test_dependency_stats_returns_correct_edge_count(self):
-        """Test dependency stats returns correct edge_count."""
-        graph = AssetDependencyGraph()
-        graph.add_node("node1", self.asset1)
-        graph.add_node("node2", self.asset2)
-        graph.add_edge("node1", "node2", metadata={"direction": "downstream"})
-
-        stats = AssetDependencyService.get_dependency_stats(graph)
         self.assertEqual(stats["edge_count"], 1)
 
-    # ========== SUCCESS SCENARIOS ==========
-
-    def test_generate_dependency_graph_success(self):
-        """Test successful dependency graph generation (success scenario)"""
-        # Create contract with lineage
-        contract = Contract.objects.create(
-            tenant=self.tenant,
-            asset=self.asset1,
-            original_spec_type=OriginalSpecType.ODCS,
-            original_format=OriginalFormat.YAML,
-            original_raw='{"id": "contract-1"}',
-            hub_contract_json={"id": "contract-1"},
-            status=ContractStatus.ACTIVE,
-            created_by=self.user,
-        )
-
-        # Generate graph
-        graph = AssetDependencyService.generate_dependency_graph(
-            asset_id=str(self.asset1.id),
-            tenant_id=str(self.tenant.id),
-            direction="both",
-            max_depth=10,
-        )
-
-        # Should return graph with at least the root node
-        self.assertIsNotNone(graph)
-        self.assertGreater(len(graph.nodes), 0)
-
-    # ========== FAILURE SCENARIOS ==========
+    # ========== EDGE CASES ==========
 
     def test_generate_dependency_graph_nonexistent_asset(self):
-        """Test dependency graph generation with non-existent asset returns empty graph"""
+        """Test dependency graph with non-existent asset returns empty graph."""
         fake_asset_id = str(uuid.uuid4())
 
         graph = AssetDependencyService.generate_dependency_graph(
@@ -217,8 +171,11 @@ class AssetDependencyServiceTest(TestCase):
         self.assertEqual(len(graph.nodes), 0)
 
     def test_generate_dependency_graph_invalid_direction(self):
-        """Test dependency graph with invalid direction returns valid graph
-        (service treats unknown directions as 'both')."""
+        """Test dependency graph with invalid direction falls back to 'both'.
+
+        The service treats unknown direction values as 'both' rather than
+        raising, which is the documented contract.
+        """
         graph = AssetDependencyService.generate_dependency_graph(
             asset_id=str(self.asset1.id),
             tenant_id=str(self.tenant.id),
@@ -227,11 +184,11 @@ class AssetDependencyServiceTest(TestCase):
         )
         self.assertIsNotNone(graph)
         self.assertIsInstance(graph.nodes, dict)
-
-    # ========== EDGE CASES ==========
+        # With 'both' direction, the root node is always included
+        self.assertGreaterEqual(len(graph.nodes), 1)
 
     def test_generate_dependency_graph_zero_max_depth(self):
-        """Test dependency graph generation with zero max_depth returns valid graph"""
+        """Test dependency graph with zero max_depth returns valid graph."""
         graph = AssetDependencyService.generate_dependency_graph(
             asset_id=str(self.asset1.id),
             tenant_id=str(self.tenant.id),
@@ -242,7 +199,7 @@ class AssetDependencyServiceTest(TestCase):
         self.assertIsInstance(graph.nodes, dict)
 
     def test_generate_dependency_graph_very_large_max_depth(self):
-        """Test dependency graph generation with very large max_depth returns valid graph"""
+        """Test dependency graph with very large max_depth returns valid graph."""
         graph = AssetDependencyService.generate_dependency_graph(
             asset_id=str(self.asset1.id),
             tenant_id=str(self.tenant.id),
@@ -252,30 +209,18 @@ class AssetDependencyServiceTest(TestCase):
         self.assertIsNotNone(graph)
         self.assertIsInstance(graph.nodes, dict)
 
-    def test_dependency_graph_empty_graph_returns_structure(self):
-        """Test dependency graph with no nodes returns structure."""
+    def test_dependency_graph_empty_graph(self):
+        """Test empty dependency graph produces valid empty structure."""
         graph = AssetDependencyGraph()
 
         json_data = graph.to_dict()
         self.assertIn("nodes", json_data)
         self.assertIn("edges", json_data)
-
-    def test_dependency_graph_empty_graph_has_zero_nodes(self):
-        """Test dependency graph with no nodes has zero nodes."""
-        graph = AssetDependencyGraph()
-
-        json_data = graph.to_dict()
         self.assertEqual(len(json_data["nodes"]), 0)
-
-    def test_dependency_graph_empty_graph_has_zero_edges(self):
-        """Test dependency graph with no nodes has zero edges."""
-        graph = AssetDependencyGraph()
-
-        json_data = graph.to_dict()
         self.assertEqual(len(json_data["edges"]), 0)
 
-    def test_dependency_graph_circular_reference_handles_circular_edges(self):
-        """Test dependency graph with circular reference handles circular edges."""
+    def test_dependency_graph_circular_reference(self):
+        """Test circular reference produces correct edge count without infinite loop."""
         graph = AssetDependencyGraph()
         graph.add_node("node1", self.asset1)
         graph.add_node("node2", self.asset2)
@@ -285,36 +230,25 @@ class AssetDependencyServiceTest(TestCase):
         json_data = graph.to_dict()
         self.assertEqual(len(json_data["edges"]), 2)
 
-    # ========== ERROR HANDLING ==========
-
-    def test_generate_dependency_graph_database_error_handling(self):
-        """Test error handling when database query fails"""
-        # Use valid asset
-        try:
-            graph = AssetDependencyService.generate_dependency_graph(
-                asset_id=str(self.asset1.id),
-                tenant_id=str(self.tenant.id),
-                direction="both",
-                max_depth=10,
-            )
-            # Should return graph or handle gracefully
-            self.assertIsNotNone(graph)
-        except Exception:
-            # If raises exception, that's a problem
-            self.fail("generate_dependency_graph should handle database errors gracefully")
+    # ========== UTILITY TESTS ==========
 
     def test_dependency_graph_add_node(self):
-        """Test adding a node to the dependency graph"""
+        """Test adding a node to the dependency graph."""
         graph = AssetDependencyGraph()
 
         graph.add_node("node1", self.asset1)
         self.assertIn("node1", graph.nodes)
 
     def test_dependency_graph_add_edge(self):
-        """Test adding an edge to the dependency graph"""
+        """Test adding an edge between two nodes."""
         graph = AssetDependencyGraph()
         graph.add_node("node1", self.asset1)
         graph.add_node("node2", self.asset2)
 
         graph.add_edge("node1", "node2")
         self.assertGreater(len(graph.edges), 0)
+        # Edges are stored as dicts with source/target keys
+        edge_sources = [e["source"] for e in graph.edges]
+        edge_targets = [e["target"] for e in graph.edges]
+        self.assertIn("node1", edge_sources)
+        self.assertIn("node2", edge_targets)

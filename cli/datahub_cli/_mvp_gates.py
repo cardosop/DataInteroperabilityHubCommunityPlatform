@@ -35,6 +35,9 @@ MVP_GATED_RELATIVE_PREFIXES: Final[frozenset[str]] = frozenset({
     "social/",
     "scheduled-ingestions/",
     "scheduled-exports/",
+    "developer/",
+    "dpia/",
+    "ropa/",
 })
 
 
@@ -56,6 +59,9 @@ MVP_GATED_FEATURE_NAMES: Final[dict[str, str]] = {
     "social/": "Social / Collaboration",
     "scheduled-ingestions/": "Scheduled Ingestions",
     "scheduled-exports/": "Scheduled Exports",
+    "developer/": "Developer APIs",
+    "dpia/": "DPIA Workflows",
+    "ropa/": "ROPA Records",
 }
 
 

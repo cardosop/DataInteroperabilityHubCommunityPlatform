@@ -43,6 +43,7 @@ from hub.apps.contracts.models import Contract
 from hub.apps.assets.models import Asset
 from django.db.models.signals import post_save
 from hub.apps.testing.billing_support import ensure_tenant_has_active_subscription
+from hub.apps.testing.role_support import ensure_user_has_data_provider_role
 from tests.fixtures.test_data_factories import (
     AssetFactory,
     TenantFactory,

@@ -103,9 +103,14 @@ class ODPSNormalizerV3_XTest(TestCase):
         result = self.normalizer.normalize(contract_data, spec_version="3.9")
 
         self.assertIsNotNone(result.hub_contract)
-        # productStrategy should not be in the result (gracefully skipped)
-        if "extensions" in result.hub_contract and "x_odps" in result.hub_contract["extensions"]:
-            self.assertNotIn("product_strategy", result.hub_contract["extensions"]["x_odps"])
+        # productStrategy should be gracefully skipped — either absent from
+        # extensions entirely, or present in x_odps without product_strategy.
+        self.assertIn("extensions", result.hub_contract)
+        extensions = result.hub_contract["extensions"]
+        if "x_odps" in extensions:
+            self.assertNotIn("product_strategy", extensions["x_odps"])
+        # If x_odps is absent, productStrategy was silently dropped entirely,
+        # which is also acceptable graceful degradation.
 
     def test_normalize_3_9_missing_optional_fields(self):
         """Test graceful handling of missing optional fields in ODPS 3.9"""
@@ -214,9 +219,14 @@ class ODPSNormalizerV2_XTest(TestCase):
         result = self.normalizer.normalize(contract_data, spec_version="2.9")
 
         self.assertIsNotNone(result.hub_contract)
-        # productStrategy should not be in the result (gracefully skipped)
-        if "extensions" in result.hub_contract and "x_odps" in result.hub_contract["extensions"]:
-            self.assertNotIn("product_strategy", result.hub_contract["extensions"]["x_odps"])
+        # productStrategy should be gracefully skipped — either absent from
+        # extensions entirely, or present in x_odps without product_strategy.
+        self.assertIn("extensions", result.hub_contract)
+        extensions = result.hub_contract["extensions"]
+        if "x_odps" in extensions:
+            self.assertNotIn("product_strategy", extensions["x_odps"])
+        # If x_odps is absent, productStrategy was silently dropped entirely,
+        # which is also acceptable graceful degradation.
 
     def test_normalize_2_9_missing_optional_fields(self):
         """Test graceful handling of missing optional fields in ODPS 2.9"""
@@ -319,9 +329,14 @@ class ODPSNormalizerV1_XTest(TestCase):
         result = self.normalizer.normalize(contract_data, spec_version="1.9")
 
         self.assertIsNotNone(result.hub_contract)
-        # productStrategy should not be in the result (gracefully skipped)
-        if "extensions" in result.hub_contract and "x_odps" in result.hub_contract["extensions"]:
-            self.assertNotIn("product_strategy", result.hub_contract["extensions"]["x_odps"])
+        # productStrategy should be gracefully skipped — either absent from
+        # extensions entirely, or present in x_odps without product_strategy.
+        self.assertIn("extensions", result.hub_contract)
+        extensions = result.hub_contract["extensions"]
+        if "x_odps" in extensions:
+            self.assertNotIn("product_strategy", extensions["x_odps"])
+        # If x_odps is absent, productStrategy was silently dropped entirely,
+        # which is also acceptable graceful degradation.
 
     def test_normalize_1_9_missing_optional_fields(self):
         """Test graceful handling of missing optional fields in ODPS 1.9"""
@@ -422,8 +437,8 @@ class ODPSBackwardCompatibilityIntegrationTest(TestCase):
 
         # Should handle unicode characters
         self.assertIsNotNone(result.hub_contract)
-        if result.hub_contract and "info" in result.hub_contract:
-            self.assertIsNotNone(result.hub_contract["info"])
+        self.assertIn("info", result.hub_contract)
+        self.assertEqual(result.hub_contract["info"]["name"], "测试产品")
 
     def test_backward_compatibility_handles_special_characters(self):
         """Test that backward compatibility normalizers handle special characters correctly."""
@@ -447,8 +462,9 @@ class ODPSBackwardCompatibilityIntegrationTest(TestCase):
 
         # Should handle special characters
         self.assertIsNotNone(result.hub_contract)
-        if result.hub_contract and "info" in result.hub_contract:
-            self.assertIsNotNone(result.hub_contract["info"])
+        self.assertIn("info", result.hub_contract)
+        self.assertIn("name", result.hub_contract["info"])
+        self.assertEqual(result.hub_contract["info"]["name"], "Test & Co. (Special)")
 
     def test_backward_compatibility_handles_very_large_documents(self):
         """Test that backward compatibility normalizers handle very large documents correctly."""
@@ -473,6 +489,12 @@ class ODPSBackwardCompatibilityIntegrationTest(TestCase):
 
         # Should handle very large documents
         self.assertIsNotNone(result.hub_contract)
+        # Verify description length is preserved
+        desc = result.hub_contract.get("description")
+        if desc is None and "info" in result.hub_contract:
+            desc = result.hub_contract["info"].get("description")
+        self.assertIsNotNone(desc, "Description should be preserved in normalized output")
+        self.assertEqual(len(desc), 100000, "Description length should be preserved")
 
     def test_backward_compatibility_handles_none_values(self):
         """Test that backward compatibility normalizers handle None values correctly."""
@@ -496,6 +518,19 @@ class ODPSBackwardCompatibilityIntegrationTest(TestCase):
 
         # Should handle None values gracefully
         self.assertIsNotNone(result.hub_contract)
+        # None values should be either preserved as None or handled per spec
+        has_description = "description" in result.hub_contract
+        has_info_description = "info" in result.hub_contract and "description" in result.hub_contract["info"]
+        if has_description:
+            self.assertTrue(
+                result.hub_contract["description"] is None or isinstance(result.hub_contract["description"], str),
+                "None description should be preserved as None or converted to string",
+            )
+        if has_info_description:
+            self.assertTrue(
+                result.hub_contract["info"]["description"] is None or isinstance(result.hub_contract["info"]["description"], str),
+                "None description in info should be preserved as None or converted to string",
+            )
 
     def test_backward_compatibility_handles_nested_structures(self):
         """Test that backward compatibility normalizers handle nested structures correctly."""
@@ -521,5 +556,9 @@ class ODPSBackwardCompatibilityIntegrationTest(TestCase):
 
         # Should handle nested structures
         self.assertIsNotNone(result.hub_contract)
-        if result.hub_contract and "schema" in result.hub_contract:
-            self.assertIsNotNone(result.hub_contract["schema"])
+        self.assertIn("schema", result.hub_contract)
+        self.assertIn("fields", result.hub_contract["schema"])
+        self.assertEqual(
+            result.hub_contract["schema"]["fields"][0]["nested"]["level1"]["level2"]["level3"]["value"],
+            "deep",
+        )

@@ -212,7 +212,13 @@ class User(AbstractBaseUser, PermissionsMixin):
 
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
-    
+
+    # Product tour / onboarding state (Phase 278)
+    has_seen_tour = models.BooleanField(
+        default=False,
+        help_text="Whether the user has completed the product tour.",
+    )
+
     objects = UserManager()
     
     USERNAME_FIELD = "email"
@@ -305,7 +311,9 @@ class Role(models.Model):
         "tenants.Tenant",
         on_delete=models.CASCADE,
         related_name="roles",
-        help_text="Tenant this role belongs to"
+        null=True,
+        blank=True,
+        help_text="Tenant this role belongs to (null for platform-level roles)"
     )
     name = models.CharField(
         max_length=100,

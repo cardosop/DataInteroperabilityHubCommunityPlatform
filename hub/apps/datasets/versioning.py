@@ -90,7 +90,9 @@ class VersionHistoryManager:
                 tenant=dataset.tenant,
                 asset=dataset.asset,
                 is_current=True
-            ).exclude(id=dataset.id).update(is_current=False)
+            ).exclude(id=dataset.id).update(
+                is_current=False, archived_at=timezone.now(),
+            )
         
         # Set version history fields
         dataset.parent_version = parent_version
@@ -510,7 +512,9 @@ class VersionHistoryManager:
                 tenant=dataset.tenant,
                 asset=dataset.asset,
                 is_current=True
-            ).exclude(id=dataset.id).update(is_current=False)
+            ).exclude(id=dataset.id).update(
+                is_current=False, archived_at=timezone.now(),
+            )
         
         dataset.archived_at = None
         dataset.is_current = True

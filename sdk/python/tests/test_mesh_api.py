@@ -21,8 +21,8 @@ To run these tests:
 import os
 import pytest
 import uuid
+import asyncio
 import subprocess
-import time
 from typing import Optional
 from datahub_interoperability import DataHubClient, DataHubClientConfig, MeshAPI
 from datahub_interoperability.errors import (
@@ -32,113 +32,20 @@ from datahub_interoperability.errors import (
     UnauthorizedError,
     ForbiddenError,
 )
-
-
-def setup_authentication_for_sdk_tests(api_base_url: str) -> Optional[str]:
-    """
-    Set up authentication for SDK tests.
-
-    Tries multiple methods:
-    1. Use TEST_API_KEY environment variable if available
-    2. Use DATAHUB_API_KEY environment variable
-    3. Try to create API key via Django shell (if Docker Compose is available)
-    4. Return None if no key available
-
-    Args:
-        api_base_url: API base URL
-
-    Returns:
-        API key string or None
-    """
-    # Method 1: Use environment variables
-    api_key = os.environ.get('TEST_API_KEY') or os.environ.get('DATAHUB_API_KEY')
-    if api_key:
-        return api_key
-
-    # Method 2: Try to create API key via Django shell in Docker Compose
-    try:
-        django_shell_script = """
-from hub.apps.tenants.models import Tenant
-from hub.apps.users.models import User, UserStatus, Role, UserRole
-from hub.apps.auth.models import APIKey
-import os
-
-tenant, _ = Tenant.objects.get_or_create(
-    slug='mesh-sdk-test-tenant',
-    defaults={'name': 'Mesh SDK Test Tenant'}
+from tests._sdk_test_helpers import (
+    check_api_available,
+    create_real_api_config,
 )
 
-# Get or create TENANT_ADMIN role
-admin_role, _ = Role.objects.get_or_create(
-    tenant=tenant,
-    name='TENANT_ADMIN',
-    defaults={'description': 'Tenant Administrator'}
-)
-
-user, _ = User.objects.get_or_create(
-    email='mesh-sdk-test@example.com',
-    defaults={
-        'tenant': tenant,
-        'status': UserStatus.ACTIVE
-    }
-)
-if user.tenant != tenant:
-    user.tenant = tenant
-    user.status = UserStatus.ACTIVE
-    user.save()
-
-# Assign TENANT_ADMIN role to user
-UserRole.objects.get_or_create(user=user, role=admin_role)
-
-# Delete existing API key if it exists
-APIKey.objects.filter(user=user, name='mesh-sdk-test-key').delete()
-
-# Create new API key with all mesh scopes
-api_key_value = APIKey.generate_key()
-api_key_hash = APIKey.hash_key(api_key_value)
-api_key_obj = APIKey.objects.create(
-    user=user,
-    tenant=tenant,
-    name='mesh-sdk-test-key',
-    key_hash=api_key_hash,
-    scopes=['mesh:write', 'mesh:read', 'governance:read', 'governance:write']
-)
-print(api_key_value)
-"""
-        result = subprocess.run(
-            ['docker', 'compose', 'exec', '-T', 'api-service', 'python', 'manage.py', 'shell'],
-            input=django_shell_script,
-            text=True,
-            capture_output=True,
-            timeout=30,
-            cwd='/home/ph/Desktop/DataInteroperabilityHub'
-        )
-        if result.returncode == 0:
-            output_lines = result.stdout.strip().split('\n')
-            # Look for line starting with API key (long alphanumeric string)
-            for line in reversed(output_lines):
-                line = line.strip()
-                # API keys are typically long strings (40+ characters)
-                if line and len(line) > 40:
-                    # Additional validation: check if it looks like an API key
-                    cleaned = line.replace('-', '').replace('_', '')
-                    if cleaned.isalnum() and ' ' not in line:
-                        return line
-    except Exception:
-        pass
-
-    return None
+# File-specific tenant parameters
+_MESH_TENANT_SLUG = "mesh-sdk-test-tenant"
+_MESH_TENANT_NAME = "Mesh SDK Test Tenant"
+_MESH_API_KEY_NAME = "mesh-sdk-test-key"
+_MESH_SCOPES = ["mesh:write", "mesh:read", "governance:read", "governance:write"]
+_MESH_EXTRA_TENANT_SETUP = "tenant.data_mesh_enabled = True; tenant.save()"
 
 
-def check_api_available(api_base_url: str) -> bool:
-    """Check if API service is available"""
-    try:
-        import requests
-        response = requests.get(f"{api_base_url}/", timeout=2)
-        return response.status_code < 600  # Any HTTP response means API is up
-    except Exception:
-        return False
-
+# ── Unit-test fixtures (no API calls) ───────────────────────────────
 
 @pytest.fixture
 def config():
@@ -165,40 +72,26 @@ def mesh_api(client):
     return MeshAPI(client)
 
 
-@pytest.fixture
+# ── Integration-test fixtures (real API) ────────────────────────────
+
+@pytest.fixture(scope="module")
 def real_api_config():
-    """Fixture for real API configuration"""
-    api_base_url = os.environ.get('API_BASE_URL', 'http://localhost:8000/api/v1')
-
-    # Check if API is available
-    if not check_api_available(api_base_url):
-        pytest.skip("API service is not available. Ensure Docker Compose services are running.")
-
-    api_key = setup_authentication_for_sdk_tests(api_base_url)
-
-    if not api_key:
-        pytest.skip(
-            "No API key available. Set TEST_API_KEY or DATAHUB_API_KEY environment variable, "
-            "or ensure Docker Compose api-service is accessible."
-        )
-
-    return DataHubClientConfig(
-        base_url=api_base_url,
-        api_token=api_key,
-        timeout=30.0,
-        max_retries=3,
-        user_agent="DataHub-SDK-Test",
-        enable_logging=False,
+    """Fixture for real API configuration (module-scoped to avoid
+    re-provisioning the API key for every test)."""
+    return create_real_api_config(
+        tenant_slug=_MESH_TENANT_SLUG,
+        tenant_name=_MESH_TENANT_NAME,
+        api_key_name=_MESH_API_KEY_NAME,
+        scopes=_MESH_SCOPES,
+        extra_tenant_setup=_MESH_EXTRA_TENANT_SETUP,
     )
 
 
 @pytest.fixture
 async def real_client(real_api_config):
-    """Create SDK client with real API configuration"""
+    """Create SDK client with real API configuration."""
     async with DataHubClient(real_api_config) as client:
         yield client
-        # Small delay to avoid rate limiting between tests
-        import asyncio
         await asyncio.sleep(0.1)
 
 
@@ -306,12 +199,16 @@ async def test_create_domain_integration(real_client):
         status="ACTIVE"
     )
 
-    assert domain is not None
-    assert domain.get('id') is not None
-    assert domain.get('name') == domain_name
-    assert domain.get('status') == 'ACTIVE'
-
-    return domain
+    try:
+        assert domain is not None
+        assert domain.get('id') is not None
+        assert domain.get('name') == domain_name
+        assert domain.get('status') == 'ACTIVE'
+    finally:
+        try:
+            await real_client.mesh.delete_domain(domain['id'])
+        except Exception:
+            pass
 
 
 @pytest.mark.asyncio
@@ -319,19 +216,25 @@ async def test_list_domains_integration(real_client):
     """Test listing domains with real API"""
     # Create a test domain first
     domain_name = f"test-domain-{uuid.uuid4().hex[:8]}"
-    await real_client.mesh.create_domain(name=domain_name)
+    domain = await real_client.mesh.create_domain(name=domain_name)
 
-    # List domains
-    result = await real_client.mesh.list_domains()
+    try:
+        # List domains
+        result = await real_client.mesh.list_domains()
 
-    assert result is not None
-    assert 'results' in result
-    assert isinstance(result['results'], list)
-    assert 'count' in result
+        assert result is not None
+        assert 'results' in result
+        assert isinstance(result['results'], list)
+        assert 'count' in result
 
-    # Verify our domain is in the list
-    domain_names = [d.get('name') for d in result['results']]
-    assert domain_name in domain_names
+        # Verify our domain is in the list
+        domain_names = [d.get('name') for d in result['results']]
+        assert domain_name in domain_names
+    finally:
+        try:
+            await real_client.mesh.delete_domain(domain['id'])
+        except Exception:
+            pass
 
 
 @pytest.mark.asyncio
@@ -341,14 +244,21 @@ async def test_list_domains_with_filters_integration(real_client):
     domain_name1 = f"test-domain-active-{uuid.uuid4().hex[:8]}"
     domain_name2 = f"test-domain-inactive-{uuid.uuid4().hex[:8]}"
 
-    await real_client.mesh.create_domain(name=domain_name1, status="ACTIVE")
-    await real_client.mesh.create_domain(name=domain_name2, status="INACTIVE")
+    domain1 = await real_client.mesh.create_domain(name=domain_name1, status="ACTIVE")
+    domain2 = await real_client.mesh.create_domain(name=domain_name2, status="INACTIVE")
 
-    # Filter by status
-    result = await real_client.mesh.list_domains(status="ACTIVE")
+    try:
+        # Filter by status
+        result = await real_client.mesh.list_domains(status="ACTIVE")
 
-    assert result is not None
-    assert all(d.get('status') == 'ACTIVE' for d in result['results'])
+        assert result is not None
+        assert all(d.get('status') == 'ACTIVE' for d in result['results'])
+    finally:
+        for d_id in [domain1['id'], domain2['id']]:
+            try:
+                await real_client.mesh.delete_domain(d_id)
+            except Exception:
+                pass
 
 
 @pytest.mark.asyncio
@@ -361,12 +271,18 @@ async def test_get_domain_integration(real_client):
     )
     domain_id = domain['id']
 
-    # Get domain
-    retrieved = await real_client.mesh.get_domain(domain_id)
+    try:
+        # Get domain
+        retrieved = await real_client.mesh.get_domain(domain_id)
 
-    assert retrieved is not None
-    assert retrieved['id'] == domain_id
-    assert retrieved['name'] == domain['name']
+        assert retrieved is not None
+        assert retrieved['id'] == domain_id
+        assert retrieved['name'] == domain['name']
+    finally:
+        try:
+            await real_client.mesh.delete_domain(domain_id)
+        except Exception:
+            pass
 
 
 @pytest.mark.asyncio
@@ -379,17 +295,23 @@ async def test_update_domain_integration(real_client):
     )
     domain_id = domain['id']
 
-    # Update domain
-    updated = await real_client.mesh.update_domain(
-        domain_id,
-        description="Updated description",
-        status="INACTIVE"
-    )
+    try:
+        # Update domain
+        updated = await real_client.mesh.update_domain(
+            domain_id,
+            description="Updated description",
+            status="INACTIVE"
+        )
 
-    assert updated is not None
-    assert updated['id'] == domain_id
-    assert updated['description'] == "Updated description"
-    assert updated['status'] == "INACTIVE"
+        assert updated is not None
+        assert updated['id'] == domain_id
+        assert updated['description'] == "Updated description"
+        assert updated['status'] == "INACTIVE"
+    finally:
+        try:
+            await real_client.mesh.delete_domain(domain_id)
+        except Exception:
+            pass
 
 
 @pytest.mark.asyncio
@@ -420,22 +342,28 @@ async def test_apply_policy_integration(real_client):
     )
     domain_id = domain['id']
 
-    # Create a test policy via Django shell
-    policy_id = await _create_test_policy(real_client)
+    try:
+        # Create a test policy via Django shell
+        policy_id = await _create_test_policy(real_client, _MESH_TENANT_SLUG)
 
-    if not policy_id:
-        pytest.skip("Could not create test policy")
+        if not policy_id:
+            pytest.skip("Could not create test policy")
 
-    # Apply policy
-    result = await real_client.mesh.apply_policy(
-        domain_id=domain_id,
-        policy_id=policy_id
-    )
+        # Apply policy
+        result = await real_client.mesh.apply_policy(
+            domain_id=domain_id,
+            policy_id=policy_id
+        )
 
-    assert result is not None
-    assert result.get('domain_id') == domain_id
-    assert result.get('policy_id') == policy_id
-    assert result.get('status') in ['PENDING', 'APPLIED']
+        assert result is not None
+        assert result.get('domain_id') == domain_id
+        assert result.get('policy_id') == policy_id
+        assert result.get('status') in ['PENDING', 'APPLIED']
+    finally:
+        try:
+            await real_client.mesh.delete_domain(domain_id)
+        except Exception:
+            pass
 
 
 @pytest.mark.asyncio
@@ -447,17 +375,23 @@ async def test_list_policies_integration(real_client):
     )
     domain_id = domain['id']
 
-    # Create and apply a test policy
-    policy_id = await _create_test_policy(real_client)
-    if policy_id:
-        await real_client.mesh.apply_policy(domain_id, policy_id)
+    try:
+        # Create and apply a test policy
+        policy_id = await _create_test_policy(real_client, _MESH_TENANT_SLUG)
+        if policy_id:
+            await real_client.mesh.apply_policy(domain_id, policy_id)
 
-    # List policies
-    result = await real_client.mesh.list_policies(domain_id)
+        # List policies
+        result = await real_client.mesh.list_policies(domain_id)
 
-    assert result is not None
-    assert 'results' in result
-    assert isinstance(result['results'], list)
+        assert result is not None
+        assert 'results' in result
+        assert isinstance(result['results'], list)
+    finally:
+        try:
+            await real_client.mesh.delete_domain(domain_id)
+        except Exception:
+            pass
 
 
 @pytest.mark.asyncio
@@ -469,18 +403,38 @@ async def test_remove_policy_integration(real_client):
     )
     domain_id = domain['id']
 
-    # Create and apply a test policy
-    policy_id = await _create_test_policy(real_client)
-    if not policy_id:
-        pytest.skip("Could not create test policy")
+    try:
+        # Create and apply a test policy
+        policy_id = await _create_test_policy(real_client, _MESH_TENANT_SLUG)
+        if not policy_id:
+            pytest.skip("Could not create test policy")
 
-    await real_client.mesh.apply_policy(domain_id, policy_id)
+        await real_client.mesh.apply_policy(domain_id, policy_id)
 
-    # Remove policy
-    result = await real_client.mesh.remove_policy(domain_id, policy_id)
+        # Remove policy
+        result = await real_client.mesh.remove_policy(domain_id, policy_id)
 
-    # Result may be None or contain revocation info
-    assert result is None or result.get('status') == 'REVOKED'
+        # Verify removal: the API keeps the association record but sets
+        # status to REVOKED.  Check the policy status in the listing.
+        if result is not None:
+            assert result.get('status') == 'REVOKED', (
+                f"Expected REVOKED status after removal, got {result.get('status')}"
+            )
+        # Confirm the policy appears with REVOKED status in the domain listing
+        policies_after = await real_client.mesh.list_policies(domain_id)
+        revoked = [
+            p for p in policies_after.get('results', [])
+            if (p.get('policy_id') or p.get('id')) == policy_id
+        ]
+        assert len(revoked) > 0, f"Policy {policy_id} not found in listing after removal"
+        assert revoked[0].get('status') == 'REVOKED', (
+            f"Policy {policy_id} should be REVOKED, got {revoked[0].get('status')}"
+        )
+    finally:
+        try:
+            await real_client.mesh.delete_domain(domain_id)
+        except Exception:
+            pass
 
 
 # Integration Tests - Topology Operations
@@ -489,15 +443,23 @@ async def test_remove_policy_integration(real_client):
 async def test_get_topology_integration(real_client):
     """Test getting complete topology with real API"""
     # Create some test domains
-    await real_client.mesh.create_domain(name=f"test-domain-1-{uuid.uuid4().hex[:8]}")
-    await real_client.mesh.create_domain(name=f"test-domain-2-{uuid.uuid4().hex[:8]}")
+    domain1 = await real_client.mesh.create_domain(name=f"test-domain-1-{uuid.uuid4().hex[:8]}")
+    domain2 = await real_client.mesh.create_domain(name=f"test-domain-2-{uuid.uuid4().hex[:8]}")
 
-    # Get topology
-    topology = await real_client.mesh.get_topology(include_health_metrics=True)
+    try:
+        # Get topology
+        topology = await real_client.mesh.get_topology(include_health_metrics=True)
 
-    assert topology is not None
-    assert 'nodes' in topology or 'domains' in topology
-    assert 'metadata' in topology or 'summary' in topology
+        assert topology is not None
+        assert 'nodes' in topology, f"Missing 'nodes' in topology: {list(topology.keys())}"
+        assert 'metadata' in topology, f"Missing 'metadata' in topology: {list(topology.keys())}"
+        assert 'summary' in topology, f"Missing 'summary' in topology: {list(topology.keys())}"
+    finally:
+        for d_id in [domain1['id'], domain2['id']]:
+            try:
+                await real_client.mesh.delete_domain(d_id)
+            except Exception:
+                pass
 
 
 @pytest.mark.asyncio
@@ -509,11 +471,22 @@ async def test_get_domain_topology_integration(real_client):
     )
     domain_id = domain['id']
 
-    # Get domain topology
-    topology = await real_client.mesh.get_domain_topology(domain_id)
+    try:
+        # Get domain topology
+        topology = await real_client.mesh.get_domain_topology(domain_id)
 
-    assert topology is not None
-    assert 'domain' in topology or domain_id in str(topology)
+        assert topology is not None
+        assert 'domain' in topology, (
+            f"Missing 'domain' key in topology response. Keys: {list(topology.keys())}"
+        )
+        assert topology['domain']['id'] == domain_id, (
+            f"Expected domain id={domain_id}, got {topology.get('domain', {}).get('id')}"
+        )
+    finally:
+        try:
+            await real_client.mesh.delete_domain(domain_id)
+        except Exception:
+            pass
 
 
 # Integration Tests - Compliance Operations
@@ -527,13 +500,19 @@ async def test_check_compliance_integration(real_client):
     )
     domain_id = domain['id']
 
-    # Check compliance
-    report = await real_client.mesh.check_compliance(domain_id)
+    try:
+        # Check compliance
+        report = await real_client.mesh.check_compliance(domain_id)
 
-    assert report is not None
-    assert report.get('domain_id') == domain_id
-    assert report.get('compliance_status') is not None
-    assert report.get('id') is not None  # Report ID
+        assert report is not None
+        assert report.get('domain_id') == domain_id
+        assert report.get('compliance_status') is not None
+        assert report.get('id') is not None  # Report ID
+    finally:
+        try:
+            await real_client.mesh.delete_domain(domain_id)
+        except Exception:
+            pass
 
 
 @pytest.mark.asyncio
@@ -545,16 +524,22 @@ async def test_get_compliance_report_integration(real_client):
     )
     domain_id = domain['id']
 
-    # Check compliance to create a report
-    report = await real_client.mesh.check_compliance(domain_id)
-    report_id = report['id']
+    try:
+        # Check compliance to create a report
+        report = await real_client.mesh.check_compliance(domain_id)
+        report_id = report['id']
 
-    # Get the report
-    retrieved = await real_client.mesh.get_compliance_report(domain_id, report_id)
+        # Get the report
+        retrieved = await real_client.mesh.get_compliance_report(domain_id, report_id)
 
-    assert retrieved is not None
-    assert retrieved['id'] == report_id
-    assert retrieved['domain_id'] == domain_id
+        assert retrieved is not None
+        assert retrieved['id'] == report_id
+        assert retrieved['domain_id'] == domain_id
+    finally:
+        try:
+            await real_client.mesh.delete_domain(domain_id)
+        except Exception:
+            pass
 
 
 # Error Handling Tests
@@ -641,23 +626,29 @@ async def test_get_compliance_report_not_found_error(real_client):
     domain_id = domain['id']
     fake_report_id = str(uuid.uuid4())
 
-    with pytest.raises(NotFoundError):
-        await real_client.mesh.get_compliance_report(domain_id, fake_report_id)
+    try:
+        with pytest.raises(NotFoundError):
+            await real_client.mesh.get_compliance_report(domain_id, fake_report_id)
+    finally:
+        try:
+            await real_client.mesh.delete_domain(domain_id)
+        except Exception:
+            pass
 
 
 # Helper Functions
 
-async def _create_test_policy(client: DataHubClient) -> Optional[str]:
-    """Create a test policy via Django shell"""
-    try:
-        django_shell_script = """
+async def _create_test_policy(client: DataHubClient, tenant_slug: str) -> Optional[str]:
+    """Create a test policy via Django shell for the given tenant.
+
+    Tries the test Docker Compose stack first (api-service-test /
+    hub/manage.py), then the main stack (api-service / manage.py).
+    """
+    django_shell_script = f"""
 from hub.apps.tenants.models import Tenant
 from hub.apps.governance.models import AccessPolicy
-from hub.apps.users.models import User
-import os
 
-# Get the tenant from the API key user
-tenant = Tenant.objects.first()
+tenant = Tenant.objects.filter(slug='{tenant_slug}').first()
 if not tenant:
     print("NO_TENANT")
     exit(1)
@@ -669,27 +660,35 @@ policy = AccessPolicy.objects.create(
     description='Test policy for SDK integration tests',
     enabled=True,
     effect='ALLOW',
-    conditions={},
+    conditions={{}},
     priority=100
 )
 print(policy.id)
 """
-        result = subprocess.run(
-            ['docker', 'compose', 'exec', '-T', 'api-service', 'python', 'manage.py', 'shell'],
-            input=django_shell_script,
-            text=True,
-            capture_output=True,
-            timeout=30,
-            cwd='/home/ph/Desktop/DataInteroperabilityHub'
-        )
-        if result.returncode == 0:
-            output_lines = result.stdout.strip().split('\n')
-            for line in reversed(output_lines):
-                line = line.strip()
-                # UUID format
-                if line and len(line) == 36 and '-' in line:
-                    return line
-    except Exception:
-        pass
+
+    _compose_attempts = [
+        (["docker", "compose", "-f", "docker-compose.test.yml",
+          "exec", "-T", "api-service-test"], "hub/manage.py"),
+        (["docker", "compose", "exec", "-T", "api-service"], "manage.py"),
+    ]
+
+    for compose_cmd, manage_py in _compose_attempts:
+        try:
+            result = subprocess.run(
+                compose_cmd + ["python", manage_py, "shell"],
+                input=django_shell_script,
+                text=True,
+                capture_output=True,
+                timeout=30,
+                cwd='/home/ph/Desktop/DataInteroperabilityHub',
+            )
+            if result.returncode == 0:
+                output_lines = result.stdout.strip().split('\n')
+                for line in reversed(output_lines):
+                    line = line.strip()
+                    if line and len(line) == 36 and '-' in line:
+                        return line
+        except Exception:
+            pass
 
     return None

@@ -108,7 +108,7 @@ class ODCSExportIntegrationTest(ContractsAPITestBase):
                 self.assertEqual(response.status_code, status.HTTP_200_OK)
                 self.assertEqual(response["Content-Type"], "application/json")
 
-                data = json.loads(response.content)
+                data = response.data
                 self.assertEqual(data["apiVersion"], f"odcs.io/v{version}")
                 self.assertEqual(data["kind"], "DataContract")
                 self.assertEqual(data["id"], "test-contract-integration")
@@ -146,7 +146,7 @@ class ODCSExportIntegrationTest(ContractsAPITestBase):
             {"format": "odcs", "output_format": "json", "version": "3.0.2"},
         )
         self.assertEqual(response_json.status_code, status.HTTP_200_OK)
-        data_json = json.loads(response_json.content)
+        data_json = response_json.data
 
         # Export as YAML
         response_yaml = self.client.get(
@@ -179,7 +179,7 @@ class ODCSExportIntegrationTest(ContractsAPITestBase):
             {"format": "odcs", "output_format": "json", "version": "3.0.2"},
         )
         self.assertEqual(response_json.status_code, status.HTTP_200_OK)
-        data_json = json.loads(response_json.content)
+        data_json = response_json.data
 
         # Verify data is equivalent
         self.assertEqual(data_yaml["id"], data_json["id"])
@@ -322,7 +322,7 @@ class ODCSDownloadIntegrationTest(ContractsAPITestBase):
                 self.assertIn("Content-Disposition", response)
                 self.assertIn("attachment", response["Content-Disposition"])
 
-                data = json.loads(response.content)
+                data = response.data
                 self.assertEqual(data["apiVersion"], f"odcs.io/v{version}")
                 self.assertEqual(data["kind"], "DataContract")
                 self.assertEqual(data["id"], "test-contract-integration")
@@ -362,7 +362,7 @@ class ODCSDownloadIntegrationTest(ContractsAPITestBase):
             {"format": "odcs", "output_format": "json", "version": "3.0.2"},
         )
         self.assertEqual(response_json.status_code, status.HTTP_200_OK)
-        data_json = json.loads(response_json.content)
+        data_json = response_json.data
 
         # Download as YAML
         response_yaml = self.client.get(
@@ -387,8 +387,8 @@ class ODCSDownloadIntegrationTest(ContractsAPITestBase):
         )
 
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
-        self.assertIn("error", json.loads(response.content))
-        error_msg = str(json.loads(response.content)["error"]).lower()
+        self.assertIn("error", response.data)
+        error_msg = str(response.data["error"]).lower()
         self.assertIn("version", error_msg)
 
     def test_download_performance_under_2s(self):
@@ -683,7 +683,7 @@ class ODCSRoundTripIntegrationTest(ContractsAPITestBase):
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         # Verify unicode characters are preserved in export
-        exported_data = json.loads(response.content)
+        exported_data = response.data
         self.assertIsNotNone(exported_data)
 
     def test_export_handles_special_characters(self):
@@ -713,7 +713,7 @@ class ODCSRoundTripIntegrationTest(ContractsAPITestBase):
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         # Verify special characters are preserved in export
-        exported_data = json.loads(response.content)
+        exported_data = response.data
         self.assertIsNotNone(exported_data)
 
     def test_export_handles_very_large_documents(self):
@@ -807,7 +807,7 @@ class ODCSRoundTripIntegrationTest(ContractsAPITestBase):
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         # Verify nested structures are preserved in export
-        exported_data = json.loads(response.content)
+        exported_data = response.data
         self.assertIsNotNone(exported_data)
 
     def test_export_maintains_cross_tenant_isolation(self):

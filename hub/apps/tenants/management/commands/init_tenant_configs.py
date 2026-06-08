@@ -124,7 +124,12 @@ class Command(BaseCommand):
                         f'  ✗ Error creating TenantConfig for tenant {tenant.id} ({tenant.name}): {e}'
                     )
                 )
-                logger.error(
+                # Per-tenant failures are logged at WARNING — the command
+                # handles them gracefully by continuing to the next tenant
+                # and the error is already reported to stdout.  ERROR is
+                # reserved for systemic failures that require operator
+                # intervention (e.g. the entire command cannot proceed).
+                logger.warning(
                     "tenant_config_init_failed",
                     tenant_id=str(tenant.id),
                     tenant_name=tenant.name,

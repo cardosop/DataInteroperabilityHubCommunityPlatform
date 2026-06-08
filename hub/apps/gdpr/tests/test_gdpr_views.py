@@ -266,7 +266,7 @@ class DataExportJobViewSetTest(TestCase):
         response = self.client.post("/api/v1/users/me/export-jobs/export-data/")
 
         # Must be an error — if this is 2xx, the duplicate-prevention logic is broken
-        self.assertGreaterEqual(response.status_code, 400)
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
         data = self._response_data(response)
         self.assertIn("detail", data)
         self.assertIn("code", data)
@@ -564,7 +564,7 @@ class ErasureRequestViewSetTest(TestCase):
         response = self.client.post("/api/v1/users/me/erasure-requests/request-erasure/")
 
         # Must be an error — if this is 2xx, the duplicate-prevention logic is broken
-        self.assertGreaterEqual(response.status_code, 400)
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
         data = _response_data(response)
         self.assertIn("detail", data)
         self.assertIn("code", data)

@@ -47,13 +47,13 @@ class VersioningSecurityTestBase(TestCase):
         self.client = APIClient()
         self.tenant_a = Tenant.objects.create(
             name="Versioning Security Tenant A",
-            slug="versioning-security-tenant-a",
+            slug=f"versioning-security-tenant-a-{uuid.uuid4().hex[:8]}",
             status=TenantStatus.ACTIVE,
             kyc_status=KYCStatus.VERIFIED,
         )
         self.tenant_b = Tenant.objects.create(
             name="Versioning Security Tenant B",
-            slug="versioning-security-tenant-b",
+            slug=f"versioning-security-tenant-b-{uuid.uuid4().hex[:8]}",
             status=TenantStatus.ACTIVE,
             kyc_status=KYCStatus.VERIFIED,
         )

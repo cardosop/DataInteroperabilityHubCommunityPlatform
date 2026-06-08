@@ -41,8 +41,8 @@ class DatabaseOperationsRegressionTest(TestCase):
         """Set up test fixtures"""
         self.client = APIClient()
         self.tenant = Tenant.objects.create(
-            name="DB Test Tenant",
-            slug="db-test-tenant"
+            name=f"DB Test Tenant {uuid.uuid4().hex[:8]}",
+            slug=f"db-test-tenant-{uuid.uuid4().hex[:8]}"
         )
         self.user = User.objects.create_user(
             email=f"db-{uuid.uuid4().hex[:8]}@example.com",
@@ -59,7 +59,7 @@ class ModelCRUDTest(DatabaseOperationsRegressionTest):
     def test_tenant_crud(self):
         """Test Tenant CRUD operations"""
         # Create
-        tenant = Tenant.objects.create(name="CRUD Tenant", slug="crud-tenant")
+        tenant = Tenant.objects.create(name=f"CRUD Tenant {uuid.uuid4().hex[:8]}", slug=f"crud-tenant-{uuid.uuid4().hex[:8]}")
         self.assertIsNotNone(tenant.id)
         
         # Read

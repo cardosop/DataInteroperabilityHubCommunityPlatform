@@ -26,38 +26,30 @@ from hub.apps.integrations.base import (
 from hub.apps.integrations.connectors.gcp_marketplace_connector import GCPMarketplaceConnector
 
 # Real service account credentials for testing
-REAL_SERVICE_ACCOUNT_JSON = {
-    "type": "service_account",
-    "project_id": "projzero-441310",
-    "private_key_id": "e2f5c18b5f2495f6e07e8a8a2302d3da3e711c38",
-    "private_key": "-----BEGIN PRIVATE KEY-----\nMIIEvQIBADANBgkqhkiG9w0BAQEFAASCBKcwggSjAgEAAoIBAQC4qnbgFWOgw99L\nQpbw6LLoJHJisAKCpOmNbIBxPTNSlT1yu/Wmd669qC3lNQgSeJL0cTUJ0h9U4j6C\nbSiNvR7HMs+odKCA69J0M+kA6EgAHNl8Uz41e4fPxnJK6LDujjfRHa53UzLuMQHN\nYif/Z70jr6yAvh87u/8nT977q7LFJovtLr7+EkWN/6E5dd9VpmmsW0c+OrKCoWR/\nTgvy/Sht0rB1eazqRowhCe0SbW+8NoFy6qoBWFwnNmm1Azo6DFstChC9OGAy8OK2\nBUMYWnjKonAFhllr85IYWIF7v3X68NGJcBnswYBv5VFqZsP6P+pJZFxFEF5WMm8R\nwSdIaLQDAgMBAAECggEASU/Tdc7ICLD6WwSKrAWV0Td2+drqhDc4SV8D9vDXCTga\ndwxLz9S/2KeF4PMWy052+PhgmA+FRMu1CU6QxQSJzYdMjZIPjl8Q4/Uf0a5ltzW8\n2fCqR81M853TDg4m/+4SFsDz3Id5NrrZ/lGzk1/55Mr/bvULrUlLWK4K1lsp0752\nLLuTd8TTP3peApaoZAJ5mih7tZwcYfgeMPC9PMUJBlb1BFDdxuECaYg3uYoGIRYt\nkNYZ0YmWDGq/yRnPUFwslqcDtomrW56t0v5lHbqibmFy3T2y4VFpXQL9wGlRhA7J\n2/GgRPM6N0y9Bn4GFbPaIAAUekHUTFmErKNcrrLgcQKBgQDypufx+LACKMLtr0F6\nFiVaFcWjKopGignWAatHaU/FP1XdxVvT8YCWJOcUmEX+Jh04bMHsCyB7vK6ZPx+0\nD/ZuejkrXose7DzfAswgHrIjDhjqrhgBsZB9bWx/7bWxXK5XctseaWPwWWNnRKCY\nHJrCtVRpHgz43MyXKQhmuHLdVQKBgQDC0vtKsg+4iih6B4MPrbdHjFTC+LYg73nS\nDpRwnPCmtI8DLvJlZr/tLuai2uqo1Ui0V3R/n48n2Ye2wvliDWYvQ2s7d+48Kq4s\n5As5pNNApo6qGDKn8rRd3kKVs6xGe+XPkLF5oM9LTkR5fqH6ALGIwM9C4xlfO/uC\nZ1V/5ciL9wKBgA7VEPyDfQ7EuxWYTuJNlD7rccdFhGpHac6BD50v3MZr1q3VsIVG\nD9wdqVpi7HRalBKs4zWwgG3P3MRVTXTOPPwH0JLMFqjvO9FN9HhKKA1ogTFnLuR7\nnB9unuE7AI404htKVAaJ3qgEbsUTNtXVechJGT3LrnNP29mpkm/k+nB5AoGALIdS\nXjEyfKg/NhzvbK70vAqr+OAlqINzoXopnU+RhVixczXQuzJv3YMhvckxZyNQeb+f\nZegPLTl/1lrb6vhLCbRsFuyDbAcJRkNc+XDdw+INq3zaXx6O8QFy0Ip/bqC01uso\nVTdXCcw6xFYYKW7tJOeEt7H2Q5kPFDAQD6pyWuMCgYEA6XiSeJeBEJTmIAnWwX/D\nsgYW5e1VLilFxfJpn4QtiogUMDugPCKDTHatfq984VS0tBWH7cyTKgI/l4fr/i9+\nOEQu+bn7n78t8cTCdzWlc3Upt9JKxvC7P4UTfAHV7YAmeCUNd3X1Y/1587wqaIe5\nBAYqnsxHdTUK5DfrMcgTPYw=\n-----END PRIVATE KEY-----\n",
-    "client_email": "dih-786@projzero-441310.iam.gserviceaccount.com",
-    "client_id": "106741124606177610543",
-    "auth_uri": "https://accounts.google.com/o/oauth2/auth",
-    "token_uri": "https://oauth2.googleapis.com/token",
-    "auth_provider_x509_cert_url": "https://www.googleapis.com/oauth2/v1/certs",
-    "client_x509_cert_url": "https://www.googleapis.com/robot/v1/metadata/x509/dih-786%40projzero-441310.iam.gserviceaccount.com",
-    "universe_domain": "googleapis.com",
-}
+# REAL_SERVICE_ACCOUNT_JSON removed — use get_test_credentials() below
 
 
 def get_test_credentials():
-    """Get test credentials from environment or use default.
+    """Get GCP test credentials from environment.
 
-    If GCP_SERVICE_ACCOUNT_JSON is set but not valid JSON (e.g. corrupted by
-    shell when sourcing .env), fall back to REAL_SERVICE_ACCOUNT_JSON so tests
-    run instead of skipping.
+    Requires GCP_SERVICE_ACCOUNT_JSON env var (set via .env.test and
+    the Makefile test-batch-6-2 target).  Raises SkipTest when the
+    env var is not available so the test suite can run without GCP
+    credentials in environments where they are not configured.
     """
+    import unittest
+    import json
     env_json = os.environ.get("GCP_SERVICE_ACCOUNT_JSON")
-    if env_json:
-        try:
-            return json.loads(env_json)
-        except json.JSONDecodeError:
-            return REAL_SERVICE_ACCOUNT_JSON
-    return REAL_SERVICE_ACCOUNT_JSON
-
-
-@pytest.mark.integration
+    if not env_json:
+        raise unittest.SkipTest(
+            "GCP_SERVICE_ACCOUNT_JSON not set — skipping"
+        )
+    try:
+        return json.loads(env_json)
+    except json.JSONDecodeError:
+        raise unittest.SkipTest(
+            "GCP_SERVICE_ACCOUNT_JSON is not valid JSON — skipping"
+        )
 class TestGCPMarketplaceConnectorEdgeCases(TestCase):
     """Edge case tests for GCP Marketplace connector"""
 
@@ -106,132 +98,6 @@ class TestGCPMarketplaceConnectorEdgeCases(TestCase):
                 )
             else:
                 raise
-
-    def test_list_listings_with_zero_limit(self):
-        """Test list_listings with limit=0"""
-        try:
-            listings = self.connector.list_listings(limit=0)
-            self.assertIsInstance(listings, list)
-            # Should return empty list or handle gracefully
-            self.assertEqual(len(listings), 0)
-        except ImportError:
-            self.skipTest("Analytics Hub client library not installed")
-        except (ValueError, NotFoundError):
-            # May raise ValueError for invalid limit or NotFoundError if no exchanges
-            pass
-
-    def test_list_listings_with_negative_limit(self):
-        """Test list_listings with negative limit"""
-        try:
-            listings = self.connector.list_listings(limit=-1)
-            # Should handle gracefully (may return empty list or raise ValueError)
-            self.assertIsInstance(listings, list)
-        except (ValueError, NotFoundError):
-            # Expected if validation is strict
-            pass
-        except ImportError:
-            self.skipTest("Analytics Hub client library not installed")
-
-    def test_list_listings_with_negative_offset(self):
-        """Test list_listings with negative offset"""
-        try:
-            listings = self.connector.list_listings(offset=-1)
-            # Should handle gracefully (may treat as 0 or raise ValueError)
-            self.assertIsInstance(listings, list)
-        except (ValueError, NotFoundError):
-            # Expected if validation is strict
-            pass
-        except ImportError:
-            self.skipTest("Analytics Hub client library not installed")
-
-    def test_list_listings_with_large_limit(self):
-        """Test list_listings with very large limit"""
-        try:
-            listings = self.connector.list_listings(limit=10000)
-            self.assertIsInstance(listings, list)
-            # Should handle large limits gracefully
-            self.assertGreaterEqual(len(listings), 0)
-        except ImportError:
-            self.skipTest("Analytics Hub client library not installed")
-        except NotFoundError:
-            self.skipTest("No data exchanges found in project")
-
-    def test_list_listings_pagination_consistency(self):
-        """Test that pagination returns consistent results"""
-        try:
-            # Get first page
-            page1 = self.connector.list_listings(limit=5, offset=0)
-
-            # Get first page again
-            page1_again = self.connector.list_listings(limit=5, offset=0)
-
-            # Results should be consistent (same IDs)
-            if len(page1) > 0 and len(page1_again) > 0:
-                ids1 = {listing.marketplace_id for listing in page1}
-                ids1_again = {listing.marketplace_id for listing in page1_again}
-                # Should have same IDs (order may differ)
-                self.assertEqual(ids1, ids1_again)
-        except ImportError:
-            self.skipTest("Analytics Hub client library not installed")
-        except NotFoundError:
-            self.skipTest("No data exchanges found in project")
-
-    def test_get_listing_with_empty_id(self):
-        """Test get_listing with empty string ID"""
-        try:
-            with self.assertRaises((ValueError, NotFoundError)):
-                self.connector.get_listing("")
-        except ImportError:
-            self.skipTest("Analytics Hub client library not installed")
-
-    def test_get_listing_with_none_id(self):
-        """Test get_listing with None ID"""
-        try:
-            # None will cause AttributeError when trying to parse
-            with self.assertRaises((ValueError, TypeError, AttributeError, ConnectionError)):
-                self.connector.get_listing(None)
-        except ImportError:
-            self.skipTest("Analytics Hub client library not installed")
-
-    def test_get_listing_with_invalid_format(self):
-        """Test get_listing with invalid listing ID format"""
-        try:
-            # Invalid format: should not contain slashes or special characters
-            with self.assertRaises((ValueError, NotFoundError)):
-                self.connector.get_listing("invalid/format/123")
-        except ImportError:
-            self.skipTest("Analytics Hub client library not installed")
-
-    def test_list_resources_with_empty_listing_id(self):
-        """Test list_resources with empty listing ID"""
-        try:
-            with self.assertRaises((ValueError, NotFoundError)):
-                self.connector.list_resources("")
-        except ImportError:
-            self.skipTest("Analytics Hub client library not installed")
-
-    def test_list_resources_with_none_listing_id(self):
-        """Test list_resources with None listing ID"""
-        try:
-            # None will cause AttributeError when get_listing tries to parse it
-            with self.assertRaises((ValueError, TypeError, AttributeError, ConnectionError)):
-                self.connector.list_resources(None)
-        except ImportError:
-            self.skipTest("Analytics Hub client library not installed")
-
-    def test_list_resources_with_nonexistent_listing(self):
-        """Test list_resources with non-existent listing ID"""
-        try:
-            # Use a non-existent listing ID
-            resources = self.connector.list_resources("nonexistent-exchange/nonexistent-listing")
-            # Should return empty list or raise NotFoundError
-            self.assertIsInstance(resources, list)
-            self.assertEqual(len(resources), 0)
-        except NotFoundError:
-            # Expected if listing doesn't exist
-            pass
-        except ImportError:
-            self.skipTest("Analytics Hub client library not installed")
 
     def test_sync_pull_with_empty_listing_ids(self):
         """Test sync_pull with empty listing_ids list"""

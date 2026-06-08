@@ -57,8 +57,8 @@ class JourneyDC001DiscoverAndPurchaseTests(E2ETestBase):
         
         # Create provider tenant and user (for publishing assets)
         self.provider_tenant = Tenant.objects.create(
-            name="Provider Tenant",
-            slug="provider-tenant",
+            name=f"Provider Tenant {uuid.uuid4().hex[:8]}",
+            slug=f"provider-tenant-{uuid.uuid4().hex[:8]}",
             kyc_status=KYCStatus.VERIFIED
         )
         ensure_tenant_has_active_subscription(self.provider_tenant)
@@ -78,8 +78,8 @@ class JourneyDC001DiscoverAndPurchaseTests(E2ETestBase):
         
         # Create consumer tenant and user (for purchasing assets)
         self.consumer_tenant = Tenant.objects.create(
-            name="Consumer Tenant",
-            slug="consumer-tenant",
+            name=f"Consumer Tenant {uuid.uuid4().hex[:8]}",
+            slug=f"consumer-tenant-{uuid.uuid4().hex[:8]}",
             kyc_status=KYCStatus.VERIFIED
         )
         ensure_tenant_has_active_subscription(self.consumer_tenant)
@@ -407,8 +407,8 @@ class JourneyDC002RequestAccessTests(E2ETestBase):
         
         # Create provider and consumer tenants
         self.provider_tenant = Tenant.objects.create(
-            name="Provider Tenant",
-            slug="provider-tenant",
+            name=f"Provider Tenant {uuid.uuid4().hex[:8]}",
+            slug=f"provider-tenant-{uuid.uuid4().hex[:8]}",
             kyc_status=KYCStatus.VERIFIED
         )
         ensure_tenant_has_active_subscription(self.provider_tenant)
@@ -426,8 +426,8 @@ class JourneyDC002RequestAccessTests(E2ETestBase):
         UserRole.objects.create(user=self.provider_user, role=provider_role)
         
         self.consumer_tenant = Tenant.objects.create(
-            name="Consumer Tenant",
-            slug="consumer-tenant",
+            name=f"Consumer Tenant {uuid.uuid4().hex[:8]}",
+            slug=f"consumer-tenant-{uuid.uuid4().hex[:8]}",
             kyc_status=KYCStatus.VERIFIED
         )
         ensure_tenant_has_active_subscription(self.consumer_tenant)
@@ -495,8 +495,8 @@ class JourneyDC003DownloadPurchasedDataTests(E2ETestBase):
         super().setUp()
         
         self.provider_tenant = Tenant.objects.create(
-            name="Provider Tenant",
-            slug="provider-tenant",
+            name=f"Provider Tenant {uuid.uuid4().hex[:8]}",
+            slug=f"provider-tenant-{uuid.uuid4().hex[:8]}",
             kyc_status=KYCStatus.VERIFIED
         )
         ensure_tenant_has_active_subscription(self.provider_tenant)
@@ -514,8 +514,8 @@ class JourneyDC003DownloadPurchasedDataTests(E2ETestBase):
         UserRole.objects.create(user=self.provider_user, role=provider_role)
         
         self.consumer_tenant = Tenant.objects.create(
-            name="Consumer Tenant",
-            slug="consumer-tenant",
+            name=f"Consumer Tenant {uuid.uuid4().hex[:8]}",
+            slug=f"consumer-tenant-{uuid.uuid4().hex[:8]}",
             kyc_status=KYCStatus.VERIFIED
         )
         ensure_tenant_has_active_subscription(self.consumer_tenant)
@@ -669,8 +669,8 @@ class JourneyDC004ExploreAssetLineageTests(E2ETestBase):
         super().setUp()
         
         self.provider_tenant = Tenant.objects.create(
-            name="Provider Tenant",
-            slug="provider-tenant",
+            name=f"Provider Tenant {uuid.uuid4().hex[:8]}",
+            slug=f"provider-tenant-{uuid.uuid4().hex[:8]}",
             kyc_status=KYCStatus.VERIFIED
         )
         ensure_tenant_has_active_subscription(self.provider_tenant)
@@ -688,8 +688,8 @@ class JourneyDC004ExploreAssetLineageTests(E2ETestBase):
         UserRole.objects.create(user=self.provider_user, role=provider_role)
         
         self.consumer_tenant = Tenant.objects.create(
-            name="Consumer Tenant",
-            slug="consumer-tenant",
+            name=f"Consumer Tenant {uuid.uuid4().hex[:8]}",
+            slug=f"consumer-tenant-{uuid.uuid4().hex[:8]}",
             kyc_status=KYCStatus.VERIFIED
         )
         ensure_tenant_has_active_subscription(self.consumer_tenant)
@@ -747,8 +747,8 @@ class JourneyDC005ReviewAssetQualityTests(E2ETestBase):
         super().setUp()
         
         self.provider_tenant = Tenant.objects.create(
-            name="Provider Tenant",
-            slug="provider-tenant",
+            name=f"Provider Tenant {uuid.uuid4().hex[:8]}",
+            slug=f"provider-tenant-{uuid.uuid4().hex[:8]}",
             kyc_status=KYCStatus.VERIFIED
         )
         ensure_tenant_has_active_subscription(self.provider_tenant)
@@ -766,8 +766,8 @@ class JourneyDC005ReviewAssetQualityTests(E2ETestBase):
         UserRole.objects.create(user=self.provider_user, role=provider_role)
         
         self.consumer_tenant = Tenant.objects.create(
-            name="Consumer Tenant",
-            slug="consumer-tenant",
+            name=f"Consumer Tenant {uuid.uuid4().hex[:8]}",
+            slug=f"consumer-tenant-{uuid.uuid4().hex[:8]}",
             kyc_status=KYCStatus.VERIFIED
         )
         ensure_tenant_has_active_subscription(self.consumer_tenant)

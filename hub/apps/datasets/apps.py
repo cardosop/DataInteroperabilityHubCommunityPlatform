@@ -12,4 +12,8 @@ class DatasetsConfig(AppConfig):
 
     def ready(self):
         import hub.apps.datasets.signals  # noqa: F401
+        from hub.apps.datasets.orphan_file_reconcile import (
+            install_dataset_orphan_file_hooks,
+        )
+        install_dataset_orphan_file_hooks()
 

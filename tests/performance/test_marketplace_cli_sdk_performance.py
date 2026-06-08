@@ -1,4 +1,6 @@
 """
+
+import uuid
 10.5.7: Marketplace Integration CLI/SDK Performance Tests
 
 Tests performance of Marketplace Integration CLI commands and SDK methods:

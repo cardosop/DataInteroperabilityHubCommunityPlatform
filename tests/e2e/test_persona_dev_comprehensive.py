@@ -55,8 +55,8 @@ class JourneyDEV001BuildCustomIntegrationTests(E2ETestBase):
 
         # Create tenant and user for external developer
         self.tenant = Tenant.objects.create(
-            name="Developer Tenant",
-            slug="developer-tenant",
+            name=f"Developer Tenant {uuid.uuid4().hex[:8]}",
+            slug=f"developer-tenant-{uuid.uuid4().hex[:8]}",
             kyc_status=KYCStatus.VERIFIED
         )
         ensure_tenant_has_active_subscription(self.tenant)
@@ -277,8 +277,8 @@ class JourneyDEV002IntegrateViaSDKTests(E2ETestBase):
 
         # Create tenant and user
         self.tenant = Tenant.objects.create(
-            name="SDK Tenant",
-            slug="sdk-tenant",
+            name=f"SDK Tenant {uuid.uuid4().hex[:8]}",
+            slug=f"sdk-tenant-{uuid.uuid4().hex[:8]}",
             kyc_status=KYCStatus.VERIFIED
         )
         ensure_tenant_has_active_subscription(self.tenant)
@@ -324,8 +324,8 @@ class JourneyDEV003IntegrateViaCLITests(E2ETestBase):
 
         # Create tenant and user
         self.tenant = Tenant.objects.create(
-            name="CLI Tenant",
-            slug="cli-tenant",
+            name=f"CLI Tenant {uuid.uuid4().hex[:8]}",
+            slug=f"cli-tenant-{uuid.uuid4().hex[:8]}",
             kyc_status=KYCStatus.VERIFIED
         )
         ensure_tenant_has_active_subscription(self.tenant)
@@ -372,8 +372,8 @@ class JourneyDEV004SetUpWebhooksTests(E2ETestBase):
 
         # Create tenant and user
         self.tenant = Tenant.objects.create(
-            name="Webhook Tenant",
-            slug="webhook-tenant",
+            name=f"Webhook Tenant {uuid.uuid4().hex[:8]}",
+            slug=f"webhook-tenant-{uuid.uuid4().hex[:8]}",
             kyc_status=KYCStatus.VERIFIED
         )
         ensure_tenant_has_active_subscription(self.tenant)
@@ -762,8 +762,8 @@ class ExternalDeveloperUseCasesTests(E2ETestBase):
 
         # Create tenant and user
         self.tenant = Tenant.objects.create(
-            name="Use Case Tenant",
-            slug="usecase-tenant",
+            name=f"Use Case Tenant {uuid.uuid4().hex[:8]}",
+            slug=f"usecase-tenant-{uuid.uuid4().hex[:8]}",
             kyc_status=KYCStatus.VERIFIED
         )
         ensure_tenant_has_active_subscription(self.tenant)
@@ -934,8 +934,8 @@ class ExternalDeveloperErrorScenariosTests(E2ETestBase):
 
         # Create tenant and user
         self.tenant = Tenant.objects.create(
-            name="Error Tenant",
-            slug="error-tenant",
+            name=f"Error Tenant {uuid.uuid4().hex[:8]}",
+            slug=f"error-tenant-{uuid.uuid4().hex[:8]}",
             kyc_status=KYCStatus.VERIFIED
         )
         ensure_tenant_has_active_subscription(self.tenant)

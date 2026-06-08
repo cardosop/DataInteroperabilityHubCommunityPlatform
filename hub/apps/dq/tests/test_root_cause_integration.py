@@ -161,11 +161,13 @@ class RootCauseAnalysisIntegrationTest(TestCase):
         self.assertIn("root_causes", analysis)
         self.assertIn("primary_cause", analysis)
         self.assertIn("recommendations", analysis)
-        self.assertGreater(len(analysis["root_causes"]), 0)
-        
-        # Should have check failure
+        self.assertGreaterEqual(len(analysis["root_causes"]), 1)
+
+        # Should have exactly 1 check failure (1 FAIL check in checks_json).
         check_failures = [c for c in analysis["root_causes"] if c["type"] == "CHECK_FAILURE"]
-        self.assertGreater(len(check_failures), 0)
+        self.assertEqual(len(check_failures), 1)
+        # Validate content, not just existence.
+        self.assertEqual(check_failures[0]["details"]["check_name"], "expect_column_values_to_not_be_null")
     
     def test_root_cause_report_generation(self):
         """Test root cause report generation"""
@@ -211,6 +213,9 @@ class RootCauseAnalysisIntegrationTest(TestCase):
         self.assertIn("summary", report)
         self.assertIn("analyses", report)
         self.assertIn("common_recommendations", report)
-        self.assertGreater(report["summary"]["total_failed_runs"], 0)
-        self.assertGreater(len(report["analyses"]), 0)
+        self.assertGreaterEqual(report["summary"]["total_failed_runs"], 3)
+        self.assertGreaterEqual(len(report["analyses"]), 3)
+        # Validate summary content, not just key existence.
+        self.assertIsNotNone(report["summary"])
+        self.assertIsInstance(report["analyses"], list)
 

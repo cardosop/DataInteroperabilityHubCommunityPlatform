@@ -473,6 +473,32 @@ class ScheduledExportBusinessRules(BusinessRules):
                 errors.append(
                     "Azure Blob destination requires 'account_name' in destination_config"
                 )
+        elif destination_type == DestinationType.SNOWFLAKE_TABLE:
+            if "account" not in destination_config:
+                errors.append("Snowflake destination requires 'account' in destination_config")
+            if "database" not in destination_config:
+                errors.append("Snowflake destination requires 'database' in destination_config")
+            if "schema" not in destination_config:
+                errors.append("Snowflake destination requires 'schema' in destination_config")
+        elif destination_type == DestinationType.BIGQUERY_TABLE:
+            if "project_id" not in destination_config:
+                errors.append("BigQuery destination requires 'project_id' in destination_config")
+            if "dataset_id" not in destination_config:
+                errors.append("BigQuery destination requires 'dataset_id' in destination_config")
+        elif destination_type == DestinationType.DATABRICKS_TABLE:
+            if "host" not in destination_config:
+                errors.append("Databricks destination requires 'host' in destination_config")
+            if "http_path" not in destination_config:
+                errors.append("Databricks destination requires 'http_path' in destination_config")
+            if "catalog" not in destination_config:
+                errors.append("Databricks destination requires 'catalog' in destination_config")
+            if "schema" not in destination_config:
+                errors.append("Databricks destination requires 'schema' in destination_config")
+        elif destination_type == DestinationType.ATHENA_TABLE:
+            if "database" not in destination_config:
+                errors.append("Athena destination requires 'database' in destination_config")
+            if "s3_staging_dir" not in destination_config:
+                errors.append("Athena destination requires 's3_staging_dir' in destination_config")
         else:
             errors.append(f"Unknown destination type: {destination_type}")
 

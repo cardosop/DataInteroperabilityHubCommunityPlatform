@@ -31,6 +31,7 @@ class ScheduledExportSerializer(serializers.ModelSerializer):
             "schedule_config",
             "destination_type",
             "destination_config",
+            "credential_ref",
             "source_scope",
             "status",
             "next_run_at",

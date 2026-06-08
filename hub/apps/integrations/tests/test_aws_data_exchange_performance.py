@@ -67,15 +67,19 @@ class TestAWSDataExchangeConnectorPerformance(TestCase):
         super().setUpClass()
         reset_circuit_breaker_by_name("aws-data-exchange-connector")
         try:
-            credentials = get_aws_credentials()
-            cls.connector = AWSDataExchangeConnector(**credentials)
-            cls.connector.authenticate(credentials)
-            if not verify_connection(cls.connector):
-                raise unittest.SkipTest(
-                    "Cannot connect to AWS Data Exchange - check credentials and permissions"
-                )
-        except Exception as e:
-            raise unittest.SkipTest(f"Cannot set up AWS Data Exchange connector: {e}")
+            try:
+                credentials = get_aws_credentials()
+                cls.connector = AWSDataExchangeConnector(**credentials)
+                cls.connector.authenticate(credentials)
+                if not verify_connection(cls.connector):
+                    raise unittest.SkipTest(
+                        "Cannot connect to AWS Data Exchange - check credentials and permissions"
+                    )
+            except Exception as e:
+                raise unittest.SkipTest(f"Cannot set up AWS Data Exchange connector: {e}")
+        except Exception:
+            cls._rollback_atomics(cls.cls_atomics)
+            raise
 
     @classmethod
     def tearDownClass(cls):

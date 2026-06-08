@@ -93,12 +93,20 @@ class ScanFileMalwareJobTest(FilesTestBase):
         file_obj.refresh_from_db()
         self.assertEqual(file_obj.scan_status, FileScanStatus.SCAN_UNAVAILABLE)
         self.assertIsNotNone(file_obj.scanned_at)
-        self.assertTrue(
-            AuditEvent.objects.filter(
-                action="FILE_MALWARE_SCAN_UNAVAILABLE",
-                resource_id=file_obj.id,
-            ).exists()
+        audit = AuditEvent.objects.filter(
+            action="FILE_MALWARE_SCAN_UNAVAILABLE",
+            resource_id=file_obj.id,
+        ).first()
+        self.assertIsNotNone(audit,
+            "FILE_MALWARE_SCAN_UNAVAILABLE audit event must be emitted")
+        self.assertEqual(audit.result, "WARNING")
+        self.assertEqual(
+            audit.details_json.get("reason"),
+            "clamav_unreachable_or_client_error",
         )
+        self.assertEqual(audit.details_json.get("clamav_host"), "127.0.0.1")
+        self.assertEqual(audit.details_json.get("clamav_port"), 65442)
+        self.assertEqual(audit.tenant, self.tenant)
 
     @override_settings(CLAMAV_ENABLED=True, CLAMAV_HOST="127.0.0.1", CLAMAV_PORT=65442)
     def test_scan_marks_scan_error_and_audit_when_storage_missing_object(self):
@@ -121,12 +129,18 @@ class ScanFileMalwareJobTest(FilesTestBase):
         file_obj.refresh_from_db()
         self.assertEqual(file_obj.scan_status, FileScanStatus.SCAN_ERROR)
         self.assertIsNotNone(file_obj.scanned_at)
-        self.assertTrue(
-            AuditEvent.objects.filter(
-                action="FILE_MALWARE_SCAN_STORAGE_ERROR",
-                resource_id=file_obj.id,
-            ).exists()
+        audit = AuditEvent.objects.filter(
+            action="FILE_MALWARE_SCAN_STORAGE_ERROR",
+            resource_id=file_obj.id,
+        ).first()
+        self.assertIsNotNone(audit,
+            "FILE_MALWARE_SCAN_STORAGE_ERROR audit event must be emitted")
+        self.assertEqual(audit.result, "WARNING")
+        self.assertEqual(
+            audit.details_json.get("error_type"),
+            "StorageObjectNotFoundError",
         )
+        self.assertEqual(audit.tenant, self.tenant)
 
 
 class FileDownloadMalwareGateAPITest(FilesAPITestBase):
@@ -186,3 +200,67 @@ class FileDownloadMalwareGateAPITest(FilesAPITestBase):
         response = self.client.get(f"/api/v1/files/{self.file.id}/download/")
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertIn("download_url", response.data)
+
+
+class ScanFileMalwareIdempotencyTest(FilesTestBase):
+    """Idempotency and guard-clause tests for the scan_file_malware RQ task."""
+
+    def setUp(self):
+        super().setUp()
+        self._storage_ok = False
+        try:
+            S3StorageClient()._ensure_bucket_exists()
+            self._storage_ok = True
+        except Exception:
+            self._storage_ok = False
+
+    @override_settings(CLAMAV_HOST="127.0.0.1", CLAMAV_PORT=65443, CLAMAV_ENABLED=True)
+    def test_scan_file_malware_idempotent_second_call_is_noop(self):
+        """Second scan call is a no-op — scanned_at must not change."""
+        if not self._storage_ok:
+            self.skipTest("S3/MinIO not available")
+
+        import uuid
+        body = b"idempotency-test-body"
+        storage_path = f"{self.tenant.id}/{uuid.uuid4()}/idem.txt"
+        storage = S3StorageClient()
+        storage.upload_file(storage_path, body, "text/plain")
+
+        file_obj = File.objects.create(
+            tenant=self.tenant,
+            name="idem.txt",
+            content_type="text/plain",
+            size=len(body),
+            storage_path=storage_path,
+            status=FileStatus.ACTIVE,
+            scan_status=FileScanStatus.PENDING_SCAN,
+            created_by=self.user,
+        )
+
+        # First call — sets SCAN_UNAVAILABLE (bad port)
+        scan_file_malware(str(file_obj.id))
+        file_obj.refresh_from_db()
+        self.assertEqual(file_obj.scan_status, FileScanStatus.SCAN_UNAVAILABLE)
+        first_scanned_at = file_obj.scanned_at
+        self.assertIsNotNone(first_scanned_at)
+
+        # Second call — idempotency guard at tasks.py:48-49 skips processing
+        scan_file_malware(str(file_obj.id))
+        file_obj.refresh_from_db()
+        self.assertEqual(file_obj.scan_status, FileScanStatus.SCAN_UNAVAILABLE)
+        self.assertEqual(file_obj.scanned_at, first_scanned_at,
+            "Second scan call must not update scanned_at timestamp")
+
+    def test_scan_file_malware_gracefully_returns_when_file_deleted(self):
+        """scan_file_malware(non_existent_uuid) must not raise or create audit events."""
+        import uuid
+
+        non_existent_id = uuid.uuid4()
+        before = AuditEvent.objects.count()
+
+        # Must not raise — the File.DoesNotExist guard at tasks.py:44-46 catches this
+        scan_file_malware(str(non_existent_id))
+
+        after = AuditEvent.objects.count()
+        self.assertEqual(after, before,
+            "No audit events must be created for a non-existent file")

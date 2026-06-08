@@ -66,6 +66,32 @@ urlpatterns = [
         TenantConfigViewSet.as_view({"post": "seed_sample"}),
         name="tenant-me-seed-sample",
     ),
+    # Phase 285.13.8 — self-serve plan management
+    path(
+        "me/plan/",
+        TenantConfigViewSet.as_view({"get": "me_plan"}),
+        name="tenant-me-plan",
+    ),
+    path(
+        "me/plan/available-upgrades/",
+        TenantConfigViewSet.as_view({"get": "me_plan_available_upgrades"}),
+        name="tenant-me-plan-available-upgrades",
+    ),
+    path(
+        "me/plan/upgrade/",
+        TenantConfigViewSet.as_view({"post": "me_plan_upgrade"}),
+        name="tenant-me-plan-upgrade",
+    ),
+    path(
+        "me/plan/downgrade/",
+        TenantConfigViewSet.as_view({"post": "me_plan_downgrade"}),
+        name="tenant-me-plan-downgrade",
+    ),
+    path(
+        "me/plan/available-ml-addons/",
+        TenantConfigViewSet.as_view({"get": "me_plan_available_ml_addons"}),
+        name="tenant-me-plan-available-ml-addons",
+    ),
     # Phase 226 OQ4 — test-only ephemeral-tenant provisioning. Gated by
     # ENVIRONMENT + E2E_TEST_SECRET; production 404s. Cleanup runs via
     # the staging-prefix-purge cron (slug starts with `e2e-ephemeral-`).

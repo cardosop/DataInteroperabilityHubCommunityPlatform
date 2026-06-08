@@ -10,7 +10,9 @@ from django.db import transaction
 from django.utils import timezone
 from django.core.cache import cache
 
-from hub.apps.orchestration.workflow_engine import WorkflowEngine
+from hub.apps.orchestration.workflow_engine import (
+    WorkflowEngine, WorkflowStepValueError,
+)
 from hub.apps.orchestration.registry import WorkflowRegistry
 from hub.apps.orchestration.models import WorkflowInstance, WorkflowStatus
 from hub.apps.virtualization.models import (
@@ -251,11 +253,14 @@ class VirtualizationWorkflow:
             user_id=str(user_id) if user_id else None
         )
 
-        validation_result = business_rules.validate_query_syntax(
-            query=virtual_dataset.query,
-            query_type=virtual_dataset.query_type,
-            raise_on_error=True
-        )
+        try:
+            validation_result = business_rules.validate_query_syntax(
+                query=virtual_dataset.query,
+                query_type=virtual_dataset.query_type,
+                raise_on_error=True
+            )
+        except ValidationError as e:
+            raise WorkflowStepValueError(str(e)) from e
 
         # Store validation result in state_data
         instance.state_data["virtual_dataset_id"] = str(virtual_dataset.id)
@@ -318,10 +323,13 @@ class VirtualizationWorkflow:
             user_id=str(user_id) if user_id else None
         )
 
-        compatibility_result = business_rules.validate_source_compatibility(
-            virtual_dataset=virtual_dataset,
-            raise_on_error=True
-        )
+        try:
+            compatibility_result = business_rules.validate_source_compatibility(
+                virtual_dataset=virtual_dataset,
+                raise_on_error=True
+            )
+        except ValidationError as e:
+            raise WorkflowStepValueError(str(e)) from e
 
         # Store compatibility result in state_data
         instance.state_data["compatibility_result"] = {
@@ -1264,10 +1272,20 @@ class VirtualizationWorkflow:
                 created_by_id=user_id
             )
         except Exception as e:
-            # Catch database integrity errors and convert to ValueError
+            # Surface database integrity errors with accurate context
+            # instead of masking them as "Invalid tenant_id".
             from django.db import IntegrityError
-            if isinstance(e, IntegrityError) or "foreign key constraint" in str(e).lower():
-                raise ValueError(f"Invalid tenant_id: {tenant_id}") from e
+            if isinstance(e, IntegrityError):
+                raise IntegrityError(
+                    f"Failed to create workflow instance for "
+                    f"workflow_name={cls.WORKFLOW_NAME!r}, "
+                    f"tenant_id={tenant_id!r}: {e}"
+                ) from e
+            if "foreign key constraint" in str(e).lower():
+                raise IntegrityError(
+                    f"Foreign key violation creating workflow instance "
+                    f"for {cls.WORKFLOW_NAME!r} (tenant_id={tenant_id!r}): {e}"
+                ) from e
             raise
 
         # Start and execute workflow

@@ -914,7 +914,8 @@ class ContractService(BaseService, ContractEventPublisher, ODPSEventPublisher):
 
     @transaction.atomic
     def delete_contract(
-        self, contract_id: str, tenant_id: Optional[str] = None, user_id: Optional[str] = None
+        self, contract_id: str, tenant_id: Optional[str] = None, user_id: Optional[str] = None,
+        reason: Optional[str] = None,
     ) -> None:
         """
         Delete a contract (soft delete: set status to RETIRED).
@@ -972,6 +973,51 @@ class ContractService(BaseService, ContractEventPublisher, ODPSEventPublisher):
 
             contract.status = ContractStatus.RETIRED
             contract.save()
+
+            # Emit ODPS_DELETED audit event and publish odps.deleted.
+            # Pattern mirrors ODPSService.create_odps() lines 2999-3031.
+            if contract.original_spec_type == OriginalSpecType.ODPS:
+                from django.contrib.auth import get_user_model
+
+                from hub.apps.audit.utils import create_audit_event
+                from hub.apps.tenants.models import Tenant
+
+                def _audit_odps_deletion():
+                    tenant_obj = Tenant.objects.get(id=effective_tenant_id)
+                    User = get_user_model()
+                    act_user = (
+                        User.objects.get(id=effective_user_id)
+                        if effective_user_id else None
+                    )
+                    create_audit_event(
+                        resource_type="ODPS",
+                        action="ODPS_DELETED",
+                        actor_user=act_user,
+                        tenant=tenant_obj,
+                        resource_id=str(contract.id),
+                        result="SUCCESS",
+                        details={
+                            "contract_id": str(contract.id),
+                            "reason": reason or "Contract retired",
+                            "tenant_id": effective_tenant_id,
+                            "request_id": self.request_id,
+                        },
+                    )
+
+                run_side_effect(_audit_odps_deletion)
+
+                try:
+                    self.publish_odps_deleted(
+                        contract_id=str(contract.id),
+                        reason=reason,
+                    )
+                except Exception:
+                    logger.warning(
+                        "odps_deleted_event_publish_failed",
+                        contract_id=str(contract.id),
+                        message="Failed to publish ODPS deleted event "
+                        "(non-critical)",
+                    )
 
         return self.execute_with_metrics(
             operation="delete_contract", tenant_id=effective_tenant_id, func=_delete
@@ -2192,13 +2238,27 @@ class ContractService(BaseService, ContractEventPublisher, ODPSEventPublisher):
             # will handle it automatically. We only need to compensate if links
             # were established but subsequent operations failed.
             if state.odps_contract_id and state.odcs_contract_id:
-                logger.exception(
-                    "odps_linking_failed_after_links_established",
-                    odps_contract_id=state.odps_contract_id,
-                    odcs_contract_id=state.odcs_contract_id,
-                    error=str(e),
-                    message="ODPS linking failed after links established, triggering compensation",
-                )
+                # NotFoundError and ValidationError are controlled business-
+                # rule rejections (missing contract, cross-tenant, etc.) —
+                # log at WARNING.  Everything else is an unexpected fault
+                # and stays at ERROR.
+                if isinstance(e, (NotFoundError, ValidationError)):
+                    logger.warning(
+                        "odps_linking_failed_after_links_established",
+                        odps_contract_id=state.odps_contract_id,
+                        odcs_contract_id=state.odcs_contract_id,
+                        error=str(e),
+                        exception_type=type(e).__name__,
+                        message="ODPS linking failed after links established, triggering compensation",
+                    )
+                else:
+                    logger.exception(
+                        "odps_linking_failed_after_links_established",
+                        odps_contract_id=state.odps_contract_id,
+                        odcs_contract_id=state.odcs_contract_id,
+                        error=str(e),
+                        message="ODPS linking failed after links established, triggering compensation",
+                    )
                 try:
                     # Compensate outside the transaction to ensure it happens
                     # even if the transaction is rolled back

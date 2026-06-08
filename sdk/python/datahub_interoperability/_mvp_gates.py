@@ -37,6 +37,9 @@ MVP_GATED_PREFIXES: Final[FrozenSet[str]] = frozenset({
     "social/",
     "scheduled-ingestions/",
     "scheduled-exports/",
+    "developer/",
+    "dpia/",
+    "ropa/",
 })
 
 
@@ -57,6 +60,9 @@ MVP_GATED_FEATURE_NAMES: Final[Dict[str, str]] = {
     "social/": "Social / Collaboration",
     "scheduled-ingestions/": "Scheduled Ingestions",
     "scheduled-exports/": "Scheduled Exports",
+    "developer/": "Developer Portal",
+    "dpia/": "Data Protection Impact Assessments",
+    "ropa/": "Record of Processing Activities",
 }
 
 

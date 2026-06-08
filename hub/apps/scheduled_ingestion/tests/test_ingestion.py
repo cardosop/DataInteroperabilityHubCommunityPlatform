@@ -185,8 +185,9 @@ class ScheduledIngestionProcessorTest(TestCase):
 
     def test_filter_files_timestamp_incremental(self):
         """Test file filtering with timestamp-based incremental ingestion."""
-        self.scheduled_ingestion.incremental_enabled = True
-        self.scheduled_ingestion.incremental_strategy = "TIMESTAMP"
+        # last_processed_timestamp controls incremental filtering behaviour.
+        # incremental_enabled / incremental_strategy are NOT model fields —
+        # incremental mode is determined by the timestamp field alone.
         self.scheduled_ingestion.last_processed_timestamp = timezone.now() - timedelta(days=1)
         self.scheduled_ingestion.save()
         connector = InMemoryConnector(

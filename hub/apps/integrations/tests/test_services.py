@@ -16,7 +16,18 @@ from django.utils import timezone
 
 from hub.apps.assets.models import Asset
 from hub.apps.core.services.base import ConflictError, NotFoundError, ServiceError, ValidationError
-from hub.apps.integrations.base import MarketplaceType, SyncDirection, SyncStatus
+from hub.apps.assets.models import AssetSourceType
+from hub.apps.integrations.base import (
+    DataMarketplaceConnector,
+    MarketplaceAssetMapping,
+    MarketplaceListing,
+    MarketplaceResource,
+    MarketplaceType,
+    SyncDirection,
+    SyncResult,
+    SyncStatus,
+)
+from hub.apps.integrations.factory import MarketplaceConnectorFactory
 from hub.apps.integrations.models import (
     MarketplaceConnection,
     MarketplaceMapping,
@@ -62,6 +73,184 @@ class MarketplaceIntegrationServiceTest(TestCase):
             "endpoint": "https://api.example.com",
             "timeout": 30,
         }
+
+        # ── Register a test CKAN connector that does NOT make real HTTP calls ──
+        # The workflow engine's _validate_connection_task creates a connector via
+        # the factory and calls test_connection().  Without this stub, the real
+        # CKANConnector attempts a live HTTP request to ``base_url`` (e.g.
+        # ckan.example.com), which generates ERROR logs from real DNS/timeout
+        # failures and opens the circuit breaker — polluting subsequent tests.
+        factory = MarketplaceConnectorFactory()
+
+        class _TestCKANConnector(DataMarketplaceConnector):
+            """Test stub: validates without making real HTTP requests."""
+
+            @property
+            def marketplace_type(self) -> MarketplaceType:
+                return MarketplaceType.CKAN_INSTANCE
+
+            @property
+            def supported_sync_directions(self):
+                return [SyncDirection.PUSH, SyncDirection.PULL]
+
+            def authenticate(self, credentials):
+                return True
+
+            def test_connection(self):
+                return True
+
+            def list_listings(self, filters=None, limit=None, offset=None):
+                return []
+
+            def get_listing(self, listing_id: str):
+                return MarketplaceListing(
+                    marketplace_id=listing_id,
+                    marketplace_type=MarketplaceType.CKAN_INSTANCE,
+                    title="Test Listing",
+                )
+
+            def list_resources(self, listing_id: str):
+                return []
+
+            def create_listing(self, listing: MarketplaceListing):
+                return listing
+
+            def update_listing(self, listing_id: str, listing: MarketplaceListing):
+                return listing
+
+            def publish_resource(self, listing_id: str, resource):
+                return resource
+
+            def download_resource(self, resource_id: str, destination_path: str):
+                return destination_path
+
+            def map_to_hub_asset(self, listing, sync_job_id=None):
+                return MarketplaceAssetMapping(
+                    asset_data={"name": listing.title, "description": listing.description or ""},
+                    source_type=AssetSourceType.FEDERATED,
+                    source_metadata={
+                        "marketplace_type": self.marketplace_type.value,
+                        "listing_id": listing.marketplace_id,
+                    },
+                    odps_metadata=None,
+                    odcs_metadata=None,
+                    resources=[],
+                )
+
+            def map_from_hub_asset(self, asset_data, odps_metadata=None, odcs_metadata=None):
+                return MarketplaceListing(
+                    marketplace_id=asset_data.get("id", "test"),
+                    marketplace_type=MarketplaceType.CKAN_INSTANCE,
+                    title=asset_data.get("name", "Unknown"),
+                )
+
+            def sync_push(self, asset_ids: list, options=None) -> SyncResult:
+                return SyncResult(
+                    status=SyncStatus.COMPLETED,
+                    total_items=len(asset_ids),
+                    successful_items=len(asset_ids),
+                )
+
+            def sync_pull(self, listing_ids=None, filters=None, options=None) -> SyncResult:
+                return SyncResult(
+                    status=SyncStatus.COMPLETED,
+                    total_items=0,
+                    successful_items=0,
+                    metadata={"mappings": []},
+                )
+
+        # Save original so we can restore it in tearDown — avoids polluting
+        # other test classes that may rely on the real CKANConnector.
+        self._original_ckan_connector = factory._connectors.get(
+            MarketplaceType.CKAN_INSTANCE.value
+        )
+        factory.register_connector(
+            MarketplaceType.CKAN_INSTANCE, _TestCKANConnector
+        )
+
+        # Register a test Snowflake connector so connection-test tests have a
+        # reliable connector and don't silently skip on infrastructure failures.
+        class _TestSnowflakeConnector(DataMarketplaceConnector):
+            @property
+            def marketplace_type(self) -> MarketplaceType:
+                return MarketplaceType.SNOWFLAKE_DATA_MARKETPLACE
+
+            @property
+            def supported_sync_directions(self):
+                return [SyncDirection.PUSH, SyncDirection.PULL]
+
+            def authenticate(self, credentials):
+                return True
+
+            def test_connection(self):
+                return True
+
+            def list_listings(self, filters=None, limit=None, offset=None):
+                return []
+
+            def get_listing(self, listing_id: str):
+                return MarketplaceListing(
+                    marketplace_id=listing_id,
+                    marketplace_type=MarketplaceType.SNOWFLAKE_DATA_MARKETPLACE,
+                    title="Test Listing",
+                )
+
+            def list_resources(self, listing_id: str):
+                return []
+
+            def create_listing(self, listing: MarketplaceListing):
+                return listing
+
+            def update_listing(self, listing_id: str, listing: MarketplaceListing):
+                return listing
+
+            def publish_resource(self, listing_id: str, resource):
+                return resource
+
+            def download_resource(self, resource_id: str, destination_path: str):
+                return destination_path
+
+            def map_to_hub_asset(self, listing, sync_job_id=None):
+                return MarketplaceAssetMapping(
+                    asset_data={"name": listing.title, "description": listing.description or ""},
+                    source_type=AssetSourceType.FEDERATED,
+                    source_metadata={
+                        "marketplace_type": self.marketplace_type.value,
+                        "listing_id": listing.marketplace_id,
+                    },
+                    odps_metadata=None,
+                    odcs_metadata=None,
+                    resources=[],
+                )
+
+            def map_from_hub_asset(self, asset_data, odps_metadata=None, odcs_metadata=None):
+                return MarketplaceListing(
+                    marketplace_id=asset_data.get("id", "test"),
+                    marketplace_type=MarketplaceType.SNOWFLAKE_DATA_MARKETPLACE,
+                    title=asset_data.get("name", "Unknown"),
+                )
+
+            def sync_push(self, asset_ids: list, options=None) -> SyncResult:
+                return SyncResult(
+                    status=SyncStatus.COMPLETED,
+                    total_items=len(asset_ids),
+                    successful_items=len(asset_ids),
+                )
+
+            def sync_pull(self, listing_ids=None, filters=None, options=None) -> SyncResult:
+                return SyncResult(
+                    status=SyncStatus.COMPLETED,
+                    total_items=0,
+                    successful_items=0,
+                    metadata={"mappings": []},
+                )
+
+        self._original_snowflake_connector = factory._connectors.get(
+            MarketplaceType.SNOWFLAKE_DATA_MARKETPLACE.value
+        )
+        factory.register_connector(
+            MarketplaceType.SNOWFLAKE_DATA_MARKETPLACE, _TestSnowflakeConnector
+        )
 
     def test_create_connection_success(self):
         """Test successful connection creation"""
@@ -394,9 +583,8 @@ class MarketplaceIntegrationServiceTest(TestCase):
             self.assertIn("tested_at", result)
             # Success may be True or False depending on connector availability
             self.assertIsInstance(result["success"], bool)
-        except (ValidationError, ValueError, ImportError, AttributeError):
-            # Connector not available - skip test gracefully
-            self.skipTest("Connector not available in test environment")
+        except (ValidationError, ValueError, ImportError, AttributeError) as e:
+            self.fail(f"Test Snowflake connector should be registered in setUp: {e}")
 
     def test_test_connection_failure(self):
         """Test connection testing with failure"""
@@ -423,9 +611,8 @@ class MarketplaceIntegrationServiceTest(TestCase):
                 # If connector test fails, success should be False
                 if not result["success"]:
                     self.assertIsNotNone(result.get("error"))
-        except (ValueError, ImportError, AttributeError, ValidationError):
-            # Connector not available or invalid config - acceptable
-            pass
+        except (ValueError, ImportError, AttributeError, ValidationError) as e:
+            self.fail(f"Test Snowflake connector should be registered in setUp: {e}")
 
     def test_test_connection_connection_error(self):
         """Test connection testing with connection error"""
@@ -449,9 +636,8 @@ class MarketplaceIntegrationServiceTest(TestCase):
             # If connection test fails, verify error handling
             if not result.get("success", True):
                 self.assertIn("error", result)
-        except (MarketplaceConnectionError, ValidationError, ValueError, ImportError, AttributeError):
-            # Connection error or connector not available - acceptable
-            pass
+        except (MarketplaceConnectionError, ValidationError, ValueError, ImportError, AttributeError) as e:
+            self.fail(f"Test Snowflake connector should be registered in setUp: {e}")
 
     def test_test_connection_authentication_error(self):
         """Test connection testing with authentication error"""
@@ -475,9 +661,8 @@ class MarketplaceIntegrationServiceTest(TestCase):
             # If authentication fails, verify error handling
             if not result.get("success", True):
                 self.assertIn("error", result)
-        except (MarketplaceAuthenticationError, ValidationError, ValueError, ImportError, AttributeError):
-            # Authentication error or connector not available - acceptable
-            pass
+        except (MarketplaceAuthenticationError, ValidationError, ValueError, ImportError, AttributeError) as e:
+            self.fail(f"Test Snowflake connector should be registered in setUp: {e}")
 
     def test_test_connection_not_found(self):
         """Test connection testing with non-existent connection"""
@@ -546,9 +731,11 @@ class MarketplaceIntegrationServiceTest(TestCase):
             self.assertEqual(sync_job.status, SyncStatus.PENDING.value)
             self.assertEqual(sync_job.metadata["asset_ids"], asset_ids)
             self.assertEqual(MarketplaceSyncJob.objects.filter(tenant=self.tenant).count(), 1)
-        except (ImportError, AttributeError, ValueError) as e:
-            # Workflow engine or connector may not be available - skip gracefully
-            self.skipTest(f"Workflow engine or connector not available: {e}")
+        except ImportError as e:
+            self.skipTest(f"Required dependency not available: {e}")
+        except AttributeError as e:
+            self.skipTest(f"Required module attribute not available: {e}")
+        # ValueError from the service layer is a test failure, not a skip.
 
     def test_sync_assets_to_marketplace_invalid_connection(self):
         """Test sync with invalid connection ID."""
@@ -642,9 +829,11 @@ class MarketplaceIntegrationServiceTest(TestCase):
             self.assertEqual(sync_job.status, SyncStatus.PENDING.value)
             self.assertEqual(sync_job.metadata["listing_ids"], listing_ids)
             self.assertEqual(sync_job.metadata["filters"], filters)
-        except (ImportError, AttributeError, ValueError) as e:
-            # Workflow engine or connector may not be available - skip gracefully
-            self.skipTest(f"Workflow engine or connector not available: {e}")
+        except ImportError as e:
+            self.skipTest(f"Required dependency not available: {e}")
+        except AttributeError as e:
+            self.skipTest(f"Required module attribute not available: {e}")
+        # ValueError from the service layer is a test failure, not a skip.
 
     def test_sync_from_marketplace_without_listing_ids(self):
         """Test PULL sync without listing_ids (sync all)."""
@@ -671,9 +860,11 @@ class MarketplaceIntegrationServiceTest(TestCase):
             self.assertEqual(sync_job.direction, SyncDirection.PULL.value)
             # listing_ids should be empty list when None is provided
             self.assertEqual(sync_job.metadata.get("listing_ids"), [])
-        except (ImportError, AttributeError, ValueError) as e:
-            # Workflow engine or connector may not be available - skip gracefully
-            self.skipTest(f"Workflow engine or connector not available: {e}")
+        except ImportError as e:
+            self.skipTest(f"Required dependency not available: {e}")
+        except AttributeError as e:
+            self.skipTest(f"Required module attribute not available: {e}")
+        # ValueError from the service layer is a test failure, not a skip.
 
     # --- get_sync_job tests ---
     def test_get_sync_job_success(self):
@@ -1347,7 +1538,7 @@ class MarketplaceIntegrationServiceTest(TestCase):
             )
 
     def tearDown(self):
-        """Reconnect signals after test"""
+        """Reconnect signals and restore original connector registration after test"""
         from django.db.models.signals import post_save
 
         try:
@@ -1358,4 +1549,19 @@ class MarketplaceIntegrationServiceTest(TestCase):
             post_save.connect(contract_saved, sender=Contract, weak=False)
             post_save.connect(asset_saved, sender=Asset, weak=False)
         except (ImportError, AttributeError):
+            pass
+
+        # Restore original connector classes so other tests aren't affected
+        try:
+            factory = MarketplaceConnectorFactory()
+            for mkt_type, attr in [
+                (MarketplaceType.CKAN_INSTANCE, '_original_ckan_connector'),
+                (MarketplaceType.SNOWFLAKE_DATA_MARKETPLACE, '_original_snowflake_connector'),
+            ]:
+                original = getattr(self, attr, None)
+                if original is not None:
+                    factory.register_connector(mkt_type, original)
+                else:
+                    factory.unregister_connector(mkt_type)
+        except Exception:
             pass

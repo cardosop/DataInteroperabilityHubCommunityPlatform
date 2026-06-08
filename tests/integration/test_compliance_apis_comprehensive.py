@@ -35,6 +35,7 @@ from hub.apps.files.models import File, FileStatus
 from hub.apps.jobs.models import Job, JobStatus, JobType
 from hub.apps.tenants.models import KYCStatus, TenantStatus
 from hub.apps.testing.billing_support import ensure_tenant_has_active_subscription
+from hub.apps.testing.role_support import ensure_user_has_tenant_admin_role
 from hub.apps.users.models import UserStatus
 from tests.fixtures.test_data_factories import (
     AssetFactory,
@@ -74,6 +75,7 @@ class TestComplianceRunCreateAPI(TestCase):
         )
         # Authenticate
         self.client.force_authenticate(user=self.user)
+        ensure_user_has_tenant_admin_role(self.user)
 
         # Create test file with actual content for compliance scanning
         self.test_file_content = b"name,email,phone\nJohn Doe,john@example.com,555-1234\nJane Smith,jane@example.com,555-5678"
@@ -445,7 +447,7 @@ class TestComplianceRunCreateAPI(TestCase):
         """Test that users can only create compliance runs for their tenant's resources"""
         # Create another tenant
         other_tenant = TenantFactory.create_tenant(
-            name="Other Tenant",
+            name=f"Other Tenant {uuid.uuid4().hex[:8]}",
             slug=f"other-tenant-{uuid.uuid4().hex[:8]}",
         )
         other_asset = AssetFactory.create_asset(
@@ -596,6 +598,7 @@ class TestComplianceRunRetrieveAPI(TestCase):
         )
         self.client.force_authenticate(user=self.user)
 
+        ensure_user_has_tenant_admin_role(self.user)
         # Create asset and compliance run
         self.asset = AssetFactory.create_asset(
             tenant=self.tenant,
@@ -699,7 +702,7 @@ class TestComplianceRunRetrieveAPI(TestCase):
         """Test that users can only retrieve compliance runs from their tenant"""
         # Create another tenant and compliance run
         other_tenant = TenantFactory.create_tenant(
-            name="Other Tenant",
+            name=f"Other Tenant {uuid.uuid4().hex[:8]}",
             slug=f"other-tenant-{uuid.uuid4().hex[:8]}",
         )
         other_user = UserFactory.create_user(tenant=other_tenant)
@@ -798,6 +801,7 @@ class TestComplianceRunUpdateAPI(TestCase):
         )
         self.client.force_authenticate(user=self.user)
 
+        ensure_user_has_tenant_admin_role(self.user)
         # Create asset and compliance run
         self.asset = AssetFactory.create_asset(
             tenant=self.tenant,
@@ -894,7 +898,7 @@ class TestComplianceRunUpdateAPI(TestCase):
         """Test that users can only update compliance runs from their tenant"""
         # Create another tenant and compliance run
         other_tenant = TenantFactory.create_tenant(
-            name="Other Tenant",
+            name=f"Other Tenant {uuid.uuid4().hex[:8]}",
             slug=f"other-tenant-{uuid.uuid4().hex[:8]}",
         )
         other_user = UserFactory.create_user(tenant=other_tenant)
@@ -1014,6 +1018,7 @@ class TestComplianceRunDeleteAPI(TestCase):
         )
         self.client.force_authenticate(user=self.user)
 
+        ensure_user_has_tenant_admin_role(self.user)
         # Create asset
         self.asset = AssetFactory.create_asset(
             tenant=self.tenant,
@@ -1084,7 +1089,7 @@ class TestComplianceRunDeleteAPI(TestCase):
         """Test that users can only delete compliance runs from their tenant"""
         # Create another tenant and compliance run
         other_tenant = TenantFactory.create_tenant(
-            name="Other Tenant",
+            name=f"Other Tenant {uuid.uuid4().hex[:8]}",
             slug=f"other-tenant-{uuid.uuid4().hex[:8]}",
         )
         other_user = UserFactory.create_user(tenant=other_tenant)
@@ -1177,6 +1182,7 @@ class TestComplianceReportsAPI(TestCase):
         )
         self.client.force_authenticate(user=self.user)
 
+        ensure_user_has_tenant_admin_role(self.user)
         # Create multiple assets and compliance runs
         self.asset1 = AssetFactory.create_asset(
             tenant=self.tenant,
@@ -1302,7 +1308,7 @@ class TestComplianceReportsAPI(TestCase):
         """Test that users can only see compliance runs from their tenant"""
         # Create another tenant with compliance runs
         other_tenant = TenantFactory.create_tenant(
-            name="Other Tenant",
+            name=f"Other Tenant {uuid.uuid4().hex[:8]}",
             slug=f"other-tenant-{uuid.uuid4().hex[:8]}",
         )
         other_user = UserFactory.create_user(tenant=other_tenant)
@@ -1355,7 +1361,7 @@ class TestComplianceReportsAPI(TestCase):
         """Test listing compliance runs when none exist"""
         # Create new tenant with no compliance runs
         empty_tenant = TenantFactory.create_tenant(
-            name="Empty Tenant",
+            name=f"Empty Tenant {uuid.uuid4().hex[:8]}",
             slug=f"empty-tenant-{uuid.uuid4().hex[:8]}",
         )
         empty_user = User.objects.create_user(
@@ -1422,6 +1428,7 @@ class TestComplianceRunResultsAPI(TestCase):
         )
         self.client.force_authenticate(user=self.user)
 
+        ensure_user_has_tenant_admin_role(self.user)
         self.asset = AssetFactory.create_asset(
             tenant=self.tenant,
             created_by=self.user,
@@ -1564,7 +1571,7 @@ class TestComplianceRunResultsAPI(TestCase):
         """Test that users can only access results from their tenant"""
         # Create another tenant and compliance run
         other_tenant = TenantFactory.create_tenant(
-            name="Other Tenant",
+            name=f"Other Tenant {uuid.uuid4().hex[:8]}",
             slug=f"other-tenant-{uuid.uuid4().hex[:8]}",
         )
         other_user = UserFactory.create_user(tenant=other_tenant)
@@ -1668,6 +1675,7 @@ class TestComplianceAPIPerformance(TestCase):
         )
         self.client.force_authenticate(user=self.user)
 
+        ensure_user_has_tenant_admin_role(self.user)
         self.asset = AssetFactory.create_asset(
             tenant=self.tenant,
             created_by=self.user,
@@ -1814,6 +1822,7 @@ class TestComplianceAPIIntegration(TestCase):
         )
         self.client.force_authenticate(user=self.user)
 
+        ensure_user_has_tenant_admin_role(self.user)
         self.asset = AssetFactory.create_asset(
             tenant=self.tenant,
             created_by=self.user,

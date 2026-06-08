@@ -126,3 +126,43 @@ class AssetVisibilityDeprecationHeadersMiddleware:
             response["Expires"] = "0"
 
         return response
+
+
+class DataFirstBodyCapMiddleware:
+    """Phase 250.1.A.11 — Content-Length / chunked body cap BEFORE auth.
+
+    Rejects oversized or chunked POST requests to
+    ``/api/v*/assets/data-first/`` solely from the Content-Length and
+    Transfer-Encoding headers — never reading the raw body — so
+    chunked uploads cannot force buffering before rejection.
+
+    Mounted early in ``MIDDLEWARE`` (before ``AuthenticationMiddleware``).
+    """
+
+    def __init__(self, get_response):
+        self.get_response = get_response
+
+    def __call__(self, request):
+        from hub.apps.assets.data_first_body_guard import (
+            evaluate_data_first_body_headers,
+            is_data_first_post,
+        )
+        from django.http import JsonResponse
+
+        if is_data_first_post(request):
+            rejection = evaluate_data_first_body_headers(
+                content_length_raw=request.META.get("CONTENT_LENGTH"),
+                transfer_encoding=request.META.get("HTTP_TRANSFER_ENCODING", "") or "",
+            )
+            if rejection is not None:
+                status_code, payload = rejection
+                response = JsonResponse(payload, status=status_code)
+                # DRF test client and middleware downstream expect .data on
+                # responses.  JsonResponse is a raw Django HttpResponse and
+                # does not carry .data, so we attach the payload dict as an
+                # attribute for compatibility with DRF's test client and any
+                # logging/audit middleware that reads response_data.
+                response.data = payload
+                return response
+
+        return self.get_response(request)

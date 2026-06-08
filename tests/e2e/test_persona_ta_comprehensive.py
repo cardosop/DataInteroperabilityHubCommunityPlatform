@@ -434,8 +434,8 @@ class JourneyTA002ConfigureTenantSettingsTests(E2ETestBase):
         
         # Create tenant and tenant admin user
         self.tenant = Tenant.objects.create(
-            name="Config Tenant",
-            slug="config-tenant",
+            name=f"Config Tenant {uuid.uuid4().hex[:8]}",
+            slug=f"config-tenant-{uuid.uuid4().hex[:8]}",
             kyc_status=KYCStatus.VERIFIED
         )
         ensure_tenant_has_active_subscription(self.tenant)
@@ -713,8 +713,8 @@ class JourneyTA003MonitorTenantUsageTests(E2ETestBase):
         
         # Create tenant and tenant admin user
         self.tenant = Tenant.objects.create(
-            name="Usage Tenant",
-            slug="usage-tenant",
+            name=f"Usage Tenant {uuid.uuid4().hex[:8]}",
+            slug=f"usage-tenant-{uuid.uuid4().hex[:8]}",
             kyc_status=KYCStatus.VERIFIED
         )
         ensure_tenant_has_active_subscription(self.tenant)
@@ -801,8 +801,8 @@ class JourneyTA004ManageTenantBillingTests(E2ETestBase):
         
         # Create tenant and tenant admin user
         self.tenant = Tenant.objects.create(
-            name="Billing Tenant",
-            slug="billing-tenant",
+            name=f"Billing Tenant {uuid.uuid4().hex[:8]}",
+            slug=f"billing-tenant-{uuid.uuid4().hex[:8]}",
             kyc_status=KYCStatus.VERIFIED
         )
         ensure_tenant_has_active_subscription(self.tenant)
@@ -857,8 +857,8 @@ class TenantAdminUseCasesTests(E2ETestBase):
         
         # Create tenant and tenant admin user
         self.tenant = Tenant.objects.create(
-            name="Use Case Tenant",
-            slug="usecase-tenant",
+            name=f"Use Case Tenant {uuid.uuid4().hex[:8]}",
+            slug=f"usecase-tenant-{uuid.uuid4().hex[:8]}",
             kyc_status=KYCStatus.VERIFIED
         )
         ensure_tenant_has_active_subscription(self.tenant)
@@ -980,8 +980,8 @@ class TenantAdminErrorScenariosTests(E2ETestBase):
         
         # Create tenant and tenant admin user
         self.tenant = Tenant.objects.create(
-            name="Error Tenant",
-            slug="error-tenant",
+            name=f"Error Tenant {uuid.uuid4().hex[:8]}",
+            slug=f"error-tenant-{uuid.uuid4().hex[:8]}",
             kyc_status=KYCStatus.VERIFIED
         )
         ensure_tenant_has_active_subscription(self.tenant)

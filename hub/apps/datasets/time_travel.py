@@ -10,7 +10,7 @@ from datetime import datetime
 from django.db.models import Q
 from django.utils import timezone
 
-from .models import Dataset, DatasetSnapshot
+from .models import Dataset, DatasetSnapshot, SnapshotType
 
 
 class TimeTravelQuery:
@@ -99,22 +99,47 @@ class TimeTravelQuery:
     @staticmethod
     def create_snapshot(
         dataset: Dataset,
-        snapshot_type: str = "FULL"
+        snapshot_type = "FULL"
     ) -> DatasetSnapshot:
         """
         Create a snapshot of a dataset version.
-        
+
         Args:
             dataset: Dataset to snapshot
-            snapshot_type: Snapshot type (FULL, SCHEMA_ONLY, METADATA_ONLY)
-        
+            snapshot_type: Snapshot type — accepts ``SnapshotType`` enum
+                member or raw string (FULL, SCHEMA_ONLY, METADATA_ONLY).
+
         Returns:
             DatasetSnapshot instance
+
+        Raises:
+            NotImplementedError: when ``snapshot_type`` is INCREMENTAL
+                (post-MVP placeholder per ``file-storage`` spec).
+            ValueError: when ``snapshot_type`` is not a recognised member
+                of ``SnapshotType``.
         """
+        # Normalise: accept both bare enum members and raw strings.
+        if isinstance(snapshot_type, SnapshotType):
+            snapshot_type = snapshot_type.value
+
+        valid = {m.value for m in SnapshotType}
+        if snapshot_type not in valid:
+            raise ValueError(
+                f"Unknown snapshot_type {snapshot_type!r}. "
+                f"Valid types: {', '.join(sorted(valid))}"
+            )
+
+        if snapshot_type == SnapshotType.INCREMENTAL:
+            raise NotImplementedError(
+                "INCREMENTAL snapshots are a post-MVP placeholder "
+                "(spec: file-storage). Not yet implemented."
+            )
+
         snapshot_data = {}
-        
+
         if snapshot_type == "FULL":
             snapshot_data = {
+                'dataset_id': str(dataset.id),
                 'schema_json': dataset.schema_json,
                 'sample_data_json': dataset.sample_data_json,
                 'row_count': dataset.row_count,
@@ -127,25 +152,27 @@ class TimeTravelQuery:
             }
         elif snapshot_type == "SCHEMA_ONLY":
             snapshot_data = {
+                'dataset_id': str(dataset.id),
                 'schema_json': dataset.schema_json,
                 'format': dataset.format,
                 'semantic_version': dataset.semantic_version,
             }
         elif snapshot_type == "METADATA_ONLY":
             snapshot_data = {
+                'dataset_id': str(dataset.id),
                 'version': dataset.version,
                 'semantic_version': dataset.semantic_version,
                 'version_tags': dataset.version_tags,
                 'snapshot_metadata': dataset.snapshot_metadata,
                 'created_at': dataset.created_at.isoformat(),
             }
-        
+
         snapshot = DatasetSnapshot.objects.create(
             dataset=dataset,
             snapshot_data=snapshot_data,
             snapshot_type=snapshot_type
         )
-        
+
         return snapshot
     
     @staticmethod
@@ -156,18 +183,31 @@ class TimeTravelQuery:
     ) -> Dataset:
         """
         Restore a dataset from a snapshot.
-        
+
+        Only FULL snapshots can be restored — SCHEMA_ONLY and
+        METADATA_ONLY intentionally omit load-bearing fields.
+
         Args:
             snapshot: DatasetSnapshot to restore from
             new_asset_id: Optional new asset ID (if restoring to different asset)
             new_tenant_id: Optional new tenant ID (if restoring to different tenant)
-        
+
         Returns:
             New Dataset instance created from snapshot
+
+        Raises:
+            ValueError: when ``snapshot.snapshot_type`` is not FULL.
         """
         from .models import Dataset
         from hub.apps.files.models import File
-        
+
+        if snapshot.snapshot_type != SnapshotType.FULL:
+            raise ValueError(
+                f"Cannot restore from snapshot type {snapshot.snapshot_type!r}. "
+                f"Only FULL snapshots contain the complete payload required "
+                f"for restoration. Valid types for restore: FULL"
+            )
+
         original_dataset = snapshot.dataset
         
         # Use original asset/tenant if not specified

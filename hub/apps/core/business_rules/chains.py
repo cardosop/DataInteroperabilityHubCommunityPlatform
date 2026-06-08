@@ -125,7 +125,15 @@ class RuleChain:
             chain_span.set_attribute("business_rule_chain.steps_planned", len(self.steps))
 
             for step in self.steps:
-                step_name = getattr(step, "__name__", str(step))
+                base_name = getattr(step, "__name__", str(step))
+                # Disambiguate duplicate step names so every step entry
+                # is preserved in the results dict (Phase 274.7.10).
+                step_name = base_name
+                if step_name in results:
+                    idx = 2
+                    while f"{base_name}_{idx}" in results:
+                        idx += 1
+                    step_name = f"{base_name}_{idx}"
                 try:
                     result = step(ctx, **kwargs) if callable(step) else ValidationResult(is_valid=True)
                     if isinstance(result, ValidationResult):
@@ -173,16 +181,23 @@ class RuleChain:
                 pass
 
         # Phase 274.7.2 — single audit event per chain execution.
+        # Created on the default connection as a system-level audit row
+        # (tenant=None).  The audit is within the caller's transaction by
+        # design — step-level audit rows AND chain-completed rows share the
+        # caller's atomic boundary.  For durability across rollbacks (Phase
+        # 277.1.3), production deployments use the admin BYPASSRLS
+        # connection; that optimisation is applied in a follow-up when the
+        # audit service exposes a ``using`` kwarg.
         try:
-            from hub.apps.audit.utils import create_audit_event
-            create_audit_event(
+            from hub.apps.audit.models import AuditEvent
+            AuditEvent.objects.create(
                 resource_type="RULE_CHAIN",
                 action="RULE_CHAIN_COMPLETED",
-                actor_user=None,
                 tenant=None,
-                resource_id=self.name,
+                actor_user=None,
+                resource_id=None,
                 result="SUCCESS" if all_valid else "FAILURE",
-                details={
+                details_json={
                     "chain": self.name,
                     "steps": list(results.keys()),
                     "outcome": "PASS" if all_valid else "FAIL",

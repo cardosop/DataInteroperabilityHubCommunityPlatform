@@ -473,21 +473,31 @@ class NormalizationStatusTest(TestCase):
         # Empty fields array means no schema content — normalization should fail
         self.assertEqual(status, NormalizationStatus.NORMALIZATION_FAILED)
 
-    def test_status_normalization_failed_exception(self):
-        """Test NORMALIZATION_FAILED status when exception occurs"""
-        # Invalid contract structure that will cause exception
-        odcs_contract = None
+    def test_status_normalization_failed_none_input(self):
+        """Test NORMALIZATION_FAILED when None is passed as raw_contract."""
+        # Passing None directly should raise TypeError (json.loads rejects None)
+        # or the service layer should catch it and return NORMALIZATION_FAILED
+        try:
+            hub_contract, spec_type, spec_version, status, errors, warnings = normalize_contract(
+                raw_contract=None,
+                format="JSON",
+                spec_type="ODCS",
+            )
+            # If we get here without an exception, the function caught it internally
+            self.assertEqual(status, NormalizationStatus.NORMALIZATION_FAILED)
+            self.assertGreater(len(errors), 0)
+        except (TypeError, ValueError, AttributeError):
+            # Raising an exception is also acceptable — the service layer
+            # should reject None input before reaching the normalizer
+            pass
 
-        # normalize_contract expects a string, so we need to handle None differently
-        # For None input, we'll pass an empty dict as JSON
+    def test_status_normalization_failed_invalid_json(self):
+        """Test NORMALIZATION_FAILED when raw_contract is not valid JSON."""
         hub_contract, spec_type, spec_version, status, errors, warnings = normalize_contract(
-            raw_contract=json.dumps({}),
+            raw_contract="!!!not json or yaml!!!",
             format="JSON",
-            spec_type="ODCS"
+            spec_type="ODCS",
         )
-
-        # normalize_contract may return None or an empty contract for invalid input
-        # The status should indicate failure
         self.assertEqual(status, NormalizationStatus.NORMALIZATION_FAILED)
         self.assertGreater(len(errors), 0)
 

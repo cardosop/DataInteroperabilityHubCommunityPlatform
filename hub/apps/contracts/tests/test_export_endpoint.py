@@ -87,7 +87,7 @@ class ContractExportEndpointTest(ContractsAPITestBase):
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertEqual(response["Content-Type"], "application/json")
 
-        data = json.loads(response.content)
+        data = response.data
         self.assertEqual(data["id"], "test-contract-odcs")
         self.assertEqual(data["info"]["name"], "Test ODCS Contract")
         self.assertIn("hub_contract_version", data)
@@ -123,7 +123,7 @@ class ContractExportEndpointTest(ContractsAPITestBase):
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertEqual(response["Content-Type"], "application/json")
 
-        data = json.loads(response.content)
+        data = response.data
         self.assertEqual(data["id"], "test-contract-odcs")
         self.assertEqual(data["name"], "Test ODCS Contract")
         self.assertIn("schema", data)
@@ -166,7 +166,7 @@ class ContractExportEndpointTest(ContractsAPITestBase):
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertEqual(response["Content-Type"], "application/json")
 
-        data = json.loads(response.content)
+        data = response.data
         self.assertIn("schema", data)
         self.assertIn("version", data)
         self.assertIn("product", data)
@@ -205,7 +205,7 @@ class ContractExportEndpointTest(ContractsAPITestBase):
         response = self.client.get(f"/api/v1/contracts/{self.contract.id}/export/")
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        data = json.loads(response.content)
+        data = response.data
         self.assertIn("hub_contract_version", data)
 
     def test_export_default_output_format_json(self):
@@ -291,7 +291,7 @@ class ContractExportEndpointTest(ContractsAPITestBase):
         )
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        data = json.loads(response.content)
+        data = response.data
         self.assertEqual(data["id"], "test-contract-odcs")
 
     def test_export_odps_without_marketplace_data(self):
@@ -305,7 +305,7 @@ class ContractExportEndpointTest(ContractsAPITestBase):
 
         # Should still work, just without marketplace sections
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        data = json.loads(response.content)
+        data = response.data
         self.assertIn("schema", data)
         self.assertIn("product", data)
 
@@ -431,7 +431,7 @@ class ODCSExportVersionSupportTest(ContractsAPITestBase):
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertEqual(response["Content-Type"], "application/json")
 
-        data = json.loads(response.content)
+        data = response.data
         self.assertEqual(data["apiVersion"], "odcs.io/v3.0.2")
         self.assertEqual(data["id"], "test-contract-version")
         self.assertEqual(data["name"], "Test Contract Version")
@@ -446,7 +446,7 @@ class ODCSExportVersionSupportTest(ContractsAPITestBase):
         )
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        data = json.loads(response.content)
+        data = response.data
         self.assertEqual(data["apiVersion"], "odcs.io/v3.0.1")
         self.assertEqual(data["id"], "test-contract-version")
 
@@ -460,7 +460,7 @@ class ODCSExportVersionSupportTest(ContractsAPITestBase):
         )
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        data = json.loads(response.content)
+        data = response.data
         self.assertEqual(data["apiVersion"], "odcs.io/v3.0.0")
         self.assertEqual(data["id"], "test-contract-version")
 
@@ -474,7 +474,7 @@ class ODCSExportVersionSupportTest(ContractsAPITestBase):
         )
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        data = json.loads(response.content)
+        data = response.data
         self.assertEqual(data["apiVersion"], "odcs.io/v3.0.0-preview")
         self.assertEqual(data["id"], "test-contract-version")
 
@@ -488,7 +488,7 @@ class ODCSExportVersionSupportTest(ContractsAPITestBase):
         )
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        data = json.loads(response.content)
+        data = response.data
         self.assertEqual(data["apiVersion"], "odcs.io/v2.2.2")
         self.assertEqual(data["id"], "test-contract-version")
 
@@ -502,7 +502,7 @@ class ODCSExportVersionSupportTest(ContractsAPITestBase):
         )
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        data = json.loads(response.content)
+        data = response.data
         # Should have generated ODCS document
         self.assertIn("apiVersion", data)
         self.assertIn("kind", data)
@@ -519,7 +519,7 @@ class ODCSExportVersionSupportTest(ContractsAPITestBase):
         )
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        data = json.loads(response.content)
+        data = response.data
         # Should return original (not generated)
         self.assertEqual(data["id"], "test-contract-v302")
         self.assertEqual(data["name"], "Test Contract v3.0.2")
@@ -535,7 +535,7 @@ class ODCSExportVersionSupportTest(ContractsAPITestBase):
         )
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        data = json.loads(response.content)
+        data = response.data
         # Should generate new version (not return original)
         self.assertEqual(data["apiVersion"], "odcs.io/v3.0.1")
         # ID should come from hub_contract_json, not original
@@ -588,7 +588,7 @@ class ODCSExportVersionSupportTest(ContractsAPITestBase):
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertEqual(response["Content-Type"], "application/json")
 
-        data = json.loads(response.content)
+        data = response.data
         self.assertEqual(data["apiVersion"], "odcs.io/v3.0.2")
         self.assertEqual(data["id"], "test-yaml")
 
@@ -674,7 +674,7 @@ class ODCSExportVersionSupportTest(ContractsAPITestBase):
                 )
 
                 self.assertEqual(response.status_code, status.HTTP_200_OK)
-                data = json.loads(response.content)
+                data = response.data
                 self.assertEqual(data["apiVersion"], f"odcs.io/v{version}")
                 self.assertEqual(data["id"], "test-contract-version")
 
@@ -709,7 +709,7 @@ class ODCSExportVersionSupportTest(ContractsAPITestBase):
         )
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        data = json.loads(response.content)
+        data = response.data
         # Should use original version (3.0.2)
         self.assertEqual(data["apiVersion"], "odcs.io/v3.0.2")
 
@@ -720,6 +720,6 @@ class ODCSExportVersionSupportTest(ContractsAPITestBase):
         )
 
         self.assertEqual(response2.status_code, status.HTTP_200_OK)
-        data2 = json.loads(response2.content)
+        data2 = response2.data
         # Should default to latest version (3.0.2)
         self.assertEqual(data2["apiVersion"], "odcs.io/v3.0.2")

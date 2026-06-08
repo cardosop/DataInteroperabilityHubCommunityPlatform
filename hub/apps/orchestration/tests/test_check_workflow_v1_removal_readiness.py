@@ -62,27 +62,34 @@ def _seed_tenant() -> Tenant:
 
 def _seed_v1_definition_only() -> WorkflowDefinition:
     """v1 alone — no v2 yet — soak window NOT applicable (v1 still active)."""
-    return WorkflowDefinition.objects.create(
+    wf_def, _created = WorkflowDefinition.objects.get_or_create(
         name="asset_creation",
         version="1.0.0",
-        dsl_json={"steps": []},
-        is_active=True,
+        defaults={
+            "dsl_json": {"version": "1.0.0", "steps": [{"name": "test_step", "type": "task"}]},
+            "is_active": True,
+        },
     )
+    return wf_def
 
 
 def _seed_v1_v2_within_soak() -> tuple[WorkflowDefinition, WorkflowDefinition]:
     """Both versions present; v1 just deactivated → still in soak window."""
-    v1 = WorkflowDefinition.objects.create(
+    v1, _created = WorkflowDefinition.objects.get_or_create(
         name="asset_creation",
         version="1.0.0",
-        dsl_json={"steps": []},
-        is_active=False,
+        defaults={
+            "dsl_json": {"version": "1.0.0", "steps": [{"name": "test_step", "type": "task"}]},
+            "is_active": False,
+        },
     )
-    v2 = WorkflowDefinition.objects.create(
+    v2, _created = WorkflowDefinition.objects.get_or_create(
         name="asset_creation",
         version="2.0.0",
-        dsl_json={"steps": []},
-        is_active=True,
+        defaults={
+            "dsl_json": {"version": "1.0.0", "steps": [{"name": "test_step", "type": "task"}]},
+            "is_active": True,
+        },
     )
     return v1, v2
 
@@ -100,9 +107,11 @@ def _seed_v1_v2_post_soak(soak_days: int = 14) -> tuple[WorkflowDefinition, Work
 
 def _seed_inflight_v1(*, count: int = 1) -> list[WorkflowInstance]:
     """Create ``count`` non-terminal v1 instances."""
+    wf_def = _seed_v1_definition_only()
     instances: list[WorkflowInstance] = []
     for i in range(count):
         instances.append(WorkflowInstance.objects.create(
+            workflow_definition=wf_def,
             workflow_name="asset_creation",
             workflow_version="1.0.0",
             status=WorkflowStatus.RUNNING,
@@ -174,6 +183,7 @@ class TestReadinessVerdict:
             WorkflowStatus.ROLLED_BACK,
         ):
             WorkflowInstance.objects.create(
+                workflow_definition=_seed_v1_definition_only(),
                 workflow_name="asset_creation",
                 workflow_version="1.0.0",
                 status=terminal_status,
@@ -194,6 +204,7 @@ class TestReadinessVerdict:
         ]
         for s in non_terminal:
             WorkflowInstance.objects.create(
+                workflow_definition=_seed_v1_definition_only(),
                 workflow_name="asset_creation",
                 workflow_version="1.0.0",
                 status=s,
@@ -232,8 +243,10 @@ class TestJsonOutput:
         # → Tenant FK constraint at INSERT time on PostgreSQL.
         tenant_a = _seed_tenant()
         tenant_b = _seed_tenant()
+        v1_def = _seed_v1_definition_only()
         for _ in range(2):
             WorkflowInstance.objects.create(
+                workflow_definition=v1_def,
                 workflow_name="asset_creation",
                 workflow_version="1.0.0",
                 status=WorkflowStatus.RUNNING,
@@ -241,6 +254,7 @@ class TestJsonOutput:
                 input_data={},
             )
         WorkflowInstance.objects.create(
+            workflow_definition=v1_def,
             workflow_name="asset_creation",
             workflow_version="1.0.0",
             status=WorkflowStatus.RUNNING,
@@ -267,14 +281,14 @@ class TestJsonOutput:
 
 
 class TestConfigurableKnobs:
-    """The command accepts ``--workflow``, ``--version``, ``--soak-days``."""
+    """The command accepts ``--workflow``, ``--workflow-version``, ``--soak-days``."""
 
     def test_custom_workflow_name(self):
         # Seed unrelated workflow; it should NOT count.
         WorkflowDefinition.objects.create(
             name="other_workflow",
             version="1.0.0",
-            dsl_json={"steps": []},
+            dsl_json={"version": "1.0.0", "steps": [{"name": "test_step", "type": "task"}]},
             is_active=True,
         )
         # Seed ``asset_creation`` v1 in soak (default behaviour: NOT READY).
@@ -284,7 +298,7 @@ class TestConfigurableKnobs:
         # meaning soak NOT elapsed → NOT READY.
         out = _run_command(
             "--workflow=other_workflow",
-            "--version=1.0.0",
+            "--workflow-version=1.0.0",
             expect_exit=1,
         )
         assert "other_workflow" in out

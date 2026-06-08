@@ -361,26 +361,15 @@ class DatasetViewSetTest(DatasetsAPITestBase):
 
     def test_create_dataset_success(self):
         """Test creating a dataset successfully"""
-        # Create a new file
-        file_id = uuid.uuid4()
-        new_file = File.objects.create(
-            id=file_id,
-            tenant=self.tenant,
-            name="new.csv",
-            content_type="text/csv",
-            size=2048,
-            status=FileStatus.ACTIVE,
-            storage_path=f"{self.tenant.id}/{file_id}/new.csv",
-            created_by=self.user,
-        )
-
-        data = {"file_id": str(new_file.id)}
+        # Use self.file from the base setUp — it already has S3 content
+        # uploaded, so schema inference succeeds.
+        data = {"file_id": str(self.file.id)}
 
         response = self.client.post("/api/v1/datasets/", data, format="json")
 
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
         self.assertIn("id", response.data)
-        self.assertEqual(response.data["file"], str(new_file.id))
+        self.assertEqual(response.data["file"], str(self.file.id))
         # Verify persisted to DB
         self.assertTrue(Dataset.objects.filter(id=response.data["id"]).exists())
 
@@ -613,7 +602,7 @@ class DatasetViewSetTest(DatasetsAPITestBase):
         self.assertIn("disabled", (response.data.get("detail") or "").lower())
 
     def test_create_version_missing_data(self):
-        """Test creating version with missing data (error handling)"""
+        """Test creating version with empty payload — version fields are optional."""
 
         data = {}  # Missing required fields
 
@@ -621,8 +610,9 @@ class DatasetViewSetTest(DatasetsAPITestBase):
             f"/api/v1/datasets/{self.dataset.id}/versions/", data, format="json"
         )
 
-        # Should return 400 or 201 (if fields are optional)
-        self.assertIn(response.status_code, [status.HTTP_400_BAD_REQUEST, status.HTTP_201_CREATED])
+        # Version creation fields are optional — the endpoint creates a
+        # version with defaults when given an empty payload.
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
 
     def test_compare_versions_success(self):
         """Test comparing dataset versions successfully"""
@@ -650,8 +640,8 @@ class DatasetViewSetTest(DatasetsAPITestBase):
         """Test comparing versions with missing parameters (error handling)"""
         response = self.client.get(f"/api/v1/datasets/{self.dataset.id}/versions/compare/")
 
-        # Should return 400 (bad request) or 200 (if params are optional)
-        self.assertIn(response.status_code, [status.HTTP_400_BAD_REQUEST, status.HTTP_200_OK])
+        # Missing required parameters must return 400
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
 
     # ========== EDGE CASES ==========
 
@@ -672,19 +662,7 @@ class DatasetViewSetTest(DatasetsAPITestBase):
             tenant=self.tenant, key="test-asset", name="Test Asset", created_by=self.user
         )
 
-        file_id = uuid.uuid4()
-        new_file = File.objects.create(
-            id=file_id,
-            tenant=self.tenant,
-            name="asset.csv",
-            content_type="text/csv",
-            size=1024,
-            status=FileStatus.ACTIVE,
-            storage_path=f"{self.tenant.id}/{file_id}/asset.csv",
-            created_by=self.user,
-        )
-
-        data = {"file_id": str(new_file.id), "asset_id": str(asset.id)}
+        data = {"file_id": str(self.file.id), "asset_id": str(asset.id)}
 
         response = self.client.post("/api/v1/datasets/", data, format="json")
 
@@ -692,7 +670,7 @@ class DatasetViewSetTest(DatasetsAPITestBase):
 
     # ========== ERROR HANDLING ==========
 
-    def test_retrieve_dataset_database_error_handling(self):
+    def test_retrieve_dataset_not_found(self):
         """Test error handling when database query fails"""
 
         # Use valid UUID format but non-existent ID

@@ -39,8 +39,8 @@ class SampleTestData:
     def create_sample_tenant_verified() -> Tenant:
         """Create a sample verified tenant"""
         return TenantFactory.create_tenant(
-            name="Sample Verified Tenant",
-            slug="sample-verified-tenant",
+            name=f"Sample Verified Tenant {uuid.uuid4().hex[:8]}",
+            slug=f"sample-verified-tenant-{uuid.uuid4().hex[:8]}",
             status=TenantStatus.ACTIVE,
             kyc_status=KYCStatus.VERIFIED,
         )
@@ -49,8 +49,8 @@ class SampleTestData:
     def create_sample_tenant_unverified() -> Tenant:
         """Create a sample unverified tenant"""
         return TenantFactory.create_tenant(
-            name="Sample Unverified Tenant",
-            slug="sample-unverified-tenant",
+            name=f"Sample Unverified Tenant {uuid.uuid4().hex[:8]}",
+            slug=f"sample-unverified-tenant-{uuid.uuid4().hex[:8]}",
             status=TenantStatus.ACTIVE,
             kyc_status=KYCStatus.UNVERIFIED,
         )

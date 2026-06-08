@@ -4,6 +4,7 @@ Unit tests for email delivery tracking and retry logic.
 Tests async sending, delivery tracking, and retry logic.
 """
 import pytest
+import uuid
 from django.test import TestCase
 from django.contrib.auth import get_user_model
 from django.utils import timezone
@@ -28,8 +29,8 @@ class EmailDeliveryModelTest(TestCase):
     def setUp(self):
         """Set up test fixtures"""
         self.tenant = Tenant.objects.create(
-            name='Test Tenant',
-            slug='test-tenant'
+            name=f"Test Tenant {uuid.uuid4().hex[:8]}",
+            slug=f"test-tenant-{uuid.uuid4().hex[:8]}"
         )
         self.user = User.objects.create_user(
             email='test@example.com',
@@ -250,8 +251,8 @@ class EmailDeliveryRetryLogicTest(TestCase):
     def setUp(self):
         """Set up test fixtures"""
         self.tenant = Tenant.objects.create(
-            name='Test Tenant',
-            slug='test-tenant'
+            name=f"Test Tenant {uuid.uuid4().hex[:8]}",
+            slug=f"test-tenant-{uuid.uuid4().hex[:8]}"
         )
     
     def test_retry_logic_max_retries(self):
@@ -323,8 +324,8 @@ class EmailDeliveryAsyncSendingTest(TestCase):
     def setUp(self):
         """Set up test fixtures"""
         self.tenant = Tenant.objects.create(
-            name='Test Tenant',
-            slug='test-tenant'
+            name=f"Test Tenant {uuid.uuid4().hex[:8]}",
+            slug=f"test-tenant-{uuid.uuid4().hex[:8]}"
         )
         self.user = User.objects.create_user(
             email='test@example.com',

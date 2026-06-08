@@ -5,7 +5,9 @@ Per tasks 29.68.2.1, 29.68.5.1. TDD: success, missing file_id, invalid file_id,
 tenant isolation, 401. No mocks/stubs in critical paths.
 """
 
+import logging
 import uuid
+from unittest.mock import patch
 
 import pytest
 from django.contrib.auth import get_user_model
@@ -25,12 +27,62 @@ from hub.apps.users.models import UserStatus
 
 pytestmark = pytest.mark.django_db(transaction=True)
 User = get_user_model()
+logger = logging.getLogger(__name__)
+
+
+# ---------------------------------------------------------------------------
+# Boundary mock helpers — pin the external service contract so tests stay
+# deterministic regardless of S3 / compliance / DQ availability in the
+# test environment.
+# ---------------------------------------------------------------------------
+
+
+def _patch_storage(content: bytes = b"a,b\n1,2\n"):
+    """Mock S3 download to return known CSV content."""
+    return patch(
+        "hub.apps.files.storage.S3StorageClient.get_file_content",
+        return_value=content,
+    )
+
+
+def _patch_compliance_pass():
+    """Mock compliance scan to return PASS."""
+    return patch(
+        "hub.apps.compliance.service_client.ComplianceServiceClient.scan_file",
+        return_value={
+            "overall_status": "PASS",
+            "allowed_to_store": True,
+            "metadata": {},
+        },
+    )
+
+
+def _patch_dq_pass():
+    """Mock DQ run to return PASS."""
+    return patch(
+        "hub.apps.dq.service_client.DQServiceClient.run_dq",
+        return_value={
+            "overall_status": "PASS",
+            "quality_score": 95.0,
+            "metadata": {},
+        },
+    )
 
 
 class DataFirstAssetAPITestBase(TestCase):
     """Base setup for data-first API tests."""
 
     def setUp(self):
+        from hub.apps.core.resilience.service_breakers import (
+            reset_shared_circuit_breakers_for_service,
+        )
+        # The data-first workflow triggers compliance scans.  Earlier
+        # test suites (compliance polling tests) can leave the shared
+        # circuit breaker OPEN, which causes every compliance API call
+        # to fail with 503.  Reset before each test so the breaker
+        # starts CLOSED.
+        reset_shared_circuit_breakers_for_service("compliance-service")
+        reset_shared_circuit_breakers_for_service("dq-service")
         self.client = APIClient()
 
     def _create_tenant_and_user(self, prefix="test"):
@@ -40,6 +92,7 @@ class DataFirstAssetAPITestBase(TestCase):
             slug=f"{prefix}-tenant-{uid}",
             status="ACTIVE",
             kyc_status="UNVERIFIED",
+            compliance_fail_closed_enabled=False,
         )
         ensure_tenant_has_active_subscription(tenant)
         user = User.objects.create_user(
@@ -86,16 +139,24 @@ class DataFirstAssetAPITestBase(TestCase):
             file_obj.storage_path = storage_path
             file_obj.save(update_fields=["storage_path"])
         except Exception:
+            logger.warning(
+                "S3 upload failed in _create_active_file — falling back to synthetic path. "
+                "Tests relying on this fallback may not exercise real storage behaviour. "
+                "tenant=%s file=%s",
+                tenant.id, file_obj.id,
+            )
             file_obj.storage_path = f"{str(tenant.id)}/{str(file_obj.id)}/test_data.csv"
             file_obj.save(update_fields=["storage_path"])
         return file_obj
 
     def _create_completed_file(self, tenant, user, csv_content=None):
-        """Create an uploaded file in COMPLETED state (canonical terminal state)."""
-        file_obj = self._create_active_file(tenant, user, csv_content=csv_content)
-        file_obj.status = FileStatus.COMPLETED
-        file_obj.save(update_fields=["status", "updated_at"])
-        return file_obj
+        """Create an uploaded file in ACTIVE state.
+
+        (Migration 0009 retired the ``COMPLETED`` status; the data-first
+        endpoint now requires ACTIVE.  The helper name is preserved for
+        backward compatibility with existing call sites.)
+        """
+        return self._create_active_file(tenant, user, csv_content=csv_content)
 
 
 class DataFirstAssetAPIValidationTest(DataFirstAssetAPITestBase):
@@ -152,8 +213,8 @@ class DataFirstAssetAPIValidationTest(DataFirstAssetAPITestBase):
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
         self.assertIn("name", str(response.data).lower())
 
-    def test_data_first_returns_400_or_404_when_file_id_invalid(self):
-        """POST /api/v1/assets/data-first/ with non-existent file_id returns 400 or 404."""
+    def test_data_first_returns_404_when_file_id_invalid(self):
+        """POST /api/v1/assets/data-first/ with non-existent file_id returns 404."""
         response = post_data_first(
             self.client,
             "/api/v1/assets/data-first/",
@@ -164,11 +225,9 @@ class DataFirstAssetAPIValidationTest(DataFirstAssetAPITestBase):
             },
             tenant=self.tenant,
         )
-        self.assertIn(
-            response.status_code,
-            (status.HTTP_400_BAD_REQUEST, status.HTTP_404_NOT_FOUND),
-            "Invalid file_id must return 400 or 404",
-        )
+        self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
+        self.assertIn("error", response.data)
+        self.assertEqual(response.data["code"], "NOT_FOUND")
 
     def test_data_first_returns_400_when_file_id_malformed(self):
         """POST /api/v1/assets/data-first/ with malformed file_id returns 400."""
@@ -179,9 +238,11 @@ class DataFirstAssetAPIValidationTest(DataFirstAssetAPITestBase):
             tenant=self.tenant,
         )
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        # DRF UUIDField validation surfaces the field name in the error response
+        self.assertIn("file_id", response.data)
 
-    def test_data_first_returns_400_when_file_status_is_active(self):
-        """Only COMPLETED files are accepted for data-first asset creation."""
+    def test_data_first_returns_400_when_file_has_no_content(self):
+        """File records without uploaded S3 content fail at workflow stage."""
         file_obj = self._create_file_record_only(self.tenant, self.user)
         self.assertEqual(file_obj.status, FileStatus.ACTIVE)
         response = post_data_first(
@@ -189,13 +250,14 @@ class DataFirstAssetAPIValidationTest(DataFirstAssetAPITestBase):
             "/api/v1/assets/data-first/",
             {
                 "file_id": str(file_obj.id),
-                "key": "active-file-rejected",
+                "key": "no-content-rejected",
                 "name": "Should Fail",
             },
             tenant=self.tenant,
         )
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
-        self.assertEqual(response.data.get("code"), "INVALID_STATE")
+        self.assertIn("error", response.data)
+        self.assertIn("code", response.data)
 
 
 class DataFirstAssetAPITenantIsolationTest(DataFirstAssetAPITestBase):
@@ -208,8 +270,8 @@ class DataFirstAssetAPITenantIsolationTest(DataFirstAssetAPITestBase):
         self.file_b = self._create_file_record_only(self.tenant_b, self.user_b)
         self.client.force_authenticate(user=self.user_a)
 
-    def test_data_first_cross_tenant_file_id_returns_403_or_404(self):
-        """User from tenant A POSTing tenant B's file_id returns 403 or 404."""
+    def test_data_first_cross_tenant_file_id_returns_404(self):
+        """User from tenant A POSTing tenant B's file_id returns 404."""
         response = post_data_first(
             self.client,
             "/api/v1/assets/data-first/",
@@ -220,11 +282,9 @@ class DataFirstAssetAPITenantIsolationTest(DataFirstAssetAPITestBase):
             },
             tenant=self.tenant_a,
         )
-        self.assertIn(
-            response.status_code,
-            (status.HTTP_403_FORBIDDEN, status.HTTP_404_NOT_FOUND),
-            "Cross-tenant file_id must return 403 or 404",
-        )
+        self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
+        self.assertIn("error", response.data)
+        self.assertEqual(response.data["code"], "NOT_FOUND")
 
 
 class DataFirstAssetAPISuccessTest(DataFirstAssetAPITestBase):
@@ -238,17 +298,18 @@ class DataFirstAssetAPISuccessTest(DataFirstAssetAPITestBase):
 
     def test_data_first_success_returns_201_with_ids(self):
         """POST /api/v1/assets/data-first/ with valid data returns 201 and asset_id, dataset_id, contract_id."""
-        response = post_data_first(
-            self.client,
-            "/api/v1/assets/data-first/",
-            {
-                "file_id": str(self.file_obj.id),
-                "key": f"data-first-asset-{uuid.uuid4().hex[:8]}",
-                "name": "Data First Asset",
-                "description": "Created via data-first API",
-            },
-            tenant=self.tenant,
-        )
+        with _patch_storage(), _patch_compliance_pass(), _patch_dq_pass():
+            response = post_data_first(
+                self.client,
+                "/api/v1/assets/data-first/",
+                {
+                    "file_id": str(self.file_obj.id),
+                    "key": f"data-first-asset-{uuid.uuid4().hex[:8]}",
+                    "name": "Data First Asset",
+                    "description": "Created via data-first API",
+                },
+                tenant=self.tenant,
+            )
         self.assertEqual(
             response.status_code,
             status.HTTP_201_CREATED,
@@ -266,19 +327,20 @@ class DataFirstAssetAPISuccessTest(DataFirstAssetAPITestBase):
         self.assertEqual(asset.tenant_id, self.tenant.id)
         self.assertEqual(asset.created_by_id, self.user.id)
 
-    def test_data_first_success_with_completed_file_returns_success(self):
-        """COMPLETED file status is accepted by the data-first endpoint."""
-        self.file_obj.status = FileStatus.COMPLETED
+    def test_data_first_success_with_active_file_returns_success(self):
+        """ACTIVE file status is accepted by the data-first endpoint."""
+        self.file_obj.status = FileStatus.ACTIVE
         self.file_obj.save(update_fields=["status", "updated_at"])
-        response = post_data_first(
-            self.client,
-            "/api/v1/assets/data-first/",
-            {
-                "file_id": str(self.file_obj.id),
-                "key": f"completed-file-{uuid.uuid4().hex[:8]}",
-                "name": "Completed File Asset",
-            },
-            tenant=self.tenant,
-        )
-        self.assertIn(response.status_code, (status.HTTP_200_OK, status.HTTP_201_CREATED))
+        with _patch_storage(), _patch_compliance_pass(), _patch_dq_pass():
+            response = post_data_first(
+                self.client,
+                "/api/v1/assets/data-first/",
+                {
+                    "file_id": str(self.file_obj.id),
+                    "key": f"completed-file-{uuid.uuid4().hex[:8]}",
+                    "name": "Completed File Asset",
+                },
+                tenant=self.tenant,
+            )
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
         self.assertIsNotNone(response.data.get("asset_id"))

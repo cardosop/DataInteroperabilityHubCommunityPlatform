@@ -1,4 +1,6 @@
 """
+
+import uuid
 Comprehensive Performance Test Suite for Marketplace Integration
 
 Tests all performance aspects of marketplace integration:
@@ -76,8 +78,8 @@ class MarketplaceConnectorPerformanceTest(TestCase):
         """Set up test fixtures"""
         self.client = APIClient()
         self.tenant = Tenant.objects.create(
-            name="Performance Test Tenant",
-            slug="performance-test-tenant",
+            name=f"Performance Test Tenant {uuid.uuid4().hex[:8]}",
+            slug=f"performance-test-tenant-{uuid.uuid4().hex[:8]}",
             kyc_status=KYCStatus.VERIFIED
         )
         self.user = User.objects.create_user(
@@ -567,8 +569,8 @@ class MarketplaceConcurrentSyncJobsTest(TransactionTestCase):
         """Set up test fixtures"""
         self.client = APIClient()
         self.tenant = Tenant.objects.create(
-            name="Performance Test Tenant",
-            slug="performance-test-tenant",
+            name=f"Performance Test Tenant {uuid.uuid4().hex[:8]}",
+            slug=f"performance-test-tenant-{uuid.uuid4().hex[:8]}",
             kyc_status=KYCStatus.VERIFIED
         )
         self.user = User.objects.create_user(
@@ -692,8 +694,8 @@ class MarketplaceMemoryUsageTest(TestCase):
         """Set up test fixtures"""
         self.client = APIClient()
         self.tenant = Tenant.objects.create(
-            name="Performance Test Tenant",
-            slug="performance-test-tenant",
+            name=f"Performance Test Tenant {uuid.uuid4().hex[:8]}",
+            slug=f"performance-test-tenant-{uuid.uuid4().hex[:8]}",
             kyc_status=KYCStatus.VERIFIED
         )
         self.user = User.objects.create_user(
@@ -795,8 +797,8 @@ class MarketplaceDatabaseQueryPerformanceTest(TestCase):
         """Set up test fixtures"""
         self.client = APIClient()
         self.tenant = Tenant.objects.create(
-            name="Performance Test Tenant",
-            slug="performance-test-tenant",
+            name=f"Performance Test Tenant {uuid.uuid4().hex[:8]}",
+            slug=f"performance-test-tenant-{uuid.uuid4().hex[:8]}",
             kyc_status=KYCStatus.VERIFIED
         )
         self.user = User.objects.create_user(

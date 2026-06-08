@@ -55,20 +55,7 @@ from hub.apps.observability.otel_metrics import (
 User = get_user_model()
 
 
-def get_real_redis_client_or_none():
-    """Get real Redis client or return None if unavailable."""
-    try:
-        redis_url = getattr(settings, "REDIS_URL", None) or "redis://redis-cache-test:6379/0"
-        client = redis.from_url(
-            redis_url,
-            decode_responses=False,  # Keep binary for JSON storage
-            socket_connect_timeout=2,
-            socket_timeout=2,
-        )
-        client.ping()
-        return client
-    except Exception:
-        return None
+from hub.apps.contracts.tests.test_base import get_real_redis_client_or_none
 
 
 class ODPSMetricsTestBase(TestCase):
@@ -290,54 +277,40 @@ class ODPSCacheMetricsTest(ODPSMetricsTestBase):
         self.assertIsNotNone(odps_ref_cache_misses_total)
 
     def test_cache_hit_rate_metric_available(self):
-        """Test that cache hit rate gauge metric is available."""
-        # Verify cache hit rate metric exists
+        """Test that cache hit rate gauge metric is available and accepts labels."""
         self.assertIsNotNone(odps_ref_cache_hit_rate)
-
-        # Verify metric can be called with expected labels
-        try:
-            odps_ref_cache_hit_rate.labels(ref_type="external", tenant_id=self.tenant_id).set(0.75)
-        except Exception:
-            # Metric may not accept these labels, which is acceptable
-            pass
+        labeled = odps_ref_cache_hit_rate.labels(
+            ref_type="external", tenant_id=self.tenant_id
+        )
+        self.assertIsNotNone(labeled)
+        labeled.set(0.75)
 
     def test_cache_miss_rate_metric_available(self):
-        """Test that cache miss rate gauge metric is available."""
-        # Verify cache miss rate metric exists
+        """Test that cache miss rate gauge metric is available and accepts labels."""
         self.assertIsNotNone(odps_ref_cache_miss_rate)
-
-        # Verify metric can be called with expected labels
-        try:
-            odps_ref_cache_miss_rate.labels(ref_type="external", tenant_id=self.tenant_id).set(0.25)
-        except Exception:
-            # Metric may not accept these labels, which is acceptable
-            pass
+        labeled = odps_ref_cache_miss_rate.labels(
+            ref_type="external", tenant_id=self.tenant_id
+        )
+        self.assertIsNotNone(labeled)
+        labeled.set(0.25)
 
     def test_cache_size_metric_available(self):
-        """Test that cache size gauge metric is available."""
-        # Verify cache size metric exists
+        """Test that cache size gauge metric is available and accepts labels."""
         self.assertIsNotNone(odps_ref_cache_size)
-
-        # Verify metric can be called with expected labels
-        try:
-            odps_ref_cache_size.labels(tenant_id=self.tenant_id, ref_type="external").set(100)
-        except Exception:
-            # Metric may not accept these labels, which is acceptable
-            pass
+        labeled = odps_ref_cache_size.labels(
+            tenant_id=self.tenant_id, ref_type="external"
+        )
+        self.assertIsNotNone(labeled)
+        labeled.set(100)
 
     def test_cache_eviction_rate_metric_available(self):
-        """Test that cache eviction rate counter metric is available."""
-        # Verify cache eviction rate metric exists
+        """Test that cache eviction rate counter metric is available and accepts labels."""
         self.assertIsNotNone(odps_ref_cache_eviction_rate)
-
-        # Verify metric can be called with expected labels
-        try:
-            odps_ref_cache_eviction_rate.labels(
-                eviction_reason="size_limit", tenant_id=self.tenant_id
-            ).inc()
-        except Exception:
-            # Metric may not accept these labels, which is acceptable
-            pass
+        labeled = odps_ref_cache_eviction_rate.labels(
+            eviction_reason="size_limit", tenant_id=self.tenant_id
+        )
+        self.assertIsNotNone(labeled)
+        labeled.inc()
 
 
 # Short timeout for external ref in tests to avoid hangs or exit 137 (SIGKILL from runner timeout)
@@ -467,12 +440,11 @@ class ODPSCacheMetricsTestWithRedis(ODPSMetricsTestBaseWithRedis):
             "ttl_expired",
         ]
         for reason in eviction_reasons:
-            try:
-                odps_ref_cache_eviction_rate.labels(
-                    eviction_reason=reason, tenant_id=self.tenant_id
-                ).inc()
-            except Exception:
-                pass
+            labeled = odps_ref_cache_eviction_rate.labels(
+                eviction_reason=reason, tenant_id=self.tenant_id
+            )
+            self.assertIsNotNone(labeled, f"eviction_rate label failed for reason={reason}")
+            labeled.inc()
         self.assertIsNotNone(odps_ref_cache_eviction_rate)
 
         if not self.redis_available:
@@ -510,15 +482,13 @@ class ODPSRateLimitMetricsTest(ODPSMetricsTestBase):
         self.assertIsNotNone(odps_rate_limit_violations_total)
 
     def test_rate_limit_metrics_structure(self):
-        """Test that rate limit metrics can be called with expected labels."""
-        # Verify metric can be called with expected label structure
-        try:
-            odps_rate_limit_violations_total.labels(
-                level="tenant", tenant_id=self.tenant_id, user_id=""
-            ).inc()
-        except Exception:
-            # Metric may not accept these labels, which is acceptable
-            pass
+        """Test that rate limit metrics accept expected label structure."""
+        self.assertIsNotNone(odps_rate_limit_violations_total)
+        labeled = odps_rate_limit_violations_total.labels(
+            level="tenant", tenant_id=self.tenant_id, user_id=""
+        )
+        self.assertIsNotNone(labeled)
+        labeled.inc()
 
 
 class ODPSIngestionMetricsTest(ODPSMetricsTestBase):
@@ -526,33 +496,25 @@ class ODPSIngestionMetricsTest(ODPSMetricsTestBase):
 
     def test_ingestion_metrics_available(self):
         """Test that ingestion metrics are available."""
-        # Verify metric exists
         self.assertIsNotNone(odps_ingestion_total)
-
-        # Verify metric can be called with expected labels
-        try:
-            odps_ingestion_total.labels(source="marketplace", tenant_id=self.tenant_id).inc()
-        except Exception:
-            # Metric may not accept these labels, which is acceptable
-            pass
+        labeled = odps_ingestion_total.labels(
+            source="marketplace", tenant_id=self.tenant_id
+        )
+        self.assertIsNotNone(labeled)
+        labeled.inc()
 
 
 class ODPSExternalFetchFailureMetricsTest(ODPSMetricsTestBase):
     """Tests for external fetch failure metrics."""
 
     def test_external_fetch_failure_metrics_available(self):
-        """Test that external fetch failure metrics are available."""
-        # Verify metric exists
+        """Test that external fetch failure metrics are available and accept labels."""
         self.assertIsNotNone(odps_external_fetch_failures_total)
-
-        # Verify metric can be called with expected labels
-        try:
-            odps_external_fetch_failures_total.labels(
-                error_type="TimeoutException", tenant_id=self.tenant_id
-            ).inc()
-        except Exception:
-            # Metric may not accept these labels, which is acceptable
-            pass
+        labeled = odps_external_fetch_failures_total.labels(
+            error_type="TimeoutException", tenant_id=self.tenant_id
+        )
+        self.assertIsNotNone(labeled)
+        labeled.inc()
 
 
 class ODPSMetricsIntegrationTest(ODPSMetricsTestBase):
@@ -581,54 +543,91 @@ class ODPSMetricsIntegrationTest(ODPSMetricsTestBase):
             self.assertIsNotNone(metric, f"Metric {metric} should be available")
 
     def test_metrics_labels_structure(self):
-        """Verify metrics have correct label structures."""
-        # Test that all metrics can be called with expected labels
-        try:
-            # Ingestion metrics
-            odps_ingestion_total.labels(source="marketplace", tenant_id="test").inc()
+        """Verify metrics have correct label structures and accept label calls.
 
-            # Normalization metrics
-            odps_normalization_total.labels(status="success", version="4.1", tenant_id="test").inc()
-            odps_version_distribution_total.labels(version="4.1", tenant_id="test").inc()
+        Each metric's .labels() / .inc() / .set() / .observe() call is verified
+        to not raise — failures here indicate a label-name mismatch between the
+        test and the actual metric definition in observability.otel_metrics.
+        """
+        # Ingestion metrics
+        labeled = odps_ingestion_total.labels(source="marketplace", tenant_id="test")
+        self.assertIsNotNone(labeled)
+        labeled.inc()
 
-            # Ref resolution metrics
-            odps_ref_resolution_total.labels(
-                ref_type="internal", status="success", tenant_id="test"
-            ).inc()
-            odps_ref_resolution_failures_total.labels(
-                ref_type="external", error_type="TimeoutException", tenant_id="test"
-            ).inc()
-            odps_ref_resolution_duration_seconds.labels(
-                ref_type="internal", tenant_id="test"
-            ).observe(0.1)
+        # Normalization metrics
+        labeled = odps_normalization_total.labels(status="success", version="4.1", tenant_id="test")
+        self.assertIsNotNone(labeled)
+        labeled.inc()
+        labeled = odps_version_distribution_total.labels(version="4.1", tenant_id="test")
+        self.assertIsNotNone(labeled)
+        labeled.inc()
 
-            # External fetch failure metrics
-            odps_external_fetch_failures_total.labels(
-                error_type="RequestError", tenant_id="test"
-            ).inc()
+        # Ref resolution metrics
+        labeled = odps_ref_resolution_total.labels(
+            ref_type="internal", status="success", tenant_id="test"
+        )
+        self.assertIsNotNone(labeled)
+        labeled.inc()
+        labeled = odps_ref_resolution_failures_total.labels(
+            ref_type="external", error_type="TimeoutException", tenant_id="test"
+        )
+        self.assertIsNotNone(labeled)
+        labeled.inc()
+        labeled = odps_ref_resolution_duration_seconds.labels(
+            ref_type="internal", tenant_id="test"
+        )
+        self.assertIsNotNone(labeled)
+        labeled.observe(0.1)
 
-            # Rate limit metrics
-            odps_rate_limit_violations_total.labels(
-                level="tenant", tenant_id="test", user_id=""
-            ).inc()
+        # External fetch failure metrics
+        labeled = odps_external_fetch_failures_total.labels(
+            error_type="RequestError", tenant_id="test"
+        )
+        self.assertIsNotNone(labeled)
+        labeled.inc()
 
-            # Cache metrics
-            odps_ref_cache_hits_total.labels(tenant_id="test").inc()
-            odps_ref_cache_misses_total.labels(tenant_id="test").inc()
-            odps_ref_cache_hit_rate.labels(ref_type="external", tenant_id="test").set(0.75)
-            odps_ref_cache_miss_rate.labels(ref_type="external", tenant_id="test").set(0.25)
-            odps_ref_cache_size.labels(tenant_id="test", ref_type="external").set(100)
-            odps_ref_cache_size_limit.labels(tenant_id="test", ref_type="external").set(1000)
-            odps_ref_cache_eviction_rate.labels(
-                eviction_reason="size_limit", tenant_id="test"
-            ).inc()
-        except Exception:
-            # Metrics may not accept these labels, which is acceptable
-            pass
+        # Rate limit metrics
+        labeled = odps_rate_limit_violations_total.labels(
+            level="tenant", tenant_id="test", user_id=""
+        )
+        self.assertIsNotNone(labeled)
+        labeled.inc()
+
+        # Cache metrics
+        labeled = odps_ref_cache_hits_total.labels(tenant_id="test")
+        self.assertIsNotNone(labeled)
+        labeled.inc()
+        labeled = odps_ref_cache_misses_total.labels(tenant_id="test")
+        self.assertIsNotNone(labeled)
+        labeled.inc()
+        labeled = odps_ref_cache_hit_rate.labels(ref_type="external", tenant_id="test")
+        self.assertIsNotNone(labeled)
+        labeled.set(0.75)
+        labeled = odps_ref_cache_miss_rate.labels(ref_type="external", tenant_id="test")
+        self.assertIsNotNone(labeled)
+        labeled.set(0.25)
+        labeled = odps_ref_cache_size.labels(tenant_id="test", ref_type="external")
+        self.assertIsNotNone(labeled)
+        labeled.set(100)
+        labeled = odps_ref_cache_size_limit.labels(tenant_id="test", ref_type="external")
+        self.assertIsNotNone(labeled)
+        labeled.set(1000)
+        labeled = odps_ref_cache_eviction_rate.labels(
+            eviction_reason="size_limit", tenant_id="test"
+        )
+        self.assertIsNotNone(labeled)
+        labeled.inc()
 
     def test_metrics_collection_integration(self):
-        """Integration test: verify metrics are collected during real operations."""
-        # Create a complete ODPS document
+        """Integration test: normalization + ref resolution complete with metrics available.
+
+        Verifies that real normalization and ref resolution operations complete
+        successfully and that the associated metric counters are accessible.
+        Operations that trigger metrics:
+        - ODPS normalization (odps_normalization_total, odps_version_distribution_total)
+        - Internal $ref resolution (odps_ref_resolution_total)
+        """
+        # Normalize ODPS - triggers normalization + version distribution metrics
         odps_doc = {
             "schema": "https://opendataproducts.org/schema/v4.1",
             "version": "4.1",
@@ -646,15 +645,13 @@ class ODPSMetricsIntegrationTest(ODPSMetricsTestBase):
             },
         }
 
-        # Normalize ODPS - this should trigger normalization metrics
         normalizer = ODPSNormalizer()
         result = normalizer.normalize(odps_doc)
 
-        # Verify normalization succeeded
         self.assertIsNotNone(result.hub_contract)
         self.assertEqual(result.status, NormalizationStatus.NORMALIZED_OK)
 
-        # Test internal ref resolution - this should trigger ref resolution metrics
+        # Test internal ref resolution - triggers ref resolution metrics
         document_with_refs = {
             "definitions": {"Email": {"type": "string", "format": "email"}},
             "product": {"contact": {"$ref": "#/definitions/Email"}},
@@ -663,14 +660,38 @@ class ODPSMetricsIntegrationTest(ODPSMetricsTestBase):
         resolver = RefResolver(tenant_id=self.tenant_id)
         resolved = resolver.resolve_internal("#/definitions/Email", document_with_refs)
 
-        # Verify resolution succeeded
         self.assertEqual(resolved["type"], "string")
 
-        # All metrics should be available and operational
-        # (We can't directly read values from OpenTelemetry, but we verify operations complete)
-        self.assertIsNotNone(odps_normalization_total)
-        self.assertIsNotNone(odps_ref_resolution_total)
-        self.assertIsNotNone(odps_version_distribution_total)
+        # All metrics must be operational after real operations
+        # (OpenTelemetry metrics are process-global; delta comparison is
+        # unreliable across label combinations — we verify operations
+        # completed and metrics are accessible)
+        self.assertIsNotNone(odps_normalization_total,
+            "odps_normalization_total must be accessible after normalization")
+        self.assertIsNotNone(odps_ref_resolution_total,
+            "odps_ref_resolution_total must be accessible after ref resolution")
+        self.assertIsNotNone(odps_version_distribution_total,
+            "odps_version_distribution_total must be accessible after normalization")
+        # Verify metric _value interface works (counters have non-negative values)
+        for metric, name in [
+            (odps_normalization_total, "odps_normalization_total"),
+            (odps_ref_resolution_total, "odps_ref_resolution_total"),
+            (odps_version_distribution_total, "odps_version_distribution_total"),
+        ]:
+            val = self._get_metric_value(metric)
+            self.assertGreaterEqual(val, 0,
+                f"{name} value must be >= 0, got {val}")
+
+    @staticmethod
+    def _get_metric_value(metric):
+        """Extract the current counter value from a labeled metric."""
+        try:
+            if hasattr(metric, '_value'):
+                val = metric._value.get()
+                return int(val) if val is not None else 0
+        except Exception:
+            pass
+        return 0
 
     def test_metrics_collection_with_redis_unavailable(self):
         """Test that metrics collection works gracefully when Redis is unavailable."""
@@ -703,22 +724,26 @@ class ODPSMetricsIntegrationTest(ODPSMetricsTestBase):
         self.assertIsNotNone(odps_normalization_total)
 
     def test_metrics_with_invalid_labels_handled_gracefully(self):
-        """Test that metrics handle invalid labels gracefully without crashing."""
+        """Test that metrics handle invalid labels gracefully without crashing.
+
+        None / empty-string labels are edge cases. The metric library may accept
+        or reject them — either outcome is valid as long as the call doesn't
+        corrupt the metric registry or crash the process. We verify the metric
+        is still accessible afterward.
+        """
         # Test with None values (edge case)
         try:
             odps_normalization_total.labels(status=None, version=None, tenant_id=None).inc()
-        except Exception:
-            # Some metric libraries may reject None, which is acceptable
-            pass
+        except (TypeError, ValueError, AttributeError):
+            pass  # Library rejects None labels — acceptable
 
         # Test with empty strings (edge case)
         try:
             odps_normalization_total.labels(status="", version="", tenant_id="").inc()
-        except Exception:
-            # Some metric libraries may reject empty strings, which is acceptable
-            pass
+        except (TypeError, ValueError, AttributeError):
+            pass  # Library rejects empty-string labels — acceptable
 
-        # Verify metrics are still available after error handling
+        # Metrics must remain accessible after edge-case label calls
         self.assertIsNotNone(odps_normalization_total)
 
     def test_metrics_collection_with_concurrent_operations(self):
@@ -914,22 +939,13 @@ class ODPSMetricsIntegrationTest(ODPSMetricsTestBase):
         self.assertIsNotNone(odps_normalization_total)
 
     def test_metrics_collection_with_missing_tenant_id(self):
-        """Test that metrics collection handles missing tenant_id gracefully."""
-        # Create resolver without tenant_id (edge case)
+        """Resolver with tenant_id=None resolves internal refs and metrics remain available."""
         resolver = RefResolver(tenant_id=None)
-
-        # Try to resolve internal ref - should work but may not track tenant-specific metrics
         document = {
             "definitions": {"Email": {"type": "string", "format": "email"}},
             "product": {"contact": {"$ref": "#/definitions/Email"}},
         }
-
-        try:
-            result = resolver.resolve_internal("#/definitions/Email", document)
-            self.assertEqual(result["type"], "string")
-        except Exception:
-            # Some operations may require tenant_id, which is acceptable
-            pass
-
-        # Metrics should still be available
+        result = resolver.resolve_internal("#/definitions/Email", document)
+        self.assertEqual(result["type"], "string")
+        # Metrics must remain available even without tenant-scoped labels
         self.assertIsNotNone(odps_ref_resolution_total)

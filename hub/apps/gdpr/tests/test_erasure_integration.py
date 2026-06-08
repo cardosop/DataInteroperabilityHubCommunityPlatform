@@ -10,35 +10,6 @@ Tests cover:
 Uses real DB and real services (no mocks/stubs).
 """
 
-# CRITICAL: Patch sql_flush to use CASCADE for foreign key constraints
-# This is needed when running tests with manage.py test (not pytest)
-# Fixes: psycopg2.errors.FeatureNotSupported: cannot truncate a table referenced in a foreign key constraint
-try:
-    import django.db.backends.postgresql.operations as pg_operations
-
-    if not hasattr(pg_operations.DatabaseOperations.sql_flush, "_patched_for_cascade"):
-        _original_sql_flush = pg_operations.DatabaseOperations.sql_flush
-
-        def _patched_sql_flush(self, style, tables, *, reset_sequences=False, allow_cascade=False):
-            """
-            Patched sql_flush that always uses CASCADE to handle foreign key constraints.
-
-            ROOT CAUSE: During test teardown, Django tries to truncate tables but fails
-            when tables have foreign key constraints. PostgreSQL requires CASCADE to truncate
-            tables with foreign key references.
-
-            SOLUTION: Always use allow_cascade=True when truncating tables during teardown.
-            """
-            return _original_sql_flush(
-                self, style, tables, reset_sequences=reset_sequences, allow_cascade=True
-            )
-
-        _patched_sql_flush._patched_for_cascade = True
-        pg_operations.DatabaseOperations.sql_flush = _patched_sql_flush
-except Exception:
-    # Patch failed, but tests should still run
-    pass
-
 import uuid
 
 from django.contrib.auth import get_user_model
@@ -51,7 +22,7 @@ from rest_framework.test import APIClient
 from hub.apps.audit.models import AuditEvent
 from hub.apps.audit.utils import create_audit_event
 from hub.apps.baas.models import APIKey, APITier, APITierModel
-from hub.apps.core.services.base import NotFoundError, ValidationError
+from hub.apps.core.services.base import NotFoundError, ServiceError, ValidationError
 from hub.apps.gdpr.models import ErasureRequest, ErasureRequestStatus
 from hub.apps.gdpr.services import ErasureService
 from hub.apps.tenants.models import Tenant
@@ -67,8 +38,21 @@ class ErasureWorkflowIntegrationTest(TransactionTestCase):
     Uses real DB and real services.
     """
 
+    def _fixture_teardown(self):
+        """Skip TRUNCATE CASCADE which times out (>30s) on the large shared
+        test database with many FK relationships.  Isolation is maintained by
+        UUID-based tenant names in setUp.
+        """
+        pass
+
     def setUp(self):
         """Set up test data"""
+        # TransactionTestCase flush closes the server-side TCP connection.
+        # Force a fresh connection so tenant/user creation doesn't hit
+        # "connection already closed".
+        from django.db import connection
+        connection.connect()
+
         # Create tenant
         uid = uuid.uuid4().hex[:8]
         self.tenant = Tenant.objects.create(name=f"Test Tenant {uid}", slug=f"test-tenant-{uid}", status="ACTIVE")
@@ -274,11 +258,14 @@ class ErasureWorkflowIntegrationTest(TransactionTestCase):
         request = service.create_request(user_id=str(self.user.id))
         service.execute_erasure(request_id=str(request.id))
 
-        # Find the specific event we created (not the erasure service's own events)
+        # Find the specific event we created (not the erasure service's own events).
+        # Phase 2 of audit erasure nulls ``actor_user_id`` on rows where the
+        # actor IS the target user — filter by ``resource_id`` alone since
+        # ``actor_user`` is intentionally NULL after erasure.
         audit_event = AuditEvent.objects.filter(
-            actor_user=self.user, resource_id=test_resource_id
+            resource_id=test_resource_id
         ).first()
-        self.assertIsNotNone(audit_event, "Test audit event should still exist after erasure")
+        self.assertIsNotNone(audit_event, "Test audit event should still exist after erasure; resource_id=%s" % test_resource_id)
         self.assertIsInstance(audit_event.details_json, dict)
         # redact_pii preserves keys but redacts email values; erasure then
         # overwrites the redacted values with "deleted@deleted.local"
@@ -369,8 +356,8 @@ class ErasureWorkflowIntegrationTest(TransactionTestCase):
             display_name="Collision User",
         )
 
-        # Should raise exception, but request should be marked as FAILED
-        with self.assertRaises(Exception):
+        # Should raise ServiceError, but request should be marked as FAILED
+        with self.assertRaises(ServiceError):
             service.execute_erasure(request_id=str(request.id))
 
         # Request should be marked as failed (request survives; no CASCADE)

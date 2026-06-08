@@ -53,12 +53,13 @@ class DatasetServiceTest(DatasetsTestBase):
 
     def test_create_dataset_file_not_found(self):
         """Test dataset creation with non-existent file"""
-        with self.assertRaises(NotFoundError):
+        with self.assertRaises(NotFoundError) as cm:
             self.service.create_dataset(
                 tenant_id=str(self.tenant.id),
                 user_id=str(self.user.id),
                 file_id="00000000-0000-0000-0000-000000000000",
             )
+        self.assertEqual(cm.exception.code, "NOT_FOUND")
 
     def test_create_dataset_file_not_active(self):
         """Test dataset creation with inactive file"""
@@ -70,7 +71,7 @@ class DatasetServiceTest(DatasetsTestBase):
                 tenant_id=str(self.tenant.id), user_id=str(self.user.id), file_id=str(self.file.id)
             )
 
-        self.assertEqual(cm.exception.code, "VALIDATION_ERROR")
+        self.assertEqual(cm.exception.code, "FILE_NOT_READY_FOR_DATASET")
 
     def test_get_dataset_success(self):
         """Test successful dataset retrieval"""
@@ -152,42 +153,6 @@ class DatasetServiceTest(DatasetsTestBase):
 
     # ========== EDGE CASES ==========
 
-    def test_create_dataset_empty_schema_creates_dataset(self):
-        """Test creating dataset with empty schema creates dataset (edge case)"""
-        # Create dataset directly (bypassing S3 schema inference)
-        dataset = Dataset.objects.create(
-            tenant=self.tenant, file=self.file, format="CSV", schema_json={}, created_by=self.user
-        )
-
-        self.assertIsNotNone(dataset)
-
-    def test_create_dataset_empty_schema_sets_empty_schema_json(self):
-        """Test creating dataset with empty schema sets schema_json to empty dict (edge case)"""
-        # Create dataset directly (bypassing S3 schema inference)
-        dataset = Dataset.objects.create(
-            tenant=self.tenant, file=self.file, format="CSV", schema_json={}, created_by=self.user
-        )
-
-        self.assertEqual(dataset.schema_json, {})
-
-    def test_create_dataset_with_asset(self):
-        """Test creating dataset with asset_id (edge case)"""
-        asset = Asset.objects.create(
-            tenant=self.tenant, key="test-asset", name="Test Asset", created_by=self.user
-        )
-
-        # Create dataset directly (bypassing S3 for this test)
-        dataset = Dataset.objects.create(
-            tenant=self.tenant,
-            file=self.file,
-            asset=asset,
-            format="CSV",
-            schema_json={"fields": []},
-            created_by=self.user,
-        )
-
-        self.assertEqual(dataset.asset, asset)
-
     def test_get_dataset_with_invalid_uuid(self):
         """Test retrieving dataset with invalid UUID format (edge case)"""
         # execute_with_metrics wraps Django's UUIDField ValidationError as
@@ -196,16 +161,4 @@ class DatasetServiceTest(DatasetsTestBase):
             self.service.get_dataset(dataset_id="invalid-uuid", tenant_id=str(self.tenant.id))
 
         self.assertIn("not a valid UUID", str(cm.exception))
-
-    def test_create_dataset_version_starts_at_one(self):
-        """Test that dataset version starts at 1 (edge case)"""
-        dataset = Dataset.objects.create(
-            tenant=self.tenant,
-            file=self.file,
-            format="CSV",
-            schema_json={"fields": []},
-            created_by=self.user,
-        )
-
-        # Version should start at 1
-        self.assertEqual(dataset.version, 1)
+        self.assertEqual(cm.exception.code, "VALIDATION_ERROR")

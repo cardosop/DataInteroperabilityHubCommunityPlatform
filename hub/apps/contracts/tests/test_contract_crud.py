@@ -75,7 +75,6 @@ schema:
 
     def test_retrieve_contract(self):
         """Test retrieving a contract"""
-        self.client.force_authenticate(user=self.user)
 
         contract = Contract.objects.create(
             tenant=self.tenant,
@@ -135,7 +134,6 @@ schema:
     def test_delete_contract(self):
         """Test deleting a contract (soft delete)"""
         from hub.apps.users.models import Role, UserRole
-        self.client.force_authenticate(user=self.user)
         admin_role, _ = Role.objects.get_or_create(
             tenant=self.tenant, name="TENANT_ADMIN",
             defaults={"description": "Tenant administrator"},
@@ -164,7 +162,6 @@ schema:
 
     def test_list_contracts_tenant_scoped(self):
         """Test that users can only see contracts in their tenant"""
-        self.client.force_authenticate(user=self.user)
 
         # Create another tenant and contract
         _uid = uuid.uuid4().hex[:8]
@@ -222,7 +219,6 @@ schema:
 
     def test_create_contract_missing_required_fields(self):
         """Test creating contract with missing required fields"""
-        self.client.force_authenticate(user=self.user)
 
         data = {
             "original_format": OriginalFormat.JSON
@@ -236,7 +232,6 @@ schema:
 
     def test_create_contract_invalid_format(self):
         """Test creating contract with invalid format"""
-        self.client.force_authenticate(user=self.user)
 
         contract_data = {"id": "test", "name": "Test"}
         import json
@@ -249,7 +244,6 @@ schema:
 
     def test_create_contract_invalid_json(self):
         """Test creating contract with invalid JSON"""
-        self.client.force_authenticate(user=self.user)
 
         data = {
             "original_raw": '{"id": invalid}',  # Invalid JSON
@@ -266,7 +260,6 @@ schema:
 
     def test_retrieve_contract_not_found(self):
         """Test retrieving non-existent contract"""
-        self.client.force_authenticate(user=self.user)
 
         fake_id = str(uuid.uuid4())
         response = self.client.get(f"/api/v1/contracts/{fake_id}/")
@@ -275,7 +268,6 @@ schema:
 
     def test_retrieve_contract_cross_tenant(self):
         """Test retrieving contract from different tenant"""
-        self.client.force_authenticate(user=self.user)
 
         # Create contract in different tenant
         _uid = uuid.uuid4().hex[:8]
@@ -316,7 +308,6 @@ schema:
 
     def test_update_contract_not_found(self):
         """Test updating non-existent contract"""
-        self.client.force_authenticate(user=self.user)
 
         fake_id = str(uuid.uuid4())
         updated_data = {
@@ -330,7 +321,6 @@ schema:
 
     def test_update_contract_cross_tenant(self):
         """Test updating contract from different tenant"""
-        self.client.force_authenticate(user=self.user)
 
         # Create contract in different tenant
         _uid = uuid.uuid4().hex[:8]
@@ -384,8 +374,7 @@ schema:
         self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
 
     def test_update_contract_with_put_method(self):
-        """Test updating contract with PUT method"""
-        self.client.force_authenticate(user=self.user)
+        """Full PUT update with a well-formed ODCS payload returns 200 OK and persists."""
 
         contract = Contract.objects.create(
             tenant=self.tenant,
@@ -397,19 +386,26 @@ schema:
             created_by=self.user,
         )
 
+        # Full replacement payload — valid ODCS v3.0.2 contract.
+        updated_raw = '{"apiVersion": "odcs.io/v3.0.2", "kind": "DataContract", "id": "test", "name": "Updated", "version": "1.0.0", "schema": {"fields": [{"name": "id", "type": "string"}]}}'
         updated_data = {
-            "original_raw": '{"id": "test", "name": "Updated"}',
+            "original_raw": updated_raw,
             "original_format": OriginalFormat.JSON,
+            "status": ContractStatus.DRAFT,
         }
 
         response = self.client.put(f"/api/v1/contracts/{contract.id}/", updated_data, format="json")
 
-        # PUT should work (may require all fields or handle partial)
-        self.assertIn(response.status_code, [status.HTTP_200_OK, status.HTTP_400_BAD_REQUEST])
+        self.assertEqual(response.status_code, status.HTTP_200_OK,
+            f"PUT update with valid ODCS payload must return 200, got {response.status_code}")
+        self.assertEqual(response.data["original_raw"], updated_raw)
+        # Verify the DB was actually updated.
+        contract.refresh_from_db()
+        self.assertEqual(contract.original_raw, updated_raw,
+            "DB original_raw must match the PUT payload after update")
 
     def test_update_contract_partial_update(self):
-        """Test partial update with PATCH (only status)"""
-        self.client.force_authenticate(user=self.user)
+        """Partial update with PATCH (only status) persists the change to the DB."""
 
         contract = Contract.objects.create(
             tenant=self.tenant,
@@ -428,12 +424,16 @@ schema:
             f"/api/v1/contracts/{contract.id}/", updated_data, format="json"
         )
 
-        # Should succeed with partial update
-        self.assertIn(response.status_code, [status.HTTP_200_OK, status.HTTP_400_BAD_REQUEST])
+        # PATCH with valid data must return 200 OK
+        self.assertEqual(response.status_code, status.HTTP_200_OK,
+            f"PATCH partial update must return 200, got {response.status_code}")
+        # Verify the status change was persisted to the database.
+        contract.refresh_from_db()
+        self.assertEqual(contract.status, ContractStatus.ACTIVE,
+            f"DB status must be ACTIVE after PATCH, got {contract.status}")
 
     def test_delete_contract_not_found(self):
         """Test deleting non-existent contract"""
-        self.client.force_authenticate(user=self.user)
 
         fake_id = str(uuid.uuid4())
         response = self.client.delete(f"/api/v1/contracts/{fake_id}/")
@@ -442,7 +442,6 @@ schema:
 
     def test_delete_contract_cross_tenant(self):
         """Test deleting contract from different tenant"""
-        self.client.force_authenticate(user=self.user)
 
         # Create contract in different tenant
         _uid = uuid.uuid4().hex[:8]
@@ -491,7 +490,6 @@ schema:
 
     def test_list_contracts_pagination(self):
         """Test listing contracts with pagination"""
-        self.client.force_authenticate(user=self.user)
 
         # Create multiple contracts
         for i in range(25):
@@ -514,7 +512,6 @@ schema:
 
     def test_list_contracts_filtering_by_status(self):
         """Test listing contracts with status filter"""
-        self.client.force_authenticate(user=self.user)
 
         # Create contracts with different statuses
         Contract.objects.create(
@@ -547,7 +544,6 @@ schema:
 
     def test_list_contracts_empty_result(self):
         """Test listing contracts when no contracts exist"""
-        self.client.force_authenticate(user=self.user)
 
         response = self.client.get("/api/v1/contracts/")
 
@@ -557,7 +553,6 @@ schema:
 
     def test_create_contract_with_odps_spec_type(self):
         """Test creating contract with ODPS spec type"""
-        self.client.force_authenticate(user=self.user)
 
         contract_data = {
             "schema": "https://opendataproducts.org/schema/v4.1",
@@ -585,7 +580,6 @@ schema:
         """Test creating contract with asset_id"""
         from hub.apps.assets.models import Asset, AssetStatus
 
-        self.client.force_authenticate(user=self.user)
 
         asset = Asset.objects.create(
             tenant=self.tenant, key="test-asset", name="Test Asset", status=AssetStatus.DRAFT
@@ -612,7 +606,6 @@ schema:
 
     def test_create_contract_with_invalid_asset_id(self):
         """Test creating contract with non-existent asset_id"""
-        self.client.force_authenticate(user=self.user)
 
         contract_data = {
             "id": "test-contract",
@@ -637,7 +630,6 @@ schema:
 
     def test_retrieve_contract_invalid_id_format(self):
         """Test retrieving contract with invalid ID format"""
-        self.client.force_authenticate(user=self.user)
 
         response = self.client.get("/api/v1/contracts/invalid-id-format/")
 

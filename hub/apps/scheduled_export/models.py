@@ -129,6 +129,15 @@ class ScheduledExport(models.Model):
         blank=True,
         help_text="Timestamp of the last failure (Phase 71)",
     )
+    credential_ref = models.CharField(
+        max_length=1024,
+        null=True,
+        blank=True,
+        help_text=(
+            "AWS SM ARN (arn:aws:secretsmanager:...) or "
+            "prefect://block-slug for dlt credential resolution"
+        ),
+    )
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 

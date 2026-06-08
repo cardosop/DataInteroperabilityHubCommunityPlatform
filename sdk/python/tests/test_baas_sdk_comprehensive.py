@@ -45,18 +45,39 @@ def setup_authentication_for_sdk_tests(api_base_url: str) -> Optional[str]:
     """
     Set up authentication for SDK tests.
 
-    Tries multiple methods:
-    1. Use TEST_API_KEY environment variable if available
-    2. Use DATAHUB_API_KEY environment variable
-    3. Try to create API key via Django shell (if Docker Compose is available)
-    4. Return None if no key available
+    Priority order:
+    1. Create a dedicated tenant+key via Django shell — this is PRIMARY
+       because BaaS endpoints are gated behind ``Tenant.baas_enabled``.
+    2. Use the canonical conftest helper (validates token, auto-provisions).
+    3. Read TEST_API_KEY / DATAHUB_API_KEY from the environment.
     """
-    # Method 1: Use environment variables
+    # Method 1: Create dedicated tenant + API key via Django shell (PRIMARY).
+    try:
+        key = _create_baas_comprehensive_tenant_and_key()
+        if key:
+            return key
+    except Exception:
+        pass
+
+    # Method 2: Use canonical conftest helper
+    try:
+        from tests.conftest import get_api_key
+        canonical = get_api_key()
+        if canonical:
+            return canonical
+    except Exception:
+        pass
+
+    # Method 3: Environment variables (last resort)
     api_key = os.environ.get('TEST_API_KEY') or os.environ.get('DATAHUB_API_KEY')
     if api_key:
         return api_key
 
-    # Method 2: Try to create API key via Django shell in Docker Compose
+    return None
+
+
+def _create_baas_comprehensive_tenant_and_key() -> Optional[str]:
+    """Create a dedicated tenant with ``baas_enabled=True`` and return an API key."""
     try:
         unique_id = uuid.uuid4().hex[:8]
         django_shell_script = f"""
@@ -95,8 +116,11 @@ try:
 
     tenant, _ = Tenant.objects.get_or_create(
         slug=f'baas-sdk-comprehensive-test-tenant-{{unique_id}}',
-        defaults={{'name': f'BaaS SDK Comprehensive Test Tenant {{unique_id}}'}}
+        defaults={{'name': f'BaaS SDK Comprehensive Test Tenant {{unique_id}}', 'baas_enabled': True}}
     )
+    if not tenant.baas_enabled:
+        tenant.baas_enabled = True
+        tenant.save(update_fields=['baas_enabled'])
 
     user, _ = User.objects.get_or_create(
         email=f'baas-sdk-comprehensive-test-{{unique_id}}@example.com',
@@ -140,7 +164,7 @@ except Exception as e:
     traceback.print_exc(file=sys.stderr)
 """
         result = subprocess.run(
-            ['docker', 'compose', 'exec', '-T', 'api-service', 'python', 'manage.py', 'shell'],
+                        ['docker', 'compose', '-f', 'docker-compose.test.yml', 'exec', '-T', 'api-service-test', 'python', 'hub/manage.py', 'shell'],
             input=django_shell_script,
             text=True,
             capture_output=True,
@@ -183,7 +207,7 @@ except Exception as e:
 @pytest.fixture
 def real_api_config():
     """Fixture for real API configuration"""
-    api_base_url = os.environ.get('API_BASE_URL', 'http://localhost:8000/api/v1')
+    api_base_url = os.environ.get('API_BASE_URL', 'http://localhost:8001/api/v1')
     api_key = setup_authentication_for_sdk_tests(api_base_url)
 
     if not api_key:

@@ -192,12 +192,14 @@ class DQScorecardServiceTest(TestCase):
         
         recent_runs = scorecard["recent_runs"]
         self.assertLessEqual(len(recent_runs), 10)
+        # 3 runs were created — assert minimum count before checking ordering.
+        self.assertGreaterEqual(len(recent_runs), 2,
+            "Expected at least 2 recent runs for ordering check")
         # Should be ordered by completed_at descending
-        if len(recent_runs) > 1:
-            self.assertGreaterEqual(
-                recent_runs[0]["completed_at"],
-                recent_runs[1]["completed_at"]
-            )
+        self.assertGreaterEqual(
+            recent_runs[0]["completed_at"],
+            recent_runs[1]["completed_at"],
+        )
     
     def test_drill_down_asset(self):
         """Test drill-down by asset"""

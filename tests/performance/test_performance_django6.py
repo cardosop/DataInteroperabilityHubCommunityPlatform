@@ -299,7 +299,7 @@ class JobQueuePerformanceTest(PerformanceTest):
             try:
                 queue = get_queue('default')
                 from hub.apps.jobs.tasks import process_job
-                queue.enqueue(process_job, str(job.id), job_type=JobType.DQ_RUN, timeout=600)
+                queue.enqueue(process_job, str(job.id), type=JobType.DQ_RUN, timeout=600)
             except Exception:
                 pass  # Ignore Redis connection errors in tests
             return job

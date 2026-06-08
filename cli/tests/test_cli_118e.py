@@ -46,6 +46,8 @@ class TestTransformation:
             transformation, ["pipelines", "get", "--help"],
         )
         assert r.exit_code == 0
+        assert "Get pipeline details" in r.output
+        assert "PIPELINE_ID" in r.output
 
     def test_pipelines_create_help(self, runner):
         r = runner.invoke(
@@ -65,48 +67,62 @@ class TestTransformation:
             transformation, ["pipelines", "update", "--help"],
         )
         assert r.exit_code == 0
+        assert "Update a transformation pipeline" in r.output
+        assert "PIPELINE_ID" in r.output
 
     def test_pipelines_delete_help(self, runner):
         r = runner.invoke(
             transformation, ["pipelines", "delete", "--help"],
         )
         assert r.exit_code == 0
+        assert "Delete a transformation pipeline" in r.output
+        assert "PIPELINE_ID" in r.output
 
     def test_pipelines_validate_help(self, runner):
         r = runner.invoke(
             transformation, ["pipelines", "validate", "--help"],
         )
         assert r.exit_code == 0
+        assert "Validate a transformation pipeline" in r.output
+        assert "PIPELINE_ID" in r.output
 
     def test_runs_list_help(self, runner):
         r = runner.invoke(
             transformation, ["runs", "list", "--help"],
         )
         assert r.exit_code == 0
+        assert "List transformation runs" in r.output
 
     def test_runs_get_help(self, runner):
         r = runner.invoke(
             transformation, ["runs", "get", "--help"],
         )
         assert r.exit_code == 0
+        assert "Get transformation run details" in r.output
+        assert "RUN_ID" in r.output
 
     def test_runs_submit_help(self, runner):
         r = runner.invoke(
             transformation, ["runs", "submit", "--help"],
         )
         assert r.exit_code == 0
+        assert "Submit a new transformation run" in r.output
+        assert "PIPELINE_ID" in r.output
 
     def test_runs_cancel_help(self, runner):
         r = runner.invoke(
             transformation, ["runs", "cancel", "--help"],
         )
         assert r.exit_code == 0
+        assert "Cancel a running transformation" in r.output
+        assert "RUN_ID" in r.output
 
     def test_plan_limits_help(self, runner):
         r = runner.invoke(
             transformation, ["plan-limits", "--help"],
         )
         assert r.exit_code == 0
+        assert "Show transformation plan limits" in r.output
 
 
 # ── 118E.10: semantic commands ───────────────────────────
@@ -127,12 +143,14 @@ class TestSemantic:
             ["sparql", "service-description", "--help"],
         )
         assert r.exit_code == 0
+        assert "Get SPARQL service description" in r.output
 
     def test_ontology_help(self, runner):
         r = runner.invoke(
             semantic, ["ontology", "--help"],
         )
         assert r.exit_code == 0
+        assert "Get ontology definition" in r.output
 
     def test_context_help(self, runner):
         # Phase 230.6 self-audit GAP-1 — public docs advertise
@@ -142,19 +160,22 @@ class TestSemantic:
             semantic, ["context", "--help"],
         )
         assert r.exit_code == 0
-        assert "JSON-LD" in r.output or "context" in r.output
+        assert "JSON-LD" in r.output
+        assert "Get the JSON-LD context document." in r.output
 
     def test_void_help(self, runner):
         r = runner.invoke(
             semantic, ["void", "--help"],
         )
         assert r.exit_code == 0
+        assert "Get VoID dataset description" in r.output
 
     def test_shacl_validate_help(self, runner):
         r = runner.invoke(
             semantic, ["shacl", "validate", "--help"],
         )
         assert r.exit_code == 0
+        assert "Validate RDF data against SHACL shapes" in r.output
 
 
 # ── 118E.4: billing new commands ─────────────────────────
@@ -164,6 +185,7 @@ class TestBilling:
     def test_plan_limits_help(self, runner):
         r = runner.invoke(billing, ["plan-limits", "--help"])
         assert r.exit_code == 0
+        assert "Show current plan limits and usage" in r.output
 
     def test_usage_help(self, runner):
         r = runner.invoke(billing, ["usage", "--help"])
@@ -195,6 +217,7 @@ class TestBaaS:
             baas, ["customers", "list", "--help"],
         )
         assert r.exit_code == 0
+        assert "List BaaS customers" in r.output
 
     def test_customers_usage_help(self, runner):
         r = runner.invoke(
@@ -208,6 +231,7 @@ class TestBaaS:
             baas, ["billing-reports", "list", "--help"],
         )
         assert r.exit_code == 0
+        assert "List billing reports" in r.output
 
     def test_billing_reports_generate_help(self, runner):
         r = runner.invoke(
@@ -236,6 +260,7 @@ class TestML:
     def test_undeploy_help(self, runner):
         r = runner.invoke(ml, ["undeploy", "--help"])
         assert r.exit_code == 0
+        assert "Undeploy an ML model" in r.output
 
     def test_rollback_help(self, runner):
         r = runner.invoke(ml, ["rollback", "--help"])
@@ -245,10 +270,12 @@ class TestML:
     def test_plan_show_help(self, runner):
         r = runner.invoke(ml, ["plan", "show", "--help"])
         assert r.exit_code == 0
+        assert "Show current ML subscription plan" in r.output
 
     def test_plan_limits_help(self, runner):
         r = runner.invoke(ml, ["plan", "limits", "--help"])
         assert r.exit_code == 0
+        assert "Show ML plan limits" in r.output
 
     def test_marketplace_publish_help(self, runner):
         r = runner.invoke(
@@ -275,18 +302,22 @@ class TestCompliance:
             compliance, ["scan-result", "--help"],
         )
         assert r.exit_code == 0
+        assert "Get async compliance scan result" in r.output
+        assert "JOB_ID" in r.output
 
     def test_regulations_list_help(self, runner):
         r = runner.invoke(
             compliance, ["regulations", "list", "--help"],
         )
         assert r.exit_code == 0
+        assert "List available regulations" in r.output
 
     def test_regulations_get_help(self, runner):
         r = runner.invoke(
             compliance, ["regulations", "get", "--help"],
         )
         assert r.exit_code == 0
+        assert "Get regulation details" in r.output
 
 
 # ── 118E.9: governance workflows ─────────────────────────
@@ -305,12 +336,16 @@ class TestGovernance:
             governance, ["workflows", "get", "--help"],
         )
         assert r.exit_code == 0
+        assert "Get workflow details" in r.output
+        assert "WORKFLOW_ID" in r.output
 
     def test_workflows_retry_help(self, runner):
         r = runner.invoke(
             governance, ["workflows", "retry", "--help"],
         )
         assert r.exit_code == 0
+        assert "Retry a failed governance workflow" in r.output
+        assert "WORKFLOW_ID" in r.output
 
 
 # ── 118E.11-13: display field & watch tests ──────────────
@@ -330,6 +365,7 @@ class TestScheduledIngestion:
             scheduled_ingestion, ["get", "--help"],
         )
         assert r.exit_code == 0
+        assert "Get scheduled ingestion details" in r.output
 
     def test_run_detail_help(self, runner):
         r = runner.invoke(
@@ -337,6 +373,8 @@ class TestScheduledIngestion:
             ["run-detail", "--help"],
         )
         assert r.exit_code == 0
+        assert "Get scheduled ingestion run details" in r.output
+        assert "RUN_ID" in r.output
 
 
 class TestScheduledExport:
@@ -345,6 +383,7 @@ class TestScheduledExport:
             scheduled_export, ["get", "--help"],
         )
         assert r.exit_code == 0
+        assert "Get scheduled export details" in r.output
 
 
 # ── 118E.2: main.py registration ─────────────────────────

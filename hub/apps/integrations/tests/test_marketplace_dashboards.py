@@ -297,5 +297,5 @@ class MarketplaceDashboardsTest(TestCase):
                             )
                             if has_marketplace_metric:
                                 # Valid Prometheus query structure
-                                self.assertTrue(True, "Panel target has valid Prometheus query")
+                                self.assertTrue(has_marketplace_metric, "Panel should reference marketplace metrics")
 

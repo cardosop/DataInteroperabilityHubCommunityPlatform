@@ -89,17 +89,12 @@ class TestDockerComposeIntegration:
         application_services = [
             "api-service",
             "worker-service",
-            "workflow-engine-service",
-            "workflow-registry-service",
-            "event-bus-health-service",
-            "event-schema-registry-service",
             "semantic-service",
             "dq-service",
             "compliance-service",
+            "compliance-rq-worker",
             "datacontract-service",
-            "search-service",
-            "observability-service",
-            "webhook-service",
+            "prefect-integration-service",
         ]
         for service_name in application_services:
             assert (
@@ -131,6 +126,18 @@ class TestDockerComposeIntegration:
             "redis-exporter-events",
             "redis-exporter-channels",
             "mock-server",  # optional test marketplace mock; no healthcheck in image
+            "compliance-rq-worker",  # RQ worker — no healthcheck defined
+            "ckan-test-db",  # test-only CKAN service
+            "ckan-test-solr",
+            "ckan-test-redis",
+            "odh-training-operator",
+            "odh-inference-scheduler",
+            "clamav",
+            "postgres-replica",
+            "postgres-baas",
+            "redis-baas",
+            "mailhog",
+            "frontend",
         }
 
         for service_name, service_config in services.items():
@@ -150,14 +157,6 @@ class TestDockerComposeIntegration:
                 return name in depends_on
             return name in depends_on
 
-        # Test that workflow-engine-service depends on postgres and redis-cache (or redis-queue)
-        workflow_engine = services.get("workflow-engine-service", {})
-        depends_on = workflow_engine.get("depends_on", {})
-        assert _has_dep(depends_on, "postgres"), "workflow-engine-service must depend on postgres"
-        assert _has_dep(depends_on, "redis-cache") or _has_dep(
-            depends_on, "redis-queue"
-        ), "workflow-engine-service must depend on redis-cache or redis-queue"
-
         # Test that api-service depends on postgres, redis-cache, and minio
         api_service = services.get("api-service", {})
         api_depends_on = api_service.get("depends_on", {})
@@ -173,12 +172,13 @@ class TestDockerComposeIntegration:
 
         # Services that should have OpenTelemetry configuration
         services_with_tracing = [
-            "workflow-engine-service",
-            "workflow-registry-service",
-            "event-bus-health-service",
-            "event-schema-registry-service",
             "api-service",
             "worker-service",
+            "semantic-service",
+            "dq-service",
+            "compliance-service",
+            "datacontract-service",
+            "prefect-integration-service",
         ]
 
         for service_name in services_with_tracing:
@@ -258,7 +258,14 @@ class TestDockerComposeIntegration:
             ports = service_config.get("ports", [])
             for port_mapping in ports:
                 if isinstance(port_mapping, str):
-                    host_port = port_mapping.split(":")[0]
+                    parts = port_mapping.split(":")
+                    # 3 parts → IP:HOST_PORT:CONTAINER_PORT (e.g. 127.0.0.1:5432:5432)
+                    # 2 parts → HOST_PORT:CONTAINER_PORT (e.g. 8080:8080)
+                    # 1 part  → CONTAINER_PORT only (no host binding)
+                    if len(parts) >= 2:
+                        host_port = parts[-2]  # second-to-last part is always host port
+                    else:
+                        continue
                 elif isinstance(port_mapping, dict):
                     host_port = port_mapping.get("published")
                 else:

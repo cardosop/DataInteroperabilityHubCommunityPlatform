@@ -12,20 +12,17 @@ def setup_authentication_for_sdk_tests(api_base_url: str) -> str | None:
     """
     Set up authentication for SDK tests.
 
-    Tries multiple methods:
-    1. Use TEST_API_KEY environment variable if available
-    2. Use TEST_USER_EMAIL and TEST_USER_PASSWORD to login and get JWT token
-
-    Args:
-        api_base_url: API base URL
-
-    Returns:
-        API key or JWT token string if successful, None otherwise
+    Delegates to the canonical conftest helper first, then falls back
+    to credential-based login if the canonical helper returns None.
     """
-    # Method 1: Use API key from environment variable
-    api_key = os.getenv("TEST_API_KEY")
-    if api_key:
-        return api_key
+    # Method 1: Canonical conftest helper (handles env vars, validation, auto-provision, refresh)
+    try:
+        from tests.conftest import get_api_key
+        key = get_api_key()
+        if key:
+            return key
+    except Exception:
+        pass
 
     # Method 2: Use credentials from environment to login and get JWT token
     email = os.getenv("TEST_USER_EMAIL", "sdk-test@example.com")
@@ -54,19 +51,16 @@ def setup_authentication_for_sdk_tests(api_base_url: str) -> str | None:
 @pytest.fixture
 def real_api_config():
     """Create config for real API (if available)."""
-    api_url = os.getenv("TEST_API_URL", "http://localhost:8000/api/v1")
+    api_url = os.getenv("API_BASE_URL", "http://localhost:8001/api/v1")
 
-    # Try to get API key from environment or set it up automatically
-    api_token = os.getenv("TEST_API_KEY")
-
-    if not api_token:
-        # Try to set up authentication automatically
-        api_token = setup_authentication_for_sdk_tests(api_url)
+    # Use the canonical helper which validates the token and auto-provisions
+    # a fresh one if needed.
+    api_token = setup_authentication_for_sdk_tests(api_url)
 
     if not api_token:
         pytest.skip(
             "Could not set up authentication for SDK tests. "
-            "Set TEST_API_KEY environment variable or ensure API is accessible at http://localhost:8000"
+            "Set TEST_API_KEY environment variable or ensure API is accessible at http://localhost:8001"
         )
 
     return DataHubClientConfig(

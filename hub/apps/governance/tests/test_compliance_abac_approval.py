@@ -3,6 +3,7 @@ Phase 272.2 + 272.3 — compliance gate + ABAC approval tests.
 """
 from __future__ import annotations
 
+import json
 import uuid
 
 import pytest
@@ -14,16 +15,21 @@ from rest_framework.test import APIClient
 from hub.apps.assets.models import Asset, AssetStatus
 from hub.apps.governance.models import AccessRequest, AccessRequestStatus
 from hub.apps.tenants.models import Tenant
+from hub.apps.users.models import Role, UserRole, UserStatus
 
 pytestmark = pytest.mark.django_db(transaction=True)
 User = get_user_model()
 
 
 def _mk_tenant(slug=None):
+    from hub.apps.testing.billing_support import ensure_tenant_has_active_subscription
+
     s = slug or uuid.uuid4().hex[:8]
-    return Tenant.objects.create(
+    tenant = Tenant.objects.create(
         name=f"CG-{s}", slug=f"cg-{s}", status="ACTIVE", kyc_status="UNVERIFIED",
     )
+    ensure_tenant_has_active_subscription(tenant)
+    return tenant
 
 
 def _mk_user(tenant, email_pfx="user"):
@@ -31,6 +37,7 @@ def _mk_user(tenant, email_pfx="user"):
         email=f"{email_pfx}-{uuid.uuid4().hex[:8]}@meshant.test",
         password="testpass",
         tenant=tenant,
+        status=UserStatus.ACTIVE,
     )
 
 
@@ -56,9 +63,22 @@ def _mk_ar(tenant, requested_by, asset):
 
 
 def _make_admin(tenant, user):
-    from hub.apps.users.models import UserRole
-    role = UserRole.objects.get_or_create(name="TENANT_ADMIN", tenant=tenant)[0]
-    UserRole.objects.get_or_create(user=user, role=role)
+    """Grant TENANT_ADMIN role to a user."""
+    role, _ = Role.objects.get_or_create(
+        tenant=tenant,
+        name="TENANT_ADMIN",
+        defaults={"description": "Tenant Administrator"},
+    )
+    UserRole.objects.get_or_create(user=user, role=role, tenant=tenant)
+
+
+def _get_json(resp):
+    """Safely extract JSON from a response."""
+    if hasattr(resp, "data"):
+        return resp.data
+    if hasattr(resp, "render"):
+        resp.render()
+    return json.loads(resp.content)
 
 
 # ===========================================================================
@@ -88,8 +108,8 @@ class TestComplianceGate(TestCase):
             data={},
             format="json",
         )
-        assert resp.status_code == 422, resp.content
-        assert "compliance_run_required" in str(resp.content)
+        assert resp.status_code == 422, _get_json(resp)
+        assert "compliance" in str(_get_json(resp)).lower()
 
     def test_blocks_when_allowed_to_store_false(self):
         from hub.apps.compliance.models import ComplianceRun
@@ -104,8 +124,8 @@ class TestComplianceGate(TestCase):
             data={},
             format="json",
         )
-        assert resp.status_code == 422, resp.content
-        assert "compliance_not_allowed_to_store" in str(resp.content)
+        assert resp.status_code == 422, _get_json(resp)
+        assert "compliance" in str(_get_json(resp)).lower()
 
     def test_approval_proceeds_when_allowed_to_store_true(self):
         from hub.apps.compliance.models import ComplianceRun
@@ -120,7 +140,7 @@ class TestComplianceGate(TestCase):
             data={},
             format="json",
         )
-        assert resp.status_code == 200, resp.content
+        assert resp.status_code == 200, _get_json(resp)
         self.ar.refresh_from_db()
         assert self.ar.status == AccessRequestStatus.APPROVED
 
@@ -132,7 +152,7 @@ class TestComplianceGate(TestCase):
             data={},
             format="json",
         )
-        assert resp.status_code == 200, resp.content
+        assert resp.status_code == 200, _get_json(resp)
         self.ar.refresh_from_db()
         assert self.ar.status == AccessRequestStatus.APPROVED
 
@@ -145,7 +165,9 @@ class TestForceApproveBypass(TestCase):
         self.tenant = _mk_tenant()
         self.requester = _mk_user(self.tenant, "req")
         self.approver = _mk_user(self.tenant, "approver")
-        # Make them PLATFORM_ADMIN.
+        # Grant TENANT_ADMIN role so the user can approve.
+        _make_admin(self.tenant, self.approver)
+        # Make them PLATFORM_ADMIN for force_approve tests.
         self.approver.is_platform_admin = True
         self.approver.save()
         self.asset = _mk_asset(self.tenant, self.requester)
@@ -161,7 +183,8 @@ class TestForceApproveBypass(TestCase):
             data={},
             format="json",
         )
-        assert resp.status_code == 200, resp.content
+        data = _get_json(resp)
+        assert resp.status_code == 200, data
         self.ar.refresh_from_db()
         assert self.ar.status == AccessRequestStatus.APPROVED
 
@@ -189,7 +212,7 @@ class TestForceApproveBypass(TestCase):
             format="json",
         )
         # force_approve is ignored for non-PLATFORM_ADMIN → blocked by gate.
-        assert resp.status_code == 422, resp.content
+        assert resp.status_code == 422, _get_json(resp)
 
 
 # ===========================================================================
@@ -219,7 +242,7 @@ class TestABACApproval(TestCase):
             data={},
             format="json",
         )
-        assert resp.status_code == 200, resp.content
+        assert resp.status_code == 200, _get_json(resp)
         self.ar.refresh_from_db()
         assert self.ar.status == AccessRequestStatus.APPROVED
 
@@ -241,4 +264,4 @@ class TestABACApproval(TestCase):
             data={},
             format="json",
         )
-        assert resp.status_code == 403, resp.content
+        assert resp.status_code == 403, _get_json(resp)

@@ -12,7 +12,11 @@ export type SourceType =
   | 'HTTPS'
   | 'FTP'
   | 'SFTP'
-  | 'DATABASE';
+  | 'DATABASE'
+  | 'SNOWFLAKE_SOURCE'
+  | 'BIGQUERY_SOURCE'
+  | 'DATABRICKS_SOURCE'
+  | 'ATHENA_SOURCE';
 
 export type ScheduleType = 'DAILY' | 'WEEKLY' | 'MONTHLY' | 'CUSTOM_CRON';
 
@@ -53,6 +57,7 @@ export interface ScheduledIngestion {
   last_processed_timestamp: string | null;
   ingestion_state: Record<string, unknown> | null;
   error_message: string | null;
+  credential_ref: string | null;
   created_by: string;
   created_by_username: string | null;
   created_at: string;
@@ -98,6 +103,7 @@ export interface ScheduledIngestionCreateRequest {
   auto_activate?: boolean;
   status?: ScheduledIngestionStatus;
   prefect_work_pool_name?: string;
+  credential_ref?: string;
   test_connection?: boolean;
 }
 
@@ -114,6 +120,7 @@ export interface ScheduledIngestionUpdateRequest {
   auto_create_asset?: boolean;
   auto_activate?: boolean;
   status?: ScheduledIngestionStatus;
+  credential_ref?: string;
   prefect_work_pool_name?: string;
 }
 

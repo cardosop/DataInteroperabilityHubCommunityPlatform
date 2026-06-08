@@ -1,4 +1,6 @@
 """
+
+import uuid
 Simple test to verify infrastructure works without file operations
 """
 import sys
@@ -29,6 +31,7 @@ from hub.apps.tenants.models import Tenant, TenantStatus, KYCStatus
 from hub.apps.users.models import User, Role, UserRole
 from tests.fixtures.test_data_factories import TenantFactory, UserFactory
 from hub.apps.testing.billing_support import ensure_tenant_has_active_subscription
+from hub.apps.testing.role_support import ensure_user_has_data_provider_role
 from django.db.models.signals import post_save
 from hub.apps.semantic.signals import contract_saved, asset_saved
 from hub.apps.tenants.signals import create_default_roles
@@ -76,6 +79,7 @@ class SimpleAssetCreationTest(TestCase):
         UserRole.objects.get_or_create(user=self.user, role=self.role)
 
         self.client.force_authenticate(user=self.user)
+        ensure_user_has_data_provider_role(self.user)
 
     def tearDown(self):
         post_save.connect(contract_saved, sender=None)

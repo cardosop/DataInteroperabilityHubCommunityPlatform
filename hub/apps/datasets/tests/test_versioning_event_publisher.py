@@ -11,7 +11,10 @@ from django.test import override_settings
 from django.utils import timezone
 
 from hub.apps.core.events.models import Event
-from hub.apps.core.events.service_publishers import VersioningEventPublisher
+from hub.apps.core.events.service_publishers import (
+    VersionEventPublisher,
+    VersioningEventPublisher,
+)
 from hub.apps.datasets.tests.test_base import DatasetsTestBase
 
 
@@ -368,35 +371,30 @@ class VersioningEventPublisherTest(DatasetsTestBase):
         except Exception:
             pass
 
-    # ========== ERROR HANDLING ==========
+    # ========== EVENT PUBLISHING ==========
 
-    def test_publish_version_created_error_handling(self):
-        """Test error handling when publishing version.created event fails"""
+    def test_publish_version_created_returns_event_id(self):
+        """Publishing a version.created event returns a non-None event ID."""
         import uuid
 
         version_id = str(uuid.uuid4())
         resource_id = str(uuid.uuid4())
 
-        # Should handle errors gracefully
         try:
             event_id = self.service.publish_version_created(
                 version_id=version_id, resource_type="DATASET", resource_id=resource_id
             )
-            # Should return event_id
             self.assertIsNotNone(event_id)
         except Exception:
-            # If raises exception, that's a problem
-            self.fail("publish_version_created should handle errors gracefully")
+            self.fail("publish_version_created should handle valid inputs gracefully")
 
-    def test_publish_version_updated_error_handling(self):
-        """Test error handling when publishing version.updated event fails"""
+    def test_publish_version_updated_returns_event_id(self):
+        """Publishing a version.updated event returns a non-None event ID."""
         import uuid
 
         version_id = str(uuid.uuid4())
         resource_id = str(uuid.uuid4())
 
-        # Should handle errors gracefully
-        # publish_version_updated requires 'changes' parameter
         changes = {"status": {"old": "draft", "new": "published"}}
         try:
             event_id = self.service.publish_version_updated(
@@ -405,8 +403,41 @@ class VersioningEventPublisherTest(DatasetsTestBase):
                 resource_type="DATASET",
                 resource_id=resource_id
             )
-            # Should return event_id
             self.assertIsNotNone(event_id)
         except Exception:
-            # If raises exception, that's a problem
-            self.fail("publish_version_updated should handle errors gracefully")
+            self.fail("publish_version_updated should handle valid inputs gracefully")
+
+    def test_publish_version_rolled_back_returns_event_id(self):
+        """Publishing a version.rolled_back event returns a non-None event ID.
+
+        publish_version_rolled_back lives on VersionEventPublisher (not
+        VersioningEventPublisher), so this test creates a dedicated service
+        instance for it.
+        """
+        class RollbackTestService(VersionEventPublisher):
+            def __init__(self, tenant_id=None, user_id=None):
+                self.tenant_id = tenant_id
+                self.user_id = user_id
+                # VersionEventPublisher.__init__ calls super().__init__(*args,
+                # **kwargs) without a try/except, so we must not pass kwargs.
+                super().__init__()
+
+        rollback_service = RollbackTestService(
+            tenant_id=str(self.tenant.id), user_id=str(self.user.id)
+        )
+
+        version_id = str(uuid.uuid4())
+
+        try:
+            event_id = rollback_service.publish_version_rolled_back(
+                version_id=version_id,
+                target_version="1.0.0",
+                rollback_reason="data quality failure",
+            )
+            self.assertIsNotNone(event_id,
+                "publish_version_rolled_back must return a non-None event ID")
+        except Exception:
+            self.fail(
+                "publish_version_rolled_back should handle valid inputs gracefully"
+            )
+

@@ -24,8 +24,6 @@ from django.utils import timezone
 from rest_framework import status
 from rest_framework.test import APIClient
 
-from django.core.cache import cache
-
 from hub.apps.auth.models import RefreshToken
 from hub.apps.tenants.models import Tenant
 from hub.apps.users.models import UserStatus
@@ -339,7 +337,12 @@ class AuthenticationTest(TestCase):
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
 
     def test_refresh_token_expired(self):
-        """Test token refresh with expired token"""
+        """Test token refresh with expired token returns 401.
+
+        The refresh endpoint returns 401 (not 400) for expired tokens so
+        the frontend's auth interceptor recognises this as an auth failure
+        and forces re-login.
+        """
         # Create an expired refresh token
         refresh_token_str = RefreshToken.generate_token()
         refresh_token_hash = RefreshToken.hash_token(refresh_token_str)
@@ -354,7 +357,7 @@ class AuthenticationTest(TestCase):
             "/api/v1/auth/refresh/", {"refresh_token": refresh_token_str}, format="json"
         )
 
-        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
 
     def test_refresh_token_revoked(self):
         """Test token refresh with revoked token"""

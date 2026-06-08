@@ -1,4 +1,6 @@
 """
+
+import uuid
 10.5.3: ODPS Workflow Chaos Tests
 
 Tests ODPS workflow resilience under various failure scenarios:

@@ -11,6 +11,82 @@ from typing import Optional, Dict, Any
 from datetime import timedelta
 
 
+# ---------------------------------------------------------------------------
+# Domain exception hierarchy for storage operations.
+#
+# Every public method that wraps a boto3 ClientError now raises a typed
+# StorageError subclass so callers can distinguish between:
+#   - object-not-found (expected / recoverable — e.g. scan job for a file
+#     that was never fully uploaded) → warning-level log
+#   - connection / auth failures (transient — retryable)
+#   - hard storage errors (genuine incident — error-level log)
+#
+# This replaces the previous pattern of ``raise Exception("...")`` which
+# forced callers into brittle string-matching on error messages.
+# ---------------------------------------------------------------------------
+
+
+class StorageError(Exception):
+    """Base exception for all storage-layer errors."""
+
+
+class StorageConnectionError(StorageError):
+    """Storage endpoint is unreachable (DNS, network, timeout)."""
+
+
+class StorageAuthError(StorageError):
+    """Storage authentication / authorization failure (403, InvalidAccessKeyId)."""
+
+
+class StorageObjectNotFoundError(StorageError):
+    """The requested S3 key does not exist (NoSuchKey / 404)."""
+
+
+class StorageReadError(StorageError):
+    """Generic read/download failure (not object-not-found or connection)."""
+
+
+class StorageWriteError(StorageError):
+    """Generic write/upload failure."""
+
+
+# Map of boto3 error codes → StorageError subclasses for consistent translation.
+_S3_ERROR_CODE_MAP = {
+    "NoSuchKey": StorageObjectNotFoundError,
+    "NotFound": StorageObjectNotFoundError,
+    "AccessDenied": StorageAuthError,
+    "InvalidAccessKeyId": StorageAuthError,
+    "SignatureDoesNotMatch": StorageAuthError,
+}
+
+
+def _translate_client_error(
+    error: ClientError,
+    message: str = "",
+    *,
+    default: type[StorageError] = StorageError,
+) -> StorageError:
+    """Translate a boto3 ``ClientError`` into the appropriate ``StorageError`` subclass.
+
+    Args:
+        error: The original boto3 exception.
+        message: Human-readable context (prepended to the boto3 message).
+        default: Fallback exception class when the error code is unrecognised.
+
+    Returns:
+        An instance of the matching ``StorageError`` subclass with the
+        original exception chained via ``raise ... from error``.
+    """
+    code = (
+        error.response.get("Error", {}).get("Code", "")
+        if hasattr(error, "response")
+        else ""
+    )
+    exc_cls = _S3_ERROR_CODE_MAP.get(code, default)
+    full_message = f"{message}: {error}" if message else str(error)
+    return exc_cls(full_message)
+
+
 class S3StorageClient:
     """
     Client for S3-compatible storage operations.
@@ -197,7 +273,24 @@ class S3StorageClient:
             verify=getattr(settings, 'AWS_S3_VERIFY', True),
             config=s3_config,
         )
-        if _ak_looks_real:
+        # Detect whether we are talking to a non-AWS endpoint (MinIO).
+        # MinIO accepts any access-key/secret-key pair; the credential
+        # shape check below only applies to real AWS.
+        _is_minio = bool(
+            self.endpoint_url
+            and (
+                'minio' in self.endpoint_url.lower()
+                or 'localhost' in self.endpoint_url
+                or '127.0.0.1' in self.endpoint_url
+            )
+        )
+        if _is_minio:
+            # MinIO — always pass whatever credentials we have.  They may
+            # be short (e.g. "minio") or dev defaults, but MinIO does not
+            # enforce the AWS IAM credential format.
+            client_kwargs['aws_access_key_id'] = _ak
+            client_kwargs['aws_secret_access_key'] = _sk
+        elif _ak_looks_real:
             client_kwargs['aws_access_key_id'] = _ak
             client_kwargs['aws_secret_access_key'] = _sk
         else:
@@ -473,16 +566,18 @@ class S3StorageClient:
                 )
 
                 # Phase 213.H.6 — validate AKID in X-Amz-Credential.
-                # Reject: empty AKID (`/20260409/...`), placeholder strings
-                # like "IRSA" or "minio" that aren't real AWS credentials,
-                # and anything shorter than 16 chars (real AKIA*/ASIA* keys
-                # are 20 chars; IRSA STS session keys are longer).
+                # Reject: empty AKID (`/20260409/...`) and placeholder
+                # strings like "IRSA" (4 chars).  MinIO dev/test keys
+                # (``minio`` 5 chars, ``minioadmin`` 10 chars) are
+                # accepted.  Real AKIA*/ASIA* keys are 20 chars;
+                # IRSA STS keys longer.
+                _MIN_AKID_LEN = 5
                 from urllib.parse import urlparse as _urlparse, parse_qs as _parse_qs
                 _qs = _parse_qs(_urlparse(upload_url).query)
                 _cred = (_qs.get('X-Amz-Credential') or [''])[0]
                 if _cred:
                     _akid_part = _cred.split('/')[0]
-                    if not _akid_part or len(_akid_part) < 16:
+                    if not _akid_part or len(_akid_part) < _MIN_AKID_LEN:
                         raise RuntimeError(
                             f"Presigned URL has invalid AKID '{_akid_part}' in "
                             f"X-Amz-Credential ({_cred!r}). boto3 signed with "
@@ -520,7 +615,10 @@ class S3StorageClient:
                     'key': key
                 }
         except ClientError as e:
-            raise Exception(f"Failed to generate presigned upload URL: {str(e)}")
+            raise _translate_client_error(
+                e, "Failed to generate presigned upload URL",
+                default=StorageWriteError,
+            ) from e
 
     def generate_presigned_download_url(
         self,
@@ -556,7 +654,10 @@ class S3StorageClient:
 
             return url
         except ClientError as e:
-            raise Exception(f"Failed to generate presigned download URL: {str(e)}")
+            raise _translate_client_error(
+                e, "Failed to generate presigned download URL",
+                default=StorageReadError,
+            ) from e
 
     def initiate_multipart_upload(
         self,
@@ -581,7 +682,10 @@ class S3StorageClient:
             )
             return response['UploadId']
         except ClientError as e:
-            raise Exception(f"Failed to initiate multipart upload: {str(e)}")
+            raise _translate_client_error(
+                e, "Failed to initiate multipart upload",
+                default=StorageWriteError,
+            ) from e
 
     def generate_presigned_part_url(
         self,
@@ -615,7 +719,10 @@ class S3StorageClient:
             )
             return url
         except ClientError as e:
-            raise Exception(f"Failed to generate presigned part URL: {str(e)}")
+            raise _translate_client_error(
+                e, "Failed to generate presigned part URL",
+                default=StorageWriteError,
+            ) from e
 
     def complete_multipart_upload(
         self,
@@ -643,7 +750,10 @@ class S3StorageClient:
             )
             return response
         except ClientError as e:
-            raise Exception(f"Failed to complete multipart upload: {str(e)}")
+            raise _translate_client_error(
+                e, "Failed to complete multipart upload",
+                default=StorageWriteError,
+            ) from e
 
     def abort_multipart_upload(
         self,
@@ -664,7 +774,10 @@ class S3StorageClient:
                 UploadId=upload_id
             )
         except ClientError as e:
-            raise Exception(f"Failed to abort multipart upload: {str(e)}")
+            raise _translate_client_error(
+                e, "Failed to abort multipart upload",
+                default=StorageWriteError,
+            ) from e
 
     def delete_file(self, key: str):
         """
@@ -679,7 +792,10 @@ class S3StorageClient:
                 Key=key
             )
         except ClientError as e:
-            raise Exception(f"Failed to delete file: {str(e)}")
+            raise _translate_client_error(
+                e, "Failed to delete file",
+                default=StorageWriteError,
+            ) from e
 
     def delete_prefix(
         self,
@@ -750,9 +866,10 @@ class S3StorageClient:
                 )
                 deleted_count += len(contents)
         except ClientError as e:
-            raise Exception(
-                f"Failed to delete prefix {prefix!r} on bucket "
-                f"{target_bucket!r}: {e}"
+            raise _translate_client_error(
+                e,
+                f"Failed to delete prefix {prefix!r} on bucket {target_bucket!r}",
+                default=StorageWriteError,
             ) from e
 
         return deleted_count
@@ -777,13 +894,16 @@ class S3StorageClient:
             )
             return True
         except EndpointConnectionError as e:
-            raise Exception(
-                f"Storage unavailable: {str(e)}"
+            raise StorageConnectionError(
+                f"Storage unavailable: {e}"
             ) from e
         except ClientError as e:
             if e.response['Error']['Code'] == '404':
                 return False
-            raise Exception(f"Failed to check file existence: {str(e)}")
+            raise _translate_client_error(
+                e, "Failed to check file existence",
+                default=StorageReadError,
+            ) from e
 
     def get_file_size(self, key: str) -> int:
         """
@@ -802,14 +922,19 @@ class S3StorageClient:
             )
             return response['ContentLength']
         except ClientError as e:
-            raise Exception(f"Failed to get file size: {str(e)}")
+            raise _translate_client_error(
+                e, "Failed to get file size",
+                default=StorageReadError,
+            ) from e
 
-    def get_file_content(self, key: str) -> bytes:
+    def get_file_content(self, key: str, max_bytes: int | None = None) -> bytes:
         """
         Download file content from S3.
 
         Args:
             key: S3 object key (path)
+            max_bytes: Optional max bytes to read (range read). When
+                provided, only the first *max_bytes* bytes are fetched.
 
         Returns:
             File content as bytes
@@ -819,13 +944,16 @@ class S3StorageClient:
             self._ensure_bucket_exists()
             self._bucket_checked = True
         try:
-            response = self.client.get_object(
-                Bucket=self.bucket_name,
-                Key=key
-            )
+            kwargs = {"Bucket": self.bucket_name, "Key": key}
+            if max_bytes is not None:
+                kwargs["Range"] = f"bytes=0-{max_bytes - 1}"
+            response = self.client.get_object(**kwargs)
             return response['Body'].read()
         except ClientError as e:
-            raise Exception(f"Failed to download file: {str(e)}")
+            raise _translate_client_error(
+                e, "Failed to download file",
+                default=StorageReadError,
+            ) from e
 
     def download_file(self, key: str) -> bytes:
         """
@@ -940,6 +1068,56 @@ class S3StorageClient:
                     self.client.put_object(**put_kwargs)
                     return key
                 except (ClientError, Exception) as retry_error:
-                    raise Exception(f"Failed to save file after retry: {str(retry_error)}")
-            raise Exception(f"Failed to save file: {str(e)}")
+                    if isinstance(retry_error, ClientError):
+                        raise _translate_client_error(
+                            retry_error, "Failed to save file after retry",
+                            default=StorageWriteError,
+                        ) from retry_error
+                    raise StorageWriteError(
+                        f"Failed to save file after retry: {retry_error}"
+                    ) from retry_error
+            if isinstance(e, ClientError):
+                raise _translate_client_error(
+                    e, "Failed to save file",
+                    default=StorageWriteError,
+                ) from e
+            raise StorageWriteError(f"Failed to save file: {e}") from e
+
+    # ------------------------------------------------------------------
+    # Resource lifecycle
+    # ------------------------------------------------------------------
+
+    def close(self) -> None:
+        """Close the underlying boto3 S3 client connection pool.
+
+        Safe to call multiple times — subsequent calls are no-ops.
+
+        After ``close()`` the client instance should not be reused; create
+        a new ``S3StorageClient`` if further operations are needed.
+        """
+        if hasattr(self, "client") and self.client is not None:
+            try:
+                # botocore >= 1.27 exposes Endpoint.close() which tears
+                # down the underlying urllib3 connection pool.
+                endpoint = getattr(self.client, "_endpoint", None)
+                if endpoint is not None and hasattr(endpoint, "close"):
+                    endpoint.close()
+            except Exception:
+                pass
+            finally:
+                self.client = None
+
+    def __enter__(self) -> "S3StorageClient":
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb) -> None:
+        self.close()
+        return None  # do not suppress exceptions
+
+    def __del__(self) -> None:
+        """Last-resort cleanup guard — prefer explicit ``.close()`` or ``with``."""
+        try:
+            self.close()
+        except Exception:
+            pass
 

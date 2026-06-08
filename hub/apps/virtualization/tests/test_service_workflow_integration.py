@@ -46,6 +46,8 @@ class ServiceWorkflowIntegrationTest(TestCase):
 
     def setUp(self):
         """Set up test fixtures"""
+        from hub.apps.orchestration.registry import reset_workflow_definition_cache
+        reset_workflow_definition_cache()
         uid = uuid.uuid4().hex[:8]
         self.tenant = Tenant.objects.create(
             name=f"Test Tenant {uid}",

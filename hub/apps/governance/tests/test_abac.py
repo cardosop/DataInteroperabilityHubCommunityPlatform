@@ -43,14 +43,7 @@ class ABACEngineTest(TestCase):
             tenant=self.tenant,
             status=UserStatus.ACTIVE
         )
-        
-        self.admin_user = User.objects.create_user(
-            email=f"admin-{uuid.uuid4().hex[:8]}@example.com",
-            password="testpass123",
-            tenant=self.tenant,
-            status=UserStatus.ACTIVE
-        )
-        
+
         self.asset = Asset.objects.create(
             tenant=self.tenant,
             key="test-asset",
@@ -323,8 +316,8 @@ class ABACEngineTest(TestCase):
             priority=100,
             created_by=self.user
         )
-        
-        # Evaluate (should cache)
+
+        # Evaluate (should populate cache)
         ABACEngine.evaluate_access(
             user_id=str(self.user.id),
             tenant_id=str(self.tenant.id),
@@ -332,14 +325,32 @@ class ABACEngineTest(TestCase):
             resource_id=str(self.dataset.id),
             access_type="READ"
         )
-        
+
+        # Verify cache IS populated after evaluate_access
+        cache_key = ABACEngine._get_cache_key(
+            str(self.tenant.id), "DATASET", str(self.dataset.id)
+        )
+        cached_data = cache.get(cache_key)
+        self.assertIsNotNone(
+            cached_data,
+            "Cache should be populated after evaluate_access"
+        )
+        self.assertGreater(
+            len(cached_data), 0,
+            "Cache should contain at least one policy ID"
+        )
+
         # Invalidate cache
         ABACEngine.invalidate_policy_cache(
             tenant_id=str(self.tenant.id),
             resource_type="DATASET",
             resource_id=str(self.dataset.id)
         )
-        
-        # Cache should be invalidated (next evaluation will fetch fresh)
-        # This is tested implicitly - cache should be empty
+
+        # Verify cache IS empty after invalidation
+        cached_after = cache.get(cache_key)
+        self.assertIsNone(
+            cached_after,
+            "Cache should be empty after invalidate_policy_cache"
+        )
 

@@ -32,7 +32,7 @@ from hub.apps.files.models import File, FileStatus
 from hub.apps.governance.models import AccessRequest, AccessRequestStatus
 from hub.apps.tenants.models import Tenant
 from hub.apps.testing.billing_support import ensure_tenant_has_active_subscription
-from hub.apps.users.models import UserStatus
+from hub.apps.users.models import Role, UserRole, UserStatus
 
 pytestmark = pytest.mark.django_db(transaction=True)
 User = get_user_model()
@@ -66,6 +66,13 @@ class AccessRequestViewSetTest(TestCase):
             tenant=self.tenant,
             status=UserStatus.ACTIVE,
         )
+        # Grant TENANT_ADMIN role so approver can approve/reject
+        admin_role, _ = Role.objects.get_or_create(
+            tenant=self.tenant,
+            name="TENANT_ADMIN",
+            defaults={"description": "Tenant Administrator"},
+        )
+        UserRole.objects.get_or_create(user=self.approver, role=admin_role)
 
         # Create platform admin user
         self.platform_admin = User.objects.create_user(
@@ -403,13 +410,9 @@ class AccessRequestViewSetTest(TestCase):
         self.client.force_authenticate(user=self.user)
 
         # Check if workflow is available
-        workflow_available = True
         try:
-            from hub.apps.orchestration.workflows.access_request import AccessRequestWorkflow
-        except Exception:
-            workflow_available = False
-
-        if not workflow_available:
+            from hub.apps.orchestration.workflows.access_request import AccessRequestWorkflow  # noqa: F401
+        except ImportError:
             self.skipTest("Workflow engine not available - skipping test that requires workflow")
 
         response = self.client.post(
@@ -422,48 +425,39 @@ class AccessRequestViewSetTest(TestCase):
             format="json",
         )
 
-        # Should succeed (201) or fail gracefully (400/500)
-        self.assertIn(
+        self.assertEqual(
             response.status_code,
-            [
-                status.HTTP_201_CREATED,
-                status.HTTP_400_BAD_REQUEST,
-                status.HTTP_500_INTERNAL_SERVER_ERROR,
-            ],
+            status.HTTP_201_CREATED,
+            f"Expected 201 CREATED, got {response.status_code}: {response.content}"
         )
 
-        if response.status_code == status.HTTP_201_CREATED:
-            self.assertIn("id", response.data)
-            self.assertEqual(response.data["reason"], "Need access for analysis")
+        self.assertIn("id", response.data)
+        self.assertEqual(response.data["reason"], "Need access for analysis")
 
-            # Verify request was created
-            request_id = response.data["id"]
-            request = AccessRequest.objects.get(id=request_id)
-            self.assertEqual(request.tenant, self.tenant)
-            self.assertEqual(request.requested_by, self.user)
+        # Verify request was created
+        request_id = response.data["id"]
+        request = AccessRequest.objects.get(id=request_id)
+        self.assertEqual(request.tenant, self.tenant)
+        self.assertEqual(request.requested_by, self.user)
 
-            # Verify audit event was created
-            audit_events = AuditEvent.objects.filter(
-                resource_type="ACCESS_REQUEST",
-                action="ACCESS_REQUEST_CREATED",
-                resource_id=request_id,
-            )
-            self.assertGreaterEqual(
-                audit_events.count(), 0
-            )  # May or may not be created by workflow
+        # Verify audit event was created
+        audit_events = AuditEvent.objects.filter(
+            resource_type="ACCESS_REQUEST",
+            action="ACCESS_REQUEST_CREATED",
+            resource_id=request_id,
+        )
+        self.assertGreaterEqual(
+            audit_events.count(), 0
+        )  # May or may not be created by workflow
 
     def test_create_access_request_success_with_dataset(self):
         """Test creating access request successfully with dataset"""
         self.client.force_authenticate(user=self.user)
 
         # Check if workflow is available
-        workflow_available = True
         try:
-            from hub.apps.orchestration.workflows.access_request import AccessRequestWorkflow
-        except Exception:
-            workflow_available = False
-
-        if not workflow_available:
+            from hub.apps.orchestration.workflows.access_request import AccessRequestWorkflow  # noqa: F401
+        except ImportError:
             self.skipTest("Workflow engine not available - skipping test that requires workflow")
 
         response = self.client.post(
@@ -476,14 +470,10 @@ class AccessRequestViewSetTest(TestCase):
             format="json",
         )
 
-        # Should succeed (201) or fail gracefully (400/500)
-        self.assertIn(
+        self.assertEqual(
             response.status_code,
-            [
-                status.HTTP_201_CREATED,
-                status.HTTP_400_BAD_REQUEST,
-                status.HTTP_500_INTERNAL_SERVER_ERROR,
-            ],
+            status.HTTP_201_CREATED,
+            f"Expected 201 CREATED, got {response.status_code}: {response.content}"
         )
 
     def test_create_access_request_success_with_file(self):
@@ -491,13 +481,9 @@ class AccessRequestViewSetTest(TestCase):
         self.client.force_authenticate(user=self.user)
 
         # Check if workflow is available
-        workflow_available = True
         try:
-            from hub.apps.orchestration.workflows.access_request import AccessRequestWorkflow
-        except Exception:
-            workflow_available = False
-
-        if not workflow_available:
+            from hub.apps.orchestration.workflows.access_request import AccessRequestWorkflow  # noqa: F401
+        except ImportError:
             self.skipTest("Workflow engine not available - skipping test that requires workflow")
 
         response = self.client.post(
@@ -510,14 +496,10 @@ class AccessRequestViewSetTest(TestCase):
             format="json",
         )
 
-        # Should succeed (201) or fail gracefully (400/500)
-        self.assertIn(
+        self.assertEqual(
             response.status_code,
-            [
-                status.HTTP_201_CREATED,
-                status.HTTP_400_BAD_REQUEST,
-                status.HTTP_500_INTERNAL_SERVER_ERROR,
-            ],
+            status.HTTP_201_CREATED,
+            f"Expected 201 CREATED, got {response.status_code}: {response.content}"
         )
 
     def test_create_access_request_missing_reason(self):
@@ -621,28 +603,24 @@ class AccessRequestViewSetTest(TestCase):
             format="json",
         )
 
-        # Should succeed (200) or fail gracefully (400/500)
-        self.assertIn(
+        # Approve does NOT use workflow — it should always succeed with proper setup
+        self.assertEqual(
             response.status_code,
-            [
-                status.HTTP_200_OK,
-                status.HTTP_400_BAD_REQUEST,
-                status.HTTP_500_INTERNAL_SERVER_ERROR,
-            ],
+            status.HTTP_200_OK,
+            f"Expected 200 OK, got {response.status_code}: {response.content}"
         )
 
-        if response.status_code == status.HTTP_200_OK:
-            request.refresh_from_db()
-            self.assertEqual(request.status, AccessRequestStatus.APPROVED)
-            self.assertEqual(request.approved_by, self.approver)
+        request.refresh_from_db()
+        self.assertEqual(request.status, AccessRequestStatus.APPROVED)
+        self.assertEqual(request.approved_by, self.approver)
 
-            # Verify audit event was created
-            audit_events = AuditEvent.objects.filter(
-                resource_type="ACCESS_REQUEST",
-                action="ACCESS_REQUEST_APPROVED",
-                resource_id=str(request.id),
-            )
-            self.assertGreaterEqual(audit_events.count(), 0)
+        # Verify audit event was created
+        audit_events = AuditEvent.objects.filter(
+            resource_type="ACCESS_REQUEST",
+            action="ACCESS_REQUEST_APPROVED",
+            resource_id=str(request.id),
+        )
+        self.assertGreaterEqual(audit_events.count(), 0)
 
     def test_approve_access_request_not_pending(self):
         """Test approving non-pending access request returns error"""
@@ -708,29 +686,25 @@ class AccessRequestViewSetTest(TestCase):
             format="json",
         )
 
-        # Should succeed (200) or fail gracefully (400/500)
-        self.assertIn(
+        # Reject does NOT use workflow — it should always succeed with proper setup
+        self.assertEqual(
             response.status_code,
-            [
-                status.HTTP_200_OK,
-                status.HTTP_400_BAD_REQUEST,
-                status.HTTP_500_INTERNAL_SERVER_ERROR,
-            ],
+            status.HTTP_200_OK,
+            f"Expected 200 OK, got {response.status_code}: {response.content}"
         )
 
-        if response.status_code == status.HTTP_200_OK:
-            request.refresh_from_db()
-            self.assertEqual(request.status, AccessRequestStatus.REJECTED)
-            self.assertEqual(request.rejected_by, self.approver)
-            self.assertEqual(request.rejection_reason, "Not approved")
+        request.refresh_from_db()
+        self.assertEqual(request.status, AccessRequestStatus.REJECTED)
+        self.assertEqual(request.rejected_by, self.approver)
+        self.assertEqual(request.rejection_reason, "Not approved")
 
-            # Verify audit event was created
-            audit_events = AuditEvent.objects.filter(
-                resource_type="ACCESS_REQUEST",
-                action="ACCESS_REQUEST_REJECTED",
-                resource_id=str(request.id),
-            )
-            self.assertGreaterEqual(audit_events.count(), 0)
+        # Verify audit event was created
+        audit_events = AuditEvent.objects.filter(
+            resource_type="ACCESS_REQUEST",
+            action="ACCESS_REQUEST_REJECTED",
+            resource_id=str(request.id),
+        )
+        self.assertGreaterEqual(audit_events.count(), 0)
 
     def test_reject_access_request_missing_reason(self):
         """Test rejecting access request without reason returns error"""
@@ -832,13 +806,9 @@ class AccessRequestViewSetTest(TestCase):
         expires_at = (timezone.now() + timezone.timedelta(days=30)).isoformat()
 
         # Check if workflow is available
-        workflow_available = True
         try:
-            from hub.apps.orchestration.workflows.access_request import AccessRequestWorkflow
-        except Exception:
-            workflow_available = False
-
-        if not workflow_available:
+            from hub.apps.orchestration.workflows.access_request import AccessRequestWorkflow  # noqa: F401
+        except ImportError:
             self.skipTest("Workflow engine not available - skipping test that requires workflow")
 
         response = self.client.post(
@@ -852,14 +822,10 @@ class AccessRequestViewSetTest(TestCase):
             format="json",
         )
 
-        # Should succeed (201) or fail gracefully
-        self.assertIn(
+        self.assertEqual(
             response.status_code,
-            [
-                status.HTTP_201_CREATED,
-                status.HTTP_400_BAD_REQUEST,
-                status.HTTP_500_INTERNAL_SERVER_ERROR,
-            ],
+            status.HTTP_201_CREATED,
+            f"Expected 201 CREATED, got {response.status_code}: {response.content}"
         )
 
     # ========== ERROR HANDLING TESTS ==========
@@ -880,10 +846,11 @@ class AccessRequestViewSetTest(TestCase):
             format="json",
         )
 
-        # Should return error (400 or 500)
-        self.assertIn(
+        # Service raises ValidationError for nonexistent asset, view returns 400
+        self.assertEqual(
             response.status_code,
-            [status.HTTP_400_BAD_REQUEST, status.HTTP_500_INTERNAL_SERVER_ERROR],
+            status.HTTP_400_BAD_REQUEST,
+            f"Expected 400 BAD_REQUEST, got {response.status_code}: {response.content}"
         )
 
     def test_approve_access_request_nonexistent(self):
@@ -1265,6 +1232,12 @@ class AccessRequestPendingCountTest(TestCase):
         self.assertEqual(response.data, {"count": 0})
 
     def test_pending_count_platform_admin_sees_all_tenants(self):
+        # Capture baseline to account for stale data from --keepdb runs.
+        self.client.force_authenticate(user=self.platform_admin)
+        baseline = self.client.get(self.PENDING_COUNT_URL)
+        self.assertEqual(baseline.status_code, status.HTTP_200_OK)
+        baseline_count = baseline.data["count"]
+
         self._make_request(
             self.tenant, self.asset, self.regular_user, AccessRequestStatus.PENDING
         )
@@ -1274,10 +1247,9 @@ class AccessRequestPendingCountTest(TestCase):
             self.other_admin,
             AccessRequestStatus.PENDING,
         )
-        self.client.force_authenticate(user=self.platform_admin)
         response = self.client.get(self.PENDING_COUNT_URL)
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertEqual(response.data, {"count": 2})
+        self.assertEqual(response.data["count"], baseline_count + 2)
 
 
 class AccessRequestBulkActionsTest(TestCase):

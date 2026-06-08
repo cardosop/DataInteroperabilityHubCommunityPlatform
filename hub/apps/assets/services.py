@@ -400,6 +400,8 @@ class AssetService(BaseService, AssetEventPublisher):
                 resource_type="ASSET",
                 action="ASSET_CREATED",
                 resource_id=str(asset.id),
+                tenant=asset.tenant,
+                actor_user=created_by,
                 details={"name": name, "key": key, "status": "DRAFT"},
             )
 
@@ -752,6 +754,7 @@ class AssetService(BaseService, AssetEventPublisher):
                 resource_type="ASSET",
                 action="ASSET_UPDATED",
                 resource_id=str(asset.id),
+                tenant=asset.tenant,
                 details={"changed_fields": list(kwargs.keys()), "version": asset.version},
             )
 
@@ -870,6 +873,7 @@ class AssetService(BaseService, AssetEventPublisher):
                 resource_type="ASSET",
                 action="ASSET_DELETED",
                 resource_id=str(asset.id),
+                tenant=asset.tenant,
                 details={"status": "RETIRED"},
             )
 

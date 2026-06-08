@@ -30,7 +30,12 @@ from hub.apps.api.standards.pagination import StandardPageNumberPagination
 from hub.apps.audit.utils import create_audit_event
 from hub.apps.auth.permissions import HasAnyRole, HasRole, HasScope
 from hub.apps.core.responses import handle_service_exception
-from hub.apps.core.services.base import NotFoundError, PermissionError, ValidationError
+from hub.apps.core.services.base import (
+    ConflictError,
+    NotFoundError,
+    PermissionError,
+    ValidationError,
+)
 from hub.apps.governance.abac import ABACEngine, PolicyEvaluationResult
 from hub.apps.rate_limiting.service import check_rate_limit, get_rate_limit_headers
 from hub.apps.tenants.request_tenant import get_request_tenant, get_request_tenant_id
@@ -167,6 +172,21 @@ class VirtualDatasetViewSet(viewsets.ModelViewSet):
     serializer_class = VirtualDatasetSerializer
     permission_classes = [permissions.IsAuthenticated]
     lookup_field = "id"
+
+    def initial(self, request, *args, **kwargs):
+        from hub.apps.tenants.feature_flag_gates import check_virtualization_enabled
+        from rest_framework.exceptions import PermissionDenied
+        # Run DRF's initial (auth + permissions) first so unauthenticated
+        # users get 401 before the per-tenant feature gate is evaluated.
+        super().initial(request, *args, **kwargs)
+        # Platform admins bypass the per-tenant virtualization feature gate
+        # since they cross-tenant and may not have a tenant on their user record.
+        if request.user.is_authenticated and getattr(request.user, 'is_platform_admin', False):
+            return
+        result = check_virtualization_enabled(request)
+        if isinstance(result, Response):
+            raise PermissionDenied(detail=result.data)
+
     filter_backends = [OrderingFilter, SearchFilter]
     ordering_fields = ["name", "query_type", "status", "version", "created_at", "updated_at"]
     ordering = ["-created_at"]  # Default ordering
@@ -465,6 +485,17 @@ class VirtualDatasetViewSet(viewsets.ModelViewSet):
             return Response(
                 {"error": str(e), "code": "PERMISSION_DENIED"}, status=status.HTTP_403_FORBIDDEN
             )
+        except ConflictError as e:
+            logger.warning(
+                "Conflict during virtual dataset creation",
+                extra={
+                    "tenant_id": str(tenant.id),
+                    "user_id": str(request.user.id) if request.user else None,
+                    "error": getattr(e, "message", str(e)),
+                    "error_code": getattr(e, "code", None),
+                },
+            )
+            return handle_service_exception(e)
         except Exception as e:
             logger.error(
                 "Unexpected error during virtual dataset creation",
@@ -709,6 +740,8 @@ class VirtualDatasetViewSet(viewsets.ModelViewSet):
             )
         except NotFoundError as e:
             return handle_service_exception(e)
+        except ConflictError as e:
+            return handle_service_exception(e)
         except Exception as e:
             logger.error(
                 "Unexpected error during virtual dataset update",
@@ -847,6 +880,8 @@ class VirtualDatasetViewSet(viewsets.ModelViewSet):
                 {"error": str(e), "code": "PERMISSION_DENIED"}, status=status.HTTP_403_FORBIDDEN
             )
         except NotFoundError as e:
+            return handle_service_exception(e)
+        except ConflictError as e:
             return handle_service_exception(e)
         except Exception as e:
             logger.error(
@@ -1176,7 +1211,9 @@ class VirtualDatasetViewSet(viewsets.ModelViewSet):
             return response
 
         except ValidationError as e:
-            logger.error(
+            # Domain rejection (inactive dataset, invalid params) —
+            # not a system fault; log at WARNING.
+            logger.warning(
                 "Query execution failed",
                 extra={
                     "virtual_dataset_id": str(virtual_dataset.id),
@@ -1189,6 +1226,8 @@ class VirtualDatasetViewSet(viewsets.ModelViewSet):
             )
             return handle_service_exception(e)
         except NotFoundError as e:
+            return handle_service_exception(e)
+        except ConflictError as e:
             return handle_service_exception(e)
         except PermissionError as e:
             logger.warning(
@@ -1670,6 +1709,8 @@ class QueryExecutionViewSet(viewsets.ReadOnlyModelViewSet):
             return handle_service_exception(e)
         except NotFoundError as e:
             return handle_service_exception(e)
+        except ConflictError as e:
+            return handle_service_exception(e)
         except PermissionError as e:
             logger.warning(
                 "Permission denied for query execution cancellation",
@@ -1905,6 +1946,8 @@ class QueryExecutionViewSet(viewsets.ReadOnlyModelViewSet):
             }
             return Response(error_response, status=status.HTTP_400_BAD_REQUEST)
         except NotFoundError as e:
+            return handle_service_exception(e)
+        except ConflictError as e:
             return handle_service_exception(e)
         except PermissionError as e:
             logger.warning(
@@ -2289,6 +2332,8 @@ class QueryExecutionViewSet(viewsets.ReadOnlyModelViewSet):
             )
             return handle_service_exception(e)
         except NotFoundError as e:
+            return handle_service_exception(e)
+        except ConflictError as e:
             return handle_service_exception(e)
         except PermissionError as e:
             logger.warning(

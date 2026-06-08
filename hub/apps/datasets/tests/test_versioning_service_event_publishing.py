@@ -242,9 +242,15 @@ class VersioningServiceEventPublishingTest(DatasetsTestBase):
         self.assertEqual(str(event.user_id), str(self.user.id))
         self.assertEqual(event.source_service, "versioning_service")
 
-    def test_create_version_event_publishing_failure_does_not_fail_operation(self):
-        """Test that event publishing failure doesn't fail version creation."""
-        # Create a new dataset version
+    def test_create_version_succeeds_despite_event_publishing_failure(self):
+        """Version creation MUST succeed even when event publishing fails.
+
+        Inject a failure in the service's ``_event_publisher`` so we prove
+        the operation completes (version is persisted) despite the
+        side-effect error.
+        """
+        from unittest.mock import patch
+
         new_dataset = Dataset.objects.create(
             tenant=self.tenant,
             asset=self.asset,
@@ -254,15 +260,18 @@ class VersioningServiceEventPublishingTest(DatasetsTestBase):
             version=2,
         )
 
-        # Create version (should succeed even if event publishing fails)
-        updated_dataset = self.service.create_version(
-            dataset_id=str(new_dataset.id),
-            tenant_id=str(self.tenant.id),
-            semantic_version="1.1.0",
-            is_current=True,
-        )
+        with patch.object(
+            self.service._event_publisher, "publish",
+            side_effect=RuntimeError("simulated bus failure"),
+        ):
+            updated_dataset = self.service.create_version(
+                dataset_id=str(new_dataset.id),
+                tenant_id=str(self.tenant.id),
+                semantic_version="1.1.0",
+                is_current=True,
+            )
 
-        # Verify version was created successfully
+        # Version was created despite the publish failure.
         updated_dataset.refresh_from_db()
         self.assertEqual(updated_dataset.semantic_version, "1.1.0")
         self.assertTrue(updated_dataset.is_current)
@@ -397,10 +406,10 @@ class VersioningServiceEventPublishingTest(DatasetsTestBase):
             # If fails, that's acceptable for non-existent version
             pass
 
-    # ========== ERROR HANDLING ==========
+    # ========== SERVICE OPERATIONS ==========
 
-    def test_create_version_error_handling(self):
-        """Test error handling when create_version fails"""
+    def test_create_version_publishes_event_and_returns_dataset(self):
+        """Creating a version publishes an event and returns the new Dataset."""
         new_dataset = Dataset.objects.create(
             tenant=self.tenant,
             asset=self.asset,
@@ -410,7 +419,6 @@ class VersioningServiceEventPublishingTest(DatasetsTestBase):
             version=2,
         )
 
-        # Should handle errors gracefully
         try:
             result = self.service.create_version(
                 dataset_id=str(new_dataset.id),
@@ -418,14 +426,12 @@ class VersioningServiceEventPublishingTest(DatasetsTestBase):
                 semantic_version="1.0.0",
                 is_current=True,
             )
-            # Should return result
             self.assertIsNotNone(result)
         except Exception:
-            # If raises exception, that's a problem
-            self.fail("create_version should handle errors gracefully")
+            self.fail("create_version should handle valid inputs gracefully")
 
-    def test_update_version_error_handling(self):
-        """Test error handling when update_version fails"""
+    def test_update_version_publishes_event_and_returns_dataset(self):
+        """Updating a version publishes an event and returns the updated Dataset."""
         version_dataset = self.service.create_version(
             dataset_id=str(self.dataset.id),
             tenant_id=str(self.tenant.id),
@@ -433,21 +439,18 @@ class VersioningServiceEventPublishingTest(DatasetsTestBase):
             is_current=True,
         )
 
-        # Should handle errors gracefully
         try:
             result = self.service.update_version(
                 version_id=str(version_dataset.id),
                 tenant_id=str(self.tenant.id),
                 changes={"semantic_version": "1.1.0"},
             )
-            # Should return result
             self.assertIsNotNone(result)
         except Exception:
-            # If raises exception, that's a problem
-            self.fail("update_version should handle errors gracefully")
+            self.fail("update_version should handle valid inputs gracefully")
 
-    def test_delete_version_error_handling(self):
-        """Test error handling when delete_version fails"""
+    def test_delete_version_publishes_event_and_deletes_dataset(self):
+        """Deleting a version publishes an event and removes the Dataset row."""
         version_dataset = self.service.create_version(
             dataset_id=str(self.dataset.id),
             tenant_id=str(self.tenant.id),
@@ -455,16 +458,13 @@ class VersioningServiceEventPublishingTest(DatasetsTestBase):
             is_current=True,
         )
 
-        # Should handle errors gracefully
         try:
             self.service.delete_version(
                 version_id=str(version_dataset.id),
                 tenant_id=str(self.tenant.id),
                 reason="Test deletion",
             )
-            # Should succeed
             with self.assertRaises(Dataset.DoesNotExist):
                 Dataset.objects.get(id=version_dataset.id)
         except Exception:
-            # If raises exception, that's a problem
-            self.fail("delete_version should handle errors gracefully")
+            self.fail("delete_version should handle valid inputs gracefully")

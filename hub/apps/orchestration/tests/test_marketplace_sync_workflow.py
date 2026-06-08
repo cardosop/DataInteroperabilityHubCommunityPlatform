@@ -60,7 +60,10 @@ User = get_user_model()
 class StubMarketplaceConnector(DataMarketplaceConnector):
     """Real test connector implementation (no mocks)"""
 
-    def __init__(self):
+    def __init__(self, **kwargs):
+        # Accept arbitrary keyword arguments so the factory can pass
+        # connector-specific config (account, warehouse, etc.) without
+        # breaking when this stub is registered as the test double.
         self._marketplace_type = MarketplaceType.SNOWFLAKE_DATA_MARKETPLACE
         self._supported_directions = [SyncDirection.PUSH, SyncDirection.PULL]
         self._authenticated = False
@@ -263,10 +266,18 @@ class MarketplaceSyncWorkflowTaskExecutionTest(TestCase):
     """Test MarketplaceSyncWorkflow task execution"""
 
     def setUp(self):
-        # Clean up stale workflow definitions from previous --reuse-db runs
-        WorkflowDefinition.objects.filter(
+        # Clean up stale workflow definitions/instances from previous --reuse-db runs.
+        # WorkflowInstance has a PROTECTED FK to WorkflowDefinition, so instances
+        # must be deleted first to avoid ProtectedError.
+        stale_defs = WorkflowDefinition.objects.filter(
             name__in=["marketplace_sync_push", "marketplace_sync_pull"]
-        ).delete()
+        )
+        stale_def_ids = list(stale_defs.values_list("id", flat=True))
+        if stale_def_ids:
+            WorkflowInstance.objects.filter(
+                workflow_definition_id__in=stale_def_ids,
+            ).delete()
+            stale_defs.delete()
         uid = uuid.uuid4().hex[:8]
         self.tenant = Tenant.objects.create(
             name=f"Test Tenant {uid}",
@@ -434,10 +445,18 @@ class MarketplaceSyncWorkflowCompensationTest(TestCase):
     """Test MarketplaceSyncWorkflow compensation logic"""
 
     def setUp(self):
-        # Clean up stale workflow definitions from previous --reuse-db runs
-        WorkflowDefinition.objects.filter(
+        # Clean up stale workflow definitions/instances from previous --reuse-db runs.
+        # WorkflowInstance has a PROTECTED FK to WorkflowDefinition, so instances
+        # must be deleted first to avoid ProtectedError.
+        stale_defs = WorkflowDefinition.objects.filter(
             name__in=["marketplace_sync_push", "marketplace_sync_pull"]
-        ).delete()
+        )
+        stale_def_ids = list(stale_defs.values_list("id", flat=True))
+        if stale_def_ids:
+            WorkflowInstance.objects.filter(
+                workflow_definition_id__in=stale_def_ids,
+            ).delete()
+            stale_defs.delete()
         uid = uuid.uuid4().hex[:8]
         self.tenant = Tenant.objects.create(
             name=f"Test Tenant {uid}",

@@ -474,7 +474,7 @@ class AssetListAPITest(TestCase):
 
     def test_list_assets_empty_results(self):
         """Test listing assets when no assets exist"""
-        new_tenant = TenantFactory.create_tenant(name="Empty Tenant")
+        new_tenant = TenantFactory.create_tenant(name=f"Empty Tenant {uuid.uuid4().hex[:8]}")
         new_user = UserFactory.create_user(tenant=new_tenant)
 
         self.client.force_authenticate(user=new_user)
@@ -826,6 +826,7 @@ class AssetUpdateAPITest(TestCase):
         ensure_tenant_has_active_subscription(self.tenant2)
         self.user1 = UserFactory.create_user(tenant=self.tenant1)
         self.user2 = UserFactory.create_user(tenant=self.tenant2)
+        ensure_user_has_data_provider_role(self.user1)
 
         self.asset = AssetFactory.create_asset(
             tenant=self.tenant1,
@@ -991,6 +992,7 @@ class AssetActivateAPITest(TestCase):
         self.tenant = TenantFactory.create_tenant()
         ensure_tenant_has_active_subscription(self.tenant)
         self.user = UserFactory.create_user(tenant=self.tenant)
+        ensure_user_has_data_provider_role(self.user)
         self.client.force_authenticate(user=self.user)
 
     def _create_asset_with_valid_contract(self, status=AssetStatus.DRAFT):
@@ -1427,6 +1429,7 @@ class AssetAPIEdgeCasesTest(TestCase):
         self.tenant = TenantFactory.create_tenant()
         ensure_tenant_has_active_subscription(self.tenant)
         self.user = UserFactory.create_user(tenant=self.tenant)
+        ensure_user_has_data_provider_role(self.user)
         self.client.force_authenticate(user=self.user)
 
     def test_list_assets_unicode_search(self):
@@ -1489,6 +1492,7 @@ class AssetAPIPerformanceTest(TransactionTestCase):
         self.tenant = TenantFactory.create_tenant()
         ensure_tenant_has_active_subscription(self.tenant)
         self.user = UserFactory.create_user(tenant=self.tenant)
+        ensure_user_has_data_provider_role(self.user)
         self.client.force_authenticate(user=self.user)
 
     @unittest.skip("TransactionTestCase flush issues with foreign key constraints - needs CASCADE configuration")
@@ -1914,6 +1918,7 @@ class AssetCreateAPIAdvancedTest(TestCase):
         self.tenant = TenantFactory.create_tenant()
         ensure_tenant_has_active_subscription(self.tenant)
         self.user = UserFactory.create_user(tenant=self.tenant)
+        ensure_user_has_data_provider_role(self.user)
         self.client.force_authenticate(user=self.user)
 
     def test_create_asset_with_max_length_fields(self):
@@ -2091,6 +2096,7 @@ class AssetUpdateAPIAdvancedTest(TestCase):
         self.tenant = TenantFactory.create_tenant()
         ensure_tenant_has_active_subscription(self.tenant)
         self.user = UserFactory.create_user(tenant=self.tenant)
+        ensure_user_has_data_provider_role(self.user)
 
         self.asset = AssetFactory.create_asset(
             tenant=self.tenant,
@@ -2199,6 +2205,7 @@ class AssetActivateAPIAdvancedTest(TestCase):
         self.tenant = TenantFactory.create_tenant()
         ensure_tenant_has_active_subscription(self.tenant)
         self.user = UserFactory.create_user(tenant=self.tenant)
+        ensure_user_has_data_provider_role(self.user)
         self.client.force_authenticate(user=self.user)
 
     def _create_valid_contract(self, asset):
@@ -2390,6 +2397,7 @@ class AssetDeleteAPIAdvancedTest(TestCase):
         self.tenant = TenantFactory.create_tenant()
         ensure_tenant_has_active_subscription(self.tenant)
         self.user = UserFactory.create_user(tenant=self.tenant)
+        ensure_user_has_data_provider_role(self.user)
 
     def test_delete_asset_unauthorized(self):
         """Test deleting asset without authentication"""

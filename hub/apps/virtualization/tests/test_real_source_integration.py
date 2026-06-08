@@ -139,6 +139,15 @@ class RealPostgreSQLSourceIntegrationTest(TransactionTestCase):
     """
 
     def setUp(self):
+        from hub.apps.orchestration.registry import reset_workflow_definition_cache
+        reset_workflow_definition_cache()
+        from django.db import connection
+        if not hasattr(connection.ensure_connection, '__self__'):
+            from types import MethodType
+            from django.db.backends.base.base import BaseDatabaseWrapper
+            connection.ensure_connection = MethodType(
+                BaseDatabaseWrapper.ensure_connection, connection,
+            )
         _uid = uuid.uuid4().hex[:8]
         self.tenant = Tenant.objects.create(
             name=f"Real Source Test Tenant {_uid}",
@@ -438,6 +447,8 @@ class RealSPARQLSourceIntegrationTest(TestCase):
     """
 
     def setUp(self):
+        from hub.apps.orchestration.registry import reset_workflow_definition_cache
+        reset_workflow_definition_cache()
         _uid = uuid.uuid4().hex[:8]
         self.tenant = Tenant.objects.create(
             name=f"SPARQL Real Test Tenant {_uid}",
@@ -521,6 +532,8 @@ class RealRESTSourceIntegrationTest(TestCase):
     """
 
     def setUp(self):
+        from hub.apps.orchestration.registry import reset_workflow_definition_cache
+        reset_workflow_definition_cache()
         _uid = uuid.uuid4().hex[:8]
         self.tenant = Tenant.objects.create(
             name=f"REST Real Test Tenant {_uid}",

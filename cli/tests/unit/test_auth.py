@@ -193,3 +193,119 @@ class TestAuthManager:
         test_config.clear_auth()
         assert test_auth.ensure_authenticated() is False
 
+
+class TestIsTokenExpired:
+    """Tests for AuthManager._is_token_expired() static method.
+
+    Covers all branches: non-JWT (opaque) tokens, JWT parsing, base64
+    padding, invalid payloads, missing exp claim, and buffer-second math.
+    """
+
+    @staticmethod
+    def _make_jwt(exp_offset_seconds):
+        """Create a minimal JWT with an ``exp`` claim offset from now.
+
+        Returns a ``header.payload.sig`` string with valid base64url
+        encoding.  The signature segment is a placeholder — we never
+        verify it.
+        """
+        import json
+        import base64
+        import time
+
+        header = (
+            base64.urlsafe_b64encode(json.dumps({"alg": "HS256"}).encode())
+            .rstrip(b"=")
+            .decode()
+        )
+        payload = (
+            base64.urlsafe_b64encode(
+                json.dumps(
+                    {"exp": int(time.time() + exp_offset_seconds), "sub": "test"}
+                ).encode()
+            )
+            .rstrip(b"=")
+            .decode()
+        )
+        return f"{header}.{payload}.fake_sig"
+
+    # -- JWT expiry tests -------------------------------------------------
+
+    def test_expired_token_returns_true(self):
+        token = self._make_jwt(-3600)  # expired 1 hour ago
+        assert AuthManager._is_token_expired(token) is True
+
+    def test_future_token_returns_false(self):
+        token = self._make_jwt(3600)  # expires in 1 hour
+        assert AuthManager._is_token_expired(token) is False
+
+    def test_within_buffer_seconds_returns_true(self):
+        token = self._make_jwt(15)  # expires in 15 s, default buffer is 30 s
+        assert AuthManager._is_token_expired(token, buffer_seconds=30) is True
+
+    def test_custom_buffer_seconds(self):
+        token = self._make_jwt(60)  # expires in 60 s
+        assert AuthManager._is_token_expired(token, buffer_seconds=30) is False
+        assert AuthManager._is_token_expired(token, buffer_seconds=120) is True
+
+    # -- Non-JWT / opaque token tests ------------------------------------
+
+    def test_opaque_token_no_dots_returns_false(self):
+        assert AuthManager._is_token_expired("opaque-token-without-dots") is False
+
+    # -- Malformed JWT tests ----------------------------------------------
+
+    def test_malformed_jwt_too_many_dots_returns_false(self):
+        assert AuthManager._is_token_expired("a.b.c.d") is False
+
+    def test_invalid_base64_returns_false(self):
+        assert AuthManager._is_token_expired("header.!!!invalid_base64!!!.sig") is False
+
+    def test_payload_not_json_returns_false(self):
+        import base64
+
+        bad_payload = base64.urlsafe_b64encode(b"not-json").rstrip(b"=").decode()
+        assert (
+            AuthManager._is_token_expired(f"header.{bad_payload}.sig") is False
+        )
+
+    def test_missing_exp_claim_returns_false(self):
+        import json
+        import base64
+
+        header = (
+            base64.urlsafe_b64encode(json.dumps({"alg": "HS256"}).encode())
+            .rstrip(b"=")
+            .decode()
+        )
+        payload = (
+            base64.urlsafe_b64encode(json.dumps({"sub": "test"}).encode())
+            .rstrip(b"=")
+            .decode()
+        )
+        token = f"{header}.{payload}.sig"
+        assert AuthManager._is_token_expired(token) is False
+
+    # -- Edge cases -------------------------------------------------------
+
+    def test_base64_padding_edge_case(self):
+        """JWT whose payload base64 length is not a multiple of 4."""
+        import json
+        import base64
+        import time
+
+        header = (
+            base64.urlsafe_b64encode(json.dumps({"alg": "HS256"}).encode())
+            .rstrip(b"=")
+            .decode()
+        )
+        payload = (
+            base64.urlsafe_b64encode(
+                json.dumps({"exp": int(time.time() - 3600), "x": "y"}).encode()
+            )
+            .rstrip(b"=")
+            .decode()
+        )
+        token = f"{header}.{payload}.sig"
+        assert AuthManager._is_token_expired(token) is True
+

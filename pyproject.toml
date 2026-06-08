@@ -41,8 +41,6 @@ exclude = [
 [tool.ruff.lint]
 select = [
     "DTZ",  # Phase 277.B.026 — ban naive datetime
-]
-select = [
     "E",   # pycodestyle errors
     "W",   # pycodestyle warnings
     "F",   # pyflakes
@@ -157,12 +155,5 @@ also_copy = []
 # hypothesis property test on a max-size DAG) finishes in <30s
 # even on a slow runner.
 runner_timeout = 60
-
-[tool.pytest.ini_options]
-markers = [
-    "rls: Row-level security baseline and regression tests",
-    "uses_admin_role: Tests that require BYPASSRLS/admin role execution path",
-    "tabletop_rehearsal: Phase 232.DoD.7 tabletop rehearsal scenario probes (`pytest -m tabletop_rehearsal`)",
-]
 
 

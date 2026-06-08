@@ -343,7 +343,8 @@ class ComplianceReportingWorkflowUnitTest(TestCase):
         )
         instance.state_data = {
             "report_data": report_data,
-            "regulation": "GDPR"
+            "regulation": "GDPR",
+            "tenant_id": str(self.tenant.id),
         }
         instance.save()
         
@@ -378,7 +379,8 @@ class ComplianceReportingWorkflowUnitTest(TestCase):
         )
         instance.state_data = {
             "report_data": report_data,
-            "regulation": "GDPR"
+            "regulation": "GDPR",
+            "tenant_id": str(self.tenant.id),
         }
         instance.save()
         

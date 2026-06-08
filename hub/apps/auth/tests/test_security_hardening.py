@@ -248,7 +248,7 @@ class RefreshRateLimitTest(TransactionTestCase):
         self.client = APIClient()
         self.user, self.password = _create_user()
 
-    @override_settings(REFRESH_IP_RATE_PER_MINUTE=5)
+    @override_settings(REFRESH_IP_RATE_PER_MINUTE=5, RATE_LIMIT_ENABLED=True)
     def test_refresh_rate_limited_after_threshold(self):
         """Requests beyond the threshold return 429."""
         # Login to get a valid refresh token
@@ -286,7 +286,7 @@ class RefreshRateLimitTest(TransactionTestCase):
         )
         self.assertEqual(resp.status_code, 429, f"Expected 429, got {resp.status_code}")
 
-    @override_settings(REFRESH_IP_RATE_PER_MINUTE=3)
+    @override_settings(REFRESH_IP_RATE_PER_MINUTE=3, RATE_LIMIT_ENABLED=True)
     def test_different_ips_get_independent_limits(self):
         """Two different IPs should each get their own rate limit budget."""
         tokens = []

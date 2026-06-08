@@ -129,7 +129,7 @@ def _execute_dlq_sync(scheduled_ingestion_id: str, run_id: str) -> None:
         ScheduledIngestionRun.objects.filter(pk=run_id).update(
             dlq_sync_status="FAILED", updated_at=timezone.now(),
         )
-        logger.error(
+        logger.warning(
             "DLQ sync failed for run %s (ingestion %s)",
             run_id,
             scheduled_ingestion_id,

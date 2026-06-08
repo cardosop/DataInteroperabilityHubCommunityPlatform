@@ -88,10 +88,11 @@ def get_frequently_accessed_refs(
         # Get top N members with highest scores (access counts)
         # ZREVRANGE returns members with scores in descending order
         # Get more than limit to account for filtering
+        effective_limit = limit if limit is not None else 100
         top_refs = redis_client.zrevrange(
             access_set_key,
             0,
-            (limit * 2) - 1,  # Get more to account for filtering
+            (effective_limit * 2) - 1,  # Get more to account for filtering
             withscores=True
         )
 
@@ -137,7 +138,7 @@ def get_frequently_accessed_refs(
         return ref_urls
 
     except Exception as e:
-        logger.error(
+        logger.warning(
             "ref_warming_get_refs_failed",
             error=str(e),
             message="Failed to get frequently accessed refs"
@@ -260,7 +261,7 @@ def warm_ref_cache(
                 )
             except Exception as e:
                 result['failed'] += 1
-                logger.error(
+                logger.warning(
                     "ref_warming_unexpected_error",
                     ref_url=ref_url,
                     error=str(e),
@@ -345,7 +346,7 @@ def warm_cache_on_startup() -> None:
                     message="No frequently accessed refs found for startup warming"
                 )
         except Exception as e:
-            logger.error(
+            logger.warning(
                 "ref_warming_startup_error",
                 error=str(e),
                 message="Error during startup cache warming"

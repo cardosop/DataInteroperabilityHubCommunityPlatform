@@ -38,7 +38,10 @@ class DomainViewSetTestCase(TestCase):
 
         # Create tenant
         self.tenant = Tenant.objects.create(
-            name=f"Test Tenant {uuid.uuid4().hex[:8]}", slug=f"test-tenant-{uuid.uuid4().hex[:8]}", kyc_status=KYCStatus.VERIFIED
+            name=f"Test Tenant {uuid.uuid4().hex[:8]}",
+            slug=f"test-tenant-{uuid.uuid4().hex[:8]}",
+            kyc_status=KYCStatus.VERIFIED,
+            data_mesh_enabled=True,
         )
 
         # Create roles
@@ -182,10 +185,8 @@ class DomainCreationEndpointTest(DomainViewSetTestCase):
 
         response = self.client.post(url, data, format="json")
 
-        # Should fail due to missing TENANT_ADMIN role or mesh:write scope
-        self.assertIn(
-            response.status_code, [status.HTTP_403_FORBIDDEN, status.HTTP_401_UNAUTHORIZED]
-        )
+        # User is authenticated (API key) but lacks TENANT_ADMIN role + mesh:write scope → 403
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
 
     def test_create_domain_duplicate_name(self):
         """Test domain creation with duplicate name"""
@@ -199,8 +200,9 @@ class DomainCreationEndpointTest(DomainViewSetTestCase):
 
         response = self.client.post(url, data, format="json")
 
-        # Duplicate name returns 409 Conflict (HTTP semantics)
-        self.assertIn(response.status_code, [status.HTTP_400_BAD_REQUEST, status.HTTP_409_CONFLICT])
+        # Duplicate name: ConflictError → handle_service_exception → 409
+        self.assertEqual(response.status_code, status.HTTP_409_CONFLICT)
+        self.assertIn("already exists", response.data.get("detail", ""))
 
     def test_create_domain_invalid_data(self):
         """Test domain creation with invalid data"""
@@ -404,10 +406,8 @@ class DomainUpdateEndpointTest(DomainViewSetTestCase):
 
         response = self.client.put(url, data, format="json")
 
-        # Should fail due to missing TENANT_ADMIN role or mesh:write scope
-        self.assertIn(
-            response.status_code, [status.HTTP_403_FORBIDDEN, status.HTTP_401_UNAUTHORIZED]
-        )
+        # User is authenticated (API key) but lacks TENANT_ADMIN role + mesh:write scope → 403
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
 
 
 class DomainDeleteEndpointTest(DomainViewSetTestCase):
@@ -432,10 +432,8 @@ class DomainDeleteEndpointTest(DomainViewSetTestCase):
         url = reverse("domain-detail", kwargs={"id": str(self.domain.id)})
         response = self.client.delete(url)
 
-        # Should fail due to missing TENANT_ADMIN role or mesh:write scope
-        self.assertIn(
-            response.status_code, [status.HTTP_403_FORBIDDEN, status.HTTP_401_UNAUTHORIZED]
-        )
+        # User is authenticated (API key) but lacks TENANT_ADMIN role + mesh:write scope → 403
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
 
         # Verify domain was not deleted
         self.assertTrue(DataMeshDomain.objects.filter(id=self.domain.id).exists())
@@ -485,10 +483,8 @@ class TransferOwnershipEndpointTest(DomainViewSetTestCase):
 
         response = self.client.post(url, data, format="json")
 
-        # Should fail due to missing TENANT_ADMIN role or mesh:write scope
-        self.assertIn(
-            response.status_code, [status.HTTP_403_FORBIDDEN, status.HTTP_401_UNAUTHORIZED]
-        )
+        # User is authenticated (API key) but lacks TENANT_ADMIN role + mesh:write scope → 403
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
 
 
 class DomainAnalyticsEndpointTest(DomainViewSetTestCase):
@@ -1043,7 +1039,7 @@ class FederatedGovernanceIntegrationTest(DomainViewSetTestCase):
         reports_url = reverse("domain-list-compliance-reports", kwargs={"id": str(self.domain.id)})
         reports_response = self.client.get(reports_url)
         self.assertEqual(reports_response.status_code, status.HTTP_200_OK)
-        self.assertGreaterEqual(reports_response.data["count"], 1)
+        self.assertEqual(reports_response.data["count"], 1)
 
         # 6. Get specific compliance report
         report_id = check_response.data["id"]
@@ -1091,8 +1087,9 @@ class DomainViewSetEdgeCasesTest(DomainViewSetTestCase):
         data = {"name": "Domain!@#$%^&*()"}
 
         response = self.client.post(url, data, format="json")
-        # Should succeed - special characters are allowed
-        self.assertIn(response.status_code, [status.HTTP_201_CREATED, status.HTTP_400_BAD_REQUEST])
+        # Special characters are allowed in domain names — no serializer/model restriction
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(response.data["name"], "Domain!@#$%^&*()")
 
     def test_create_domain_with_unicode_name(self):
         """Test domain creation with unicode characters"""
@@ -1102,8 +1099,9 @@ class DomainViewSetEdgeCasesTest(DomainViewSetTestCase):
         data = {"name": "ドメイン测试"}
 
         response = self.client.post(url, data, format="json")
-        # Should succeed - unicode is allowed
-        self.assertIn(response.status_code, [status.HTTP_201_CREATED, status.HTTP_400_BAD_REQUEST])
+        # Unicode is allowed in domain names
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(response.data["name"], "ドメイン测试")
 
     def test_create_domain_with_null_boundaries(self):
         """Test domain creation with null boundaries"""
@@ -1133,8 +1131,9 @@ class DomainViewSetEdgeCasesTest(DomainViewSetTestCase):
         data = {"name": "Domain with Large Quota", "resource_quota": {"storage_gb": 999999999999}}
 
         response = self.client.post(url, data, format="json")
-        # May succeed or fail with 400 if quota exceeds tenant limit
-        self.assertIn(response.status_code, [status.HTTP_201_CREATED, status.HTTP_400_BAD_REQUEST])
+        # Quota exceeds tenant plan limit — 400 with quota violation error
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("quota", response.data.get("detail", "").lower())
 
     def test_create_domain_with_zero_resource_quota(self):
         """Test domain creation with zero resource quota"""
@@ -1196,8 +1195,8 @@ class DomainViewSetEdgeCasesTest(DomainViewSetTestCase):
         url = reverse("domain-list")
         response = self.client.get(url, {"page": -1, "page_size": -1})
 
-        # Should handle gracefully - either return error or default pagination
-        self.assertIn(response.status_code, [status.HTTP_200_OK, status.HTTP_400_BAD_REQUEST])
+        # Negative page parameters are rejected as invalid input — 400
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
 
     def test_list_domains_with_invalid_status(self):
         """Test domain listing with invalid status filter"""
@@ -1206,8 +1205,9 @@ class DomainViewSetEdgeCasesTest(DomainViewSetTestCase):
         url = reverse("domain-list")
         response = self.client.get(url, {"status": "INVALID_STATUS"})
 
-        # Should return error or empty results
-        self.assertIn(response.status_code, [status.HTTP_200_OK, status.HTTP_400_BAD_REQUEST])
+        # Invalid status filter returns empty queryset — 200 with zero results
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["count"], 0)
 
     def test_retrieve_domain_with_invalid_uuid(self):
         """Test retrieving domain with invalid UUID format"""
@@ -1361,8 +1361,9 @@ class DomainViewSetErrorHandlingTest(DomainViewSetTestCase):
         # Use invalid filter that might cause database error
         response = self.client.get(url, {"owner_id": "invalid-uuid"})
 
-        # Should handle gracefully
-        self.assertIn(response.status_code, [status.HTTP_200_OK, status.HTTP_400_BAD_REQUEST])
+        # Invalid UUID filter returns empty queryset — 200 with zero results
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["count"], 0)
 
     def test_retrieve_domain_database_error(self):
         """Test error handling when retrieving domain fails"""
@@ -1393,11 +1394,9 @@ class DomainViewSetErrorHandlingTest(DomainViewSetTestCase):
         data = {"new_owner_id": str(other_user.id)}
 
         response = self.client.post(url, data, format="json")
-        # Should fail - user belongs to different tenant (400 validation or 403 permission)
-        self.assertIn(
-            response.status_code,
-            [status.HTTP_400_BAD_REQUEST, status.HTTP_403_FORBIDDEN],
-        )
+        # User in different tenant: ValidationError → handle_service_exception → 400
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("tenant", response.data.get("detail", "").lower())
 
     def test_apply_policy_domain_not_found(self):
         """Test error handling when domain not found for policy application"""
@@ -1451,8 +1450,9 @@ class DomainViewSetErrorHandlingTest(DomainViewSetTestCase):
         url = reverse("domain-list-compliance-reports", kwargs={"id": str(self.domain.id)})
         response = self.client.get(url, {"status": "INVALID_STATUS"})
 
-        # Should handle gracefully
-        self.assertIn(response.status_code, [status.HTTP_200_OK, status.HTTP_400_BAD_REQUEST])
+        # Invalid status filter returns 200 with empty results (graceful degradation)
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["count"], 0)
 
     def test_get_compliance_report_not_found(self):
         """Test error handling when compliance report not found"""
@@ -1487,4 +1487,384 @@ class DomainViewSetErrorHandlingTest(DomainViewSetTestCase):
         )
         response = self.client.delete(url)
 
+        self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
+
+
+# =============================================================================
+# MeshGovernanceViewSet tests (4 endpoints, previously uncovered)
+# =============================================================================
+
+
+class MeshGovernanceViewSetTest(DomainViewSetTestCase):
+    """Tests for the MeshGovernanceViewSet (governance summary, policies,
+    compliance, reports endpoints)."""
+
+    def setUp(self):
+        super().setUp()
+        # Apply a policy so governance endpoints have data to report
+        from hub.apps.governance.models import AccessPolicy
+
+        self.gov_policy = AccessPolicy.objects.create(
+            tenant=self.tenant,
+            name="Governance Test Policy",
+            conditions={"type": "test"},
+            effect="ALLOW",
+            enabled=True,
+        )
+        from hub.apps.mesh.models import PolicyApplication, PolicyApplicationStatus
+
+        self.gov_application = PolicyApplication.objects.create(
+            domain=self.domain,
+            policy=self.gov_policy,
+            applied_by=self.admin_user,
+            status=PolicyApplicationStatus.APPLIED,
+        )
+        from hub.apps.mesh.models import ComplianceReport, MeshComplianceStatus
+
+        self.gov_report = ComplianceReport.objects.create(
+            domain=self.domain,
+            compliance_status=MeshComplianceStatus.COMPLIANT,
+            violations={},
+        )
+
+    # -- Governance list --------------------------------------------------
+
+    def test_governance_list_success(self):
+        """GET /api/v1/mesh/governance/ returns domain and policy counts."""
+        self.client.credentials(
+            HTTP_AUTHORIZATION=f"ApiKey {self.user_api_key._plaintext_key}"
+        )
+        url = reverse("mesh-governance-list")
+        response = self.client.get(url)
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertIn("domain_count", response.data)
+        self.assertEqual(response.data["domain_count"], 1)
+        self.assertEqual(response.data["applied_policies_count"], 1)
+
+    def test_governance_list_tenant_isolation(self):
+        """Governance list only returns data for the authenticated tenant."""
+        _uid = uuid.uuid4().hex[:8]
+        other_tenant = Tenant.objects.create(
+            name=f"Other Tenant {_uid}",
+            slug=f"other-tenant-{_uid}",
+            kyc_status=KYCStatus.VERIFIED,
+        )
+        DataMeshDomain.objects.create(
+            tenant=other_tenant,
+            name="Other Tenant Domain",
+            status=DomainStatus.ACTIVE,
+        )
+        self.client.credentials(
+            HTTP_AUTHORIZATION=f"ApiKey {self.user_api_key._plaintext_key}"
+        )
+        url = reverse("mesh-governance-list")
+        response = self.client.get(url)
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        # Domain count should only include this tenant's domains
+        self.assertEqual(
+            response.data["domain_count"],
+            DataMeshDomain.objects.filter(tenant=self.tenant).count(),
+        )
+
+    def test_governance_list_unauthenticated(self):
+        """Unauthenticated requests to governance endpoint return 401."""
+        url = reverse("mesh-governance-list")
+        response = self.client.get(url)
+        self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
+
+    # -- Governance policies ----------------------------------------------
+
+    def test_governance_policies_list(self):
+        """GET /api/v1/mesh/governance/policies/ returns applied policies."""
+        self.client.credentials(
+            HTTP_AUTHORIZATION=f"ApiKey {self.user_api_key._plaintext_key}"
+        )
+        url = reverse("mesh-governance-policies")
+        response = self.client.get(url)
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertIn("results", response.data)
+        self.assertEqual(len(response.data["results"]), 1)
+
+    def test_governance_policies_tenant_isolation(self):
+        """Policies from other tenants are excluded from governance policies list."""
+        _uid = uuid.uuid4().hex[:8]
+        other_tenant = Tenant.objects.create(
+            name=f"Other Tenant {_uid}",
+            slug=f"other-tenant-{_uid}",
+            kyc_status=KYCStatus.VERIFIED,
+        )
+        other_domain = DataMeshDomain.objects.create(
+            tenant=other_tenant, name="Other Domain", status=DomainStatus.ACTIVE
+        )
+        other_policy = AccessPolicy.objects.create(
+            tenant=other_tenant,
+            name="Other Policy",
+            conditions={},
+            effect="ALLOW",
+            enabled=True,
+        )
+        from hub.apps.mesh.models import PolicyApplication, PolicyApplicationStatus
+
+        PolicyApplication.objects.create(
+            domain=other_domain,
+            policy=other_policy,
+            applied_by=None,
+            status=PolicyApplicationStatus.APPLIED,
+        )
+        self.client.credentials(
+            HTTP_AUTHORIZATION=f"ApiKey {self.user_api_key._plaintext_key}"
+        )
+        url = reverse("mesh-governance-policies")
+        response = self.client.get(url)
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        # No results should reference the other tenant's domain
+        other_domain_ids = {str(other_domain.id)}
+        for item in response.data["results"]:
+            self.assertNotIn(item["domain_id"], other_domain_ids)
+
+    # -- Governance compliance -------------------------------------------
+
+    def test_governance_compliance_list(self):
+        """GET /api/v1/mesh/governance/compliance/ returns compliance summary."""
+        self.client.credentials(
+            HTTP_AUTHORIZATION=f"ApiKey {self.user_api_key._plaintext_key}"
+        )
+        url = reverse("mesh-governance-compliance")
+        response = self.client.get(url)
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertIn("domain_count", response.data)
+        self.assertIn("compliant_count", response.data)
+        self.assertIn("reports", response.data)
+
+    # -- Governance reports ----------------------------------------------
+
+    def test_governance_reports_list(self):
+        """GET /api/v1/mesh/governance/reports/ returns compliance reports."""
+        self.client.credentials(
+            HTTP_AUTHORIZATION=f"ApiKey {self.user_api_key._plaintext_key}"
+        )
+        url = reverse("mesh-governance-reports")
+        response = self.client.get(url)
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertIn("reports", response.data)
+        self.assertEqual(len(response.data["reports"]), 1)
+
+    def test_governance_reports_tenant_isolation(self):
+        """Compliance reports from other tenants are excluded."""
+        _uid = uuid.uuid4().hex[:8]
+        other_tenant = Tenant.objects.create(
+            name=f"Other Tenant {_uid}",
+            slug=f"other-tenant-{_uid}",
+            kyc_status=KYCStatus.VERIFIED,
+        )
+        other_domain = DataMeshDomain.objects.create(
+            tenant=other_tenant, name="Other Domain", status=DomainStatus.ACTIVE
+        )
+        from hub.apps.mesh.models import ComplianceReport, MeshComplianceStatus
+
+        ComplianceReport.objects.create(
+            domain=other_domain,
+            compliance_status=MeshComplianceStatus.COMPLIANT,
+            violations={},
+        )
+        self.client.credentials(
+            HTTP_AUTHORIZATION=f"ApiKey {self.user_api_key._plaintext_key}"
+        )
+        url = reverse("mesh-governance-reports")
+        response = self.client.get(url)
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        other_domain_ids = {str(other_domain.id)}
+        for item in response.data["reports"]:
+            self.assertNotIn(item["domain_id"], other_domain_ids)
+
+
+# =============================================================================
+# Partial update (PATCH) tests — previously uncovered
+# =============================================================================
+
+
+class DomainPartialUpdateEndpointTest(DomainViewSetTestCase):
+    """Tests for PATCH (partial_update) on DomainViewSet."""
+
+    def test_partial_update_domain_success(self):
+        """PATCH updates only provided fields and returns 200."""
+        self.client.credentials(
+            HTTP_AUTHORIZATION=f"ApiKey {self.admin_api_key._plaintext_key}"
+        )
+        url = reverse("domain-detail", kwargs={"id": str(self.domain.id)})
+        response = self.client.patch(
+            url, {"description": "Updated via PATCH"}, format="json"
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["description"], "Updated via PATCH")
+        # Name should remain unchanged
+        self.assertEqual(response.data["name"], "Test Domain")
+
+    def test_partial_update_domain_invalid_data(self):
+        """PATCH with invalid data returns 400 with error message."""
+        self.client.credentials(
+            HTTP_AUTHORIZATION=f"ApiKey {self.admin_api_key._plaintext_key}"
+        )
+        url = reverse("domain-detail", kwargs={"id": str(self.domain.id)})
+        response = self.client.patch(
+            url, {"resource_quota": "not-a-dict"}, format="json"
+        )
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        # DRF serializer returns field-level errors; resource_quota is the invalid field
+        self.assertIn("resource_quota", response.data)
+
+    def test_partial_update_domain_no_permission(self):
+        """PATCH without admin role returns 403."""
+        self.client.credentials(
+            HTTP_AUTHORIZATION=f"ApiKey {self.user_api_key._plaintext_key}"
+        )
+        url = reverse("domain-detail", kwargs={"id": str(self.domain.id)})
+        response = self.client.patch(
+            url, {"description": "Nope"}, format="json"
+        )
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+
+# =============================================================================
+# Platform admin bypass tests — previously uncovered
+# =============================================================================
+
+
+class PlatformAdminBypassTest(DomainViewSetTestCase):
+    """Tests verifying platform admin tenant-isolation bypass paths."""
+
+    def setUp(self):
+        super().setUp()
+        # Make admin_user a platform admin
+        self.admin_user.is_platform_admin = True
+        self.admin_user.save()
+
+        # Create a second tenant with its own domain
+        _uid = uuid.uuid4().hex[:8]
+        self.other_tenant = Tenant.objects.create(
+            name=f"Other Tenant {_uid}",
+            slug=f"other-tenant-{_uid}",
+            kyc_status=KYCStatus.VERIFIED,
+        )
+        self.other_domain = DataMeshDomain.objects.create(
+            tenant=self.other_tenant,
+            name="Other Tenant Domain",
+            status=DomainStatus.ACTIVE,
+        )
+
+    def test_platform_admin_can_list_all_tenants_domains(self):
+        """Platform admin sees domains from all tenants in list."""
+        self.client.credentials(
+            HTTP_AUTHORIZATION=f"ApiKey {self.admin_api_key._plaintext_key}"
+        )
+        url = reverse("domain-list")
+        response = self.client.get(url)
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        domain_ids = [item["id"] for item in response.data["results"]]
+        self.assertIn(str(self.domain.id), domain_ids)
+        self.assertIn(str(self.other_domain.id), domain_ids)
+
+    def test_platform_admin_can_retrieve_other_tenant_domain(self):
+        """Platform admin can retrieve a domain from any tenant."""
+        self.client.credentials(
+            HTTP_AUTHORIZATION=f"ApiKey {self.admin_api_key._plaintext_key}"
+        )
+        url = reverse(
+            "domain-detail", kwargs={"id": str(self.other_domain.id)}
+        )
+        response = self.client.get(url)
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["name"], "Other Tenant Domain")
+
+
+# =============================================================================
+# Tenant isolation gaps — policy/compliance operations
+# =============================================================================
+
+
+class PolicyComplianceTenantIsolationTest(DomainViewSetTestCase):
+    """Tests for tenant isolation of policy and compliance operations."""
+
+    def setUp(self):
+        super().setUp()
+        _uid = uuid.uuid4().hex[:8]
+        self.other_tenant = Tenant.objects.create(
+            name=f"Other Tenant {_uid}",
+            slug=f"other-tenant-{_uid}",
+            kyc_status=KYCStatus.VERIFIED,
+        )
+        self.other_domain = DataMeshDomain.objects.create(
+            tenant=self.other_tenant,
+            name="Other Domain",
+            status=DomainStatus.ACTIVE,
+        )
+        self.other_policy = AccessPolicy.objects.create(
+            tenant=self.other_tenant,
+            name="Other Policy",
+            conditions={},
+            effect="ALLOW",
+            enabled=True,
+        )
+        from hub.apps.mesh.models import ComplianceReport, MeshComplianceStatus
+
+        self.other_report = ComplianceReport.objects.create(
+            domain=self.other_domain,
+            compliance_status=MeshComplianceStatus.COMPLIANT,
+            violations={},
+        )
+
+    def test_apply_policy_cross_tenant_blocked(self):
+        """Applying another tenant's policy fails with 400 (tenant mismatch)."""
+        self.client.credentials(
+            HTTP_AUTHORIZATION=f"ApiKey {self.admin_api_key._plaintext_key}"
+        )
+        url = reverse(
+            "domain-apply-policy", kwargs={"id": str(self.domain.id)}
+        )
+        response = self.client.post(
+            url, {"policy_id": str(self.other_policy.id)}, format="json"
+        )
+        # Policy from another tenant → ValidationError (400)
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_list_policies_tenant_isolation(self):
+        """Listing policies only returns policies for the authenticated tenant."""
+        self.client.credentials(
+            HTTP_AUTHORIZATION=f"ApiKey {self.user_api_key._plaintext_key}"
+        )
+        url = reverse(
+            "domain-list-policies", kwargs={"id": str(self.domain.id)}
+        )
+        response = self.client.get(url)
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        other_policy_ids = {str(self.other_policy.id)}
+        for item in response.data.get("results", []):
+            self.assertNotIn(item.get("policy_id"), other_policy_ids)
+
+    def test_check_compliance_cross_tenant_blocked(self):
+        """Checking compliance for another tenant's domain fails with 404."""
+        self.client.credentials(
+            HTTP_AUTHORIZATION=f"ApiKey {self.admin_api_key._plaintext_key}"
+        )
+        url = reverse(
+            "domain-check-compliance",
+            kwargs={"id": str(self.other_domain.id)},
+        )
+        response = self.client.post(url, {}, format="json")
+        self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
+
+    def test_get_compliance_report_tenant_isolation(self):
+        """Getting another tenant's compliance report fails with 404."""
+        self.client.credentials(
+            HTTP_AUTHORIZATION=f"ApiKey {self.user_api_key._plaintext_key}"
+        )
+        url = reverse(
+            "domain-get-compliance-report",
+            kwargs={
+                "id": str(self.domain.id),
+                "report_id": str(self.other_report.id),
+            },
+        )
+        response = self.client.get(url)
+        # Report exists but belongs to another tenant → 404
         self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)

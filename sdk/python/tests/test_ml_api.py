@@ -419,3 +419,93 @@ class TestODHMLErrorClasses:
         error = ODHMLConflictError("Conflict occurred")
         assert error.message == "Conflict occurred"
         assert error.http_status == 409
+
+
+# ── Success-path integration tests (real API, no mocks) ────────────────────
+# These verify that key read-only ML API methods are callable against the
+# real API and return responses with the expected structure.  They do NOT
+# require pre-seeded data — empty lists / default plans are valid responses.
+
+
+class TestMLAPISuccessPaths:
+    """Success-path integration tests for ML API methods."""
+
+    @pytest.fixture
+    def real_config(self):
+        """Real API config for integration tests."""
+        import os as _os
+
+        from tests.conftest import is_api_available, get_api_key, default_api_base_url
+
+        if not is_api_available():
+            pytest.skip("API service is not available.")
+        api_key = get_api_key()
+        if not api_key:
+            pytest.skip("No API key available.")
+        api_base_url = _os.environ.get(
+            "API_BASE_URL", f"{default_api_base_url()}/api/v1"
+        )
+        return DataHubClientConfig(
+            base_url=api_base_url,
+            api_token=api_key,
+            timeout=30.0,
+            max_retries=3,
+            user_agent="test-agent",
+            enable_logging=False,
+        )
+
+    @pytest.fixture
+    async def real_client(self, real_config):
+        """Real client for integration tests."""
+        async with DataHubClient(real_config) as client:
+            yield client
+
+    @pytest.mark.asyncio
+    @pytest.mark.integration
+    async def test_list_models_success(self, real_client):
+        """Test list_models returns a well-structured response."""
+        api = ODHIntegrationAPI(real_client)
+        result = await api.list_models()
+        assert isinstance(result, list), f"Expected list, got {type(result)}"
+
+    @pytest.mark.asyncio
+    @pytest.mark.integration
+    async def test_list_training_jobs_success(self, real_client):
+        """Test list_training_jobs returns a well-structured response."""
+        api = TrainingAPI(real_client)
+        result = await api.list_training_jobs()
+        assert isinstance(result, list), f"Expected list, got {type(result)}"
+
+    @pytest.mark.asyncio
+    @pytest.mark.integration
+    async def test_list_deployments_success(self, real_client):
+        """Test list_deployments returns a well-structured response."""
+        api = InferenceAPI(real_client)
+        result = await api.list_deployments()
+        assert isinstance(result, list), f"Expected list, got {type(result)}"
+
+    @pytest.mark.asyncio
+    @pytest.mark.integration
+    async def test_get_ml_plan_success(self, real_client):
+        """Test get_ml_plan returns plan info or NotFoundError if no subscription."""
+        api = ODHIntegrationAPI(real_client)
+        try:
+            result = await api.get_ml_plan()
+            assert isinstance(result, dict), f"Expected dict, got {type(result)}"
+        except NotFoundError as exc:
+            if "ML subscription" in str(exc):
+                pytest.skip("No ML subscription configured for this tenant")
+            raise
+
+    @pytest.mark.asyncio
+    @pytest.mark.integration
+    async def test_get_ml_plan_limits_success(self, real_client):
+        """Test get_ml_plan_limits returns limits or NotFoundError if no subscription."""
+        api = ODHIntegrationAPI(real_client)
+        try:
+            result = await api.get_ml_plan_limits()
+            assert isinstance(result, dict), f"Expected dict, got {type(result)}"
+        except NotFoundError as exc:
+            if "ML subscription" in str(exc):
+                pytest.skip("No ML subscription configured for this tenant")
+            raise

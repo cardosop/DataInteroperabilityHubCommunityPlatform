@@ -12,13 +12,11 @@ These tests validate:
 - Structured logging with correlation IDs
 """
 
-import time
-import unittest
-from typing import Any, Dict
 from unittest.mock import MagicMock, Mock, patch
 
 from django.test import TestCase
 
+from hub.apps.core.resilience.circuit_breaker import reset_circuit_breaker_by_name
 from hub.apps.core.services.base import ConnectionError, NotFoundError, PermissionError
 from hub.apps.integrations.connectors.gcp_marketplace_connector import GCPMarketplaceConnector
 
@@ -45,7 +43,12 @@ class TestGCPMarketplaceConnectorRetryLogic(TestCase):
 
     def setUp(self):
         """Set up test fixtures"""
+        reset_circuit_breaker_by_name("gcp-marketplace-connector")
         self.connector = GCPMarketplaceConnector(project_id="test-project", use_adc=True)
+
+    def tearDown(self):
+        """Clean up circuit breaker state to prevent cross-test pollution."""
+        reset_circuit_breaker_by_name("gcp-marketplace-connector")
 
     def test_is_transient_error_429(self):
         """Test _is_transient_error() returns True for 429 (Too Many Requests)"""
@@ -171,7 +174,12 @@ class TestGCPMarketplaceConnectorErrorMapping(TestCase):
 
     def setUp(self):
         """Set up test fixtures"""
+        reset_circuit_breaker_by_name("gcp-marketplace-connector")
         self.connector = GCPMarketplaceConnector(project_id="test-project", use_adc=True)
+
+    def tearDown(self):
+        """Clean up circuit breaker state to prevent cross-test pollution."""
+        reset_circuit_breaker_by_name("gcp-marketplace-connector")
 
     def test_map_google_error_404(self):
         """Test _map_google_error() maps 404 to NotFoundError"""
@@ -248,7 +256,12 @@ class TestGCPMarketplaceConnectorCircuitBreaker(TestCase):
 
     def setUp(self):
         """Set up test fixtures"""
+        reset_circuit_breaker_by_name("gcp-marketplace-connector")
         self.connector = GCPMarketplaceConnector(project_id="test-project", use_adc=True)
+
+    def tearDown(self):
+        """Clean up circuit breaker state to prevent cross-test pollution."""
+        reset_circuit_breaker_by_name("gcp-marketplace-connector")
 
     def test_circuit_breaker_initialized(self):
         """Test circuit breaker is initialized"""
@@ -276,7 +289,8 @@ class TestGCPMarketplaceConnectorCircuitBreaker(TestCase):
         """Test circuit breaker protects against cascading failures"""
 
         def always_failing_operation():
-            error = GoogleAPIError("Service unavailable", code=503)
+            error = GoogleAPIError("Service unavailable")
+            error.code = 503
             raise error
 
         # Simulate multiple failures to trigger circuit breaker
@@ -298,7 +312,12 @@ class TestGCPMarketplaceConnectorStructuredLogging(TestCase):
 
     def setUp(self):
         """Set up test fixtures"""
+        reset_circuit_breaker_by_name("gcp-marketplace-connector")
         self.connector = GCPMarketplaceConnector(project_id="test-project", use_adc=True)
+
+    def tearDown(self):
+        """Clean up circuit breaker state to prevent cross-test pollution."""
+        reset_circuit_breaker_by_name("gcp-marketplace-connector")
 
     @patch("hub.apps.integrations.connectors.gcp_marketplace_connector.logger")
     def test_log_with_context_includes_operation(self, mock_logger):

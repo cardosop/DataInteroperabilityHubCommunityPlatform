@@ -12,7 +12,7 @@ from datetime import timedelta
 from django.utils import timezone
 
 from hub.apps.billing.models import Subscription, SubscriptionStatus
-from hub.apps.tenants.models import KYCStatus, PlanTier, Tenant, TenantPlan
+from hub.apps.tenants.models import KYCStatus, PlanCategory, PlanTier, Tenant, TenantPlan
 
 
 def ensure_tenant_has_active_subscription(tenant: Tenant) -> None:
@@ -54,6 +54,19 @@ def _ensure_subscription_inner(tenant: Tenant) -> None:
         "max_ml_training_jobs": 100,
         "max_ml_deployments": 100,
     }
+
+    # Also ensure the canonical free plan exists (some tests reach
+    # PlanLimitService.check_limit() before tenant.plan is assigned,
+    # and plan resolution falls back to slug="free").
+    TenantPlan.objects.get_or_create(
+        slug="free",
+        defaults={
+            "name": "Free",
+            "tier": PlanTier.FREE,
+            "limits_json": required_limits,
+            "is_active": True,
+        },
+    )
 
     plan, created = TenantPlan.objects.get_or_create(
         slug="scheduled-ops-test-plan",
@@ -172,6 +185,33 @@ def ensure_e2e_tenant_ready(tenant: Tenant) -> None:
     if sub and getattr(sub, "plan_id", None) != e2e_plan.id:
         sub.plan = e2e_plan
         sub.save(update_fields=["plan", "updated_at"])
+
+    # Ensure an ML_AI subscription record exists so GET
+    # billing/subscription/ml/current/ returns data (not 404).
+    # Setting tenant.ml_plan above enables ML limits but the ML
+    # subscription viewset queries Subscription by category=ML_AI.
+    #
+    # NOTE: Subscription.save() auto-sets category from plan.category,
+    # so we must use .update() after creation to force ML_AI.
+    ml_sub = (
+        Subscription.objects.filter(
+            tenant=tenant, category=PlanCategory.ML_AI,
+        )
+        .order_by("-created_at")
+        .first()
+    )
+    if not ml_sub:
+        ml_sub = Subscription.objects.create(
+            tenant=tenant,
+            plan=e2e_plan,
+            status=SubscriptionStatus.ACTIVE,
+            current_period_start=timezone.now(),
+            current_period_end=timezone.now() + timedelta(days=365 * 100),
+        )
+        # Force category to ML_AI — .save() would reset it to plan.category (BASE)
+        Subscription.objects.filter(pk=ml_sub.pk).update(
+            category=PlanCategory.ML_AI,
+        )
 
     if tenant.kyc_status != KYCStatus.VERIFIED:
         tenant.kyc_status = KYCStatus.VERIFIED

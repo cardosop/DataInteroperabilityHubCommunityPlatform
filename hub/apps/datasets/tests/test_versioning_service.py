@@ -190,7 +190,7 @@ class VersioningServiceTest(DatasetsTestBase):
 
         self.assertEqual(cm.exception.code, "NOT_FOUND")
 
-    def test_compare_versions_database_error_handling(self):
+    def test_compare_versions_same_dataset(self):
         """Test error handling when version comparison fails"""
         # Use valid dataset IDs
         result = self.service.compare_versions(
@@ -203,7 +203,7 @@ class VersioningServiceTest(DatasetsTestBase):
         self.assertIsNotNone(result)
         self.assertIsInstance(result, dict)
 
-    def test_get_version_history_database_error_handling(self):
+    def test_get_version_history_with_persisted_dataset(self):
         """Test error handling when version history retrieval fails"""
         history = self.service.get_version_history(
             dataset_id=str(self.dataset.id), tenant_id=str(self.tenant.id)

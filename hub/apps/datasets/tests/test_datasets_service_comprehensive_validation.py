@@ -35,11 +35,60 @@ from hub.apps.datasets.versioning_service import VersioningService
 from hub.apps.files.models import File, FileStatus
 from hub.apps.tenants.models import KYCStatus, TenantStatus
 from hub.apps.users.models import UserStatus
-from tests.fixtures.test_data_factories import TenantFactory, UserFactory
-from tests.utils.wait_helpers import wait_for_event_persistence
+# Lazy imports — the test runner may discover this module before the
+# ``tests.fixtures`` package is fully importable in some discovery
+# orders (e.g. when run with other test suites that load factory
+# modules first).  Deferring to first call avoids a _FailedTest.
+_TenantFactory = None
+_UserFactory = None
+_wait_for_event_persistence = None
+
+
+def _get_TenantFactory():
+    global _TenantFactory
+    if _TenantFactory is None:
+        from tests.fixtures.test_data_factories import TenantFactory as TF
+        _TenantFactory = TF
+    return _TenantFactory
+
+
+def _get_UserFactory():
+    global _UserFactory
+    if _UserFactory is None:
+        from tests.fixtures.test_data_factories import UserFactory as UF
+        _UserFactory = UF
+    return _UserFactory
+
+
+def _get_wait_for_event_persistence():
+    global _wait_for_event_persistence
+    if _wait_for_event_persistence is None:
+        from tests.utils.wait_helpers import wait_for_event_persistence as w
+        _wait_for_event_persistence = w
+    return _wait_for_event_persistence
 
 pytestmark = pytest.mark.django_db(transaction=True)
 User = get_user_model()
+
+
+def setUpModule():
+    """Reset stale connections before any test in this module runs.
+
+    This module's tests are connection-heavy — each setUp/tearDown
+    cycle opens and closes connections aggressively.  When run in a
+    shared ``--keepdb`` pool alongside other test suites, the pool
+    can be exhausted before the first test starts.
+    connections before the first class loads.
+    """
+    from django.db import connections
+    conn = connections["default"]
+    connections["default"].close()
+
+
+def tearDownModule():
+    """Close connections after all tests in this module have run."""
+    from django.db import connections
+    connections.close_all()
 
 
 class TestDatasetCRUDOperations(TestCase):
@@ -54,28 +103,17 @@ class TestDatasetCRUDOperations(TestCase):
     reset_sequences = False
     serialized_rollback = False
 
-    @classmethod
-    def _fixture_teardown(cls):
-        """Override to skip database flush for comprehensive tests.
-
-        TransactionTestCase tries to flush the database between tests, but this
-        fails with foreign key constraints. We use transaction rollback instead
-        which provides isolation without flushing.
-        """
-        # Don't flush - transactions are rolled back which provides isolation
-        pass
-
     def setUp(self):
         """Set up test fixtures"""
         cache.clear()
         unique_id = uuid.uuid4().hex[:8]
-        self.tenant = TenantFactory.create_tenant(
+        self.tenant = _get_TenantFactory().create_tenant(
             name=f"Test Tenant {unique_id}",
             slug=f"test-tenant-{unique_id}",
             status=TenantStatus.ACTIVE,
             kyc_status=KYCStatus.VERIFIED,
         )
-        self.user = UserFactory.create_user(
+        self.user = _get_UserFactory().create_user(
             email=f"test-{unique_id}@example.com", tenant=self.tenant, status=UserStatus.ACTIVE
         )
         self.service = DatasetService(tenant_id=str(self.tenant.id), user_id=str(self.user.id))
@@ -229,7 +267,7 @@ class TestDatasetCRUDOperations(TestCase):
         )
 
         # Wait a bit to ensure different timestamps
-        wait_for_event_persistence()
+        _get_wait_for_event_persistence()()
 
         dataset2 = self.service.create_dataset(
             tenant_id=str(self.tenant.id),
@@ -292,22 +330,17 @@ class TestDatasetVersioning(TestCase):
     reset_sequences = False
     serialized_rollback = False
 
-    @classmethod
-    def _fixture_teardown(cls):
-        """Override to skip database flush for comprehensive tests."""
-        pass
-
     def setUp(self):
         """Set up test fixtures"""
         cache.clear()
         unique_id = uuid.uuid4().hex[:8]
-        self.tenant = TenantFactory.create_tenant(
+        self.tenant = _get_TenantFactory().create_tenant(
             name=f"Test Tenant {unique_id}",
             slug=f"test-tenant-{unique_id}",
             status=TenantStatus.ACTIVE,
             kyc_status=KYCStatus.VERIFIED,
         )
-        self.user = UserFactory.create_user(
+        self.user = _get_UserFactory().create_user(
             email=f"test-{unique_id}@example.com", tenant=self.tenant, status=UserStatus.ACTIVE
         )
         self.versioning_service = VersioningService(
@@ -499,22 +532,17 @@ class TestSchemaEvolution(TestCase):
     reset_sequences = False
     serialized_rollback = False
 
-    @classmethod
-    def _fixture_teardown(cls):
-        """Override to skip database flush for comprehensive tests."""
-        pass
-
     def setUp(self):
         """Set up test fixtures"""
         cache.clear()
         unique_id = uuid.uuid4().hex[:8]
-        self.tenant = TenantFactory.create_tenant(
+        self.tenant = _get_TenantFactory().create_tenant(
             name=f"Test Tenant {unique_id}",
             slug=f"test-tenant-{unique_id}",
             status=TenantStatus.ACTIVE,
             kyc_status=KYCStatus.VERIFIED,
         )
-        self.user = UserFactory.create_user(
+        self.user = _get_UserFactory().create_user(
             email=f"test-{unique_id}@example.com", tenant=self.tenant, status=UserStatus.ACTIVE
         )
 
@@ -681,22 +709,17 @@ class TestTimeTravelQueries(TestCase):
     reset_sequences = False
     serialized_rollback = False
 
-    @classmethod
-    def _fixture_teardown(cls):
-        """Override to skip database flush for comprehensive tests."""
-        pass
-
     def setUp(self):
         """Set up test fixtures"""
         cache.clear()
         unique_id = uuid.uuid4().hex[:8]
-        self.tenant = TenantFactory.create_tenant(
+        self.tenant = _get_TenantFactory().create_tenant(
             name=f"Test Tenant {unique_id}",
             slug=f"test-tenant-{unique_id}",
             status=TenantStatus.ACTIVE,
             kyc_status=KYCStatus.VERIFIED,
         )
-        self.user = UserFactory.create_user(
+        self.user = _get_UserFactory().create_user(
             email=f"test-{unique_id}@example.com", tenant=self.tenant, status=UserStatus.ACTIVE
         )
 
@@ -727,13 +750,13 @@ class TestTimeTravelQueries(TestCase):
         )
 
         # Wait to ensure different timestamps
-        wait_for_event_persistence()
+        _get_wait_for_event_persistence()()
 
     def test_time_travel_queries(self):
         """Test time travel queries"""
         # Create version 2
         timestamp_before_v2 = timezone.now()
-        wait_for_event_persistence()
+        _get_wait_for_event_persistence()()
 
         dataset_v2 = Dataset.objects.create(
             tenant=self.tenant,
@@ -785,7 +808,7 @@ class TestTimeTravelQueries(TestCase):
         """Test point-in-time queries"""
         # Create version 2 with delay
         timestamp_v1 = self.dataset_v1.created_at
-        wait_for_event_persistence()
+        _get_wait_for_event_persistence()()
 
         dataset_v2 = Dataset.objects.create(
             tenant=self.tenant,
@@ -815,7 +838,7 @@ class TestTimeTravelQueries(TestCase):
         # Create multiple versions
         datasets = [self.dataset_v1]
         for i in range(2, 6):
-            wait_for_event_persistence()
+            _get_wait_for_event_persistence()()
             dataset = Dataset.objects.create(
                 tenant=self.tenant,
                 asset=self.asset,
@@ -869,22 +892,17 @@ class TestDatasetRollback(TestCase):
     reset_sequences = False
     serialized_rollback = False
 
-    @classmethod
-    def _fixture_teardown(cls):
-        """Override to skip database flush for comprehensive tests."""
-        pass
-
     def setUp(self):
         """Set up test fixtures"""
         cache.clear()
         unique_id = uuid.uuid4().hex[:8]
-        self.tenant = TenantFactory.create_tenant(
+        self.tenant = _get_TenantFactory().create_tenant(
             name=f"Test Tenant {unique_id}",
             slug=f"test-tenant-{unique_id}",
             status=TenantStatus.ACTIVE,
             kyc_status=KYCStatus.VERIFIED,
         )
-        self.user = UserFactory.create_user(
+        self.user = _get_UserFactory().create_user(
             email=f"test-{unique_id}@example.com", tenant=self.tenant, status=UserStatus.ACTIVE
         )
 
@@ -1040,22 +1058,17 @@ class TestDatasetsODPSIntegration(TestCase):
     reset_sequences = False
     serialized_rollback = False
 
-    @classmethod
-    def _fixture_teardown(cls):
-        """Override to skip database flush for comprehensive tests."""
-        pass
-
     def setUp(self):
         """Set up test fixtures"""
         cache.clear()
         unique_id = uuid.uuid4().hex[:8]
-        self.tenant = TenantFactory.create_tenant(
+        self.tenant = _get_TenantFactory().create_tenant(
             name=f"Test Tenant {unique_id}",
             slug=f"test-tenant-{unique_id}",
             status=TenantStatus.ACTIVE,
             kyc_status=KYCStatus.VERIFIED,
         )
-        self.user = UserFactory.create_user(
+        self.user = _get_UserFactory().create_user(
             email=f"test-{unique_id}@example.com", tenant=self.tenant, status=UserStatus.ACTIVE
         )
 
@@ -1219,7 +1232,7 @@ class TestDatasetsODPSIntegration(TestCase):
     def test_odps_time_travel_queries(self):
         """Test ODPS time travel queries"""
         # Create version 2
-        wait_for_event_persistence()
+        _get_wait_for_event_persistence()()
 
         dataset_v2 = Dataset.objects.create(
             tenant=self.tenant,

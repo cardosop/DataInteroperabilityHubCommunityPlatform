@@ -60,6 +60,7 @@ class AssetSerializer(serializers.ModelSerializer):
             'name',
             'description',
             'domain',
+            'source_type',
             'status',
             'visibility',
             'dq_status',
@@ -106,7 +107,7 @@ class AssetSerializer(serializers.ModelSerializer):
             latest_contract = obj.contracts.order_by('-created_at').first()
             if latest_contract:
                 return str(latest_contract.id)
-        except Exception:
+        except (AttributeError, TypeError, ValueError):
             pass
         return None
 
@@ -117,7 +118,7 @@ class AssetSerializer(serializers.ModelSerializer):
             latest_dataset = obj.datasets.order_by('-version', '-created_at').first()
             if latest_dataset:
                 return str(latest_dataset.id)
-        except Exception:
+        except (AttributeError, TypeError, ValueError):
             pass
         return None
 

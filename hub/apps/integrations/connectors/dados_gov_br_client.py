@@ -308,7 +308,7 @@ class DadosGovBrAPIClient:
                     if error_info.get('details'):
                         error_msg += f" - {error_info['details'][0]}"
 
-                    logger.error(
+                    logger.warning(
                         f"API endpoint returned HTML error: {method} {endpoint} - {error_msg}"
                     )
                     raise ValueError(
@@ -352,7 +352,7 @@ class DadosGovBrAPIClient:
                 if error_info.get('details'):
                     error_msg += f" - {error_info['details'][0]}"
 
-                logger.error(
+                logger.warning(
                     f"API request failed with HTML error: {method} {endpoint} - "
                     f"Status {e.response.status_code}: {error_msg}"
                 )
@@ -363,10 +363,19 @@ class DadosGovBrAPIClient:
                     response=e.response
                 ) from e
 
-            logger.error(
-                f"API request failed: {method} {endpoint} - "
-                f"Status {e.response.status_code}: {e.response.text[:200]}"
-            )
+            # Log 4xx (client errors) at WARNING — they are expected outcomes
+            # for normal API usage (e.g. 404 for non-existent datasets).
+            # Log 5xx (server errors) at ERROR — they indicate infrastructure issues.
+            if e.response.status_code < 500:
+                logger.warning(
+                    f"API request failed: {method} {endpoint} - "
+                    f"Status {e.response.status_code}: {e.response.text[:200]}"
+                )
+            else:
+                logger.error(
+                    f"API request failed: {method} {endpoint} - "
+                    f"Status {e.response.status_code}: {e.response.text[:200]}"
+                )
             raise
         except httpx.RequestError as e:
             logger.error(f"Network error making API request: {method} {endpoint} - {e}")
@@ -449,30 +458,62 @@ class DadosGovBrAPIClient:
 
         return self._request('GET', endpoint)
 
-    def get_resource(self, resource_id: str) -> Dict[str, Any]:
+    def get_resource(
+        self, resource_id: str, dataset_id: Optional[str] = None
+    ) -> Dict[str, Any]:
         """
         Get resource details by ID.
 
         Note: Resources in dados.gov.br are typically nested within datasets.
-        This method attempts to fetch resource by ID directly.
+        When ``dataset_id`` is provided, the resource is looked up through the
+        dataset endpoint per the Swagger spec.  When omitted, the method falls
+        back to legacy direct-resource paths (which may not exist on the live
+        API) and raises ``ValueError`` if they return HTML.
 
         Args:
             resource_id: Resource ID
+            dataset_id: Optional dataset / listing ID that contains the resource
 
         Returns:
-            Resource details dictionary (may vary based on dados.gov.br API response format)
-        """
-        # Try dados.gov.br resource endpoint pattern
-        # Note: Actual endpoint may vary - resources might be nested in datasets
-        endpoint = f'/dados/api/publico/recurso/{resource_id}'
+            Resource details dictionary
 
+        Raises:
+            ValueError: If the resource cannot be found through any endpoint
+        """
+        # 1) If we know the parent dataset, use the Swagger-spec path.
+        if dataset_id:
+            dataset_endpoint = f"/dados/api/publico/conjuntos-dados/{dataset_id}"
+            try:
+                dataset_data = self._request("GET", dataset_endpoint)
+            except (httpx.HTTPStatusError, ValueError) as e:
+                raise ValueError(
+                    f"Failed to fetch dataset {dataset_id} for resource {resource_id}: {e}"
+                ) from e
+
+            # Resources are nested under "recursos" or "resources"
+            result = dataset_data.get("result") or dataset_data
+            recursos = result.get("recursos") or result.get("resources") or []
+            for r in recursos:
+                if r.get("id") == resource_id or r.get("resource_id") == resource_id:
+                    return {"success": True, "result": r}
+
+            # Resource not found in this dataset
+            raise ValueError(
+                f"Resource '{resource_id}' not found in dataset {dataset_id}"
+            )
+
+        # 2) Legacy fallback — direct resource endpoints.
+        #    These endpoints are *not* part of the published Swagger spec
+        #    and frequently return HTML (the portal page) rather than JSON.
+        endpoint = f"/dados/api/publico/recurso/{resource_id}"
         try:
-            return self._request('GET', endpoint)
-        except (httpx.HTTPStatusError, ValueError) as e:
-            # If direct resource endpoint doesn't work, try alternative pattern
-            logger.warning(f"Direct resource endpoint failed, trying alternative: {e}")
-            endpoint = f'/dados/api/publico/recursos/{resource_id}'
-            return self._request('GET', endpoint)
+            return self._request("GET", endpoint)
+        except (httpx.HTTPStatusError, ValueError):
+            logger.warning(
+                "Direct resource endpoint /recurso/ failed, trying /recursos/ fallback"
+            )
+            endpoint = f"/dados/api/publico/recursos/{resource_id}"
+            return self._request("GET", endpoint)
 
     def get_dataset_tags(self, dataset_id: str) -> Dict[str, Any]:
         """

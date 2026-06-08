@@ -180,3 +180,44 @@ class TestAPIValidationMiddleware(TestCase):
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
         data = json.loads(response.content)
         self.assertEqual(data["error"]["code"], StandardErrorCodes.VALIDATION_ERROR)
+
+    def test_process_request_w3c_ldn_inbox_skips_validation(self):
+        """Test that POST to W3C LDN inbox is exempt from validation.
+
+        Phase 230.12 (REQ-SEM-LDN-001): LDN inbox accepts non-JSON
+        Content-Types such as text/turtle, application/ld+json, etc.
+        """
+        # LDN inbox with trailing slash
+        request = self.factory.post(
+            "/api/v1/semantic/ldn/inbox/",
+            data="not json",
+            content_type="text/turtle",
+        )
+        response = self.middleware.process_request(request)
+        self.assertIsNone(
+            response,
+            "W3C LDN inbox should be exempt from Content-Type / JSON validation",
+        )
+
+        # LDN inbox without trailing slash (path.endswith variant)
+        request2 = self.factory.post(
+            "/api/v1/semantic/ldn/inbox",
+            data="not json",
+            content_type="application/ld+json",
+        )
+        response2 = self.middleware.process_request(request2)
+        self.assertIsNone(
+            response2,
+            "LDN inbox (no trailing slash) should also be exempt",
+        )
+
+    def test_validate_query_params_valid_order_by(self):
+        """Test that the 'order_by' query parameter alias is accepted."""
+        request = self.factory.get(
+            "/api/v1/resources/?order_by=-created_at,name"
+        )
+        response = self.middleware._validate_query_params(request)
+        self.assertIsNone(
+            response,
+            "order_by should be accepted as an alias for the ordering parameter",
+        )

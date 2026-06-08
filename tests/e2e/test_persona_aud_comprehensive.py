@@ -52,8 +52,8 @@ class JourneyAUD001ReviewAuditLogsTests(E2ETestBase):
         
         # Create tenant and auditor user
         self.tenant = Tenant.objects.create(
-            name="Audit Tenant",
-            slug="audit-tenant",
+            name=f"Audit Tenant {uuid.uuid4().hex[:8]}",
+            slug=f"audit-tenant-{uuid.uuid4().hex[:8]}",
             kyc_status=KYCStatus.VERIFIED
         )
         
@@ -341,8 +341,8 @@ class JourneyAUD002GenerateAuditReportsTests(E2ETestBase):
         
         # Create tenant and auditor user
         self.tenant = Tenant.objects.create(
-            name="Report Tenant",
-            slug="report-tenant",
+            name=f"Report Tenant {uuid.uuid4().hex[:8]}",
+            slug=f"report-tenant-{uuid.uuid4().hex[:8]}",
             kyc_status=KYCStatus.VERIFIED
         )
         
@@ -506,8 +506,8 @@ class JourneyAUD003ExportAuditDataTests(E2ETestBase):
         
         # Create tenant and auditor user
         self.tenant = Tenant.objects.create(
-            name="Export Tenant",
-            slug="export-tenant",
+            name=f"Export Tenant {uuid.uuid4().hex[:8]}",
+            slug=f"export-tenant-{uuid.uuid4().hex[:8]}",
             kyc_status=KYCStatus.VERIFIED
         )
         
@@ -672,8 +672,8 @@ class AuditorUseCasesTests(E2ETestBase):
         
         # Create tenant and auditor user
         self.tenant = Tenant.objects.create(
-            name="Use Case Tenant",
-            slug="usecase-tenant",
+            name=f"Use Case Tenant {uuid.uuid4().hex[:8]}",
+            slug=f"usecase-tenant-{uuid.uuid4().hex[:8]}",
             kyc_status=KYCStatus.VERIFIED
         )
         
@@ -858,8 +858,8 @@ class AuditorErrorScenariosTests(E2ETestBase):
         
         # Create tenant and auditor user
         self.tenant = Tenant.objects.create(
-            name="Error Tenant",
-            slug="error-tenant",
+            name=f"Error Tenant {uuid.uuid4().hex[:8]}",
+            slug=f"error-tenant-{uuid.uuid4().hex[:8]}",
             kyc_status=KYCStatus.VERIFIED
         )
         

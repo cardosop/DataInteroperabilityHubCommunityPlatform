@@ -441,68 +441,104 @@ Jane;25;LA"""
     # ========== FAILURE SCENARIOS ==========
 
     def test_schema_inference_failure_invalid_csv(self):
-        """Test schema inference with invalid CSV (failure scenario)"""
-        invalid_csv = b"invalid,csv,content\nbroken"
+        """Test schema inference with malformed binary CSV raises ValueError."""
+        invalid_csv = b"\xff\xfe\x00\x01"
 
-        # Should handle invalid CSV gracefully
-        try:
-            schema = infer_schema_from_csv(invalid_csv, sample_size=10)
-            # If succeeds, should return schema or handle gracefully
-            self.assertIsNotNone(schema)
-        except Exception:
-            # If fails, that's acceptable for invalid CSV
-            pass
+        with self.assertRaises(ValueError):
+            infer_schema_from_csv(invalid_csv, sample_size=10)
 
     def test_schema_inference_failure_invalid_json(self):
-        """Test schema inference with invalid JSON (failure scenario)"""
+        """Test schema inference with invalid JSON raises ValueError."""
         invalid_json = b'{"invalid": json}'
 
-        # Should handle invalid JSON gracefully
-        try:
-            schema = infer_schema_from_json(invalid_json, sample_size=10)
-            # If succeeds, should return schema or handle gracefully
-            self.assertIsNotNone(schema)
-        except Exception:
-            # If fails, that's acceptable for invalid JSON
-            pass
+        with self.assertRaises(ValueError) as cm:
+            infer_schema_from_json(invalid_json, sample_size=10)
+        self.assertIn("Invalid JSON", str(cm.exception))
 
     def test_schema_inference_failure_empty_content(self):
-        """Test schema inference with empty content (failure scenario)"""
+        """Test schema inference with empty content raises ValueError."""
         empty_content = b""
 
-        # Should handle empty content gracefully
-        try:
-            schema = infer_schema_from_csv(empty_content, sample_size=10)
-            # If succeeds, should return empty schema or handle gracefully
-            self.assertIsNotNone(schema)
-        except Exception:
-            # If fails, that's acceptable for empty content
-            pass
+        with self.assertRaises(ValueError) as cm:
+            infer_schema_from_csv(empty_content, sample_size=10)
+        self.assertTrue(
+            "empty" in str(cm.exception).lower()
+            or "no header" in str(cm.exception).lower()
+            or "no columns" in str(cm.exception).lower(),
+            f"Empty content must produce 'empty'/'no headers'/'no columns' error; "
+            f"got: {cm.exception}",
+        )
 
     # ========== ERROR HANDLING ==========
 
-    def test_schema_inference_error_handling(self):
-        """Test error handling in schema inference"""
+    def test_infer_schema_from_csv_returns_valid_schema(self):
+        """infer_schema_from_csv returns a well-formed schema for valid CSV."""
         csv_content = b"name,age\nJohn,30\nJane,25"
 
-        # Should handle errors gracefully
-        try:
-            schema = infer_schema_from_csv(csv_content, sample_size=10)
-            # Should return schema
-            self.assertIsNotNone(schema)
-        except Exception:
-            # If raises exception, that's a problem
-            self.fail("infer_schema_from_csv should handle errors gracefully")
+        schema = infer_schema_from_csv(csv_content, sample_size=10)
+        self.assertIsNotNone(schema)
+        self.assertIn("fields", schema)
+        self.assertGreater(len(schema["fields"]), 0,
+            "Schema must contain at least one field")
 
-    def test_detect_delimiter_error_handling(self):
-        """Test error handling in delimiter detection"""
+    def test_detect_delimiter_detects_comma(self):
+        """detect_delimiter returns the correct delimiter for comma-separated content."""
         content = b"name,age\nJohn,30"
 
-        # Should handle errors gracefully
+        delimiter = detect_delimiter(content)
+        self.assertIsNotNone(delimiter)
+        self.assertEqual(delimiter, ",")
+
+    # ── Encoding detection (gap: previously untested) ────────────────
+
+    def test_detect_encoding_utf8(self):
+        """UTF-8 bytes are detected as utf-8."""
+        content = "Hello, 世界".encode("utf-8")
+        encoding = detect_encoding(content)
+        self.assertEqual(encoding, "utf-8")
+
+    def test_detect_encoding_latin1_fallback(self):
+        """Bytes that fail UTF-8 must fall back to latin-1 or windows-1252."""
+        # 0xFF is invalid UTF-8 but valid latin-1
+        content = b"Hello\xffWorld"
+        encoding = detect_encoding(content)
+        self.assertIn(encoding, ("latin-1", "windows-1252"),
+            f"Expected latin-1 or windows-1252 fallback, got: {encoding}")
+
+    def test_detect_encoding_empty_content(self):
+        """Empty bytes must return utf-8 (the default)."""
+        content = b""
+        encoding = detect_encoding(content)
+        self.assertEqual(encoding, "utf-8")
+
+    # ── Parquet inference (gap: previously untested) ─────────────────
+
+    def test_infer_schema_from_parquet_success(self):
+        """Minimal Parquet file returns well-formed schema."""
         try:
-            delimiter = detect_delimiter(content)
-            # Should return delimiter
-            self.assertIsNotNone(delimiter)
-        except Exception:
-            # If raises exception, that's a problem
-            self.fail("detect_delimiter should handle errors gracefully")
+            import pandas as pd
+            import io
+        except ImportError:
+            self.skipTest("pandas not available for Parquet schema inference")
+
+        df = pd.DataFrame({"id": [1, 2], "name": ["Alice", "Bob"]})
+        buf = io.BytesIO()
+        df.to_parquet(buf, index=False)
+        schema = infer_schema_from_parquet(buf.getvalue())
+
+        self.assertIsNotNone(schema)
+        self.assertIn("fields", schema)
+        # Must have both columns
+        field_names = {f["name"] for f in schema["fields"]}
+        self.assertEqual(field_names, {"id", "name"})
+        self.assertIn("inference_metadata", schema)
+
+    def test_infer_schema_from_parquet_raises_import_error_when_pandas_missing(self):
+        """When pandas is not available, parquet inference raises ImportError."""
+        try:
+            import pandas as _pd  # noqa: F401
+            self.skipTest("pandas is available; cannot test missing-pandas path")
+        except ImportError:
+            pass
+        with self.assertRaises(ImportError):
+            infer_schema_from_parquet(b"fake-parquet-bytes")

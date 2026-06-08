@@ -35,12 +35,12 @@ class Phase25BillingSecurityTest(TestCase):
         # Create tenants
         self.tenant1 = Tenant.objects.create(
             name="Billing Security Tenant 1",
-            slug="billing-security-tenant-1",
+            slug=f"billing-security-tenant-1-{uuid.uuid4().hex[:8]}",
             status=TenantStatus.ACTIVE,
         )
         self.tenant2 = Tenant.objects.create(
             name="Billing Security Tenant 2",
-            slug="billing-security-tenant-2",
+            slug=f"billing-security-tenant-2-{uuid.uuid4().hex[:8]}",
             status=TenantStatus.ACTIVE,
         )
 
@@ -148,8 +148,8 @@ class Phase25PlatformAdminSecurityTest(TestCase):
 
         # Create tenant
         self.tenant = Tenant.objects.create(
-            name="Platform Admin Test Tenant",
-            slug="platform-admin-test-tenant",
+            name=f"Platform Admin Test Tenant {uuid.uuid4().hex[:8]}",
+            slug=f"platform-admin-test-tenant-{uuid.uuid4().hex[:8]}",
             status=TenantStatus.ACTIVE,
         )
 
@@ -233,12 +233,12 @@ class Phase25ErasureSecurityTest(TestCase):
         # Create tenants
         self.tenant1 = Tenant.objects.create(
             name="Erasure Security Tenant 1",
-            slug="erasure-security-tenant-1",
+            slug=f"erasure-security-tenant-1-{uuid.uuid4().hex[:8]}",
             status=TenantStatus.ACTIVE,
         )
         self.tenant2 = Tenant.objects.create(
             name="Erasure Security Tenant 2",
-            slug="erasure-security-tenant-2",
+            slug=f"erasure-security-tenant-2-{uuid.uuid4().hex[:8]}",
             status=TenantStatus.ACTIVE,
         )
 
@@ -381,8 +381,8 @@ class Phase25ScheduledExportWorkerAPISecurityTest(TestCase):
 
         # Create tenant
         self.tenant = Tenant.objects.create(
-            name="Worker API Test Tenant",
-            slug="worker-api-test-tenant",
+            name=f"Worker API Test Tenant {uuid.uuid4().hex[:8]}",
+            slug=f"worker-api-test-tenant-{uuid.uuid4().hex[:8]}",
             status=TenantStatus.ACTIVE,
         )
 
@@ -471,8 +471,8 @@ class Phase25ScheduledIngestionWorkerAPISecurityTest(TestCase):
 
         # Create tenant
         self.tenant = Tenant.objects.create(
-            name="Scheduled Ingestion Worker API Test Tenant",
-            slug="sched-ingest-worker-api-test-tenant",
+            name=f"Scheduled Ingestion Worker API Test Tenant {uuid.uuid4().hex[:8]}",
+            slug=f"sched-ingest-worker-api-test-tenant-{uuid.uuid4().hex[:8]}",
             status=TenantStatus.ACTIVE,
         )
 

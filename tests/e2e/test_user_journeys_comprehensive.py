@@ -1976,8 +1976,8 @@ class Persona4DataConsumerJourneys(UserJourneyTestBase):
         from hub.apps.testing.billing_support import ensure_tenant_has_active_subscription
 
         self.provider_tenant = Tenant.objects.create(
-            name="Provider Tenant",
-            slug="provider-tenant",
+            name=f"Provider Tenant {uuid.uuid4().hex[:8]}",
+            slug=f"provider-tenant-{uuid.uuid4().hex[:8]}",
             kyc_status=KYCStatus.VERIFIED
         )
         ensure_tenant_has_active_subscription(self.provider_tenant)
@@ -2934,7 +2934,7 @@ class Persona6PlatformAdminJourneys(UserJourneyTestBase):
         journey_id = f"PA-001-{uuid.uuid4().hex[:8]}"
         journey = self.tracker.start_journey(
             journey_id=journey_id,
-            journey_name="Onboard New Tenant",
+            journey_name=f"Onboard New Tenant {uuid.uuid4().hex[:8]}",
             persona="Platform Admin / Marketplace Operator"
         )
         

@@ -100,29 +100,33 @@ class TestAWSDataExchangeConnectorIntegration(TestCase):
         reset_circuit_breaker_by_name("aws-data-exchange-connector")
 
         try:
-            credentials = get_aws_credentials()
-            cls.connector = AWSDataExchangeConnector(**credentials)
-            cls.connector.authenticate(credentials)
+            try:
+                credentials = get_aws_credentials()
+                cls.connector = AWSDataExchangeConnector(**credentials)
+                cls.connector.authenticate(credentials)
 
-            # Verify connection
-            if not verify_aws_connection(cls.connector):
-                raise unittest.SkipTest(
-                    "Cannot connect to AWS Data Exchange - check credentials and permissions"
-                )
+                # Verify connection
+                if not verify_aws_connection(cls.connector):
+                    raise unittest.SkipTest(
+                        "Cannot connect to AWS Data Exchange - check credentials and permissions"
+                    )
 
-            # Cache a test dataset ID for get_listing and list_resources tests.
-            # Prefer AWS_DATA_EXCHANGE_TEST_DATASET_ID when set (e.g. CI or account with no listings).
-            cls.test_dataset_id = os.getenv("AWS_DATA_EXCHANGE_TEST_DATASET_ID")
-            if not cls.test_dataset_id:
-                try:
-                    listings = cls.connector.list_listings(limit=1)
-                    if listings:
-                        cls.test_dataset_id = listings[0].marketplace_id
-                except Exception:
-                    pass
+                # Cache a test dataset ID for get_listing and list_resources tests.
+                # Prefer AWS_DATA_EXCHANGE_TEST_DATASET_ID when set (e.g. CI or account with no listings).
+                cls.test_dataset_id = os.getenv("AWS_DATA_EXCHANGE_TEST_DATASET_ID")
+                if not cls.test_dataset_id:
+                    try:
+                        listings = cls.connector.list_listings(limit=1)
+                        if listings:
+                            cls.test_dataset_id = listings[0].marketplace_id
+                    except Exception:
+                        pass
 
-        except Exception as e:
-            raise unittest.SkipTest(f"Cannot set up AWS Data Exchange connector: {e}")
+            except Exception as e:
+                raise unittest.SkipTest(f"Cannot set up AWS Data Exchange connector: {e}")
+        except Exception:
+            cls._rollback_atomics(cls.cls_atomics)
+            raise
 
     @classmethod
     def tearDownClass(cls):
@@ -132,6 +136,10 @@ class TestAWSDataExchangeConnectorIntegration(TestCase):
 
     def setUp(self):
         """Set up test fixtures."""
+        # Reset circuit breaker before each test so a failure in one
+        # test method doesn't cascade to subsequent methods in the
+        # same class (setUpClass only runs once).
+        reset_circuit_breaker_by_name("aws-data-exchange-connector")
         if not hasattr(self, "connector") or not self.connector:
             self.skipTest("AWS Data Exchange connector not available")
 
@@ -222,6 +230,16 @@ class TestAWSDataExchangeConnectorIntegration(TestCase):
         second_page = self.connector.list_listings(limit=5, offset=5)
         self.assertIsInstance(second_page, list)
 
+        # If both pages are full, they should be disjoint (pagination works).
+        if len(first_page) >= 5 and len(second_page) >= 5:
+            first_ids = {l.marketplace_id for l in first_page}
+            second_ids = {l.marketplace_id for l in second_page}
+            overlap = first_ids & second_ids
+            self.assertEqual(
+                len(overlap), 0,
+                f"Pagination should return disjoint pages, got {len(overlap)} overlapping IDs"
+            )
+
     @pytest.mark.requires_aws_test_dataset
     def test_get_listing_success(self):
         """Test getting a specific listing."""
@@ -261,8 +279,12 @@ class TestAWSDataExchangeConnectorIntegration(TestCase):
 
         self.assertIsInstance(result, SyncResult)
         self.assertEqual(result.status, SyncStatus.COMPLETED)
-        self.assertGreaterEqual(result.total_items, 0)
-        self.assertGreaterEqual(result.successful_items, 0)
+        self.assertIsInstance(result.total_items, int)
+        self.assertIsInstance(result.successful_items, int)
+        self.assertEqual(
+            result.total_items, result.successful_items + result.failed_items,
+            "total_items should equal successful_items + failed_items"
+        )
         self.assertIn("mappings", result.metadata)
         self.assertIsInstance(result.metadata["mappings"], list)
 

@@ -135,12 +135,12 @@ class DataContractCLIClient:
                     import time
                     time.sleep(delay)
                     continue
-                logger.error("datacontract_service_timeout", endpoint=endpoint, timeout=timeout)
+                logger.warning("datacontract_service_timeout", endpoint=endpoint, timeout=timeout)
                 raise Exception(f"DataContract service timeout after {timeout}s (after {max_retries} retries)") from e
             except httpx.HTTPStatusError as e:
                 # Don't retry on client errors (4xx)
                 if e.response.status_code < 500:
-                    logger.error("datacontract_service_client_error", endpoint=endpoint, status_code=e.response.status_code)
+                    logger.warning("datacontract_service_client_error", endpoint=endpoint, status_code=e.response.status_code)
                     raise Exception(f"DataContract service client error: {e.response.status_code}") from e
                 # Retry on server errors (5xx)
                 if attempt < max_retries:
@@ -172,7 +172,7 @@ class DataContractCLIClient:
                     import time
                     time.sleep(delay)
                     continue
-                logger.error("datacontract_service_error", endpoint=endpoint, error=str(e))
+                logger.warning("datacontract_service_error", endpoint=endpoint, error=str(e))
                 raise Exception(f"DataContract service error: {str(e)}") from e
 
         raise Exception(f"DataContract service failed after {max_retries} retries")
@@ -282,7 +282,12 @@ class DataContractCLIClient:
             )
             return result
         except Exception as e:
-            logger.error(
+            # The underlying _make_request / circuit-breaker call already
+            # logged the specific failure mode at the appropriate level.
+            # This catch-all returns a fallback response (graceful
+            # degradation), so log at WARNING — not ERROR — since the
+            # caller is expected to handle the fallback.
+            logger.warning(
                 "datacontract_validation_error",
                 error=str(e),
                 endpoint="/validate"
@@ -356,7 +361,7 @@ class DataContractCLIClient:
                 response.raise_for_status()
                 return response.json()
         except Exception as e:
-            logger.error("datacontract_service_health_check_failed", error=str(e))
+            logger.warning("datacontract_service_health_check_failed", error=str(e))
             return {"status": "unhealthy", "cli_version": "unknown"}
 
 

@@ -101,8 +101,12 @@ class TestAtomicJobClaim(TransactionTestCase):
     def _fixture_teardown(self):
         # Manual cleanup instead of flush — same pattern as
         # hub/apps/jobs/tests/test_job_processors.py.
+        # Delete users referencing target tenants first — User.tenant is
+        # on_delete=RESTRICT, so tenant deletion fails while users exist.
         from hub.apps.tenants.models import Tenant
+        from hub.apps.users.models import User
         Job.objects.all().delete()
+        User.objects.filter(tenant__slug__startswith="t-").delete()
         Tenant.objects.filter(slug__startswith="t-").delete()
 
     def tearDown(self):

@@ -24,7 +24,7 @@ def check_schema_drift(
     Returns a drift report dict if schemas diverge, None if consistent.
     Emits WAREHOUSE_SCHEMA_DRIFT audit on drift detection.
     """
-    from hub.apps.warehouses.connectors import WarehouseConnector
+    from hub.apps.warehouses.base import WarehouseConnector
 
     dataset = asset.datasets.first()
     if not dataset or not dataset.schema_json:

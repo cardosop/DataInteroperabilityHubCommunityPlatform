@@ -247,8 +247,10 @@ class ODCSBackwardCompatibilityTestBase(TestCase):
 
         # Compare warnings (may differ, but log for review)
         if len(baseline.warnings) != len(other.warnings):
-            # Warnings can differ, but log for information
-            pass
+            differences.append(
+                f"Warning count mismatch: baseline={len(baseline.warnings)}, "
+                f"{version}={len(other.warnings)} (informational)"
+            )
 
         return differences
 
@@ -425,6 +427,12 @@ class ODCSNormalizationComparisonTest(ODCSBackwardCompatibilityTestBase):
         if differences:
             print(f"\nODCS 3.0.1 comparison differences: {differences}")
 
+        # Fail the test if any differences found
+        self.assertEqual(
+            len(differences), 0,
+            f"Normalization differences found for 3.0.1: {differences}"
+        )
+
         # Both should succeed
         self.assertIsNotNone(baseline_result.hub_contract, "Baseline should normalize successfully")
         self.assertIsNotNone(other_result.hub_contract, "ODCS 3.0.1 should normalize successfully")
@@ -451,6 +459,12 @@ class ODCSNormalizationComparisonTest(ODCSBackwardCompatibilityTestBase):
         if differences:
             print(f"\nODCS 3.0.0 comparison differences: {differences}")
 
+        # Fail the test if any differences found
+        self.assertEqual(
+            len(differences), 0,
+            f"Normalization differences found for 3.0.0: {differences}"
+        )
+
         # Both should succeed
         self.assertIsNotNone(baseline_result.hub_contract, "Baseline should normalize successfully")
         self.assertIsNotNone(other_result.hub_contract, "ODCS 3.0.0 should normalize successfully")
@@ -476,6 +490,12 @@ class ODCSNormalizationComparisonTest(ODCSBackwardCompatibilityTestBase):
         # Log differences for review (but don't fail if acceptable)
         if differences:
             print(f"\nODCS 3.0.0-preview comparison differences: {differences}")
+
+        # Fail the test if any differences found
+        self.assertEqual(
+            len(differences), 0,
+            f"Normalization differences found for 3.0.0-preview: {differences}"
+        )
 
         # Both should succeed
         self.assertIsNotNone(baseline_result.hub_contract, "Baseline should normalize successfully")
@@ -504,6 +524,12 @@ class ODCSNormalizationComparisonTest(ODCSBackwardCompatibilityTestBase):
         # Log differences for review (but don't fail if acceptable)
         if differences:
             print(f"\nODCS 2.2.2 comparison differences: {differences}")
+
+        # Fail the test if any differences found
+        self.assertEqual(
+            len(differences), 0,
+            f"Normalization differences found for 2.2.2: {differences}"
+        )
 
         # Both should succeed
         self.assertIsNotNone(baseline_result.hub_contract, "Baseline should normalize successfully")
@@ -614,9 +640,8 @@ class ODCSRegressionTestSuite(ODCSBackwardCompatibilityTestBase):
                     [
                         NormalizationStatus.NORMALIZED_OK,
                         NormalizationStatus.NORMALIZED_WITH_WARNINGS,
-                        NormalizationStatus.NORMALIZATION_FAILED,
                     ],
-                    f"ODCS {version} minimal contract normalization should have valid status",
+                    f"ODCS {version} minimal contract normalization should succeed, got status: {result.status}",
                 )
 
                 # If normalization succeeded, verify core fields
@@ -677,8 +702,8 @@ class ODCSRegressionTestSuite(ODCSBackwardCompatibilityTestBase):
 
         # Should handle unicode characters
         self.assertIsNotNone(hub_contract_dict)
-        if hub_contract_dict and "info" in hub_contract_dict:
-            self.assertIsNotNone(hub_contract_dict["info"])
+        self.assertIn("info", hub_contract_dict)
+        self.assertEqual(hub_contract_dict["info"]["name"], "测试合同")
 
     def test_normalization_handles_special_characters(self):
         """Test that normalization handles special characters correctly."""
@@ -700,8 +725,8 @@ class ODCSRegressionTestSuite(ODCSBackwardCompatibilityTestBase):
 
         # Should handle special characters
         self.assertIsNotNone(hub_contract_dict)
-        if hub_contract_dict and "info" in hub_contract_dict:
-            self.assertIsNotNone(hub_contract_dict["info"])
+        self.assertIn("info", hub_contract_dict)
+        self.assertEqual(hub_contract_dict["info"]["name"], "Test & Co. (Special)")
 
     def test_normalization_handles_very_large_documents(self):
         """Test that normalization handles very large documents correctly."""
@@ -724,6 +749,12 @@ class ODCSRegressionTestSuite(ODCSBackwardCompatibilityTestBase):
 
         # Should handle very large documents
         self.assertIsNotNone(hub_contract_dict)
+        # Verify description length is preserved
+        desc = hub_contract_dict.get("description")
+        if desc is None and "info" in hub_contract_dict:
+            desc = hub_contract_dict["info"].get("description")
+        self.assertIsNotNone(desc, "Description should be preserved in normalized output")
+        self.assertEqual(len(desc), 100000, "Description length should be preserved")
 
     def test_normalization_handles_none_values(self):
         """Test that normalization handles None values correctly."""
@@ -745,6 +776,19 @@ class ODCSRegressionTestSuite(ODCSBackwardCompatibilityTestBase):
 
         # Should handle None values gracefully
         self.assertIsNotNone(hub_contract_dict)
+        # None values should be either preserved as None or handled per spec
+        has_description = "description" in hub_contract_dict
+        has_info_description = "info" in hub_contract_dict and "description" in hub_contract_dict["info"]
+        if has_description:
+            self.assertTrue(
+                hub_contract_dict["description"] is None or isinstance(hub_contract_dict["description"], str),
+                "None description should be preserved as None or converted to string",
+            )
+        if has_info_description:
+            self.assertTrue(
+                hub_contract_dict["info"]["description"] is None or isinstance(hub_contract_dict["info"]["description"], str),
+                "None description in info should be preserved as None or converted to string",
+            )
 
     def test_normalization_handles_nested_structures(self):
         """Test that normalization handles nested structures correctly."""
@@ -773,5 +817,14 @@ class ODCSRegressionTestSuite(ODCSBackwardCompatibilityTestBase):
 
         # Should handle nested structures
         self.assertIsNotNone(hub_contract_dict)
-        if hub_contract_dict and "schema" in hub_contract_dict:
-            self.assertIsNotNone(hub_contract_dict["schema"])
+        self.assertIn("schema", hub_contract_dict)
+        self.assertIn("fields", hub_contract_dict["schema"])
+        # Normalizer may or may not preserve deeply nested field metadata;
+        # if 'nested' is preserved, verify its structure.
+        field0 = hub_contract_dict["schema"]["fields"][0]
+        if "nested" in field0:
+            self.assertEqual(
+                field0["nested"]["level1"]["level2"]["level3"]["value"],
+                "deep",
+                "Nested structure value must be preserved",
+            )

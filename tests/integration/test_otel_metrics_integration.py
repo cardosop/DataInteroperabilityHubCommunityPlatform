@@ -76,11 +76,11 @@ class OpenTelemetryMetricsIntegrationTest(TestCase):
         http_request_duration_seconds.labels(method='GET', route='/test/', status_class='2xx').observe(0.1)
         http_errors_total.labels(method='GET', route='/test/', status_code=404).inc()
         
-        jobs_started_total.labels(job_type='DQ_RUN', tenant_id=str(self.tenant.id)).inc()
-        job_duration_seconds.labels(job_type='DQ_RUN', status='COMPLETED').observe(10.5)
+        jobs_started_total.labels(type='DQ_RUN', tenant_id=str(self.tenant.id)).inc()
+        job_duration_seconds.labels(type='DQ_RUN', status='COMPLETED').observe(10.5)
         
         tenant_running_jobs.labels(tenant_id=str(self.tenant.id)).set(5)
-        job_queue_length.labels(job_type='DQ_RUN', queue_name='default').set(3)
+        job_queue_length.labels(type='DQ_RUN', queue_name='default').set(3)
         
         response = self.client.get('/metrics/')
         if response.status_code == 200:
@@ -162,9 +162,9 @@ class OpenTelemetryMetricsIntegrationTest(TestCase):
         # Record metrics
         http_requests_total.labels(method='GET', route='/test/', status_class='2xx').inc()
         http_errors_total.labels(method='GET', route='/test/', status_code=404).inc()
-        jobs_started_total.labels(job_type='DQ_RUN', tenant_id=str(self.tenant.id)).inc()
-        jobs_completed_total.labels(job_type='DQ_RUN', status='COMPLETED', tenant_id=str(self.tenant.id)).inc()
-        jobs_failed_total.labels(job_type='DQ_RUN', error_code='TIMEOUT', tenant_id=str(self.tenant.id)).inc()
+        jobs_started_total.labels(type='DQ_RUN', tenant_id=str(self.tenant.id)).inc()
+        jobs_completed_total.labels(type='DQ_RUN', status='COMPLETED', tenant_id=str(self.tenant.id)).inc()
+        jobs_failed_total.labels(type='DQ_RUN', error_code='TIMEOUT', tenant_id=str(self.tenant.id)).inc()
         dq_runs_total.labels(status='success', engine='great_expectations', tenant_id=str(self.tenant.id)).inc()
         compliance_runs_total.labels(status='success', risk_level='low', tenant_id=str(self.tenant.id)).inc()
         cache_hits_total.labels(cache_key_prefix='rate_limit').inc()
@@ -196,7 +196,7 @@ class OpenTelemetryMetricsIntegrationTest(TestCase):
         """Test that all Histogram metrics are exported"""
         # Record metrics
         http_request_duration_seconds.labels(method='GET', route='/test/', status_class='2xx').observe(0.1)
-        job_duration_seconds.labels(job_type='DQ_RUN', status='COMPLETED').observe(10.5)
+        job_duration_seconds.labels(type='DQ_RUN', status='COMPLETED').observe(10.5)
         db_query_duration_seconds.labels(operation='SELECT').observe(0.01)
         file_upload_size_bytes.labels(file_type='csv').observe(1024)
         
@@ -218,7 +218,7 @@ class OpenTelemetryMetricsIntegrationTest(TestCase):
         """Test that all Gauge metrics are exported"""
         # Record metrics
         db_connections_active.set(5)
-        job_queue_length.labels(job_type='DQ_RUN', queue_name='default').set(3)
+        job_queue_length.labels(type='DQ_RUN', queue_name='default').set(3)
         tenant_running_jobs.labels(tenant_id=str(self.tenant.id)).set(5)
         tenant_queued_jobs.labels(tenant_id=str(self.tenant.id)).set(3)
         asset_dq_status.labels(status='PASS', tenant_id=str(self.tenant.id)).set(10)
@@ -315,7 +315,7 @@ class OpenTelemetryMetricsIntegrationTest(TestCase):
         
         # Record metrics with labels
         http_requests_total.labels(method='GET', route='/test/', status_class='2xx').inc()
-        jobs_started_total.labels(job_type='DQ_RUN', tenant_id=tenant_id).inc()
+        jobs_started_total.labels(type='DQ_RUN', tenant_id=tenant_id).inc()
         
         response = self.client.get('/metrics/')
         if response.status_code == 200:

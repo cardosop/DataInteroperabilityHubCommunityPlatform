@@ -98,23 +98,32 @@ class DeadLetterQueueTest(TestCase):
             resolution_status="PENDING"
         )
         
+        # Pre-condition: ensure "file1.csv" is tracked as failed in ingestion state
+        state_manager = IncrementalStateManager(self.scheduled_ingestion)
+        state_manager.mark_file_failed("file1.csv", "Connection timeout", retry_count=3, max_retries=3)
+        self.assertTrue(state_manager.is_file_failed("file1.csv"),
+                        "File must be in failed state before retry")
+
         # Retry file
         success = DeadLetterQueueManager.retry_file(
             dlq_item_id=str(dlq_item.id),
             user_id=str(self.user.id)
         )
-        
+
         self.assertTrue(success)
-        
+
         # Verify DLQ item updated
         dlq_item.refresh_from_db()
         self.assertEqual(dlq_item.resolution_status, "RETRYING")
         self.assertEqual(dlq_item.retry_count, 4)
         self.assertEqual(dlq_item.resolved_by, self.user)
-        
-        # Verify file cleared from ingestion state
+
+        # Verify file cleared from ingestion state — retry_file creates a new
+        # IncrementalStateManager internally, so we must refresh our view.
+        state_manager.scheduled_ingestion.refresh_from_db()
         state_manager = IncrementalStateManager(self.scheduled_ingestion)
-        self.assertFalse(state_manager.is_file_failed("file1.csv"))
+        self.assertFalse(state_manager.is_file_failed("file1.csv"),
+                         "File must be cleared from failed state after retry")
     
     def test_resolve_item(self):
         """Test resolving a DLQ item"""

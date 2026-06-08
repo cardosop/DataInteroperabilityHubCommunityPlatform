@@ -152,7 +152,13 @@ class DataFirstBodyCapTest(TestCase):
             {"file_id": str(file_obj.id), "key": "ok-key", "name": "OK"},
             tenant=tenant,
         )
-        assert response.status_code != status.HTTP_413_REQUEST_ENTITY_TOO_LARGE
+        # Must not falsely trigger the 100 MB body cap
+        self.assertNotEqual(response.status_code, status.HTTP_413_REQUEST_ENTITY_TOO_LARGE)
+        # Response must be a client/server error from the workflow path,
+        # NOT a payload-size rejection — verify the error code is unrelated
+        if hasattr(response, "data") and isinstance(response.data, dict):
+            error_code = response.data.get("code", "")
+            self.assertNotIn("PAYLOAD", str(error_code).upper())
 
 
 class DataFirstThrottleWiringTest(TestCase):
@@ -231,9 +237,13 @@ class DataFirstDegradedModeTest(TestCase):
         # response (workflow failure, success, 422 fail-closed) is
         # acceptable here — the assertion is about the code path,
         # not the workflow outcome.
-        assert response.status_code != status.HTTP_503_SERVICE_UNAVAILABLE or (
-            response.data.get("code") != "COMPLIANCE_SERVICE_UNAVAILABLE"
-        )
+        if response.status_code == status.HTTP_503_SERVICE_UNAVAILABLE:
+            # If we DID get 503, it must NOT be the compliance short-circuit.
+            # (A workflow-level 503 is acceptable; the point is we bypassed
+            # the upstream breaker guard.)
+            assert response.data.get("code") != "COMPLIANCE_SERVICE_UNAVAILABLE", (
+                f"Got compliance short-circuit 503 unexpectedly: {response.data}"
+            )
 
 
 class DataFirstFailClosedGateTest(TestCase):

@@ -3,7 +3,12 @@ Audit URL Configuration
 """
 from django.urls import path, include
 from rest_framework.routers import DefaultRouter
-from .views import AuditEventViewSet, ResourceActivityViewSet
+from .views import (
+    AuditEventViewSet,
+    AuditEventRetentionPolicyViewSet,
+    AuditIntegrityVerifyView,
+    ResourceActivityViewSet,
+)
 
 # Create router without format suffix patterns for export action
 # This allows ?format=csv to work without routing conflicts
@@ -17,6 +22,15 @@ router.register(
     ResourceActivityViewSet,
     basename="resource-activity",
 )
+# Phase 234.5 — per-event-type retention policy CRUD.
+router.register(
+    r"event-retention-policies",
+    AuditEventRetentionPolicyViewSet,
+    basename="audit-event-retention-policy",
+)
+
+# Phase 234.1.8 — integrity verify endpoint.
+integrity_verify_view = AuditIntegrityVerifyView.as_view({"get": "list"})
 
 # Add custom export endpoint that bypasses DRF format suffix routing
 # This allows ?format=csv query parameter to work without conflicts
@@ -52,5 +66,11 @@ urlpatterns = [
     # Standard router URLs (includes export action)
     # The export action in the viewset already handles ?format=csv correctly
     path("", include(router.urls)),
+    # Phase 234.1.8 — GET /api/v1/audit/integrity/verify
+    path(
+        "integrity/verify/",
+        integrity_verify_view,
+        name="audit-integrity-verify",
+    ),
 ]
 

@@ -98,7 +98,7 @@ def _create_active_key(tenant):
     return plaintext, row
 
 
-def _build_valid_event() -> dict:
+def _build_valid_event(*, source_id=None, target_id=None) -> dict:
     return {
         "eventType": "COMPLETE",
         "eventTime": "2026-04-30T12:00:00Z",
@@ -106,8 +106,8 @@ def _build_valid_event() -> dict:
         "schemaURL": "https://openlineage.io/spec/2-0-0/OpenLineage.json",
         "run": {"runId": str(uuid.uuid4())},
         "job": {"namespace": "etl", "name": "orders_etl"},
-        "inputs": [{"namespace": "meshant.contracts", "name": "src-uuid"}],
-        "outputs": [{"namespace": "meshant.contracts", "name": "tgt-uuid"}],
+        "inputs": [{"namespace": "meshant.contracts", "name": source_id or str(uuid.uuid4())}],
+        "outputs": [{"namespace": "meshant.contracts", "name": target_id or str(uuid.uuid4())}],
     }
 
 
@@ -124,6 +124,19 @@ def _hmac_sign(body: bytes, key: str = HMAC_KEY) -> str:
 
 @pytest.mark.django_db(transaction=True)
 class TestCapabilityGate(TransactionTestCase):
+
+    def setUp(self):
+        from django.db import connection
+        if not hasattr(connection.ensure_connection, '__self__'):
+            from types import MethodType
+            from django.db.backends.base.base import BaseDatabaseWrapper
+            connection.ensure_connection = MethodType(
+                BaseDatabaseWrapper.ensure_connection, connection,
+            )
+        connection.close()
+        connection.savepoint_ids = []
+        connection.needs_rollback = False
+        connection.ensure_connection()
 
     def test_returns_404_when_capability_off(self):
         # Test env defaults flags to True. Override OFF and verify 404.
@@ -155,6 +168,19 @@ class TestCapabilityGate(TransactionTestCase):
 @override_settings(OPENLINEAGE_HMAC_SIGNING_KEY=HMAC_KEY)
 @pytest.mark.django_db(transaction=True)
 class TestInboundAuthAndHmac(TransactionTestCase):
+
+    def setUp(self):
+        from django.db import connection
+        if not hasattr(connection.ensure_connection, '__self__'):
+            from types import MethodType
+            from django.db.backends.base.base import BaseDatabaseWrapper
+            connection.ensure_connection = MethodType(
+                BaseDatabaseWrapper.ensure_connection, connection,
+            )
+        connection.close()
+        connection.savepoint_ids = []
+        connection.needs_rollback = False
+        connection.ensure_connection()
 
     def test_missing_bearer_returns_401(self):
         client = APIClient()
@@ -278,6 +304,19 @@ class TestInboundAuthAndHmac(TransactionTestCase):
 
 @pytest.mark.django_db(transaction=True)
 class TestKeyAdminEndpoints(TransactionTestCase):
+
+    def setUp(self):
+        from django.db import connection
+        if not hasattr(connection.ensure_connection, '__self__'):
+            from types import MethodType
+            from django.db.backends.base.base import BaseDatabaseWrapper
+            connection.ensure_connection = MethodType(
+                BaseDatabaseWrapper.ensure_connection, connection,
+            )
+        connection.close()
+        connection.savepoint_ids = []
+        connection.needs_rollback = False
+        connection.ensure_connection()
 
     def test_list_keys_admin_only(self):
         tenant = _create_tenant()

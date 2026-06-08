@@ -652,7 +652,8 @@ class ODPSLinkingRulesComprehensiveTest(ODPSLinkingRulesTestBase):
 
         # Should still validate link and integrity (but not circular references)
         # Since there's no link, should pass with warnings
-        self.assertTrue(result.is_valid or len(result.errors) == 0)
+        self.assertTrue(result.is_valid)
+        self.assertEqual(len(result.errors), 0)
 
     def test_validate_all_linking_rules_with_integrity_violation(self):
         """Test comprehensive validation fails when referential integrity violated."""
@@ -705,8 +706,12 @@ class ODPSLinkingRulesComprehensiveTest(ODPSLinkingRulesTestBase):
         self.odps_contract.save()
 
         result = self.rules.validate_odps_to_odcs_link(self.odps_contract)
-        # Should handle empty hub_contract_json gracefully
         self.assertIsNotNone(result)
+        self.assertIsInstance(result.is_valid, bool,
+            "ValidationResult must have a boolean is_valid field")
+        # Empty hub_contract_json contains no linkable data — the result
+        # may be valid (no link found) or invalid (empty structure rejected);
+        # either is a legitimate outcome for an empty contract.
 
     def test_validate_odps_to_odcs_link_with_missing_extensions(self):
         """Test validation with missing extensions section."""
@@ -716,8 +721,11 @@ class ODPSLinkingRulesComprehensiveTest(ODPSLinkingRulesTestBase):
         self.odps_contract.save()
 
         result = self.rules.validate_odps_to_odcs_link(self.odps_contract)
-        # Should handle missing extensions gracefully
         self.assertIsNotNone(result)
+        self.assertIsInstance(result.is_valid, bool,
+            "ValidationResult must have a boolean is_valid field")
+        # Missing extensions section is a valid state — the contract
+        # simply has no ODPS-to-ODCS link to validate.
 
     def test_validate_odps_to_odcs_link_with_special_characters_in_link_id(self):
         """Test validation with special characters in link ID."""
@@ -732,8 +740,9 @@ class ODPSLinkingRulesComprehensiveTest(ODPSLinkingRulesTestBase):
         self.odps_contract.save()
 
         result = self.rules.validate_odps_to_odcs_link(self.odps_contract)
-        # Should handle special characters gracefully
         self.assertIsNotNone(result)
+        self.assertIsInstance(result.is_valid, bool,
+            "Special-char link ID must return a ValidationResult with a boolean is_valid")
 
     def test_validate_circular_references_with_none_ids(self):
         """Test circular reference validation with None IDs."""
@@ -795,8 +804,9 @@ class ODPSLinkingRulesComprehensiveTest(ODPSLinkingRulesTestBase):
         result = self.rules.validate_circular_references(
             odps_contract_id=str(self.odps_contract.id), odcs_contract_id=str(other_odcs.id)
         )
-        # May or may not detect cross-tenant issue, but should handle gracefully
+        # Cross-tenant references must not create false circular refs.
         self.assertIsNotNone(result)
+        self.assertIsInstance(result.is_valid, bool)
 
     def test_validate_referential_integrity_with_none_contract(self):
         """Test referential integrity validation with None contract."""
@@ -813,8 +823,9 @@ class ODPSLinkingRulesComprehensiveTest(ODPSLinkingRulesTestBase):
         self.odps_contract.save()
 
         result = self.rules.validate_referential_integrity(self.odps_contract)
-        # Should handle empty extensions gracefully
         self.assertIsNotNone(result)
+        self.assertIsInstance(result.is_valid, bool,
+            "Referential integrity with empty extensions must return ValidationResult")
 
     def test_validate_all_linking_rules_with_none_contracts(self):
         """Test comprehensive validation with None contracts."""
@@ -850,8 +861,9 @@ class ODPSLinkingRulesComprehensiveTest(ODPSLinkingRulesTestBase):
         self.odps_contract.save()
 
         result = self.rules.validate_odps_to_odcs_link(self.odps_contract)
-        # Should handle very long ID gracefully
         self.assertIsNotNone(result)
+        self.assertIsInstance(result.is_valid, bool,
+            "Very long link ID must return a ValidationResult with a boolean is_valid")
 
     def test_validate_circular_references_with_self_reference(self):
         """Test circular reference validation with self-reference."""
@@ -881,8 +893,9 @@ class ODPSLinkingRulesComprehensiveTest(ODPSLinkingRulesTestBase):
         )
 
         result = self.rules.validate_odps_to_odcs_link(contract)
-        # Should handle unicode characters
         self.assertIsNotNone(result)
+        self.assertIsInstance(result.is_valid, bool,
+            "Unicode contract must return ValidationResult with boolean is_valid")
 
     def test_linking_rules_handle_special_characters(self):
         """Test that linking rules handle special characters correctly."""
@@ -906,8 +919,9 @@ class ODPSLinkingRulesComprehensiveTest(ODPSLinkingRulesTestBase):
         )
 
         result = self.rules.validate_odps_to_odcs_link(contract)
-        # Should handle special characters
         self.assertIsNotNone(result)
+        self.assertIsInstance(result.is_valid, bool,
+            "Special-char contract must return ValidationResult with boolean is_valid")
 
     def test_linking_rules_handle_very_large_documents(self):
         """Test that linking rules handle very large documents correctly."""
@@ -931,8 +945,9 @@ class ODPSLinkingRulesComprehensiveTest(ODPSLinkingRulesTestBase):
         )
 
         result = self.rules.validate_odps_to_odcs_link(contract)
-        # Should handle very large documents
         self.assertIsNotNone(result)
+        self.assertIsInstance(result.is_valid, bool,
+            "Very large document must return ValidationResult with boolean is_valid")
 
     def test_linking_rules_handle_none_values(self):
         """Test that linking rules handle None values correctly."""
@@ -962,5 +977,6 @@ class ODPSLinkingRulesComprehensiveTest(ODPSLinkingRulesTestBase):
         )
 
         result = self.rules.validate_odps_to_odcs_link(contract)
-        # Should handle nested structures
         self.assertIsNotNone(result)
+        self.assertIsInstance(result.is_valid, bool,
+            "Nested-structure contract must return ValidationResult with boolean is_valid")

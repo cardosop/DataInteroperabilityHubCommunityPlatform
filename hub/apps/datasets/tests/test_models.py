@@ -279,26 +279,21 @@ class DatasetModelTest(DatasetsTestBase):
 
     # ========== ERROR HANDLING ==========
 
-    def test_create_dataset_database_error_handling(self):
-        """Test error handling when database operations fail"""
-        # Use valid data
-        try:
-            dataset = Dataset.objects.create(
-                tenant=self.tenant,
-                asset=self.asset,
-                file=self.file,
-                version=1,
-                format="CSV",
-                created_by=self.user,
-            )
-            # Should succeed
-            self.assertIsNotNone(dataset)
-        except Exception:
-            # If fails, that's a problem
-            self.fail("Dataset creation should handle database errors gracefully")
+    def test_create_dataset_with_valid_fields(self):
+        """Test that Dataset.objects.create succeeds with valid fields."""
+        dataset = Dataset.objects.create(
+            tenant=self.tenant,
+            asset=self.asset,
+            file=self.file,
+            version=1,
+            format="CSV",
+            created_by=self.user,
+        )
+        self.assertIsNotNone(dataset,
+            "Dataset creation with valid fields must succeed")
 
     def test_dataset_clean_validation(self):
-        """Test dataset clean() validation (error handling)"""
+        """dataset.clean() must succeed for a dataset with all required fields."""
         dataset = Dataset.objects.create(
             tenant=self.tenant,
             asset=self.asset,
@@ -308,10 +303,8 @@ class DatasetModelTest(DatasetsTestBase):
             created_by=self.user,
         )
 
-        # Should validate successfully
-        try:
-            dataset.clean()
-            # If succeeds, that's good
-        except Exception as e:
-            # If fails, verify it's a validation error
-            self.assertIsNotNone(e)
+        # Dataset with all required fields must validate without raising.
+        dataset.clean()
+        # Verify model state is intact after validation.
+        self.assertEqual(dataset.version, 1)
+        self.assertEqual(dataset.format, "CSV")

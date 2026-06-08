@@ -29,6 +29,7 @@ from hub.apps.audit.models import AuditEvent
 from hub.apps.jobs.models import Job, JobType, JobStatus
 from hub.apps.tenants.models import KYCStatus, TenantStatus
 from hub.apps.testing.billing_support import ensure_tenant_has_active_subscription
+from hub.apps.testing.role_support import ensure_user_has_data_provider_role
 from hub.apps.users.models import UserStatus
 from tests.fixtures.test_data_factories import TenantFactory, JobFactory
 
@@ -60,6 +61,7 @@ class TestJobListAPI(TestCase):
         )
         # Authenticate
         self.client.force_authenticate(user=self.user)
+        ensure_user_has_data_provider_role(self.user)
 
     def tearDown(self):
         """Clean up after each test"""
@@ -389,7 +391,7 @@ class TestJobListAPI(TestCase):
 
         # Create another tenant and job
         other_tenant = TenantFactory.create_tenant(
-            name="Other Tenant",
+            name=f"Other Tenant {uuid.uuid4().hex[:8]}",
             slug=f"other-tenant-{uuid.uuid4().hex[:8]}",
             status=TenantStatus.ACTIVE.value,
         )
@@ -605,7 +607,7 @@ class TestJobRetrieveAPI(TestCase):
         """Test that users can only retrieve jobs from their tenant"""
         # Create another tenant and job
         other_tenant = TenantFactory.create_tenant(
-            name="Other Tenant",
+            name=f"Other Tenant {uuid.uuid4().hex[:8]}",
             slug=f"other-tenant-{uuid.uuid4().hex[:8]}",
             status=TenantStatus.ACTIVE.value,
         )
@@ -657,6 +659,7 @@ class TestJobCancelAPI(TestCase):
             status=UserStatus.ACTIVE.value,
         )
         self.client.force_authenticate(user=self.user)
+        ensure_user_has_data_provider_role(self.user)
 
     def tearDown(self):
         """Clean up after each test"""
@@ -769,7 +772,7 @@ class TestJobCancelAPI(TestCase):
         """Test that users can only cancel jobs from their tenant"""
         # Create another tenant and job
         other_tenant = TenantFactory.create_tenant(
-            name="Other Tenant",
+            name=f"Other Tenant {uuid.uuid4().hex[:8]}",
             slug=f"other-tenant-{uuid.uuid4().hex[:8]}",
             status=TenantStatus.ACTIVE.value,
         )

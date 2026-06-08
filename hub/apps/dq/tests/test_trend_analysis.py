@@ -111,11 +111,14 @@ class TrendAnalyzerTest(TestCase):
             period_type="DAILY"
         )
         
-        self.assertGreater(len(trends), 0)
-        # Should have improving trends
+        self.assertGreaterEqual(len(trends), 1)
+        # Should have improving trends AND ZERO degrading trends
         improving_trends = [t for t in trends if t.direction == DQTrendDirection.IMPROVING]
-        self.assertGreater(len(improving_trends), 0)
-    
+        self.assertGreaterEqual(len(improving_trends), 1)
+        degrading_trends = [t for t in trends if t.direction == DQTrendDirection.DEGRADING]
+        self.assertEqual(len(degrading_trends), 0,
+            "Improving data must produce ZERO degrading trends")
+
     def test_calculate_trend_degrading(self):
         """Test trend calculation for degrading quality"""
         # Create runs with degrading scores
@@ -124,19 +127,22 @@ class TrendAnalyzerTest(TestCase):
                 quality_score=95.0 - (i * 2.0),  # Degrading trend
                 completed_at=timezone.now() - timedelta(days=10-i)
             )
-        
+
         # Calculate trends
         trends = TrendAnalyzer.calculate_trend(
             asset_id=str(self.asset.id),
             tenant_id=str(self.tenant.id),
             period_type="DAILY"
         )
-        
-        self.assertGreater(len(trends), 0)
-        # Should have degrading trends
+
+        self.assertGreaterEqual(len(trends), 1)
+        # Should have degrading trends AND ZERO improving trends
         degrading_trends = [t for t in trends if t.direction == DQTrendDirection.DEGRADING]
-        self.assertGreater(len(degrading_trends), 0)
-    
+        self.assertGreaterEqual(len(degrading_trends), 1)
+        improving_trends = [t for t in trends if t.direction == DQTrendDirection.IMPROVING]
+        self.assertEqual(len(improving_trends), 0,
+            "Degrading data must produce ZERO improving trends")
+
     def test_calculate_trend_stable(self):
         """Test trend calculation for stable quality"""
         # Create runs with stable scores
@@ -145,18 +151,22 @@ class TrendAnalyzerTest(TestCase):
                 quality_score=90.0,  # Stable
                 completed_at=timezone.now() - timedelta(days=10-i)
             )
-        
+
         # Calculate trends
         trends = TrendAnalyzer.calculate_trend(
             asset_id=str(self.asset.id),
             tenant_id=str(self.tenant.id),
             period_type="DAILY"
         )
-        
-        self.assertGreater(len(trends), 0)
-        # Should have stable trends
+
+        self.assertGreaterEqual(len(trends), 1)
+        # Should have stable trends AND ZERO directional trends
         stable_trends = [t for t in trends if t.direction == DQTrendDirection.STABLE]
-        self.assertGreater(len(stable_trends), 0)
+        self.assertGreaterEqual(len(stable_trends), 1)
+        directional_trends = [t for t in trends if t.direction in (
+            DQTrendDirection.IMPROVING, DQTrendDirection.DEGRADING)]
+        self.assertEqual(len(directional_trends), 0,
+            "Stable data must produce ZERO improving or degrading trends")
     
     def test_trend_change_calculation(self):
         """Test trend change amount and percent calculation"""
@@ -196,7 +206,7 @@ class TrendAnalyzerTest(TestCase):
         
         # Check that forecasts are calculated
         forecasts = [t for t in trends if t.forecast_value is not None]
-        self.assertGreater(len(forecasts), 0)
+        self.assertGreaterEqual(len(forecasts), 1)
     
     def test_trend_visualization_json(self):
         """Test trend visualization in JSON format"""
@@ -216,7 +226,7 @@ class TrendAnalyzerTest(TestCase):
         visualization = TrendAnalyzer.get_trend_visualization(trends, format="json")
         
         self.assertIsInstance(visualization, list)
-        self.assertGreater(len(visualization), 0)
+        self.assertGreaterEqual(len(visualization), 1)
         self.assertIn("current_value", visualization[0])
         self.assertIn("direction", visualization[0])
     
@@ -240,5 +250,5 @@ class TrendAnalyzerTest(TestCase):
         self.assertIsInstance(visualization, dict)
         self.assertIn("labels", visualization)
         self.assertIn("datasets", visualization)
-        self.assertGreater(len(visualization["labels"]), 0)
+        self.assertGreaterEqual(len(visualization["labels"]), 1)
 

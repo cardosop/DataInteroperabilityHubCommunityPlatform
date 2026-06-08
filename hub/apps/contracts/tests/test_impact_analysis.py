@@ -100,8 +100,10 @@ class ImpactAnalyzerTest(ContractsTestBase):
             contract_id=str(self.source_contract.id), tenant_id=str(self.tenant.id)
         )
 
-        # Should detect cycles
+        # Must detect cycles in cyclic graph
         self.assertIn("cycles_detected", result)
+        self.assertTrue(result["cycles_detected"],
+            "Cycles must be detected in a cyclic dependency graph")
 
     def test_impact_scoring(self):
         """Test impact scoring calculation"""
@@ -141,7 +143,9 @@ class ImpactAnalyzerTest(ContractsTestBase):
             contract_id=str(self.source_contract.id), tenant_id=str(self.tenant.id)
         )
 
-        self.assertIn(criticality, ["LOW", "MEDIUM", "HIGH"])
+        # ACTIVE asset (not PUBLIC) → visibility property derives INTERNAL.
+        # get_asset_criticality logic: ACTIVE & PUBLIC → HIGH; ACTIVE → MEDIUM.
+        self.assertEqual(criticality, "MEDIUM")
 
     # Edge cases and error handling tests
     def test_analyze_impact_contract_not_found(self):
@@ -291,12 +295,13 @@ class ImpactAnalyzerTest(ContractsTestBase):
 
     def test_impact_scorer_asset_criticality_without_asset(self):
         """Test asset criticality retrieval for contract without asset."""
-        # Contract without asset should still return a criticality
+        # Contract without asset — asset is None in the lookup path.
+        # get_asset_criticality returns "MEDIUM" as the default.
         criticality = ImpactScorer.get_asset_criticality(
             contract_id=str(self.source_contract.id), tenant_id=str(self.tenant.id)
         )
 
-        self.assertIn(criticality, ["LOW", "MEDIUM", "HIGH"])
+        self.assertEqual(criticality, "MEDIUM")
 
     def test_impact_scorer_asset_criticality_contract_not_found(self):
         """Test asset criticality retrieval for non-existent contract."""
@@ -304,15 +309,15 @@ class ImpactAnalyzerTest(ContractsTestBase):
 
         fake_contract_id = str(uuid.uuid4())
 
-        # Should handle gracefully
-        try:
-            criticality = ImpactScorer.get_asset_criticality(
-                contract_id=fake_contract_id, tenant_id=str(self.tenant.id)
-            )
-            self.assertIn(criticality, ["LOW", "MEDIUM", "HIGH"])
-        except Exception:
-            # If it raises exception, that's also acceptable
-            pass
+        # Non-existent contract → Contract.DoesNotExist caught internally →
+        # get_asset_criticality returns "MEDIUM" as the default fallback.
+        criticality = ImpactScorer.get_asset_criticality(
+            contract_id=fake_contract_id, tenant_id=str(self.tenant.id)
+        )
+        self.assertEqual(
+            criticality, "MEDIUM",
+            "Non-existent contract must return the default criticality 'MEDIUM'",
+        )
 
     def test_analyze_impact_with_broken_lineage_references(self):
         """Test impact analysis with broken lineage references."""

@@ -12,6 +12,7 @@ from hub.apps.governance.admin_abac import (
     _evaluate_admin_action,
     admin_abac_guard,
 )
+from hub.apps.governance.models import AccessPolicy
 from hub.apps.tenants.models import Tenant, TenantStatus
 from hub.apps.users.models import User
 
@@ -22,8 +23,10 @@ class TestAdminABACGuard(TestCase):
         cls.tenant = Tenant.objects.create(
             name="ABAC Admin", slug="abac-admin", status=TenantStatus.ACTIVE,
         )
+        # User must have a tenant so real ABAC policies can match
         cls.user = User.objects.create_user(
             email="admin@abac.test", password="testpass",
+            tenant=cls.tenant,
         )
 
     def setUp(self):
@@ -35,26 +38,39 @@ class TestAdminABACGuard(TestCase):
         return req
 
     def test_allows_when_abac_result_is_allow(self):
-        """Admin proceeds when ABAC returns allowed=True."""
-        with patch.object(ABACEngine, "evaluate_access") as mock_eval:
-            mock_eval.return_value = PolicyEvaluationResult(allowed=True)
+        """Admin proceeds when ABAC returns allowed=True (real policy)."""
+        # Create a real ALLOW policy with empty conditions → always matches
+        AccessPolicy.objects.create(
+            tenant=self.tenant,
+            name="Allow Admin Config",
+            conditions={},
+            effect="ALLOW",
+            priority=100,
+            enabled=True,
+        )
 
-            req = self._make_request()
-            # Should not raise
-            _evaluate_admin_action(req, "TENANT_CONFIG", "ADMIN_WRITE")
-            mock_eval.assert_called_once()
+        req = self._make_request()
+        # Should not raise — ABAC evaluates real policy and returns allowed=True
+        _evaluate_admin_action(req, "TENANT_CONFIG", "ADMIN_WRITE")
 
     def test_blocks_when_abac_result_is_deny(self):
-        """Admin is blocked when ABAC returns allowed=False."""
-        with patch.object(ABACEngine, "evaluate_access") as mock_eval:
-            mock_eval.return_value = PolicyEvaluationResult(allowed=False)
+        """Admin is blocked when ABAC returns allowed=False (real DENY policy)."""
+        # Create a real DENY policy with empty conditions → always matches
+        AccessPolicy.objects.create(
+            tenant=self.tenant,
+            name="Deny Admin Config",
+            conditions={},
+            effect="DENY",
+            priority=50,  # Higher priority (lower number) than any ALLOW
+            enabled=True,
+        )
 
-            req = self._make_request()
-            with pytest.raises(PermissionDenied) as ctx:
-                _evaluate_admin_action(req, "TENANT_CONFIG", "ADMIN_WRITE")
+        req = self._make_request()
+        with pytest.raises(PermissionDenied) as ctx:
+            _evaluate_admin_action(req, "TENANT_CONFIG", "ADMIN_WRITE")
 
-            error = ctx.value.detail
-            assert error["code"] == "ABAC_POLICY_DENIED"
+        error = ctx.value.detail
+        assert error["code"] == "ABAC_POLICY_DENIED"
 
     def test_fail_open_on_abac_evaluation_error(self):
         """Admin proceeds when ABAC evaluation raises an exception."""
@@ -67,50 +83,63 @@ class TestAdminABACGuard(TestCase):
 
     def test_decorator_allows_when_abac_allow(self):
         """@admin_abac_guard lets the wrapped function execute when ABAC allows."""
-        with patch.object(ABACEngine, "evaluate_access") as mock_eval:
-            mock_eval.return_value = PolicyEvaluationResult(allowed=True)
+        # Create a real ALLOW policy
+        AccessPolicy.objects.create(
+            tenant=self.tenant,
+            name="Allow Admin Config Decorator",
+            conditions={},
+            effect="ALLOW",
+            priority=100,
+            enabled=True,
+        )
 
-            call_count = 0
+        call_count = 0
 
-            @admin_abac_guard("TENANT_CONFIG")
-            def my_admin_view(request):
-                nonlocal call_count
-                call_count += 1
-                from django.http import JsonResponse
-                return JsonResponse({"ok": True})
+        @admin_abac_guard("TENANT_CONFIG")
+        def my_admin_view(request):
+            nonlocal call_count
+            call_count += 1
+            from django.http import JsonResponse
+            return JsonResponse({"ok": True})
 
-            req = self._make_request()
-            resp = my_admin_view(req)
-            assert resp.status_code == 200
-            assert call_count == 1
+        req = self._make_request()
+        resp = my_admin_view(req)
+        assert resp.status_code == 200
+        assert call_count == 1
 
     def test_decorator_blocks_when_abac_deny(self):
-        """@admin_abac_guard blocks when ABAC denies."""
-        with patch.object(ABACEngine, "evaluate_access") as mock_eval:
-            mock_eval.return_value = PolicyEvaluationResult(allowed=False)
+        """@admin_abac_guard blocks when ABAC denies (real DENY policy)."""
+        # Create a real DENY policy
+        AccessPolicy.objects.create(
+            tenant=self.tenant,
+            name="Deny Admin Config Decorator",
+            conditions={},
+            effect="DENY",
+            priority=50,
+            enabled=True,
+        )
 
-            @admin_abac_guard("TENANT_CONFIG")
-            def my_admin_view(request):
-                return None
+        @admin_abac_guard("TENANT_CONFIG")
+        def my_admin_view(request):
+            return None
 
-            req = self._make_request()
-            resp = my_admin_view(req)
-            assert resp.status_code == 403
-            data = resp.json()
-            assert data["error"]["code"] == "ABAC_POLICY_DENIED"
+        req = self._make_request()
+        resp = my_admin_view(req)
+        assert resp.status_code == 403
+        import json
+        data = json.loads(resp.content)
+        assert data["error"]["code"] == "ABAC_POLICY_DENIED"
 
     def test_decorator_returns_401_for_unauthenticated(self):
         """@admin_abac_guard returns 401 when user is not authenticated."""
-        with patch.object(ABACEngine, "evaluate_access") as mock_eval:
-            @admin_abac_guard("TENANT_CONFIG")
-            def my_admin_view(request):
-                return None
+        @admin_abac_guard("TENANT_CONFIG")
+        def my_admin_view(request):
+            return None
 
-            req = self._make_request()
-            req.user = type("Anon", (), {"is_authenticated": False})()
-            resp = my_admin_view(req)
-            assert resp.status_code == 401
-            mock_eval.assert_not_called()
+        req = self._make_request()
+        req.user = type("Anon", (), {"is_authenticated": False})()
+        resp = my_admin_view(req)
+        assert resp.status_code == 401
 
     def test_decorator_preserves_function_metadata(self):
         """@admin_abac_guard preserves __name__ and __doc__."""
@@ -124,17 +153,24 @@ class TestAdminABACGuard(TestCase):
         assert documented_view.__doc__ == "Updates tenant configuration."
 
     def test_read_operations_not_blocked_by_guard(self):
-        """GET requests can bypass ABAC guard when check_permissions skips them."""
-        with patch.object(ABACEngine, "evaluate_access") as mock_eval:
-            mock_eval.return_value = PolicyEvaluationResult(allowed=False)
+        """GET requests are evaluated by ABAC guard regardless of HTTP method."""
+        # Create a real DENY policy — it blocks GET too
+        AccessPolicy.objects.create(
+            tenant=self.tenant,
+            name="Deny Admin Reads",
+            conditions={},
+            effect="DENY",
+            priority=50,
+            enabled=True,
+        )
 
-            @admin_abac_guard("TENANT_CONFIG", action="ADMIN_READ")
-            def read_view(request):
-                from django.http import JsonResponse
-                return JsonResponse({"data": []})
+        @admin_abac_guard("TENANT_CONFIG", action="ADMIN_READ")
+        def read_view(request):
+            from django.http import JsonResponse
+            return JsonResponse({"data": []})
 
-            req = self._make_request("GET")
-            resp = read_view(req)
-            # GET with DENY policy is still blocked by the guard itself
-            # (ABAC is evaluated regardless of HTTP method)
-            assert resp.status_code == 403
+        req = self._make_request("GET")
+        resp = read_view(req)
+        # GET with DENY policy is still blocked by the guard itself
+        # (ABAC is evaluated regardless of HTTP method)
+        assert resp.status_code == 403

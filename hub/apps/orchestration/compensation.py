@@ -4,7 +4,7 @@ Workflow Compensation (Saga Pattern)
 Implements workflow rollback and compensation logic.
 """
 import logging
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, Callable
 from django.db import transaction
 from django.utils import timezone
 
@@ -26,12 +26,18 @@ class WorkflowCompensation:
     Implements Saga pattern for workflow rollback and compensation.
     """
 
-    def __init__(self, task_registry: Optional[Dict[str, Any]] = None):
+    def __init__(
+        self,
+        task_registry: Optional[Dict[str, Any]] = None,
+        compensation_observer: Optional[Callable[[str], None]] = None,
+    ):
         """
         Initialize compensation handler.
 
         Args:
             task_registry: Optional task registry dictionary mapping task names to functions
+            compensation_observer: Optional observer called with step_name after each
+                successful compensation (Phase 250.1.A test-mode hook).
         """
         # Store reference to the task registry (don't create a new dict)
         if task_registry is None:
@@ -40,6 +46,7 @@ class WorkflowCompensation:
             self.task_registry = task_registry
         # Compensation script handler registry
         self._compensation_handlers: Dict[str, Any] = {}
+        self._compensation_observer = compensation_observer
 
     def register_compensation_handler(
         self, script_name: str, handler: Any
@@ -118,10 +125,20 @@ class WorkflowCompensation:
                 f"Workflow rolled back due to step failure: {failed_step.step_name}"
                 + (f": {step_err}" if step_err else "")
             )
+            # Propagate the failed step's error_details (which includes
+            # exception_type) so downstream handlers like
+            # _handle_workflow_failure can distinguish controlled
+            # business outcomes from genuine system faults.
+            _step_error_details = (
+                failed_step.error_details
+                if isinstance(failed_step.error_details, dict)
+                else {}
+            )
             instance.error_details = {
                 "failed_step_index": failed_step.step_index,
                 "failed_step_name": failed_step.step_name,
-                "compensation_results": compensation_results
+                "error_details": _step_error_details,
+                "compensation_results": compensation_results,
             }
             instance.save(update_fields=[
                 'status', 'completed_at', 'error_message', 'error_details', 'updated_at'
@@ -207,6 +224,8 @@ class WorkflowCompensation:
             # No compensation defined, skip
             logger.info(f"No compensation defined for step {step.step_name}, skipping")
             step.mark_compensated({"status": "skipped", "reason": "no_compensation_defined"})
+            if self._compensation_observer is not None:
+                self._compensation_observer(step.step_name)
             return {"status": "skipped", "reason": "no_compensation_defined"}
 
         try:
@@ -243,6 +262,8 @@ class WorkflowCompensation:
                 f"Validation: is_valid={compensation_step_result.is_valid}, "
                 f"warnings={len(compensation_step_result.warnings)}"
             )
+            if self._compensation_observer is not None:
+                self._compensation_observer(step.step_name)
             return compensation_log_data
 
         except Exception as e:

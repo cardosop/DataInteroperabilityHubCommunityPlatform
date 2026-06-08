@@ -36,8 +36,11 @@ class Command(BaseCommand):
 
         revoked = 0
         with transaction.atomic():
+            # Note: we do NOT select_related("order") here because
+            # "order" is a nullable FK and Postgres forbids FOR UPDATE
+            # on the nullable side of an outer join.
             for request in expired_requests.select_for_update().select_related(
-                "tenant", "requested_by", "order"
+                "tenant", "requested_by"
             ):
                 request.status = AccessRequestStatus.REVOKED
                 request.save(update_fields=["status", "updated_at"])

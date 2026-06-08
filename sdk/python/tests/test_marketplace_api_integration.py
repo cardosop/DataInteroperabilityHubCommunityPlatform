@@ -41,11 +41,9 @@ def setup_authentication_for_sdk_tests(api_base_url: str) -> Optional[str]:
     """
     Set up authentication for SDK tests.
 
-    Tries multiple methods:
-    1. Use TEST_API_KEY environment variable if available
-    2. Try to create API key via Django shell command (works when running inside Docker)
-    3. Try docker compose exec (when running outside Docker)
-    4. Return None if no key available
+    Creates a dedicated tenant with ``marketplace_integrations_enabled=True``
+    so marketplace endpoints are not blocked by the feature-flag gate.
+    Falls back to the canonical conftest helper, then env vars.
 
     Args:
         api_base_url: API base URL
@@ -53,12 +51,36 @@ def setup_authentication_for_sdk_tests(api_base_url: str) -> Optional[str]:
     Returns:
         API key string or None
     """
-    # Method 1: Use environment variables
+    # Method 1: Create dedicated tenant via Django shell (PRIMARY).
+    # Marketplace endpoints require ``marketplace_integrations_enabled``
+    # on the resolved tenant, which the platform-admin tenant may lack.
+    # Creating our own tenant also isolates rate-limit quotas.
+    key = _create_marketplace_tenant_and_key()
+    if key:
+        return key
+
+    # Method 2: Use canonical conftest helper (validates, auto-provisions)
+    try:
+        from tests.conftest import get_api_key
+        canonical = get_api_key()
+        if canonical:
+            return canonical
+    except Exception:
+        pass
+
+    # Method 3: Fall back to env-var keys
     api_key = os.environ.get('TEST_API_KEY') or os.environ.get('DATAHUB_API_KEY')
     if api_key:
         return api_key
 
-    # Method 2: Try to create API key via Django shell command (works when running inside Docker)
+    return None
+
+
+def _create_marketplace_tenant_and_key() -> Optional[str]:
+    """Create a dedicated tenant with ``marketplace_integrations_enabled=True``
+    and return an API key.  Tries inside-Docker path first, then docker-compose.
+    """
+    # Try inside-Docker path (Method 2 from original code)
     if os.path.exists('/app'):
         try:
             django_shell_script = """
@@ -69,8 +91,11 @@ from hub.apps.governance.models import AccessPolicy
 
 tenant, _ = Tenant.objects.get_or_create(
     slug='marketplace-sdk-test-tenant',
-    defaults={'name': 'Marketplace SDK Test Tenant'}
+    defaults={'name': 'Marketplace SDK Test Tenant', 'marketplace_integrations_enabled': True}
 )
+if not tenant.marketplace_integrations_enabled:
+    tenant.marketplace_integrations_enabled = True
+    tenant.save(update_fields=['marketplace_integrations_enabled'])
 user, _ = User.objects.get_or_create(
     email='marketplace-sdk-test@example.com',
     defaults={
@@ -153,8 +178,11 @@ from hub.apps.governance.models import AccessPolicy
 
 tenant, _ = Tenant.objects.get_or_create(
     slug='marketplace-sdk-test-tenant',
-    defaults={'name': 'Marketplace SDK Test Tenant'}
+    defaults={'name': 'Marketplace SDK Test Tenant', 'marketplace_integrations_enabled': True}
 )
+if not tenant.marketplace_integrations_enabled:
+    tenant.marketplace_integrations_enabled = True
+    tenant.save(update_fields=['marketplace_integrations_enabled'])
 user, _ = User.objects.get_or_create(
     email='marketplace-sdk-test@example.com',
     defaults={
@@ -206,7 +234,7 @@ api_key_obj = APIKey.objects.create(
 print(api_key_value)
 """
         result = subprocess.run(
-            ['docker', 'compose', 'exec', '-T', 'api-service', 'python', 'manage.py', 'shell'],
+                        ['docker', 'compose', '-f', 'docker-compose.test.yml', 'exec', '-T', 'api-service-test', 'python', 'hub/manage.py', 'shell'],
             input=django_shell_script,
             text=True,
             capture_output=True,
@@ -230,13 +258,13 @@ print(api_key_value)
     return None
 
 
-@pytest.fixture(scope="session")
+@pytest.fixture
 def api_base_url():
     """Get API base URL from environment or use default"""
-    return os.environ.get('TEST_API_BASE_URL', 'http://localhost:8000/api/v1')
+    return os.environ.get('API_BASE_URL', 'http://localhost:8001/api/v1')
 
 
-@pytest.fixture(scope="session")
+@pytest.fixture
 def api_key(api_base_url):
     """Get or create API key for tests"""
     key = setup_authentication_for_sdk_tests(api_base_url)
@@ -245,7 +273,7 @@ def api_key(api_base_url):
     return key
 
 
-@pytest.fixture(scope="session")
+@pytest.fixture
 def real_api_config(api_base_url, api_key):
     """Create real API configuration"""
     return DataHubClientConfig(
@@ -257,7 +285,7 @@ def real_api_config(api_base_url, api_key):
     )
 
 
-@pytest.fixture(scope="session")
+@pytest.fixture
 async def real_client(real_api_config):
     """Create real API client"""
     client = DataHubClient(real_api_config)
@@ -271,7 +299,7 @@ async def real_client(real_api_config):
             pass
 
 
-@pytest.fixture(scope="session")
+@pytest.fixture
 def marketplace_api(real_client):
     """Create marketplace API instance"""
     return MarketplaceIntegrationAPI(real_client)

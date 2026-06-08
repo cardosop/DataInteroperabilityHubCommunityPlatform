@@ -203,6 +203,8 @@ class TenantConfigMigrationTest(TestCase):
             }),
             "allowed_compliance_regimes": json.dumps([]),
             "default_compliance_regimes": json.dumps([]),
+            "compliance_risk_threshold": "HIGH",
+            "notification_opt_outs": json.dumps({}),
             "created_at": now,
             "updated_at": now,
         })

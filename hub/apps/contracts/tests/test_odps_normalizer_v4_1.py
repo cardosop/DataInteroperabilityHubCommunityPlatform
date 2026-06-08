@@ -13,6 +13,7 @@ from django.test import TestCase
 
 from hub.apps.contracts.models import NormalizationStatus, OriginalSpecType
 from hub.apps.contracts.normalization.odps_normalizer_v4_1 import ODPSNormalizerV4_1
+from hub.apps.contracts.tests.normalizer_edge_case_mixin import ODPSEdgeCaseMixin
 
 
 class ODPSNormalizerV4_1StructureTest(TestCase):
@@ -113,93 +114,21 @@ class ODPSNormalizerV4_1BasicNormalizationTest(TestCase):
 
 
 class ODPSNormalizerV4_1ProductStrategyTest(TestCase):
-    """Test product strategy normalization for ODPS 4.1"""
+    """Product strategy normalization is comprehensively tested in
+    test_odps_normalizer.py → ODPSNormalizerProductStrategyMappingTest.
+    ODPSNormalizerV4_1 inherits product strategy handling from ODPSNormalizer,
+    so those tests apply here as well.
+
+    This class validates v4.1-specific routing — that the v4.1 normalizer
+    correctly delegates to the inherited product strategy mapping.
+    """
 
     def setUp(self):
         """Set up test fixtures"""
         self.normalizer = ODPSNormalizerV4_1()
 
-    def test_normalize_product_strategy_objectives(self):
-        """Test normalization of productStrategy.objectives"""
-        contract_data = {
-            "schema": "https://opendataproducts.org/schema/v4.1",
-            "version": "4.1",
-            "product": {
-                "details": {"en": {"productID": "test-product", "name": "Test Product"}},
-                "dataSchema": {"fields": [{"name": "test_field", "type": "string"}]},
-                "productStrategy": {
-                    "objectives": ["Increase data accessibility", "Improve data quality"]
-                },
-            },
-        }
-
-        result = self.normalizer.normalize(contract_data)
-        self.assertIsNotNone(result.hub_contract)
-        self.assertIn("extensions", result.hub_contract)
-        self.assertIn("x_odps", result.hub_contract["extensions"])
-        self.assertIn("product_strategy", result.hub_contract["extensions"]["x_odps"])
-        self.assertIn("objectives", result.hub_contract["extensions"]["x_odps"]["product_strategy"])
-        objectives = result.hub_contract["extensions"]["x_odps"]["product_strategy"]["objectives"]
-        self.assertEqual(len(objectives), 2)
-        self.assertIn("Increase data accessibility", objectives)
-        self.assertIn("Improve data quality", objectives)
-
-    def test_normalize_product_strategy_strategic_alignment(self):
-        """Test normalization of productStrategy.strategicAlignment"""
-        contract_data = {
-            "schema": "https://opendataproducts.org/schema/v4.1",
-            "version": "4.1",
-            "product": {
-                "details": {"en": {"productID": "test-product", "name": "Test Product"}},
-                "dataSchema": {"fields": [{"name": "test_field", "type": "string"}]},
-                "productStrategy": {
-                    "strategicAlignment": [{"goal": "Digital transformation", "priority": "high"}]
-                },
-            },
-        }
-
-        result = self.normalizer.normalize(contract_data)
-        self.assertIsNotNone(result.hub_contract)
-        self.assertIn("extensions", result.hub_contract)
-        self.assertIn("x_odps", result.hub_contract["extensions"])
-        self.assertIn("product_strategy", result.hub_contract["extensions"]["x_odps"])
-        self.assertIn(
-            "strategicAlignment", result.hub_contract["extensions"]["x_odps"]["product_strategy"]
-        )
-        alignment = result.hub_contract["extensions"]["x_odps"]["product_strategy"][
-            "strategicAlignment"
-        ]
-        self.assertEqual(len(alignment), 1)
-        self.assertEqual(alignment[0]["goal"], "Digital transformation")
-
-    def test_normalize_product_strategy_product_kpis(self):
-        """Test normalization of productStrategy.productKPIs"""
-        contract_data = {
-            "schema": "https://opendataproducts.org/schema/v4.1",
-            "version": "4.1",
-            "product": {
-                "details": {"en": {"productID": "test-product", "name": "Test Product"}},
-                "dataSchema": {"fields": [{"name": "test_field", "type": "string"}]},
-                "productStrategy": {
-                    "productKPIs": [{"name": "User adoption", "target": 1000, "unit": "users"}]
-                },
-            },
-        }
-
-        result = self.normalizer.normalize(contract_data)
-        self.assertIsNotNone(result.hub_contract)
-        self.assertIn("extensions", result.hub_contract)
-        self.assertIn("x_odps", result.hub_contract["extensions"])
-        self.assertIn("product_strategy", result.hub_contract["extensions"]["x_odps"])
-        self.assertIn(
-            "productKPIs", result.hub_contract["extensions"]["x_odps"]["product_strategy"]
-        )
-        kpis = result.hub_contract["extensions"]["x_odps"]["product_strategy"]["productKPIs"]
-        self.assertEqual(len(kpis), 1)
-        self.assertEqual(kpis[0]["name"], "User adoption")
-
-    def test_normalize_product_strategy_complete(self):
-        """Test normalization of complete productStrategy object"""
+    def test_product_strategy_routed_through_v4_1_normalizer(self):
+        """Verify v4.1 normalizer correctly maps productStrategy via inheritance."""
         contract_data = {
             "schema": "https://opendataproducts.org/schema/v4.1",
             "version": "4.1",
@@ -221,8 +150,8 @@ class ODPSNormalizerV4_1ProductStrategyTest(TestCase):
         self.assertIn("strategicAlignment", product_strategy)
         self.assertIn("productKPIs", product_strategy)
 
-    def test_normalize_product_strategy_missing_optional(self):
-        """Test that missing productStrategy is handled gracefully"""
+    def test_product_strategy_missing_optional_handled(self):
+        """Missing productStrategy should not cause normalization failure."""
         contract_data = {
             "schema": "https://opendataproducts.org/schema/v4.1",
             "version": "4.1",
@@ -234,7 +163,6 @@ class ODPSNormalizerV4_1ProductStrategyTest(TestCase):
 
         result = self.normalizer.normalize(contract_data)
         self.assertIsNotNone(result.hub_contract)
-        # Should not fail if productStrategy is missing
         self.assertEqual(result.status, NormalizationStatus.NORMALIZED_OK)
 
 
@@ -481,3 +409,13 @@ class ODPSNormalizerV4_1IntegrationTest(TestCase):
         self.assertIsNotNone(result.hub_contract)
         if result.hub_contract and "schema" in result.hub_contract:
             self.assertIsNotNone(result.hub_contract["schema"])
+
+
+class ODPSNormalizerV4_1EdgeCaseTest(ODPSEdgeCaseMixin, TestCase):
+    """Standard edge-case tests for ODPS 4.1 normalizer (via shared mixin)."""
+
+    normalizer_class = ODPSNormalizerV4_1
+    spec_version = "4.1"
+
+    def setUp(self):
+        self.normalizer = self.normalizer_class()

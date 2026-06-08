@@ -9,6 +9,7 @@ import json
 import hmac
 import hashlib
 import random
+import uuid
 from typing import Any, Dict, Optional
 from django.utils import timezone
 from datetime import timedelta
@@ -17,8 +18,9 @@ import structlog
 
 from django.conf import settings as django_settings
 
-from .models import Webhook, WebhookDelivery, WebhookStatus, DeliveryStatus, WebhookEventType
+from .models import Webhook, WebhookDelivery, WebhookSigningKey, WebhookStatus, DeliveryStatus, WebhookEventType
 from .service_client import WebhookDeliveryClient
+from .rate_limit import check_outbound_rate_limit, emit_rate_limit_block_metric
 from .odps_webhook_errors import (
     ODPSWebhookError,
     ODPSWebhookDeliveryError,
@@ -26,7 +28,7 @@ from .odps_webhook_errors import (
     ODPSWebhookPayloadError,
 )
 from .odps_webhook_validators import validate_odps_webhook_payload
-from .ssrf_guard import SSRFViolationError, validate_webhook_url
+from .ssrf_guard import SSRFViolationError, is_safe_url, validate_webhook_url
 from hub.apps.contracts.odps_errors import RecoveryStrategy
 
 logger = structlog.get_logger(__name__)
@@ -206,9 +208,82 @@ class WebhookDeliveryService:
                 cause=e,
             )
 
+        # ── Outbound rate limiting (REQ-WH-RL-002) ──────────────────
+        # Check tenant's per-minute budget BEFORE creating the delivery row.
+        allowed, observed_count, minute_bucket = check_outbound_rate_limit(webhook.tenant)
+
+        if not allowed:
+            # Persist the blocked delivery with RATE_LIMITED status so
+            # the tenant can see it in their delivery log.  Do NOT
+            # dispatch the HTTP request.
+            delivery = WebhookDelivery.objects.create(
+                webhook=webhook,
+                event_type=event_type,
+                payload=payload,
+                signature="",
+                status=DeliveryStatus.RATE_LIMITED,
+                attempt_number=0,
+                error_message=(
+                    f"Rate limit exceeded: {observed_count} requests in "
+                    f"minute bucket {minute_bucket} "
+                    f"(limit: {webhook.tenant.webhook_outbound_rate_limit_per_minute})"
+                )[:500],
+            )
+
+            # Emit audit event (REQ-WH-RL-004)
+            try:
+                from hub.apps.audit.utils import create_audit_event
+                create_audit_event(
+                    resource_type="WEBHOOK",
+                    action="WEBHOOK_RATE_LIMIT_EXCEEDED",
+                    tenant=webhook.tenant,
+                    resource_id=str(webhook.id),
+                    details={
+                        "tenant_id": str(webhook.tenant_id),
+                        "webhook_id": str(webhook.id),
+                        "delivery_id": str(delivery.id),
+                        "event_type": event_type,
+                        "observed_count": observed_count,
+                        "minute_bucket": minute_bucket,
+                        "limit": webhook.tenant.webhook_outbound_rate_limit_per_minute,
+                    },
+                )
+            except Exception:
+                logger.warning(
+                    "webhook_rate_limit_audit_failed",
+                    delivery_id=str(delivery.id),
+                    exc_info=True,
+                )
+
+            # Increment Prometheus counter (REQ-WH-RL-005)
+            emit_rate_limit_block_metric(
+                tenant_id=str(webhook.tenant_id),
+                webhook_id=str(webhook.id),
+                event_type=event_type,
+            )
+
+            logger.warning(
+                "webhook_rate_limited",
+                tenant_id=str(webhook.tenant_id),
+                webhook_id=str(webhook.id),
+                event_type=event_type,
+                observed_count=observed_count,
+                minute_bucket=minute_bucket,
+            )
+            return
+
+        # ── Signing key selection ────────────────────────────────────
+        # Prefer the v2 signing key (WebhookSigningKey). Fall back to
+        # the legacy webhook.secret column when no active key exists
+        # (pre-backfill tenants).
+        signing_key = WebhookSigningKey.active_for(webhook)
+
         # Generate signature
         try:
-            signature = webhook.generate_signature(payload_json)
+            if signing_key is not None:
+                signature = signing_key.generate_signature(payload_json)
+            else:
+                signature = webhook.generate_signature(payload_json)
         except Exception as e:
             raise ODPSWebhookError(
                 message=f"Failed to generate webhook signature: {str(e)}",
@@ -220,8 +295,9 @@ class WebhookDeliveryService:
                 cause=e,
             )
 
-        # Phase 93.7: Idempotency check — skip if this exact event
-        # was already successfully delivered to this webhook.
+        # ── Idempotency check ────────────────────────────────────────
+        # Phase 93.7: skip if this exact event was already successfully
+        # delivered to this webhook.
         event_id = payload.get("event_id") or payload.get("id")
         if event_id:
             already_delivered = WebhookDelivery.objects.filter(
@@ -237,15 +313,16 @@ class WebhookDeliveryService:
                 )
                 return
 
-        # Create delivery record
+        # ── Create delivery record ───────────────────────────────────
         try:
             delivery = WebhookDelivery.objects.create(
                 webhook=webhook,
                 event_type=event_type,
                 payload=payload,
                 signature=signature,
+                signing_key_uuid=signing_key.key_id if signing_key else None,
                 status=DeliveryStatus.PENDING,
-                attempt_number=0
+                attempt_number=0,
             )
         except Exception as e:
             raise ODPSWebhookError(
@@ -361,14 +438,61 @@ class WebhookDeliveryService:
                 return
 
         try:
-            # Make HTTP request using service client
-            status_code, response_text = webhook_client.deliver_webhook(
+            # ── Phase 1: initial request without redirect following ──────
+            # Use deliver_webhook_with_response to get the full httpx
+            # Response (including headers) so we can inspect the Location
+            # header on a redirect for SSRF validation.
+            initial_response = webhook_client.deliver_webhook_with_response(
                 url=webhook.url,
                 data=payload_json,
-                headers=headers
+                headers=headers,
+            )
+            status_code = initial_response.status_code
+            response_text = (
+                initial_response.text[:1000] if initial_response.text else ""
             )
 
-            # Update delivery record
+            # ── Redirect SSRF guard ──────────────────────────────────────
+            # An attacker can register a public URL that returns 301/302 to
+            # a private address (AWS IMDS, RFC-1918, localhost).  Validate
+            # the Location header before following.
+            if status_code in (301, 302, 307, 308):
+                location = initial_response.headers.get("Location", "")
+
+                if getattr(django_settings, "WEBHOOK_SSRF_ENABLED", True):
+                    if location and not is_safe_url(location):
+                        ssrf_redirect_error = ODPSWebhookDeliveryError(
+                            message=(
+                                f"SSRF protection blocked redirect: "
+                                f"Location '{location}' targets a "
+                                f"private/reserved address."
+                            ),
+                            error_code=ODPSWebhookDeliveryError.ERROR_CODE_NETWORK_ERROR,
+                            user_message=(
+                                "SSRF protection: webhook redirect target "
+                                "is a private/reserved address and delivery "
+                                "was blocked."
+                            ),
+                            tenant_id=str(webhook.tenant_id),
+                            webhook_id=str(webhook.id),
+                            delivery_id=str(delivery.id),
+                            event_type=delivery.event_type,
+                        )
+                        WebhookDeliveryService._handle_delivery_error(
+                            delivery, ssrf_redirect_error
+                        )
+                        return
+
+                if location:
+                    # Follow the redirect to the validated public URL.
+                    status_code, response_text = webhook_client.deliver_webhook(
+                        url=location,
+                        data=payload_json,
+                        headers=headers,
+                    )
+                # else: no Location header — treat body as final response
+
+            # ── Standard response handling ───────────────────────────────
             delivery.http_status_code = status_code
             delivery.response_body = response_text
 
@@ -614,6 +738,9 @@ class WebhookDeliveryService:
         if delivery.status == DeliveryStatus.SUCCESS:
             return False  # Already succeeded
 
+        if delivery.status == DeliveryStatus.RATE_LIMITED:
+            return False  # Rate-limited deliveries are terminal — do not retry
+
         if delivery.status == DeliveryStatus.DEAD_LETTER:
             # Reset for retry
             delivery.status = DeliveryStatus.PENDING
@@ -637,10 +764,12 @@ class WebhookDeliveryService:
         """
         now = timezone.now()
 
-        # Get pending deliveries ready for retry
+        # Get pending deliveries ready for retry (RATE_LIMITED is terminal)
         pending_deliveries = WebhookDelivery.objects.filter(
             status__in=[DeliveryStatus.PENDING, DeliveryStatus.FAILED],
             next_retry_at__lte=now
+        ).exclude(
+            status=DeliveryStatus.RATE_LIMITED,
         )[:limit]
 
         count = 0
@@ -764,5 +893,43 @@ class WebhookDeliveryService:
                     status=WebhookStatus.ACTIVE
                 )
             )
+        )
+
+    @staticmethod
+    def deliver_test_event(webhook: Webhook) -> Optional[WebhookDelivery]:
+        """Deliver a synthetic test event to *webhook* (Phase 233.4).
+
+        The test event uses ``event_type="webhook.test"`` and a spec-shaped
+        payload so subscribers can verify their endpoint configuration
+        without waiting for a real business event.
+
+        Returns the created ``WebhookDelivery``, or ``None`` when the
+        webhook is inactive or rate-limited.
+        """
+        import uuid as _uuid
+
+        test_payload = {
+            "event_id": str(_uuid.uuid4()),
+            "event": "webhook.test",
+            "tenant_id": str(webhook.tenant_id),
+            "timestamp": timezone.now().isoformat(),
+            "message": "Test webhook delivery",
+        }
+
+        WebhookDeliveryService._deliver_webhook(
+            webhook=webhook,
+            event_type="webhook.test",
+            resource_type="WEBHOOK",
+            resource_id=str(webhook.id),
+            event_data=test_payload,
+        )
+
+        # Return the most recent delivery for this webhook + event_type.
+        return (
+            WebhookDelivery.objects.filter(
+                webhook=webhook, event_type="webhook.test",
+            )
+            .order_by("-created_at")
+            .first()
         )
 

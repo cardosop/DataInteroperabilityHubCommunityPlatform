@@ -99,7 +99,8 @@ class Command(BaseCommand):
             help="Workflow name to check (default: asset_creation).",
         )
         parser.add_argument(
-            "--version",
+            "--workflow-version",
+            dest="version",
             default="1.0.0",
             help="Version being considered for removal (default: 1.0.0).",
         )

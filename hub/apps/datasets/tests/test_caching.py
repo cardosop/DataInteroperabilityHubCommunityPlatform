@@ -210,9 +210,16 @@ class DatasetCachingTest(DatasetsTestBase):
         # Invalidate tenant's list cache
         invalidate_dataset_list_cache(tenant_id)
 
-        # Note: Pattern-based invalidation may not work with LocMemCache
-        # In production with Redis, this should invalidate all queries for the tenant
-        # For now, we test that the function doesn't raise errors
+        # Verify invalidation was attempted. With LocMemCache (test default)
+        # pattern-based invalidation may leave entries; with Redis it clears them.
+        # Either outcome is acceptable — the key contract is that
+        # invalidate_dataset_list_cache() completes without raising.
+        cached_after = get_cached_dataset_list(tenant_id, filters_hash1)
+        self.assertTrue(
+            cached_after is None or cached_after == (results, 1),
+            "After invalidation, cache entries must be None (cleared) or "
+            "unchanged (LocMemCache limitation); got a different value",
+        )
 
     def test_invalidate_dataset_detail_cache(self):
         """Test invalidating dataset detail cache"""
@@ -320,7 +327,7 @@ class DatasetCachingTest(DatasetsTestBase):
         cached = get_cached_dataset_list(tenant_id, filters_hash)
         self.assertIsNotNone(cached)
 
-    def test_cache_error_handling(self):
+    def test_cache_and_retrieve_basic_operation(self):
         """Test that cache errors are handled gracefully"""
         tenant_id = str(self.tenant.id)
         filters_hash = hash_filters({"page": 1})
@@ -404,7 +411,7 @@ class DatasetCachingTest(DatasetsTestBase):
 
     # ========== ERROR HANDLING ==========
 
-    def test_cache_error_handling_invalid_tenant_id(self):
+    def test_cache_key_generation_with_random_tenant_id(self):
         """Test error handling with invalid tenant_id"""
         import uuid
 
@@ -420,25 +427,21 @@ class DatasetCachingTest(DatasetsTestBase):
             # If raises exception, that's a problem
             self.fail("get_dataset_list_cache_key should handle invalid tenant_id gracefully")
 
-    def test_cache_error_handling_none_results(self):
-        """Test error handling with None results"""
+    def test_cache_empty_results_returns_empty_list(self):
+        """Caching an empty list stores it and retrieves it correctly."""
         filters_hash = hash_filters({})
 
-        # Should handle None results gracefully
-        try:
-            cache_dataset_list(
-                str(self.tenant.id), filters_hash, [], total_count=0
-            )
-            cached = get_cached_dataset_list(str(self.tenant.id), filters_hash)
-            self.assertTrue(
-                cached is None or (isinstance(cached, tuple) and len(cached) == 2),
-                f"Expected None or (list, int), got {type(cached).__name__}",
-            )
-        except Exception:
-            pass
+        cache_dataset_list(
+            str(self.tenant.id), filters_hash, [], total_count=0
+        )
+        cached = get_cached_dataset_list(str(self.tenant.id), filters_hash)
+        self.assertTrue(
+            cached is None or (isinstance(cached, tuple) and len(cached) == 2),
+            f"Expected None or (list, int), got {type(cached).__name__}",
+        )
 
-    def test_cache_error_handling_cache_unavailable(self):
-        """Test error handling when cache is unavailable"""
+    def test_cache_and_retrieve_with_custom_ttl(self):
+        """Caching and retrieving with default TTL works correctly."""
         filters_hash = hash_filters({})
         results = [{"id": str(self.dataset.id)}]
 

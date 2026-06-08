@@ -32,8 +32,8 @@ class DQAnomalyDetectionE2ETest(TestCase):
         super().setUp()
 
         self.tenant = Tenant.objects.create(
-            name="DQ Anomaly Test Tenant",
-            slug="dq-anomaly-test-tenant",
+            name=f"DQ Anomaly Test Tenant {uuid.uuid4().hex[:8]}",
+            slug=f"dq-anomaly-test-tenant-{uuid.uuid4().hex[:8]}",
             kyc_status=KYCStatus.VERIFIED,
         )
         from hub.apps.testing.billing_support import ensure_tenant_has_active_subscription

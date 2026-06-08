@@ -310,32 +310,28 @@ class AssetsBusinessRulesValidationTest(TestCase):
         self.assertEqual(len(result.errors), 0)
 
     def test_execute_through_registry(self):
-        """Test executing rule through the registry"""
+        """Test executing rule through the chain API (Phase 274.7).
+
+        Phase 274.6 removed ``BusinessRulesRegistry.execute_rules()``;
+        the canonical replacement is direct rule instantiation or
+        ``execute_chain()``.  Single-rule validation uses direct
+        instantiation per the CLAUDE.md contract.
+        """
         asset = AssetFactory.create_asset(
             tenant=self.tenant, created_by=self.user, status=AssetStatus.DRAFT
         )
 
-        registry = get_registry()
-        context = AssetsRuleExecutionContext(
-            tenant_id=str(self.tenant.id),
-            user_id=str(self.user.id),
-            asset=asset,
-            tenant=self.tenant,
-            user=self.user,
+        rules = AssetsBusinessRules(
+            tenant_id=str(self.tenant.id), user_id=str(self.user.id)
         )
-
-        # Execute through registry - kwargs are passed to rule.execute()
-        results = registry.execute_rules(
-            rule_names=["assets_validation"],
-            context=context,
+        result = rules.validate(
+            context=None,
             asset=asset,
             tenant=self.tenant,
             user=self.user,
             validation_type="structure",
         )
 
-        self.assertIn("assets_validation", results)
-        result = results["assets_validation"]
         self.assertIsInstance(result, ValidationResult)
         self.assertTrue(result.is_valid)
 
@@ -1694,6 +1690,18 @@ class AssetsBusinessRulesContractAttachmentIntegrationTest(TestCase):
         ]:
             self.assertTrue(result.is_valid)
             self.assertEqual(len(result.errors), 0)
+        else:
+            # Normalization failed or is pending — validation MUST reject.
+            self.assertFalse(
+                result.is_valid,
+                f"Contract with normalization_status={contract.normalization_status} "
+                f"must fail attachment validation; got is_valid=True",
+            )
+            self.assertGreater(
+                len(result.errors), 0,
+                f"Validation must produce errors for normalization_status="
+                f"{contract.normalization_status}",
+            )
 
         # Verify contract can be retrieved via service
         retrieved_contract = self.contract_service.get_contract(
@@ -2257,14 +2265,12 @@ class AssetsBusinessRulesHealthScoreTest(TestCase):
             user=self.user,
         )
 
-        # Should handle None asset gracefully
-        try:
-            result = self.rules.validate(context, validation_type="structure")
-            # If succeeds, verify result structure
-            self.assertIsNotNone(result)
-        except (AttributeError, TypeError):
-            # If fails, that's acceptable for None asset
-            pass
+        # validate() must handle None asset gracefully — returning an
+        # invalid result with a descriptive error, never raising.
+        result = self.rules.validate(context, validation_type="structure")
+        self.assertIsNotNone(result)
+        self.assertFalse(result.is_valid)
+        self.assertIn("Asset is required for validation", result.errors)
 
     def test_validate_with_empty_context(self):
         """Test validation with empty context (edge case)"""
@@ -2274,14 +2280,12 @@ class AssetsBusinessRulesHealthScoreTest(TestCase):
             tenant_id=str(self.tenant.id), user_id=str(self.user.id)
         )
 
-        # Should handle empty context gracefully
-        try:
-            result = self.rules.validate(empty_context, validation_type="structure")
-            # If succeeds, verify result structure
-            self.assertIsNotNone(result)
-        except Exception:
-            # If fails, that's acceptable for empty context
-            pass
+        # validate() must handle a bare RuleExecutionContext (no asset)
+        # gracefully — returning an invalid result, never raising.
+        result = self.rules.validate(empty_context, validation_type="structure")
+        self.assertIsNotNone(result)
+        self.assertFalse(result.is_valid)
+        self.assertIn("Asset is required for validation", result.errors)
 
     def test_validate_with_invalid_validation_type(self):
         """Test validation with invalid validation_type (edge case)"""
@@ -2297,14 +2301,15 @@ class AssetsBusinessRulesHealthScoreTest(TestCase):
             user=self.user,
         )
 
-        # Should handle invalid validation type gracefully
-        try:
-            result = self.rules.validate(context, validation_type="INVALID_TYPE")
-            # If succeeds, verify result structure
-            self.assertIsNotNone(result)
-        except Exception:
-            # If fails, that's acceptable for invalid type
-            pass
+        # validate() must handle an unrecognised validation_type gracefully —
+        # returning a result (with no matched validations), never raising.
+        result = self.rules.validate(context, validation_type="INVALID_TYPE")
+        self.assertIsNotNone(result)
+        # An unknown validation_type is not a hard error — no rules match,
+        # so the result is valid (no violations found) but with no matched
+        # checks recorded.
+        self.assertTrue(result.is_valid)
+        self.assertEqual(result.errors, [])
 
     def test_validate_health_score_thresholds_edge_case_zero_score(self):
         """Test health score threshold validation with zero score (edge case)"""

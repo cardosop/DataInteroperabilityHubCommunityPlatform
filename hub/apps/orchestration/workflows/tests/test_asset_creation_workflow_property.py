@@ -21,36 +21,39 @@ plus a transient retry on step 3" combinatorial blind spot.
 
 Workflow steps under test
 -------------------------
-The 16 logical steps that match the Phase 250.1.A re-sequence are
-catalogued below. Implementation freedom: the workflow MAY collapse or
-expand specific steps; the property test treats step boundaries as
-the canonical points where compensation MUST be runnable.
+The 18 canonical steps that match the v2 DSL registered by
+AssetCreationWorkflow. Steps 0-4 conditionally execute only in the
+data-first flow (file_id present, no contract_id). Steps 11-13
+have conditional guards that may skip them. The property test
+treats step boundaries as the canonical points where compensation
+MUST be runnable.
 
-    0.  schema_infer
-    1.  odcs_generate
-    2.  odcs_validate
-    3.  odcs_normalise
-    4.  contract_create
+    0.  infer_schema
+    1.  generate_odcs_from_schema
+    2.  validate_generated_odcs
+    3.  normalize_generated_odcs
+    4.  create_odcs_contract_from_schema
     5.  compliance_check_inmemory  (fail-closed gate)
     6.  dq_check_inmemory          (fail-closed gate)
-    7.  asset_create               (only if both gates PASS/WARN)
-    8.  contract_attach
-    9.  dataset_create
-    10. dataset_attach
-    11. contract_validate
-    12. odps_link
-    13. activate                    (default ON per D250.2)
-    14. search_index
-    15. notifications
+    7.  create_asset_record        (only if both gates PASS/WARN)
+    8.  attach_contract
+    9.  create_dataset_from_file
+    10. attach_dataset
+    11. compare_schema_against_contract
+    12. validate_contract
+    13. link_odps
+    14. activate_asset             (default ON per D250.2)
+    15. index_for_search
+    16. send_notifications
+    17. audit_logging
 
 Invariants asserted
 -------------------
 
     INV-1: Asset count BEFORE the workflow == count AFTER on any
-           pre-asset-create step failure (steps 0..6 fail → count
-           unchanged).
-    INV-2: Asset count AFTER on a post-asset-create step failure (steps
-           8..15 fail) is ≤ count BEFORE (compensation may have rolled
+           pre-persist step failure (indices 0..6 → count unchanged).
+    INV-2: Asset count AFTER on a post-persist step failure (indices
+           7..17) is ≤ count BEFORE + 1 (compensation may have rolled
            back the row, or kept it in DRAFT — either is OK as long
            as quota is not inflated).
     INV-3: Compensation runs in REVERSE order — step k's compensation
@@ -82,7 +85,7 @@ from unittest.mock import patch
 
 import pytest
 from django.contrib.auth import get_user_model
-from hypothesis import HealthCheck, given, settings, strategies as st
+from hypothesis import HealthCheck, assume, given, settings, strategies as st
 
 from hub.apps.assets.models import Asset
 from hub.apps.files.models import File, FileStatus
@@ -100,27 +103,38 @@ User = get_user_model()
 # Step inventory — Phase 250.1.A canonical workflow ordering.
 # ---------------------------------------------------------------------------
 
+# Canonical v2 DSL step ordering (Phase 250.1.A re-sequence — 18 steps).
+# Indices must match the DSL registered by AssetCreationWorkflow.
 WORKFLOW_STEP_NAMES: tuple[str, ...] = (
-    "schema_infer",
-    "odcs_generate",
-    "odcs_validate",
-    "odcs_normalise",
-    "contract_create",
-    "compliance_check_inmemory",  # gate-step; index 5
-    "dq_check_inmemory",          # gate-step; index 6
-    "asset_create",                # persist-step; index 7
-    "contract_attach",
-    "dataset_create",
-    "dataset_attach",
-    "contract_validate",
-    "odps_link",
-    "activate",
-    "search_index",
-    "notifications",
+    "infer_schema",                     # 0
+    "generate_odcs_from_schema",        # 1
+    "validate_generated_odcs",          # 2
+    "normalize_generated_odcs",         # 3
+    "create_odcs_contract_from_schema", # 4
+    "compliance_check_inmemory",        # 5  (gate-step)
+    "dq_check_inmemory",                # 6  (gate-step)
+    "create_asset_record",              # 7  (persist-step)
+    "attach_contract",                  # 8
+    "create_dataset_from_file",         # 9
+    "attach_dataset",                   # 10
+    "compare_schema_against_contract",  # 11
+    "validate_contract",                # 12
+    "link_odps",                        # 13
+    "activate_asset",                   # 14
+    "index_for_search",                 # 15
+    "send_notifications",               # 16
+    "audit_logging",                    # 17
 )
 
 GATE_STEP_INDICES: frozenset[int] = frozenset({5, 6})
 ASSET_PERSIST_STEP_INDEX: int = 7
+
+# Steps whose DSL conditions evaluate to False with the test's default input
+# parameters (file_id present, no contract_id, no odps_action). The injector
+# is placed AFTER condition evaluation in _execute_step, so it never fires
+# for these indices — the workflow completes successfully instead of failing.
+# When these conditions are relaxed in a future phase, remove the guard.
+CONDITIONALLY_SKIPPABLE_INDICES: frozenset[int] = frozenset({12, 13})
 
 
 class StepInjectedFailure(RuntimeError):
@@ -225,51 +239,55 @@ def _execute_workflow_with_injected_failure(
         ),
     ]
 
-    # Test-only injection: the workflow may expose
-    # `_step_failure_injector` for tests. Until the contract lands,
-    # we fall back to manipulating the workflow runner's step list.
+    # Phase 250.1.A test-mode contract: AssetCreationWorkflow.execute()
+    # accepts step_failure_injector + compensation_observer kwargs. The
+    # injector receives (step_index, step_name) and may raise
+    # StepInjectedFailure to short-circuit the step at the engine level.
+    def _make_injector(target_index: int):
+        """Return a callable that raises StepInjectedFailure at *target_index*,
+        and is a no-op for all other step indices."""
+
+        def _inject(step_index: int, step_name: str) -> None:
+            if step_index == target_index:
+                raise StepInjectedFailure(step_index, step_name)
+
+        return _inject
+
     raised: Exception | None = None
     for p in boundary_patches:
         p.start()
     try:
-        # Phase 250.1.A re-sequence test contract: AssetCreationWorkflow
-        # MUST accept `step_failure_injector` kwarg in test mode. The
-        # injector receives (step_index, step_name) and may raise
-        # `StepInjectedFailure` to short-circuit the step.
-        try:
-            workflow.execute(
-                tenant=tenant,
-                actor=user,
-                file_obj=file_obj,
-                contract_payload={
-                    "key": f"prop-test-{uuid.uuid4().hex[:8]}",
-                    "name": "Property Test Asset",
-                },
-                # Optional kwargs the workflow MAY support in test mode:
-                step_failure_injector=lambda i, n: (
-                    _ for _ in ()
-                ).throw(StepInjectedFailure(i, n))
-                if i == failing_step_index
-                else None,
-                compensation_observer=compensation_log.append,
-            )
-        except TypeError:
-            # Workflow does not yet support the injector kwarg — Phase
-            # 250.1.A test-mode contract not yet landed. Skip this
-            # property example with a marker.
-            pytest.skip(
-                "AssetCreationWorkflow.execute() does not yet accept "
-                "step_failure_injector + compensation_observer kwargs. "
-                "Phase 250.1.A test-mode contract is the next deliverable; "
-                "this property test serves as the RED-phase pin until then."
-            )
-        except StepInjectedFailure as exc:
-            raised = exc
-        except Exception as exc:  # noqa: BLE001 — boundary
-            raised = exc
+        workflow.execute(
+            tenant_id=str(tenant.id),
+            created_by_id=str(user.id),
+            file_id=str(file_obj.id),
+            file_format="CSV",
+            key=f"prop-test-{uuid.uuid4().hex[:8]}",
+            name="Property Test Asset",
+            auto_activate=True,
+            send_notifications=False,
+            step_failure_injector=_make_injector(failing_step_index),
+            compensation_observer=compensation_log.append,
+        )
+    except StepInjectedFailure as exc:
+        # If the injector exception propagates all the way out of
+        # execute(), capture it. (The engine normally catches it
+        # internally, so this path is a safety net.)
+        raised = exc
+    except Exception as exc:  # noqa: BLE001 — boundary
+        raised = exc
     finally:
         for p in boundary_patches:
             p.stop()
+
+    # If the workflow completed successfully (no exception raised), the
+    # injector never fired. For conditionally-skippable steps the DSL
+    # condition evaluated to False, so the step was skipped BEFORE the
+    # injector could run.  Use assume(False) so Hypothesis tries a
+    # different example instead of marking the entire test as skipped
+    # (pytest.skip at example level would skip the whole property).
+    if raised is None and failing_step_index in CONDITIONALLY_SKIPPABLE_INDICES:
+        assume(False)
 
     return raised, compensation_log
 
@@ -331,14 +349,15 @@ def test_inv1_pre_persist_failure_does_not_create_asset_row(
 def test_inv2_post_persist_failure_count_does_not_inflate(
     failing_step_index: int,
 ):
-    """INV-2: failure at any step at or after ``asset_create`` leaves the
-    Asset count ≤ the pre-workflow count.
+    """INV-2: failure at any step at or after ``create_asset_record``
+    (index 7) leaves the Asset count ≤ before + 1.
 
-    Two acceptable outcomes for post-persist failures:
-      (a) compensation deletes the asset → count unchanged
-      (b) compensation keeps the asset DRAFT → count incremented by 1
-
-    INV-2 forbids count > before+1 (e.g. duplicate-create bugs).
+    When the injector fires AT step 7 (create_asset_record itself), the
+    step fails before ``Asset.objects.create()`` executes → count
+    unchanged (after == before). When it fires AFTER step 7 (indices
+    8-17), the asset was already persisted → count = before + 1.
+    Either outcome is acceptable; what INV-2 forbids is count > before+1
+    (duplicate-create or phantom-row bugs).
     """
     if failing_step_index < ASSET_PERSIST_STEP_INDEX:
         return
@@ -418,7 +437,21 @@ def test_inv4_audit_records_failure_step_name(failing_step_index: int):
     """INV-4: the audit chain records the exact step name where
     failure occurred. Without this, ops cannot diagnose why a workflow
     failed.
+
+    The injector raises ``StepInjectedFailure``, a regular step failure.
+    ``execute()`` emits ``ASSET_WORKFLOW_ROLLED_BACK`` (Path b) when
+    status is ROLLED_BACK AND state_data.asset_id is populated — which
+    requires the injector to fire at or after step 8 (after the asset
+    was persisted in step 7) and after the savepoint (so the engine's
+    except handler marks the step FAILED and compensation activates).
+
+    Indices 0-7, 12, and 13 are filtered out via ``assume()``:
+      - 0-7: asset_id not yet in state_data when injector fires
+      - 12, 13: conditionally skipped by the DSL
     """
+    assume(failing_step_index > ASSET_PERSIST_STEP_INDEX)
+    assume(failing_step_index not in CONDITIONALLY_SKIPPABLE_INDICES)
+
     from hub.apps.audit.models import AuditEvent
 
     tenant, user, file_obj = _seed_tenant_and_file()
@@ -432,19 +465,24 @@ def test_inv4_audit_records_failure_step_name(failing_step_index: int):
         action__in=["ASSET_WORKFLOW_ROLLED_BACK", "ASSET_FAIL_CLOSED_REJECTED"],
     )
 
-    if failure_events.exists():
-        # At least one event MUST mention the failing step name in
-        # details_json (the audit-event content's source-of-truth).
-        any_match = any(
-            failing_step_name in str(e.details_json or {})
-            for e in failure_events
-        )
-        assert any_match, (
-            f"INV-4 violated: failure at step {failing_step_name!r} "
-            f"emitted {failure_events.count()} audit event(s) but none "
-            f"records the step name in details_json. Operator diagnosis "
-            f"requires the step name to be searchable."
-        )
+    assert failure_events.exists(), (
+        f"INV-4 violated: failure at step {failing_step_name!r} (index "
+        f"{failing_step_index}) emitted zero audit events with action "
+        f"ASSET_WORKFLOW_ROLLED_BACK or ASSET_FAIL_CLOSED_REJECTED. "
+        f"The workflow MUST emit at least one audit event on failure."
+    )
+    # At least one event MUST mention the failing step name in
+    # details_json (the audit-event content's source-of-truth).
+    any_match = any(
+        failing_step_name in str(e.details_json or {})
+        for e in failure_events
+    )
+    assert any_match, (
+        f"INV-4 violated: failure at step {failing_step_name!r} "
+        f"emitted {failure_events.count()} audit event(s) but none "
+        f"records the step name in details_json. Operator diagnosis "
+        f"requires the step name to be searchable."
+    )
 
 
 @given(failing_step_index=_step_index_strategy)

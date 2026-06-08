@@ -57,7 +57,7 @@ def test_switch_tenant_header_changes_context():
 
     # Provision in a second tenant (using tenant_slug parameter)
     try:
-        creds_b = provision_persona("data_analyst", tenant_slug="tenant-b")
+        creds_b = provision_persona("data_analyst", tenant_slug="tenant-b")  # noqa: PHASE216-STATIC-ID
     except Exception:
         pytest.skip(
             "Multi-tenant provisioning not available — cannot test tenant switching"
@@ -96,8 +96,8 @@ def test_switch_tenant_header_changes_context():
     # The tenant context should differ
     body_a = me_a.json()
     body_b = me_b.json()
-    tenant_field_a = body_a.get("tenant_id") or body_a.get("tenant", {}).get("id")
-    tenant_field_b = body_b.get("tenant_id") or body_b.get("tenant", {}).get("id")
+    tenant_field_a = body_a.get("tenant_id") or body_a.get("tenant", {}).get("id")  # noqa: PHASE216-STATIC-ID
+    tenant_field_b = body_b.get("tenant_id") or body_b.get("tenant", {}).get("id")  # noqa: PHASE216-STATIC-ID
 
     if tenant_field_a and tenant_field_b:
         assert tenant_field_a != tenant_field_b, (
@@ -148,7 +148,7 @@ def test_no_tenant_header_uses_default():
     body = resp.json()
     # Should have some tenant context even without explicit header
     tenant_info = (
-        body.get("tenant_id")
+        body.get("tenant_id")  # noqa: PHASE216-STATIC-ID
         or body.get("tenant")
         or body.get("tenants")
     )

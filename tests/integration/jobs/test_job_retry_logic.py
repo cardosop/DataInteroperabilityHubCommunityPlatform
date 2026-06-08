@@ -114,9 +114,9 @@ class JobRetryLogicIntegrationTest(TestCase):
 
     def test_retry_delay_calculation(self):
         """Test that retry delay is calculated correctly"""
-        delay_0 = calculate_retry_delay(0, job_type=JobType.DQ_RUN)
-        delay_1 = calculate_retry_delay(1, job_type=JobType.DQ_RUN)
-        delay_2 = calculate_retry_delay(2, job_type=JobType.DQ_RUN)
+        delay_0 = calculate_retry_delay(0, type=JobType.DQ_RUN)
+        delay_1 = calculate_retry_delay(1, type=JobType.DQ_RUN)
+        delay_2 = calculate_retry_delay(2, type=JobType.DQ_RUN)
 
         # Verify exponential backoff
         self.assertLess(delay_0, delay_1)

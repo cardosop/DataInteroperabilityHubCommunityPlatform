@@ -267,7 +267,14 @@ class DatasetsBusinessRules(BusinessRules):
         Phase 260.2.D — block dataset structure when the backing file is unsafe to consume.
 
         Mirrors ``File.can_download`` / ``DatasetService`` pre-fetch gate.
+
+        When ClamAV is disabled (``CLAMAV_ENABLED=False``), the PENDING_SCAN
+        state is accepted — there is no scanner running to transition the
+        file out of the pending state, so blocking would permanently prevent
+        dataset creation in dev/test environments.
         """
+        from django.conf import settings as dj_settings
+
         errors: List[str] = []
         warnings: List[str] = []
         details: Dict[str, Any] = {
@@ -281,7 +288,10 @@ class DatasetsBusinessRules(BusinessRules):
                 "Cannot create a dataset from a file flagged as infected by malware scanning."
             )
             details["blocked_reason"] = "FILE_INFECTED"
-        elif status_val == FileScanStatus.PENDING_SCAN:
+        elif (
+            status_val == FileScanStatus.PENDING_SCAN
+            and getattr(dj_settings, "CLAMAV_ENABLED", True)
+        ):
             errors.append(
                 "Cannot create a dataset while the source file is pending malware scan."
             )

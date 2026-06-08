@@ -91,7 +91,7 @@ def _activate_subscription(
             "name": "Onboarding Test Free",
             "tier": PlanTier.FREE,
             "is_active": True,
-            "limits": {},
+            "limits_json": {},
         },
     )
     return Subscription.objects.create(
@@ -365,7 +365,7 @@ class OnboardingServiceIntegrationTests(TransactionTestCase):
                 "name": "Free",
                 "tier": PlanTier.FREE,
                 "is_active": True,
-                "limits": {},
+                "limits_json": {},
             },
         )
 

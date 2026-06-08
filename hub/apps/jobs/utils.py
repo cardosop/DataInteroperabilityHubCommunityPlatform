@@ -555,6 +555,7 @@ def create_job(
     queue_name: str = "default",
     priority: Optional[str] = None,
     executed_by_prefect: bool = False,
+    created_by=None,  # Alias for ``user`` — Phase 278 callers use this name.
 ) -> Job:
     """
     Create a job and optionally enqueue it for processing.
@@ -569,6 +570,7 @@ def create_job(
     Args:
         tenant: Tenant instance (optional)
         user: User instance (optional, alias for created_by)
+        created_by: User instance (optional, alias for user)
         job_type: Job type (from JobType enum)
         resource_type: Resource type (CONTRACT, DATASET, FILE, ASSET, etc.)
         resource_id: UUID of the resource
@@ -592,6 +594,9 @@ def create_job(
         raise ValueError("resource_type is required")
     if resource_id is None:
         raise ValueError("resource_id is required")
+    # Alias: if caller passes ``created_by=``, resolve to ``user``.
+    if user is None and created_by is not None:
+        user = created_by
     try:
         uuid.UUID(str(resource_id))
     except (ValueError, TypeError):

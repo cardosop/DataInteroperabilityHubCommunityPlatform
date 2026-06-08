@@ -181,12 +181,16 @@ class MarketplaceIntegrationComprehensiveValidationTestBase(TransactionTestCase)
                     slug=f"test-tenant-1-{unique_suffix}",
                     status="ACTIVE",
                     kyc_status=KYCStatus.VERIFIED,
+                    marketplace_integrations_enabled=True,
+                    federated_import_enabled=True,
                 )
                 self.tenant2 = Tenant.objects.create(
                     name=f"Test Tenant 2 {unique_suffix}",
                     slug=f"test-tenant-2-{unique_suffix}",
                     status="ACTIVE",
                     kyc_status=KYCStatus.VERIFIED,
+                    marketplace_integrations_enabled=True,
+                    federated_import_enabled=True,
                 )
 
                 # Active subscription required so TenantSuspensionMiddleware allows API writes (POST/PATCH/DELETE)
@@ -2056,7 +2060,7 @@ class MarketplaceIntegrationPerformanceTest(MarketplaceIntegrationComprehensiveV
         self.assertIsNotNone(sync_job.id)
 
     def test_api_endpoint_performance(self):
-        """Test API endpoint performance (load testing: 1000 concurrent requests)"""
+        """Test API endpoint basic response and correctness"""
         # Create connection
         connection = self._create_test_connection(
             tenant_id=str(self.tenant1.id),
@@ -2074,7 +2078,7 @@ class MarketplaceIntegrationPerformanceTest(MarketplaceIntegrationComprehensiveV
         self.assertLess(elapsed_time, 2)  # Should respond quickly
 
     def test_concurrent_sync_jobs(self):
-        """Test concurrent sync jobs (10+ concurrent syncs)"""
+        """Test multiple sync jobs created in sequence"""
         connection = self._create_test_connection(
             tenant_id=str(self.tenant1.id),
             user_id=str(self.user1.id),
@@ -2092,7 +2096,7 @@ class MarketplaceIntegrationPerformanceTest(MarketplaceIntegrationComprehensiveV
         self.assertEqual(len(sync_jobs), 10)
 
     def test_memory_usage(self):
-        """Test memory usage (no memory leaks, < 500MB per sync job)"""
+        """Test sync job creation and metadata tracking"""
         connection = self._create_test_connection(
             tenant_id=str(self.tenant1.id),
             user_id=str(self.user1.id),

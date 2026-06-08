@@ -33,25 +33,14 @@ class ABACCacheTest(TestCase):
             status="ACTIVE",
             kyc_status="UNVERIFIED"
         )
-        
+
         self.user = User.objects.create_user(
             email=f"user-{uid}@example.com",
             password="testpass123",
             tenant=self.tenant,
             status=UserStatus.ACTIVE
         )
-        
-        # Create policy
-        self.policy = AccessPolicy.objects.create(
-            tenant=self.tenant,
-            name="Test Policy",
-            conditions={
-                "user": {"role": "DATA_PROVIDER"}
-            },
-            effect="ALLOW",
-            priority=10
-        )
-    
+
     def test_policy_caching(self):
         """Test that policies are cached"""
         # Clear cache
@@ -78,6 +67,16 @@ class ABACCacheTest(TestCase):
 
     def test_cache_invalidation(self):
         """Test cache invalidation on policy update"""
+        # Create policy — scoped to this test only
+        policy = AccessPolicy.objects.create(
+            tenant=self.tenant,
+            name="Test Policy for Invalidation",
+            conditions={
+                "user": {"role": "DATA_PROVIDER"}
+            },
+            effect="ALLOW",
+            priority=10,
+        )
         resource_uuid = str(uuid.uuid4())
 
         # Get policies (populate cache)
@@ -88,8 +87,8 @@ class ABACCacheTest(TestCase):
         )
 
         # Update policy
-        self.policy.effect = "DENY"
-        self.policy.save()
+        policy.effect = "DENY"
+        policy.save()
 
         # Cache should be invalidated
         # Next call should fetch fresh data
@@ -102,10 +101,9 @@ class ABACCacheTest(TestCase):
         # Should reflect updated policy
         self.assertIsNotNone(policies)
         # Verify the policy reflects the DENY update
-        if len(policies) > 0:
-            updated = [p for p in policies if str(p.id) == str(self.policy.id)]
-            if updated:
-                self.assertEqual(updated[0].effect, "DENY")
+        updated = [p for p in policies if str(p.id) == str(policy.id)]
+        self.assertTrue(len(updated) > 0, "Updated policy should be present in results")
+        self.assertEqual(updated[0].effect, "DENY")
 
 
 class ABACFieldLevelTest(TestCase):

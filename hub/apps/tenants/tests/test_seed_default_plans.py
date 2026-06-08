@@ -23,16 +23,16 @@ class SeedDefaultPlansCommandTest(TestCase):
         from hub.apps.billing.models import Subscription
         Subscription.objects.all().delete()
         TenantPlan.objects.all().delete()
-        assert TenantPlan.objects.count() == 0
+        self.assertEqual(TenantPlan.objects.count(), 0)
         out = StringIO()
         call_command("seed_default_plans", stdout=out)
-        assert TenantPlan.objects.filter(slug="free").exists()
-        assert TenantPlan.objects.filter(slug="pro").exists()
-        assert TenantPlan.objects.filter(slug="enterprise").exists()
-        assert "Created" in out.getvalue(), (
-            f"Expected 'Created' in output when DB was empty, "
-            f"got: {out.getvalue()}"
-        )
+        self.assertTrue(TenantPlan.objects.filter(slug='free').exists())
+        self.assertTrue(TenantPlan.objects.filter(slug='pro').exists())
+        self.assertTrue(TenantPlan.objects.filter(slug='enterprise').exists())
+
+
+
+        self.assertIn('Created', out.getvalue(), f"Expected 'Created' in output when DB was empty, got: {out.getvalue()}")
 
     def test_skips_when_plans_exist_by_slug(self):
         """Success: skips when plans already exist with correct slug."""
@@ -40,8 +40,8 @@ class SeedDefaultPlansCommandTest(TestCase):
         count_before = TenantPlan.objects.count()
         out = StringIO()
         call_command("seed_default_plans", stdout=out)
-        assert TenantPlan.objects.count() == count_before
-        assert "Skipped" in out.getvalue()
+        self.assertEqual(TenantPlan.objects.count(), count_before)
+        self.assertIn('Skipped', out.getvalue())
 
     def test_fixes_slug_when_name_exists_but_slug_wrong(self):
         """Success: when plan has name 'Free Plan' but slug not 'free', fixes slug."""
@@ -56,13 +56,13 @@ class SeedDefaultPlansCommandTest(TestCase):
             limits_json={"max_assets": 10},
             is_active=True,
         )
-        assert not TenantPlan.objects.filter(slug="free").exists()
+        self.assertFalse(TenantPlan.objects.filter(slug='free').exists())
         out = StringIO()
         call_command("seed_default_plans", stdout=out)
         plan = TenantPlan.objects.get(name="Free Plan")
-        assert plan.slug == "free"
+        self.assertEqual(plan.slug, 'free')
         output = out.getvalue()
-        assert "Fixed" in output, f"Expected 'Fixed' in output but got: {output}"
+        self.assertIn('Fixed', output, f"Expected 'Fixed' in output but got: {output}")
 
     def test_skips_when_name_and_slug_match_race(self):
         """Success: when IntegrityError but plan already has correct slug, skips."""
@@ -80,5 +80,5 @@ class SeedDefaultPlansCommandTest(TestCase):
         out = StringIO()
         call_command("seed_default_plans", stdout=out)
         plan = TenantPlan.objects.get(name="Free Plan")
-        assert plan.slug == "free"
-        assert TenantPlan.objects.filter(slug="free").count() == 1
+        self.assertEqual(plan.slug, 'free')
+        self.assertEqual(TenantPlan.objects.filter(slug='free').count(), 1)

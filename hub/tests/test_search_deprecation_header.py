@@ -108,4 +108,10 @@ class SearchViewSetEmptyQueryGuardTest(TestCase):
             resp.status_code, 400,
             f"Empty q must return 400, got {resp.status_code}",
         )
-        self.assertIn("required", str(resp.data).lower())
+        # Check for the specific error code, not just the substring
+        # "required" which could match unrelated validation errors.
+        self.assertEqual(
+            resp.data.get("error", {}).get("code"),
+            "QUERY_REQUIRED",
+            f"Expected QUERY_REQUIRED error code, got: {resp.data}",
+        )

@@ -99,20 +99,16 @@ class TestEnvironmentVariables:
     """Test configuration via environment variables"""
     
     def test_api_base_url_env_var(self, temp_config_dir, monkeypatch):
-        """Test API base URL from environment variable"""
-        monkeypatch.setenv('DATAHUB_API_BASE_URL', 'http://env.example.com/api/v1')
-        
-        # Config should check env vars (if implemented)
-        # For now, test that env vars can be read
-        api_url = os.getenv('DATAHUB_API_BASE_URL')
-        assert api_url == 'http://env.example.com/api/v1'
-    
+        """Test that get_api_base_url() reads from DATAHUB_BASE_URL env var."""
+        config = Config()
+        monkeypatch.setenv('DATAHUB_BASE_URL', 'http://env.example.com/api/v1')
+        assert config.get_api_base_url() == 'http://env.example.com/api/v1'
+
     def test_api_key_env_var(self, temp_config_dir, monkeypatch):
-        """Test API key from environment variable"""
+        """Test that get_api_key() reads from DATAHUB_API_KEY env var."""
+        config = Config()
         monkeypatch.setenv('DATAHUB_API_KEY', 'env-api-key')
-        
-        api_key = os.getenv('DATAHUB_API_KEY')
-        assert api_key == 'env-api-key'
+        assert config.get_api_key() == 'env-api-key'
     
     def test_env_var_precedence(self, temp_config_dir, monkeypatch):
         """Test that environment variables take precedence over config file.
@@ -142,15 +138,6 @@ class TestEnvironmentVariables:
         monkeypatch.delenv('TEST_API_KEY', raising=False)
         assert config.get_api_key() == 'file-api-key'
     
-    def test_env_var_clearing(self, temp_config_dir, monkeypatch):
-        """Test that clearing environment variable works"""
-        monkeypatch.setenv('DATAHUB_API_KEY', 'test-key')
-        assert os.getenv('DATAHUB_API_KEY') == 'test-key'
-        
-        monkeypatch.delenv('DATAHUB_API_KEY', raising=False)
-        assert os.getenv('DATAHUB_API_KEY') is None
-
-
 class TestCommandLineArguments:
     """Test configuration via command-line arguments"""
     
@@ -370,8 +357,9 @@ class TestConfigurationEdgeCases:
         for i in range(100):
             assert config2.get(f'key_{i}') == f'value_{i}'
     
-    def test_concurrent_config_access(self, temp_config_dir):
-        """Test concurrent access to config (basic test)"""
+    def test_multi_instance_config_sharing(self, temp_config_dir):
+        """Test that multiple Config instances sharing the same backing file
+        can see each other's persisted changes after reloading."""
         config_dir, config_file = temp_config_dir
         
         config1 = Config()

@@ -19,13 +19,13 @@ pytestmark = pytest.mark.django_db(transaction=True)
 
 
 class BreachSLAMetricsTests(TestCase):
-    @classmethod
-    def setUpTestData(cls):
-        cls.tenant = Tenant.objects.create(
-            name="SLA Tenant", slug="sla-tenant", status=TenantStatus.ACTIVE,
-        )
-
     def setUp(self):
+        import uuid
+        self.tenant = Tenant.objects.create(
+            name=f"SLA Tenant {uuid.uuid4().hex[:8]}",
+            slug=f"sla-{uuid.uuid4().hex[:8]}",
+            status=TenantStatus.ACTIVE,
+        )
         # Reset the gauge values between tests by clearing any prior data
         BreachIncident.objects.all().delete()
 

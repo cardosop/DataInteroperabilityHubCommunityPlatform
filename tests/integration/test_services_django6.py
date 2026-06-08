@@ -22,6 +22,7 @@ from rest_framework import status
 
 from hub.apps.tenants.models import Tenant
 from hub.apps.testing.billing_support import ensure_tenant_has_active_subscription
+from hub.apps.testing.role_support import ensure_user_has_data_provider_role
 from hub.apps.users.models import UserStatus
 from hub.apps.jobs.models import Job, JobType, JobStatus
 from hub.apps.assets.models import Asset
@@ -63,6 +64,7 @@ class APIServiceDjango6Test(TestCase):
             status=UserStatus.ACTIVE
         )
         self.client.force_authenticate(user=self.user)
+        ensure_user_has_data_provider_role(self.user)
     
     def test_api_service_health(self):
         """Test API service health endpoint"""
@@ -340,6 +342,7 @@ class MicroservicesIntegrationTest(TestCase):
             status=UserStatus.ACTIVE
         )
         self.client.force_authenticate(user=self.user)
+        ensure_user_has_data_provider_role(self.user)
         
         # Create test asset
         self.asset = Asset.objects.create(
@@ -395,6 +398,7 @@ class MicroservicesIntegrationTest(TestCase):
         
         # Ensure client is authenticated
         self.client.force_authenticate(user=self.user)
+        ensure_user_has_data_provider_role(self.user)
         
         # Test DQ service integration
         response = self.client.post(

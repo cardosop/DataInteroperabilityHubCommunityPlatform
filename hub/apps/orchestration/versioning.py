@@ -99,13 +99,7 @@ class WorkflowVersionManager:
             else:
                 version = "1.0.0"
 
-        # Check if version already exists - if so, return it (idempotent)
-        existing = WorkflowDefinition.objects.filter(name=workflow_name, version=version).first()
-        if existing:
-            # Workflow already exists - return it instead of raising error (idempotent behavior)
-            return existing
-
-        # Validate created_by_id if provided
+        # Resolve created_by user if provided (best-effort).
         created_by = None
         if created_by_id:
             from django.contrib.auth import get_user_model
@@ -113,7 +107,6 @@ class WorkflowVersionManager:
             try:
                 created_by = User.objects.get(id=created_by_id)
             except User.DoesNotExist:
-                # User doesn't exist - log warning and continue without created_by
                 import logging
                 logger = logging.getLogger(__name__)
                 logger.warning(
@@ -121,22 +114,37 @@ class WorkflowVersionManager:
                     "creating workflow without created_by"
                 )
 
-        # Create new version
-        workflow_def = WorkflowDefinition.objects.create(
+        # Use bulk_create with ignore_conflicts to avoid the
+        # unique-index lock stall that can occur under MVCC when
+        # the ``unique_workflow_def_name_version`` index is bloated
+        # from many rolled-back test inserts (--keepdb).  This
+        # translates to ``ON CONFLICT DO NOTHING`` in PostgreSQL
+        # and does NOT wait on index locks held by concurrent or
+        # recently-aborted transactions.
+        wf_def = WorkflowDefinition(
             name=workflow_name,
             version=version,
             dsl_json=dsl_json,
-            description=description,
+            description=description or "",
             created_by=created_by,
-            is_active=True  # New version becomes active by default
+            is_active=True,
+        )
+        WorkflowDefinition.objects.bulk_create(
+            [wf_def],
+            ignore_conflicts=True,
+        )
+        # Fetch whichever row ended up in the table (ours or a
+        # concurrent insert) so the caller always gets an instance.
+        wf_def = WorkflowDefinition.objects.get(
+            name=workflow_name, version=version
         )
 
         # Deactivate other versions (only one active version per workflow)
         WorkflowDefinition.objects.filter(
             name=workflow_name
-        ).exclude(id=workflow_def.id).update(is_active=False)
+        ).exclude(id=wf_def.id).update(is_active=False)
 
-        return workflow_def
+        return wf_def
 
     @classmethod
     def get_latest_version(cls, workflow_name: str) -> Optional[WorkflowDefinition]:

@@ -47,6 +47,13 @@ MVP_GATED_RELATIVE_PREFIXES: Final[tuple[str, ...]] = (
     # Phase 273.1 — removed "search/" per spec REQ-MVP-001/002; /search is
     # permanently MVP-in-scope alongside /semantic (project_mvp_scope.md).
     "developer/",
+    # Additional non-MVP prefixes classified during batch-7-4 fix:
+    # These are mounted in urls.py but were unclassified.
+    # NOTE: "admin/", "lineage/", and "quality/" are NOT gated — they
+    # have no standalone /api/v1/<prefix>/ URL routes (only sub-paths
+    # are mounted).  They are classified as MVP-core below.
+    "dpia/",
+    "ropa/",
 )
 
 API_V1_PREFIX: Final[str] = "/api/v1/"

@@ -26,6 +26,7 @@ class JobType(models.TextChoices):
     ODPS_LINKING = "ODPS_LINKING", "ODPS Linking"
     VIRTUAL_QUERY_EXECUTION = "VIRTUAL_QUERY_EXECUTION", "Virtual Query Execution"
     MARKETPLACE_SYNC = "MARKETPLACE_SYNC", "Marketplace Sync"
+    FEDERATED_IMPORT = "FEDERATED_IMPORT", "Federated Import"
     ML_TRAINING = "ML_TRAINING", "ML Training"
     ML_INFERENCE = "ML_INFERENCE", "ML Inference"
     TRANSFORMATION = "TRANSFORMATION", "Transformation Pipeline"

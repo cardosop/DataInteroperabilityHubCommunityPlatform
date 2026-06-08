@@ -77,18 +77,35 @@ def _make_test_http_server():
                     if hself.path in routes:
                         val = routes[hself.path]
                         if isinstance(val, tuple) and val[0] == "delayed":
-                            ct, body = val[1]()
+                            # The delayed callable may take several seconds;
+                            # the client may have disconnected by the time
+                            # it returns (e.g. timeout tests).  Catch
+                            # connection errors so the server thread does
+                            # not crash.
+                            try:
+                                ct, body = val[1]()
+                            except (BrokenPipeError, ConnectionResetError):
+                                return
                         else:
                             ct, body = val
-                        hself.send_response(200)
-                        hself.send_header("Content-Type", ct)
-                        hself.send_header("Content-Length", str(len(body)))
-                        hself.end_headers()
-                        hself.wfile.write(body)
-                        hself.wfile.flush()
+                        try:
+                            hself.send_response(200)
+                            hself.send_header("Content-Type", ct)
+                            hself.send_header("Content-Length", str(len(body)))
+                            hself.end_headers()
+                            hself.wfile.write(body)
+                            hself.wfile.flush()
+                        except (BrokenPipeError, ConnectionResetError):
+                            # Client disconnected before response could be
+                            # fully written — harmless in test scenarios
+                            # where the client intentionally times out.
+                            pass
                     else:
-                        hself.send_response(404)
-                        hself.end_headers()
+                        try:
+                            hself.send_response(404)
+                            hself.end_headers()
+                        except (BrokenPipeError, ConnectionResetError):
+                            pass
 
                 def log_message(hself, *args):
                     pass
@@ -148,66 +165,57 @@ class RefResolverURLValidationTest(TestCase):
         )
 
     def test_url_validation_valid_https_url(self):
-        """Test that valid HTTPS URLs pass validation through public API"""
+        """Test that valid HTTPS URLs pass validation through public API."""
         import httpx
 
         url = "https://example.com/schema.json"
 
-        # Use MockTransport to simulate external ref resolution
         def handler(request: httpx.Request) -> httpx.Response:
             return httpx.Response(200, json={"type": "object"}, request=request)
 
-        transport = httpx.MockTransport(handler)
+        # Inject httpx_transport so ALL production security controls run
+        # (_validate_external_url, check_rate_limit, is_url_allowed, etc.)
+        # and only the network boundary is mocked.
+        resolver = RefResolver(
+            config=self.config,
+            tenant_id=f"test-https-{uuid.uuid4()}",
+            user_id="test-user",
+            enable_caching=False,
+            httpx_transport=httpx.MockTransport(handler),
+        )
 
-        # Store original resolve_external
-        original_resolve = self.resolver.resolve_external
-
-        # Mock resolve_external to use MockTransport
-        def mock_resolve_external(ref_path: str):
-            with httpx.Client(transport=transport) as client:
-                response = client.get(ref_path, timeout=5)
-                response.raise_for_status()
-                return response.json()
-
-        self.resolver.resolve_external = mock_resolve_external
-
-        try:
-            # Should not raise an exception - URL validation happens internally
-            result = self.resolver.resolve_external(url)
-            self.assertIsNotNone(result)
-        finally:
-            self.resolver.resolve_external = original_resolve
+        result = resolver.resolve_external(url)
+        self.assertIsNotNone(result)
+        self.assertEqual(result["type"], "object")
 
     def test_url_validation_valid_http_url(self):
-        """Test that valid HTTP URLs pass validation through public API"""
+        """Test that valid HTTP URLs pass validation through public API."""
         import httpx
 
         url = "http://example.com/schema.json"
 
-        # Use MockTransport to simulate external ref resolution
+        # Create config that allows both http and https URLs.
+        http_config = ODPSRefsConfig()
+        http_config._config_data = {
+            "url_allowlist": ["https://example.com", "http://example.com"],
+            "url_denylist": [],
+        }
+
         def handler(request: httpx.Request) -> httpx.Response:
             return httpx.Response(200, json={"type": "object"}, request=request)
 
-        transport = httpx.MockTransport(handler)
+        # Inject httpx_transport so ALL production security controls run.
+        resolver = RefResolver(
+            config=http_config,
+            tenant_id=f"test-http-{uuid.uuid4()}",
+            user_id="test-user",
+            enable_caching=False,
+            httpx_transport=httpx.MockTransport(handler),
+        )
 
-        # Store original resolve_external
-        original_resolve = self.resolver.resolve_external
-
-        # Mock resolve_external to use MockTransport
-        def mock_resolve_external(ref_path: str):
-            with httpx.Client(transport=transport) as client:
-                response = client.get(ref_path, timeout=5)
-                response.raise_for_status()
-                return response.json()
-
-        self.resolver.resolve_external = mock_resolve_external
-
-        try:
-            # Should not raise an exception - URL validation happens internally
-            result = self.resolver.resolve_external(url)
-            self.assertIsNotNone(result)
-        finally:
-            self.resolver.resolve_external = original_resolve
+        result = resolver.resolve_external(url)
+        self.assertIsNotNone(result)
+        self.assertEqual(result["type"], "object")
 
     def test_url_validation_rejects_invalid_scheme_javascript(self):
         """Test that JavaScript URLs are rejected through public API"""
@@ -462,8 +470,8 @@ class RefResolverRateLimitingTest(TestCase):
             keys = self.redis_client.keys(pattern)
             if keys:
                 self.redis_client.delete(*keys)
-        except Exception:
-            pass
+        except (redis.ConnectionError, redis.TimeoutError, OSError):
+            pass  # Redis unavailable during setup — test will skip itself
 
     def tearDown(self):
         """Clean up test fixtures"""
@@ -477,8 +485,8 @@ class RefResolverRateLimitingTest(TestCase):
                 keys = self.redis_client.keys(pattern)
                 if keys:
                     self.redis_client.delete(*keys)
-            except Exception:
-                pass
+            except (redis.ConnectionError, redis.TimeoutError, OSError):
+                pass  # Redis unavailable during teardown — harmless
 
     def test_rate_limit_enforced(self):
         """Test that rate limiting is enforced using real Redis"""
@@ -511,34 +519,29 @@ class RefResolverRateLimitingTest(TestCase):
         )
 
     def test_rate_limit_allows_when_not_exceeded(self):
-        """Test that requests are allowed when rate limit is not exceeded using real Redis"""
+        """Test that requests are allowed when rate limit is not exceeded."""
+        import httpx
 
-        # Use real rate limiting - should allow when under limit
-        # Use MockTransport for endpoint verification (acceptable test utility)
+        # Use a unique tenant_id so no rate limit has been accumulated.
+        fresh_tenant = f"test-tenant-fresh-{uuid.uuid4()}"
+
         def handler(request: httpx.Request) -> httpx.Response:
             return httpx.Response(200, json={"type": "string"}, request=request)
 
-        transport = httpx.MockTransport(handler)
+        # Inject httpx_transport so ALL production security controls run
+        # (rate limiting, URL validation, allowlist check) and only the
+        # network boundary is mocked.
+        resolver = RefResolver(
+            config=self.config,
+            tenant_id=fresh_tenant,
+            user_id="test-user",
+            enable_caching=False,
+            httpx_transport=httpx.MockTransport(handler),
+        )
 
-        # Temporarily replace resolve_external to use MockTransport
-        original_resolve = self.resolver.resolve_external
-
-        def mock_resolve_external(url: str):
-            # Use real check_rate_limit (should allow when under limit)
-            with httpx.Client(transport=transport) as client:
-                response = client.get(url, timeout=5)
-                response.raise_for_status()
-                return response.json()
-
-        self.resolver.resolve_external = mock_resolve_external
-
-        try:
-            url = "https://example.com/schema.json"
-            # Should succeed - rate limit not exceeded (we're under limit)
-            result = self.resolver.resolve_external(url)
-            self.assertEqual(result, {"type": "string"})
-        finally:
-            self.resolver.resolve_external = original_resolve
+        url = "https://example.com/schema.json"
+        result = resolver.resolve_external(url)
+        self.assertEqual(result, {"type": "string"})
 
     def test_rate_limit_violation_logged(self):
         """Test that rate limit violations are logged to SecurityAuditLog (real Redis, no mocks)."""
@@ -558,10 +561,13 @@ class RefResolverRateLimitingTest(TestCase):
         except ODPSRefResolutionError:
             pass
 
-        # Verify rate limit violation was persisted to SecurityAuditLog (no mocks)
+        # Verify rate limit violation was persisted to SecurityAuditLog (no mocks).
+        # NOTE: ref-resolver tests use string tenant IDs (not Tenant model instances),
+        # so we filter by event_type only. Rate limit events are unique enough that
+        # cross-test contamination is negligible.
         self.assertTrue(
             SecurityAuditLog.objects.filter(
-                event_type=SecurityEventType.RATE_LIMIT_EXCEEDED.value
+                event_type=SecurityEventType.RATE_LIMIT_EXCEEDED.value,
             ).exists(),
             "Expected RATE_LIMIT_EXCEEDED in SecurityAuditLog",
         )
@@ -585,50 +591,35 @@ class RefResolverSizeLimitTest(TestCase):
         )
 
     def test_size_limit_rejects_oversized_ref(self):
-        """Test that refs exceeding max_ref_size are rejected through public API"""
-        import json
-
+        """Test that refs exceeding max_ref_size are rejected through public API."""
         import httpx
 
-        # Create oversized content that exceeds max_ref_size
+        # Create oversized content that exceeds max_ref_size (1000 bytes)
         oversized_content = b'{"data": "' + b"a" * 2000 + b'"}'
         size = len(oversized_content)
         self.assertGreater(size, self.resolver.max_ref_size)
 
-        # Use MockTransport to simulate oversized response
         def handler(request: httpx.Request) -> httpx.Response:
             return httpx.Response(200, content=oversized_content, request=request)
 
-        transport = httpx.MockTransport(handler)
+        # Inject httpx_transport so ALL production security controls run,
+        # including the real _check_size_limit that validates content length.
+        resolver = RefResolver(
+            config=self.config,
+            tenant_id="test-tenant-size-reject",
+            user_id="test-user",
+            max_ref_size=1000,
+            max_total_size=5000,
+            enable_caching=False,
+            httpx_transport=httpx.MockTransport(handler),
+        )
 
-        # Store original resolve_external
-        original_resolve = self.resolver.resolve_external
-
-        # Mock resolve_external to use MockTransport
-        def mock_resolve_external(ref_path: str):
-            with httpx.Client(transport=transport) as client:
-                response = client.get(ref_path, timeout=5)
-                response.raise_for_status()
-                # Size limit check happens internally in resolve_external
-                if len(response.content) > self.resolver.max_ref_size:
-                    raise ODPSRefResolutionError(
-                        message=f"Ref size {len(response.content)} exceeds limit {self.resolver.max_ref_size}",
-                        error_code=ODPSRefResolutionError.ERROR_CODE_RESOLUTION_FAILED,
-                    )
-                return response.json()
-
-        self.resolver.resolve_external = mock_resolve_external
-
-        try:
-            # Test through public API - resolve_external() checks size limit internally
-            with self.assertRaises(ODPSRefResolutionError) as cm:
-                self.resolver.resolve_external("https://example.com/schema.json")
-            self.assertEqual(
-                cm.exception.error_code, ODPSRefResolutionError.ERROR_CODE_RESOLUTION_FAILED
-            )
-            self.assertIn("exceeds limit", cm.exception.message.lower())
-        finally:
-            self.resolver.resolve_external = original_resolve
+        with self.assertRaises(ODPSRefResolutionError) as cm:
+            resolver.resolve_external("https://example.com/schema.json")
+        self.assertEqual(
+            cm.exception.error_code, ODPSRefResolutionError.ERROR_CODE_RESOLUTION_FAILED
+        )
+        self.assertIn("exceeds limit", cm.exception.message.lower())
 
     def test_size_limit_rejects_total_size_exceeded(self):
         """Test that total size limit is enforced through public API"""
@@ -678,35 +669,29 @@ class RefResolverSizeLimitTest(TestCase):
             shutil.rmtree(temp_dir, ignore_errors=True)
 
     def test_size_limit_allows_within_limits(self):
-        """Test that refs within size limits are allowed through public API"""
+        """Test that refs within size limits are allowed through public API."""
         import httpx
 
-        # Use MockTransport to simulate normal-sized response
         normal_content = b'{"data": "test"}'
 
         def handler(request: httpx.Request) -> httpx.Response:
             return httpx.Response(200, content=normal_content, request=request)
 
-        transport = httpx.MockTransport(handler)
+        # Inject httpx_transport so the real _check_size_limit runs and
+        # verifies the content is within the configured max_ref_size.
+        resolver = RefResolver(
+            config=self.config,
+            tenant_id="test-tenant-size-allow",
+            user_id="test-user",
+            max_ref_size=1000,
+            max_total_size=5000,
+            enable_caching=False,
+            httpx_transport=httpx.MockTransport(handler),
+        )
 
-        # Store original resolve_external
-        original_resolve = self.resolver.resolve_external
-
-        # Mock resolve_external to use MockTransport
-        def mock_resolve_external(ref_path: str):
-            with httpx.Client(transport=transport) as client:
-                response = client.get(ref_path, timeout=5)
-                response.raise_for_status()
-                return response.json()
-
-        self.resolver.resolve_external = mock_resolve_external
-
-        try:
-            # Should not raise an exception - size limit check happens internally
-            result = self.resolver.resolve_external("https://example.com/schema.json")
-            self.assertIsNotNone(result)
-        finally:
-            self.resolver.resolve_external = original_resolve
+        result = resolver.resolve_external("https://example.com/schema.json")
+        self.assertIsNotNone(result)
+        self.assertEqual(result, {"data": "test"})
 
     def test_size_limit_logs_security_violation(self):
         """Test that size limit violations are logged to SecurityAuditLog (real HTTP, no mocks)."""
@@ -732,9 +717,15 @@ class RefResolverSizeLimitTest(TestCase):
                 cm.exception.error_code, ODPSRefResolutionError.ERROR_CODE_RESOLUTION_FAILED
             )
 
-        # Verify security violation was persisted to SecurityAuditLog
+        # Verify security violation was persisted to SecurityAuditLog.
+        # Scope by tenant__isnull=True: the resolver uses a synthetic UUID tenant_id
+        # that does not correspond to a real Tenant row, so the persist path stores
+        # tenant=None.  This avoids cross-test contamination.
         self.assertTrue(
-            SecurityAuditLog.objects.filter(event_type=SecurityEventType.SIZE_LIMIT_EXCEEDED).exists(),
+            SecurityAuditLog.objects.filter(
+                event_type=SecurityEventType.SIZE_LIMIT_EXCEEDED,
+                tenant__isnull=True,
+            ).exists(),
             "Expected SIZE_LIMIT_EXCEEDED in SecurityAuditLog",
         )
 
@@ -825,36 +816,28 @@ class RefResolverTimeoutTest(TestCase):
         self.assertIn("timeout", cm.exception.message.lower())
 
     def test_timeout_check_allows_within_timeout(self):
-        """Test that requests within timeout are allowed through public API"""
+        """Test that requests within timeout are allowed through public API."""
         import httpx
 
-        # Set start time to recent (accessing private attribute for test setup only)
-        self.resolver._start_time = time.time() - 1  # 1 second ago
-
-        # Use MockTransport to simulate external ref resolution
         def handler(request: httpx.Request) -> httpx.Response:
             return httpx.Response(200, json={"type": "object"}, request=request)
 
-        transport = httpx.MockTransport(handler)
+        # Inject httpx_transport so ALL production security controls run.
+        resolver = RefResolver(
+            config=self.config,
+            tenant_id="test-tenant-timeout-allow",
+            user_id="test-user",
+            timeout_per_ref=1,
+            timeout_total=2,
+            enable_caching=False,
+            httpx_transport=httpx.MockTransport(handler),
+        )
+        # Set _start_time to recent so _check_timeout() allows the call.
+        resolver._start_time = time.time() - 1  # 1 second ago (within 2s total)
 
-        # Store original resolve_external
-        original_resolve = self.resolver.resolve_external
-
-        # Mock resolve_external to use MockTransport
-        def mock_resolve_external(ref_path: str):
-            with httpx.Client(transport=transport) as client:
-                response = client.get(ref_path, timeout=5)
-                response.raise_for_status()
-                return response.json()
-
-        self.resolver.resolve_external = mock_resolve_external
-
-        try:
-            # Should not raise an exception - timeout check happens internally
-            result = self.resolver.resolve_external("https://example.com/schema.json")
-            self.assertIsNotNone(result)
-        finally:
-            self.resolver.resolve_external = original_resolve
+        result = resolver.resolve_external("https://example.com/schema.json")
+        self.assertIsNotNone(result)
+        self.assertEqual(result["type"], "object")
 
     def test_timeout_logs_security_violation(self):
         """Test that timeout violations are logged to SecurityAuditLog (real resolve, no mocks)."""
@@ -877,9 +860,13 @@ class RefResolverTimeoutTest(TestCase):
         )
         self.assertIn("timeout", cm.exception.message.lower())
 
-        # Verify security violation was persisted to SecurityAuditLog
+        # Verify security violation was persisted to SecurityAuditLog.
+        # Scope by tenant__isnull=True — see comment on SIZE_LIMIT_EXCEEDED query above.
         self.assertTrue(
-            SecurityAuditLog.objects.filter(event_type=SecurityEventType.TIMEOUT).exists(),
+            SecurityAuditLog.objects.filter(
+                event_type=SecurityEventType.TIMEOUT,
+                tenant__isnull=True,
+            ).exists(),
             "Expected TIMEOUT in SecurityAuditLog",
         )
 
@@ -1008,7 +995,10 @@ class RefResolverSecurityLoggingTest(TestCase):
             )
 
         self.assertTrue(
-            SecurityAuditLog.objects.filter(event_type=SecurityEventType.SIZE_LIMIT_EXCEEDED).exists(),
+            SecurityAuditLog.objects.filter(
+                event_type=SecurityEventType.SIZE_LIMIT_EXCEEDED,
+                tenant__isnull=True,
+            ).exists(),
             "Expected SIZE_LIMIT_EXCEEDED in SecurityAuditLog",
         )
 
@@ -1033,7 +1023,10 @@ class RefResolverSecurityLoggingTest(TestCase):
         self.assertIn("timeout", cm.exception.message.lower())
 
         self.assertTrue(
-            SecurityAuditLog.objects.filter(event_type=SecurityEventType.TIMEOUT).exists(),
+            SecurityAuditLog.objects.filter(
+                event_type=SecurityEventType.TIMEOUT,
+                tenant__isnull=True,
+            ).exists(),
             "Expected TIMEOUT in SecurityAuditLog",
         )
 
@@ -1055,24 +1048,14 @@ class RefResolverSecurityLoggingTest(TestCase):
 
     # Edge cases and error handling tests
     def test_url_validation_with_none_url(self):
-        """Test URL validation with None URL through public API."""
-        try:
-            # Test through public API - resolve_external() validates URL internally
+        """Test URL validation with None URL raises TypeError or validation error."""
+        with self.assertRaises((TypeError, ValueError, ODPSRefResolutionError)):
             self.resolver.resolve_external(None)  # type: ignore[misc]  # test: edge-case type exercise
-            # May raise exception
-        except (TypeError, ValueError, ODPSRefResolutionError):
-            # None URL should raise exception
-            pass
 
     def test_url_validation_with_empty_url(self):
-        """Test URL validation with empty URL through public API."""
-        try:
-            # Test through public API - resolve_external() validates URL internally
+        """Test URL validation with empty URL raises validation error."""
+        with self.assertRaises(ODPSRefResolutionError):
             self.resolver.resolve_external("")
-            # May raise exception
-        except ODPSRefResolutionError:
-            # Empty URL should raise exception
-            pass
 
     def test_url_validation_with_unicode_in_url(self):
         """Test URL validation with unicode characters in URL through public API."""
@@ -1080,308 +1063,202 @@ class RefResolverSecurityLoggingTest(TestCase):
 
         url = "https://example.com/产品.json"
 
-        # Use MockTransport to simulate external ref resolution
         def handler(request: httpx.Request) -> httpx.Response:
             return httpx.Response(200, json={"type": "object"}, request=request)
 
-        transport = httpx.MockTransport(handler)
+        # Use a unique tenant_id to avoid rate limit exhaustion from prior tests.
+        resolver = RefResolver(
+            config=self.config,
+            tenant_id=f"test-unicode-{uuid.uuid4()}",
+            user_id="test-user",
+            enable_caching=False,
+            httpx_transport=httpx.MockTransport(handler),
+        )
 
-        # Store original resolve_external
-        original_resolve = self.resolver.resolve_external
-
-        # Mock resolve_external to use MockTransport
-        def mock_resolve_external(ref_path: str):
-            with httpx.Client(transport=transport) as client:
-                response = client.get(ref_path, timeout=5)
-                response.raise_for_status()
-                return response.json()
-
-        self.resolver.resolve_external = mock_resolve_external
-
+        # The unicode URL should be handled — either resolved successfully
+        # or rejected with a specific validation error.
         try:
-            # Test through public API - resolve_external() validates URL internally
-            result = self.resolver.resolve_external(url)
-            # Should handle unicode gracefully
+            result = resolver.resolve_external(url)
             self.assertIsNotNone(result)
-        except ODPSRefResolutionError:
-            # May raise exception if unicode not allowed
-            pass
-        finally:
-            self.resolver.resolve_external = original_resolve
+            self.assertEqual(result["type"], "object")
+        except ODPSRefResolutionError as e:
+            # Acceptable if unicode in paths triggers a validation rejection.
+            self.assertIn(
+                e.error_code,
+                [ODPSRefResolutionError.ERROR_CODE_INVALID_REF,
+                 ODPSRefResolutionError.ERROR_CODE_SECURITY_VIOLATION],
+            )
 
     def test_path_traversal_with_none_path(self):
-        """Test path traversal prevention with None path."""
-        try:
+        """Test path traversal prevention with None path raises TypeError."""
+        with self.assertRaises((TypeError, ValueError, ODPSRefResolutionError)):
             self.resolver.resolve_local(None)  # type: ignore[misc]  # test: edge-case type exercise
-            # May raise exception
-        except (TypeError, ValueError, ODPSRefResolutionError):
-            # None path should raise exception
-            pass
 
     def test_path_traversal_with_empty_path(self):
-        """Test path traversal prevention with empty path."""
-        try:
+        """Test path traversal prevention with empty path raises error."""
+        with self.assertRaises(ODPSRefResolutionError):
             self.resolver.resolve_local("")
-            # May raise exception or handle empty path
-        except ODPSRefResolutionError:
-            # Empty path may raise exception
-            pass
 
     def test_path_traversal_with_very_long_path(self):
         """Test path traversal prevention with very long path."""
         very_long_path = "/" + "a" * 10000
-        try:
+        # Very long paths that are absolute should be rejected as security violation.
+        with self.assertRaises(ODPSRefResolutionError) as cm:
             self.resolver.resolve_local(very_long_path)
-            # Should handle very long path gracefully
-        except ODPSRefResolutionError:
-            # May raise exception if path too long
-            pass
+        self.assertIn(
+            cm.exception.error_code,
+            [ODPSRefResolutionError.ERROR_CODE_SECURITY_VIOLATION,
+             ODPSRefResolutionError.ERROR_CODE_INVALID_REF],
+        )
 
     def test_rate_limit_with_none_tenant_id(self):
-        """Test rate limiting with None tenant_id."""
+        """Test rate limiting with None tenant_id raises or returns denied."""
         from hub.apps.contracts.odps_rate_limiting import check_rate_limit
 
         try:
             is_allowed, error = check_rate_limit(
                 tenant_id=None, user_id="test-user", redis_client=self.redis_client  # type: ignore[misc]  # test: edge-case type exercise
             )
-            # May raise exception or return False
-            self.assertFalse(is_allowed)
+            self.assertFalse(is_allowed, "None tenant_id must not be allowed")
         except (ValueError, TypeError):
-            # None tenant_id should raise exception
+            # None tenant_id must raise — equally valid behavior.
             pass
 
     def test_rate_limit_with_empty_tenant_id(self):
-        """Test rate limiting with empty tenant_id."""
+        """Test rate limiting with empty tenant_id raises ValueError or returns denied."""
         from hub.apps.contracts.odps_rate_limiting import check_rate_limit
 
         try:
             is_allowed, error = check_rate_limit(
                 tenant_id="", user_id="test-user", redis_client=self.redis_client
             )
-            # May raise exception or return False
-            self.assertFalse(is_allowed)
+            self.assertFalse(is_allowed, "Empty tenant_id must not be allowed")
         except ValueError:
-            # Empty tenant_id may raise ValueError
+            # Empty tenant_id must raise ValueError — equally valid.
             pass
 
-    def test_size_limit_with_none_size(self):
-        """Test size limit check with None size through public API."""
+    def test_size_limit_with_empty_response(self):
+        """Test that empty (zero-byte) HTTP responses are handled gracefully."""
         import httpx
 
-        # Use MockTransport to simulate response with None/invalid size handling
-        # Note: This tests error handling through public API
         def handler(request: httpx.Request) -> httpx.Response:
-            # Return empty response to test size limit handling
             return httpx.Response(200, content=b"", request=request)
 
-        transport = httpx.MockTransport(handler)
+        # Empty response → _check_size_limit(0) passes, but json parse fails.
+        resolver = RefResolver(
+            config=self.config,
+            tenant_id=f"test-empty-{uuid.uuid4()}",
+            user_id="test-user",
+            max_ref_size=1000,
+            enable_caching=False,
+            httpx_transport=httpx.MockTransport(handler),
+        )
 
-        # Store original resolve_external
-        original_resolve = self.resolver.resolve_external
+        with self.assertRaises(ODPSRefResolutionError) as cm:
+            resolver.resolve_external("https://example.com/schema.json")
+        # Empty body should produce either a resolution failure or invalid ref.
+        self.assertIn(
+            cm.exception.error_code,
+            [ODPSRefResolutionError.ERROR_CODE_RESOLUTION_FAILED,
+             ODPSRefResolutionError.ERROR_CODE_INVALID_REF],
+        )
 
-        # Mock resolve_external to use MockTransport
-        def mock_resolve_external(ref_path: str):
-            with httpx.Client(transport=transport) as client:
-                response = client.get(ref_path, timeout=5)
-                response.raise_for_status()
-                # Size limit check happens internally in resolve_external
-                return response.json()
-
-        self.resolver.resolve_external = mock_resolve_external
-
-        try:
-            # Test through public API - resolve_external() checks size limit internally
-            result = self.resolver.resolve_external("https://example.com/schema.json")
-            # Should handle empty/zero size gracefully
-            self.assertIsNotNone(result or {})
-        except (TypeError, ValueError, ODPSRefResolutionError):
-            # May raise exception for invalid size
-            pass
-        finally:
-            self.resolver.resolve_external = original_resolve
-
-    def test_size_limit_with_negative_size(self):
-        """Test size limit check with negative size through public API."""
-        # Note: Negative size can't be tested directly through public API
-        # as HTTP responses don't have negative sizes. This test verifies
-        # that the public API handles edge cases gracefully.
+    def test_size_limit_with_small_valid_response(self):
+        """Test that a small valid response passes size limit checks."""
         import httpx
 
-        # Use MockTransport to simulate normal response
         def handler(request: httpx.Request) -> httpx.Response:
             return httpx.Response(200, json={"type": "object"}, request=request)
 
-        transport = httpx.MockTransport(handler)
+        resolver = RefResolver(
+            config=self.config,
+            tenant_id=f"test-small-{uuid.uuid4()}",
+            user_id="test-user",
+            max_ref_size=1000,
+            enable_caching=False,
+            httpx_transport=httpx.MockTransport(handler),
+        )
 
-        # Store original resolve_external
-        original_resolve = self.resolver.resolve_external
-
-        # Mock resolve_external to use MockTransport
-        def mock_resolve_external(ref_path: str):
-            with httpx.Client(transport=transport) as client:
-                response = client.get(ref_path, timeout=5)
-                response.raise_for_status()
-                return response.json()
-
-        self.resolver.resolve_external = mock_resolve_external
-
-        try:
-            # Test through public API - size limit check happens internally
-            result = self.resolver.resolve_external("https://example.com/schema.json")
-            self.assertIsNotNone(result)
-        except (ValueError, ODPSRefResolutionError):
-            # May raise exception for invalid size
-            pass
-        finally:
-            self.resolver.resolve_external = original_resolve
-
-    def test_size_limit_with_zero_size(self):
-        """Test size limit check with zero size through public API."""
-        import httpx
-
-        # Use MockTransport to simulate empty response
-        def handler(request: httpx.Request) -> httpx.Response:
-            return httpx.Response(200, content=b"", request=request)
-
-        transport = httpx.MockTransport(handler)
-
-        # Store original resolve_external
-        original_resolve = self.resolver.resolve_external
-
-        # Mock resolve_external to use MockTransport
-        def mock_resolve_external(ref_path: str):
-            with httpx.Client(transport=transport) as client:
-                response = client.get(ref_path, timeout=5)
-                response.raise_for_status()
-                # Size limit check happens internally in resolve_external
-                if len(response.content) == 0:
-                    # Empty response - should handle gracefully
-                    return {}
-                return response.json()
-
-        self.resolver.resolve_external = mock_resolve_external
-
-        try:
-            # Test through public API - resolve_external() checks size limit internally
-            result = self.resolver.resolve_external("https://example.com/schema.json")
-            # Should handle zero size gracefully
-            self.assertIsNotNone(result or {})
-        except ODPSRefResolutionError:
-            # May raise exception if zero not allowed
-            pass
-        finally:
-            self.resolver.resolve_external = original_resolve
+        # Small valid response should pass all checks.
+        result = resolver.resolve_external("https://example.com/schema.json")
+        self.assertIsNotNone(result)
+        self.assertEqual(result["type"], "object")
 
     def test_timeout_check_with_none_start_time(self):
-        """Test timeout check with None start_time through public API."""
+        """Test timeout check with None start_time — resolve() initializes it."""
         import httpx
 
+        def handler(request: httpx.Request) -> httpx.Response:
+            return httpx.Response(200, json={"type": "object"}, request=request)
+
         resolver = RefResolver(
-            config=self.config, tenant_id="test-tenant", user_id="test-user", enable_caching=False
+            config=self.config,
+            tenant_id=f"test-timeout-none-{uuid.uuid4()}",
+            user_id="test-user",
+            timeout_per_ref=5,
+            timeout_total=30,
+            enable_caching=False,
+            httpx_transport=httpx.MockTransport(handler),
         )
         resolver._start_time = None  # type: ignore[misc]  # test: edge-case type exercise
 
-        # Use MockTransport to simulate external ref resolution
-        def handler(request: httpx.Request) -> httpx.Response:
-            return httpx.Response(200, json={"type": "object"}, request=request)
-
-        transport = httpx.MockTransport(handler)
-
-        # Store original resolve_external
-        original_resolve = resolver.resolve_external
-
-        # Mock resolve_external to use MockTransport
-        def mock_resolve_external(ref_path: str):
-            with httpx.Client(transport=transport) as client:
-                response = client.get(ref_path, timeout=5)
-                response.raise_for_status()
-                return response.json()
-
-        resolver.resolve_external = mock_resolve_external
-
-        try:
-            # Test through public API - resolve_external() checks timeout internally
-            # None start_time should be initialized or handled gracefully
-            result = resolver.resolve_external("https://example.com/schema.json")
-            # Should handle None start_time gracefully (initializes it)
-            self.assertIsNotNone(result)
-        except (TypeError, ValueError, ODPSRefResolutionError):
-            # May raise exception for None start_time
-            pass
-        finally:
-            resolver.resolve_external = original_resolve
+        # resolve() calls _check_timeout(), which should initialize _start_time
+        # when it is None, then proceed with resolution.
+        result = resolver.resolve("https://example.com/schema.json")
+        self.assertIsNotNone(result)
+        # After resolve(), _start_time must have been initialized.
+        self.assertIsNotNone(resolver._start_time)
 
     def test_security_logging_with_none_event_type(self):
-        """Test security logging with None event_type."""
-        try:
+        """Test security logging with None event_type raises TypeError."""
+        with self.assertRaises((TypeError, ValueError)):
             self.resolver._security_logger.log_security_violation(
                 event_type=None,  # type: ignore[misc]  # test: edge-case type exercise
                 severity=SecuritySeverity.HIGH,
                 tenant_id="test-tenant",
                 user_id="test-user",
             )
-            # May raise exception
-        except (TypeError, ValueError):
-            # None event_type should raise exception
-            pass
 
     def test_security_logging_with_none_severity(self):
-        """Test security logging with None severity."""
-        try:
+        """Test security logging with None severity raises TypeError."""
+        with self.assertRaises((TypeError, ValueError)):
             self.resolver._security_logger.log_security_violation(
                 event_type=SecurityEventType.INVALID_URL,
                 severity=None,  # type: ignore[misc]  # test: edge-case type exercise
                 tenant_id="test-tenant",
                 user_id="test-user",
             )
-            # May raise exception
-        except (TypeError, ValueError):
-            # None severity should raise exception
-            pass
 
     def test_url_validation_with_very_long_host(self):
-        """Test URL validation with very long hostname through public API."""
-        import httpx
-
+        """Test URL validation with very long hostname — is_url_allowed rejects it."""
         long_host = "a" * 1000 + ".com"
         url = f"https://{long_host}/schema.json"
 
-        # Use MockTransport to simulate external ref resolution
-        def handler(request: httpx.Request) -> httpx.Response:
-            return httpx.Response(200, json={"type": "object"}, request=request)
+        # Create a fresh resolver with a unique tenant to avoid rate limit
+        # exhaustion interfering with the security validation check.
+        resolver = RefResolver(
+            config=self.config,
+            tenant_id=f"test-longhost-{uuid.uuid4()}",
+            user_id="test-user",
+            enable_caching=False,
+        )
 
-        transport = httpx.MockTransport(handler)
-
-        # Store original resolve_external
-        original_resolve = self.resolver.resolve_external
-
-        # Mock resolve_external to use MockTransport
-        def mock_resolve_external(ref_path: str):
-            with httpx.Client(transport=transport) as client:
-                response = client.get(ref_path, timeout=5)
-                response.raise_for_status()
-                return response.json()
-
-        self.resolver.resolve_external = mock_resolve_external
-
-        try:
-            # Test through public API - resolve_external() validates URL internally
-            result = self.resolver.resolve_external(url)
-            # Should handle very long host gracefully
-            self.assertIsNotNone(result)
-        except ODPSRefResolutionError:
-            # May raise exception if host too long
-            pass
-        finally:
-            self.resolver.resolve_external = original_resolve
+        # The host is not in the allowlist, so is_url_allowed should reject it.
+        # No HTTP call should be made — the security check runs first.
+        with self.assertRaises(ODPSRefResolutionError) as cm:
+            resolver.resolve_external(url)
+        self.assertEqual(
+            cm.exception.error_code,
+            ODPSRefResolutionError.ERROR_CODE_SECURITY_VIOLATION,
+        )
+        self.assertIn("not allowed", cm.exception.message.lower())
 
     def test_path_traversal_with_special_characters(self):
         """Test path traversal prevention with special characters."""
         attack_path = "../../../etc/passwd<>&\"'"
-        try:
+        with self.assertRaises(ODPSRefResolutionError) as cm:
             self.resolver.resolve_local(attack_path)
-            # Should detect path traversal
-        except ODPSRefResolutionError:
-            # Should raise exception for path traversal
-            pass
+        self.assertEqual(
+            cm.exception.error_code,
+            ODPSRefResolutionError.ERROR_CODE_SECURITY_VIOLATION,
+        )

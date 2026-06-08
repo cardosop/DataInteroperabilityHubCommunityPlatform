@@ -172,7 +172,7 @@ class ODPSNormalizer:
         except ODPSNormalizationError as e:
             # Re-raise ODPSNormalizationError with full context
             errors.append(str(e))
-            logger.error(
+            logger.warning(
                 "odps_normalization_error",
                 error_code=e.error_code,
                 field_path=e.context.get("field_path"),

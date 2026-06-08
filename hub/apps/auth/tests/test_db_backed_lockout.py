@@ -89,6 +89,14 @@ class DBBackedLockoutTest(TestCase):
         lockout_cache_key = _account_lockout_cache_key(self.user.email)
         cache.delete(lockout_cache_key)
 
+        # Progressive backoff sets locked_until on the User model independently
+        # of the LoginAttempt window — clear it so the next login isn't blocked.
+        self.user.refresh_from_db()
+        self.user.locked_until = None
+        self.user.lockout_level = 0
+        self.user.failed_login_count = 0
+        self.user.save(update_fields=["locked_until", "lockout_level", "failed_login_count"])
+
         success_response = self._post_login("testpass123")
         self.assertEqual(success_response.status_code, status.HTTP_200_OK)
         self.assertIsNone(cache.get(lockout_cache_key))

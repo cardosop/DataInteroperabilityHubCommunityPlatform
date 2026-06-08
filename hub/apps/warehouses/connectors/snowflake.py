@@ -11,7 +11,7 @@ import logging
 import time
 from typing import Any, Dict, List, Optional
 
-from hub.apps.warehouses.connectors import (
+from hub.apps.warehouses.base import (
     QueryResult,
     SchemaColumn,
     WarehouseConnector,
@@ -56,6 +56,7 @@ class SnowflakeConnector(WarehouseConnector):
                 user=config.get("user", ""),
                 authenticator=config.get("authenticator", "snowflake"),
                 password=config.get("password"),
+                token=config.get("token"),
                 private_key=config.get("private_key"),
                 warehouse=config.get("warehouse"),
                 database=config.get("database"),
@@ -121,7 +122,10 @@ class SnowflakeConnector(WarehouseConnector):
                 row_count=len(rows),
                 duration_ms=round(elapsed, 2),
             )
-            self._record_cost(self._tenant_id, 0.0, "snowflake_credits")
+            # Estimate credits: Small warehouse (2 credits/hr), min 60s billing.
+            # Per-query credit attribution can be refined via QUERY_HISTORY.
+            cost_credits = max(elapsed, 60.0) / 3600.0 * 2.0
+            self._record_cost(self._tenant_id, cost_credits, "snowflake_credits")
             return result
         except Exception:
             logger.exception(

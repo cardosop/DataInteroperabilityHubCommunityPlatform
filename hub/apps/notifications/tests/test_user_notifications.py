@@ -141,6 +141,13 @@ class UserNotificationViewSetTest(TestCase):
             slug=f"o-{uid}",
             kyc_status=KYCStatus.VERIFIED,
         )
+        # Ensure active subscription so TenantSuspensionMiddleware allows
+        # POST/PUT/PATCH/DELETE (required by Phase 25.2.4 billing check).
+        from hub.apps.testing.billing_support import ensure_tenant_has_active_subscription
+
+        ensure_tenant_has_active_subscription(self.tenant)
+        ensure_tenant_has_active_subscription(self.other_tenant)
+
         self.user = User.objects.create_user(
             email=f"u-{uid}@example.com", password="x", tenant=self.tenant
         )

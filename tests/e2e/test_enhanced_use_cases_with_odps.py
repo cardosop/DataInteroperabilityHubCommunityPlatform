@@ -898,7 +898,7 @@ class UC_MKT_002_Enhanced_MarketplacePurchaseWithODPSTest(E2ETestBase):
 
         # Provider tenant (seller)
         self.provider_tenant = Tenant.objects.create(
-            name="Provider Tenant", slug="provider-tenant", kyc_status=KYCStatus.VERIFIED
+            name=f"Provider Tenant {uuid.uuid4().hex[:8]}", slug=f"provider-tenant-{uuid.uuid4().hex[:8]}", kyc_status=KYCStatus.VERIFIED
         )
         ensure_tenant_has_active_subscription(self.provider_tenant)
         self.provider_user = User.objects.create_user(
@@ -923,7 +923,7 @@ class UC_MKT_002_Enhanced_MarketplacePurchaseWithODPSTest(E2ETestBase):
 
         # Consumer tenant (buyer)
         self.consumer_tenant = Tenant.objects.create(
-            name="Consumer Tenant", slug="consumer-tenant", kyc_status=KYCStatus.VERIFIED
+            name=f"Consumer Tenant {uuid.uuid4().hex[:8]}", slug=f"consumer-tenant-{uuid.uuid4().hex[:8]}", kyc_status=KYCStatus.VERIFIED
         )
         ensure_tenant_has_active_subscription(self.consumer_tenant)
         self.consumer_user = User.objects.create_user(

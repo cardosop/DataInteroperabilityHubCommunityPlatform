@@ -1,4 +1,6 @@
 """
+
+import uuid
 Pytest configuration for E2E tests.
 """
 import sys
@@ -1729,7 +1731,7 @@ if DJANGO_AVAILABLE and TestCase:
             try:
                 from hub.apps.jobs.tasks import process_job
 
-                process_job(str(run.job_id), job_type=getattr(JobType, job_type_str))
+                process_job(str(run.job_id), type=getattr(JobType, job_type_str))
             except Exception as exc:
                 import logging
 

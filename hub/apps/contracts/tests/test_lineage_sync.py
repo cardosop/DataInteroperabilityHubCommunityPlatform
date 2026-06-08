@@ -30,6 +30,8 @@ from django.db import IntegrityError, transaction
 from django.test import TransactionTestCase
 from django.utils import timezone
 
+from hub.apps.contracts.tests.test_base import ContractsTransactionTestBase
+
 
 def _create_tenant(prefix: str = "LIN"):
     from hub.apps.tenants.models import Tenant
@@ -83,7 +85,7 @@ def _create_contract(tenant, *, lineage_entries=None, version: int = 1):
 
 
 @pytest.mark.django_db(transaction=True)
-class TestEdgeCreatedOnContractSave(TransactionTestCase):
+class TestEdgeCreatedOnContractSave(ContractsTransactionTestBase):
     """REQ-LIN-001 / REQ-LIN-002 — saving a Contract with one upstream
     reference produces exactly one LineageEdge row."""
 
@@ -218,6 +220,10 @@ class TestEdgeCreatedOnContractSave(TransactionTestCase):
         before = LineageEdge.objects.filter(tenant=tenant).count()
         assert before >= 1
 
+        # REQ-LIN-001: deleting a Tenant must cascade-delete every
+        # LineageEdge scoped to that tenant.  The ``lineage_edge_id``
+        # FK on ``pipeline_dependencies`` is guaranteed to exist by
+        # orchestration migration 0012.
         tenant.delete()
 
         after = LineageEdge.objects.filter(tenant_id=tenant.id).count()
@@ -232,7 +238,7 @@ class TestEdgeCreatedOnContractSave(TransactionTestCase):
 
 
 @pytest.mark.django_db(transaction=True)
-class TestSignalRunsOnCommitOnly(TransactionTestCase):
+class TestSignalRunsOnCommitOnly(ContractsTransactionTestBase):
     """REQ-LIN-002 scenario: handler runs only inside ``on_commit`` so
     a rolled-back transaction does NOT create edges."""
 
@@ -278,7 +284,7 @@ class TestSignalRunsOnCommitOnly(TransactionTestCase):
 
 
 @pytest.mark.django_db(transaction=True)
-class TestValidFromIsDBSide(TransactionTestCase):
+class TestValidFromIsDBSide(ContractsTransactionTestBase):
     """The signal handler MUST use DB-side ``NOW()`` for ``valid_from``.
     Pinned by checking the DB-recorded value falls within seconds of
     ``timezone.now()`` on a system with no app↔DB clock skew (the test
@@ -321,7 +327,7 @@ class TestValidFromIsDBSide(TransactionTestCase):
 
 
 @pytest.mark.django_db(transaction=True)
-class TestOpenEdgeUniqueConstraint(TransactionTestCase):
+class TestOpenEdgeUniqueConstraint(ContractsTransactionTestBase):
     """Direct ORM insert that violates the partial unique constraint
     (two open rows with identical scope tuple) must raise
     ``IntegrityError``. Closed rows can repeat the scope."""
@@ -381,7 +387,7 @@ class TestOpenEdgeUniqueConstraint(TransactionTestCase):
 
 
 @pytest.mark.django_db(transaction=True)
-class TestEdgeWriteMetric(TransactionTestCase):
+class TestEdgeWriteMetric(ContractsTransactionTestBase):
     """REQ-LIN-002 #7: the handler emits
     ``lineage_edge_writes_total{operation}`` per edge mutation. We
     patch the metric callable at the import-site that the handler
@@ -419,7 +425,7 @@ class TestEdgeWriteMetric(TransactionTestCase):
 
 
 @pytest.mark.django_db(transaction=True)
-class TestEdgeAuditEvents(TransactionTestCase):
+class TestEdgeAuditEvents(ContractsTransactionTestBase):
     """REQ-LIN-007: ``LINEAGE_EDGE_CREATED`` and ``LINEAGE_EDGE_DELETED``
     audit events SHALL fire on every edge mutation. Pre-fix the
     constants existed in ``hub/apps/audit/models.py`` but no code site

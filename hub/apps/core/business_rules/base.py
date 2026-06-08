@@ -584,6 +584,12 @@ class BusinessRules(ABC):
                 except Exception:
                     pass
 
+            # Phase 274.8 — emit observability hook on every result
+            try:
+                self._emit_observability(result)
+            except Exception:
+                pass
+
             return result
 
         except Exception as e:
@@ -620,12 +626,36 @@ class BusinessRules(ABC):
             # Phase 78: also count exceptions as validation failures
             _inc_br_failure(self, rule_name, context)
 
-            # Return error result
-            return ValidationResult(
+            # Phase 274.8.5 — route unexpected exceptions to Sentry
+            # via the project's track_error facade so on-call gets paged.
+            try:
+                from hub.apps.core.error_handling.error_tracking import track_error
+                track_error(
+                    error=e,
+                    error_code="BUSINESS_RULE_EXECUTION_FAILED",
+                    context={
+                        "rule_name": rule_name,
+                        "exception_type": type(e).__name__,
+                    },
+                )
+            except Exception:
+                pass
+
+            # Build error result
+            error_result = ValidationResult(
                 is_valid=False,
                 errors=[f"Business rule execution failed: {str(e)}"],
                 details={'exception_type': type(e).__name__}
             )
+
+            # Phase 274.8 — emit observability hook on exception path
+            try:
+                self._emit_observability(error_result)
+            except Exception:
+                pass
+
+            # Return error result
+            return error_result
         finally:
             # End span context manager
             if span_context:
@@ -633,6 +663,27 @@ class BusinessRules(ABC):
                     span_context.__exit__(None, None, None)
                 except Exception:
                     pass
+
+    # ── Phase 274.8.1 — observability hook on the base class ──────────
+
+    def _emit_observability(self, result: ValidationResult) -> None:
+        """Emit metrics/logs for a rule execution result.
+
+        ``is_valid=False`` is NOT a Sentry event (normal business signal).
+        Exception inside ``validate_*`` IS (handled in the execute()
+        exception path via track_error).
+
+        Subclasses may override to add custom dimensions.
+        """
+        try:
+            from hub.apps.observability.otel_metrics import business_rule_validation_failures_total
+
+            if not result.is_valid:
+                business_rule_validation_failures_total.labels(
+                    rule=self.get_rule_name(),
+                ).inc()
+        except Exception:
+            pass
 
     def compose(
         self,
@@ -747,24 +798,11 @@ class BusinessRules(ABC):
 class BusinessRulesObservabilityMixin:
     """Phase 274.8.1 — observability hook for all business rules.
 
-    Provides ``_emit_observability(result)`` that subclasses can
-    override to standardize OTel span attributes + audit emission.
+    .. deprecated::
+        ``_emit_observability`` now lives on :class:`BusinessRules` itself.
+        This mixin is a no-op shim for backward compatibility.  New code
+        should inherit directly from ``BusinessRules``.
+
     The chain runner (274.7.2) owns the parent span; per-rule
     emission stays for failure-counter granularity.
     """
-
-    def _emit_observability(self, result: ValidationResult) -> None:
-        """Emit metrics/logs for a rule execution result.
-
-        ``is_valid=False`` is NOT a Sentry event.
-        Exception inside ``validate_*`` IS.
-        """
-        try:
-            from hub.apps.observability.otel_metrics import business_rule_validation_failures_total
-
-            if not result.is_valid:
-                business_rule_validation_failures_total.labels(
-                    rule=self.get_rule_name(),
-                ).inc()
-        except Exception:
-            pass

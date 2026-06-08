@@ -118,7 +118,9 @@ class TestDQServiceClientCircuitBreaker(TestCase):
         }
         mock_response.raise_for_status = Mock()
 
-        with patch.object(self.service_client.client, 'request', return_value=mock_response):
+        # _request_with_retry uses self.client.send(prepared_request),
+        # NOT self.client.request(...).  Patch the actual call path.
+        with patch.object(self.service_client.client, 'send', return_value=mock_response):
             result = self.service_client.run_dq(
                 file_content=file_content,
                 file_format="csv",
@@ -136,7 +138,7 @@ class TestDQServiceClientCircuitBreaker(TestCase):
         def failing_request(*args, **kwargs):
             raise httpx.RequestError("Service unavailable")
 
-        with patch.object(self.service_client.client, 'request', side_effect=failing_request):
+        with patch.object(self.service_client.client, 'send', side_effect=failing_request):
             # Trigger failures to open circuit
             for i in range(5):
                 try:
@@ -170,7 +172,7 @@ class TestDQServiceClientCircuitBreaker(TestCase):
         def failing_request(*args, **kwargs):
             raise httpx.RequestError("Service unavailable")
 
-        with patch.object(self.service_client.client, 'request', side_effect=failing_request):
+        with patch.object(self.service_client.client, 'send', side_effect=failing_request):
             # Trigger 3 failures
             for i in range(3):
                 try:
@@ -207,7 +209,7 @@ class TestDQServiceClientCircuitBreaker(TestCase):
         def failing_request(*args, **kwargs):
             raise httpx.RequestError("Service unavailable")
 
-        with patch.object(self.service_client.client, 'request', side_effect=failing_request):
+        with patch.object(self.service_client.client, 'send', side_effect=failing_request):
             for i in range(5):
                 try:
                     self.service_client.run_dq(
@@ -220,10 +222,15 @@ class TestDQServiceClientCircuitBreaker(TestCase):
 
         self.assertEqual(self.service_client._circuit_breaker.get_state(), CircuitBreakerState.OPEN)
 
-        # Manually set opened_at to past
+        # Simulate time passage (60s timeout + 1s) so the breaker
+        # transitions to HALF_OPEN on the next call.  The circuit
+        # breaker uses datetime.now(timezone.utc) internally, not
+        # django.utils.timezone.now, so patching the latter would
+        # be ineffective.  _set_opened_at is the supported test hook.
         from datetime import datetime, timedelta, timezone
+
         self.service_client._circuit_breaker._set_opened_at(
-            datetime.now(timezone.utc) - timedelta(seconds=61)  # 61 seconds ago
+            datetime.now(timezone.utc) - timedelta(seconds=61)
         )
 
         # Mock successful response
@@ -231,29 +238,35 @@ class TestDQServiceClientCircuitBreaker(TestCase):
         mock_response.json.return_value = {
             "overall_status": "PASS",
             "quality_score": 0.95,
-            "checks": []
+            "checks": [],
         }
         mock_response.raise_for_status = Mock()
 
-        with patch.object(self.service_client.client, 'request', return_value=mock_response):
+        with patch.object(self.service_client.client, "send", return_value=mock_response):
             # Should transition to HALF_OPEN
             result = self.service_client.run_dq(
                 file_content=file_content,
                 file_format="csv",
-                use_cache=False
+                use_cache=False,
             )
 
             self.assertEqual(result["overall_status"], "PASS")
-            self.assertEqual(self.service_client._circuit_breaker.get_state(), CircuitBreakerState.HALF_OPEN)
+            self.assertEqual(
+                self.service_client._circuit_breaker.get_state(),
+                CircuitBreakerState.HALF_OPEN,
+            )
 
             # Another success should close circuit
             result = self.service_client.run_dq(
                 file_content=file_content,
                 file_format="csv",
-                use_cache=False
+                use_cache=False,
             )
 
-            self.assertEqual(self.service_client._circuit_breaker.get_state(), CircuitBreakerState.CLOSED)
+            self.assertEqual(
+                self.service_client._circuit_breaker.get_state(),
+                CircuitBreakerState.CLOSED,
+            )
 
     def test_run_dq_fallback_response_structure(self):
         """Test fallback response has correct structure."""
@@ -263,7 +276,7 @@ class TestDQServiceClientCircuitBreaker(TestCase):
         def failing_request(*args, **kwargs):
             raise httpx.RequestError("Service unavailable")
 
-        with patch.object(self.service_client.client, 'request', side_effect=failing_request):
+        with patch.object(self.service_client.client, 'send', side_effect=failing_request):
             for i in range(5):
                 try:
                     self.service_client.run_dq(

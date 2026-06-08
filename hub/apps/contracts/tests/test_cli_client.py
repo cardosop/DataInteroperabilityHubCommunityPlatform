@@ -14,6 +14,8 @@ MockTransport is used only for endpoint verification (acceptable test utility).
 Real service calls handle unavailability gracefully.
 """
 
+import unittest
+
 import httpx
 import pytest
 from django.core.cache import cache
@@ -25,22 +27,21 @@ from hub.apps.contracts.cli_client import (
     group_errors_by_category,
     interpret_validation_status,
 )
+from hub.apps.contracts.tests.test_base import check_datacontract_cli_available
 
 pytestmark = pytest.mark.django_db(transaction=True)
 
-
-def check_datacontract_cli_available():
-    """Check if DataContract CLI service is available"""
-    try:
-        client = DataContractCLIClient()
-        health = client.health_check()
-        return isinstance(health, dict) and health.get("status") == "healthy"
-    except Exception:
-        return False
+_DATA_CONTRACT_CLI_AVAILABLE = check_datacontract_cli_available()
 
 
 class DataContractCLIClientTest(TestCase):
     """Comprehensive tests for DataContract CLI client"""
+
+    @classmethod
+    def setUpClass(cls):
+        super().setUpClass()
+        if not _DATA_CONTRACT_CLI_AVAILABLE:
+            raise unittest.SkipTest("DataContract CLI service not available")
 
     def setUp(self):
         """Set up test fixtures"""
@@ -54,80 +55,65 @@ class DataContractCLIClientTest(TestCase):
     # ========== HEALTH CHECK TESTS ==========
 
     def test_health_check_success(self):
-        """Test successful health check with real service"""
-        try:
-            result = self.client.health_check()
-            self.assertIsInstance(result, dict)
-            self.assertIn("status", result)
-            if result.get("status") == "healthy":
-                self.assertIn("cli_version", result)
-        except Exception as e:
-            self.skipTest(f"DataContract CLI service not available: {e}")
-
-    def test_health_check_endpoint_construction(self):
-        """Test that health_check returns valid response from the real service."""
+        """Successful health check returns status and cli_version."""
         result = self.client.health_check()
-
-        # health_check returns a dict with at least "status"
         self.assertIsInstance(result, dict)
         self.assertIn("status", result)
+        self.assertEqual(result["status"], "healthy",
+            "Health check must report 'healthy' when service is available")
+        self.assertIn("cli_version", result)
 
     # ========== VALIDATION TESTS ==========
 
     def test_validate_success(self):
-        """Test successful contract validation"""
-        # In test mode, validate() may return early with graceful degradation
-        # This tests the graceful degradation path
-        result = self.client.validate(raw_contract='{"id": "test", "name": "Test"}', format="JSON")
+        """Successful contract validation returns a valid status for a well-formed contract."""
+        result = self.client.validate(
+            raw_contract='{"id": "test", "name": "Test", "schema": {"fields": [{"name": "id", "type": "string"}]}}',
+            format="JSON",
+        )
 
-        # Verify response structure (test mode or real)
         self.assertIsInstance(result, dict)
         self.assertIn("validation_status", result)
-        # Test mode returns VALID, real service may return SKIPPED for incomplete contracts
-        self.assertIn(result.get("validation_status"), ["VALID", "valid", "INVALID", "invalid", "SKIPPED", "skipped"])
-
-    def test_validate_with_real_service(self):
-        """Test validation with real DataContract CLI service"""
-        if not check_datacontract_cli_available():
-            self.skipTest("DataContract CLI service not available - skipping test")
-
-        try:
-            result = self.client.validate(
-                raw_contract='{"id": "test", "name": "Test", "schema": {"fields": [{"name": "id", "type": "string"}]}}',
-                format="JSON",
-            )
-
-            # Verify result structure
-            self.assertIsInstance(result, dict)
-            self.assertIn("validation_status", result)
-        except Exception as e:
-            # Service may not be fully configured - that's OK
-            self.skipTest(f"DataContract CLI service validation failed: {e}")
+        # A well-formed ODCS contract with schema.fields must pass validation.
+        # The CLI returns uppercase statuses; accept the canonical success set.
+        self.assertIn(
+            result["validation_status"],
+            {"VALID", "WARNING_ONLY", "SKIPPED"},
+            f"Expected VALID, WARNING_ONLY, or SKIPPED, got {result.get('validation_status')}",
+        )
 
     def test_validate_with_cache(self):
-        """Test validation with cache hit through public API"""
-        # First call to populate cache (validate() internally calls _compute_contract_hash() and _get_cache_key())
-        contract_content = '{"id": "test"}'
+        """Validation with cache enabled returns consistent results across calls."""
+        contract_content = '{"id": "test", "name": "Test", "schema": {"fields": [{"name": "id", "type": "string"}]}}'
         result1 = self.client.validate(raw_contract=contract_content, format="JSON", use_cache=True)
-
-        # Second call should use cache (if caching is working)
-        # Note: In test environment, validate() returns mock result, so cache behavior is tested indirectly
-        # by verifying that validate() completes successfully with use_cache=True
         result2 = self.client.validate(raw_contract=contract_content, format="JSON", use_cache=True)
 
-        # Both calls should return valid results
         self.assertIsInstance(result1, dict)
         self.assertIsInstance(result2, dict)
-        # In test environment, both should return mock validation result
         self.assertIn("validation_status", result1)
         self.assertIn("validation_status", result2)
+        # Both calls must return the same validation_status for the same input.
+        self.assertEqual(
+            result1["validation_status"], result2["validation_status"],
+            "Cached and non-cached calls must return the same validation_status",
+        )
 
     def test_validate_endpoint_construction(self):
-        """Test that validate constructs endpoint correctly using MockTransport"""
+        """Validate constructs the correct ``/validate`` endpoint and POST method.
+
+        Uses ``use_cache=False`` so ``validate()`` does NOT call
+        ``health_check()`` first (which would make a real request and
+        trip the circuit breaker before our mock ever fires).  Also
+        resets the circuit breaker to CLOSED before the test because it
+        is Redis-backed and stale OPEN state from prior ``--keepdb``
+        runs would cause an immediate fallback without our mock firing.
+        """
+        # Reset circuit breaker (Redis-backed, survives test instances).
+        self.client._circuit_breaker.reset()
+
         recorded_requests = []
 
         def handler(request: httpx.Request) -> httpx.Response:
-            """Record request and return mock response"""
             recorded_requests.append(request)
             return httpx.Response(
                 200,
@@ -136,8 +122,6 @@ class DataContractCLIClientTest(TestCase):
             )
 
         transport = httpx.MockTransport(handler)
-
-        # Temporarily replace _make_request to use MockTransport
         original_make_request = self.client._make_request
 
         def mock_make_request(endpoint, data, timeout=None, max_retries=2):
@@ -150,10 +134,12 @@ class DataContractCLIClientTest(TestCase):
         self.client._make_request = mock_make_request
 
         try:
-            result = self.client.validate(raw_contract='{"id": "test"}', format="JSON")
+            result = self.client.validate(
+                raw_contract='{"id": "test"}', format="JSON", use_cache=False,
+            )
 
-            # Verify endpoint is '/validate'
-            self.assertEqual(len(recorded_requests), 1)
+            self.assertEqual(len(recorded_requests), 1,
+                "Expected exactly 1 request through the mock transport")
             request = recorded_requests[0]
             self.assertEqual(request.url.path, "/validate")
             self.assertEqual(request.method, "POST")
@@ -162,18 +148,19 @@ class DataContractCLIClientTest(TestCase):
             self.client._make_request = original_make_request
 
     def test_validate_handles_service_unavailable(self):
-        """Test validate handles service unavailability gracefully"""
-        # Use invalid endpoint to simulate service unavailable
+        """Validate returns ERROR fallback dict when service is unreachable."""
         original_base_url = self.client.base_url
         self.client.base_url = "http://localhost:99999"  # Invalid port
 
         try:
             result = self.client.validate(raw_contract='{"id": "test"}', format="JSON")
-            # Should handle error via circuit breaker or graceful degradation
-            self.assertIsInstance(result, dict)
-        except Exception:
-            # Expected - service unavailable
-            pass
+            self.assertIsInstance(result, dict,
+                "Must return a dict (fallback response) when service is unavailable")
+            self.assertIn("validation_status", result)
+            self.assertEqual(result["validation_status"], "ERROR",
+                "Unreachable service must return validation_status='ERROR'")
+            self.assertIn("error", result,
+                "Fallback response must include an 'error' key")
         finally:
             self.client.base_url = original_base_url
 
@@ -218,18 +205,12 @@ class DataContractCLIClientTest(TestCase):
             self.client._make_request = original_make_request
 
     def test_lint_with_real_service(self):
-        """Test lint with real DataContract CLI service"""
-        if not check_datacontract_cli_available():
-            self.skipTest("DataContract CLI service not available - skipping test")
-
-        try:
-            result = self.client.lint(raw_contract='{"id": "test", "name": "Test"}', format="JSON")
-
-            # Verify result structure
-            self.assertIsInstance(result, dict)
-            self.assertIn("issues", result)
-        except Exception as e:
-            self.skipTest(f"DataContract CLI service lint failed: {e}")
+        """Lint with real CLI service returns issues list."""
+        result = self.client.lint(raw_contract='{"id": "test", "name": "Test"}', format="JSON")
+        self.assertIsInstance(result, dict)
+        self.assertIn("issues", result)
+        self.assertIsInstance(result["issues"], list,
+            "Lint 'issues' must be a list")
 
     # ========== CONVERT TESTS ==========
 
@@ -274,70 +255,68 @@ class DataContractCLIClientTest(TestCase):
             self.client._make_request = original_make_request
 
     def test_convert_with_real_service(self):
-        """Test convert with real DataContract CLI service"""
-        if not check_datacontract_cli_available():
-            self.skipTest("DataContract CLI service not available - skipping test")
-
-        try:
-            result = self.client.convert(
-                raw_contract='{"id": "test", "name": "Test"}',
-                source_format="JSON",
-                target_format="YAML",
-            )
-
-            # Verify result structure
-            self.assertIsInstance(result, dict)
-            self.assertIn("converted_contract", result)
-            self.assertIn("target_format", result)
-        except Exception as e:
-            self.skipTest(f"DataContract CLI service convert failed: {e}")
+        """Convert with real CLI service returns converted_contract and target_format."""
+        result = self.client.convert(
+            raw_contract='{"id": "test", "name": "Test"}',
+            source_format="JSON",
+            target_format="YAML",
+        )
+        self.assertIsInstance(result, dict)
+        self.assertIn("converted_contract", result)
+        self.assertIn("target_format", result)
+        self.assertIsNotNone(result["converted_contract"],
+            "converted_contract must not be None")
+        self.assertEqual(result["target_format"], "YAML",
+            "target_format must match the requested YAML format")
 
     # ========== ERROR HANDLING ==========
 
     def test_validate_handles_timeout(self):
-        """Test validate handles timeout gracefully"""
-        # Use very short timeout to trigger timeout
+        """Validate with very short timeout returns ERROR fallback dict."""
         original_timeout = self.client.timeout
         self.client.timeout = 0.001  # Very short timeout
 
         try:
             result = self.client.validate(raw_contract='{"id": "test"}', format="JSON")
-            # Should handle timeout via retry logic or graceful degradation
-            self.assertIsInstance(result, dict)
-        except Exception:
-            # Expected if timeout occurs
-            pass
+            self.assertIsInstance(result, dict,
+                "Must return a dict even with short timeout (circuit breaker fallback)")
+            self.assertIn("validation_status", result)
+            # A very short timeout may or may not trigger — local services
+            # can respond within 1ms. Either ERROR (timeout hit) or a real
+            # status (fast response) is valid; the contract is that we
+            # never crash.
+            self.assertIn(result["validation_status"],
+                {"VALID", "WARNING_ONLY", "INVALID", "ERROR", "SKIPPED"},
+                f"Timeout path returned unexpected status: {result.get('validation_status')}")
         finally:
             self.client.timeout = original_timeout
 
     def test_validate_handles_invalid_json(self):
-        """Test validate handles invalid JSON gracefully"""
-        # In test mode, may return early
+        """Validate handles invalid JSON gracefully — returns dict with validation_status."""
         result = self.client.validate(raw_contract="invalid json", format="JSON")
-
-        # Should handle gracefully
         self.assertIsInstance(result, dict)
+        self.assertIn("validation_status", result,
+            "Response must include validation_status even for invalid JSON")
 
     # ========== EDGE CASES ==========
 
     def test_validate_empty_contract(self):
-        """Test validate handles empty contract"""
+        """Validate handles empty JSON contract — returns dict with validation_status."""
         result = self.client.validate(raw_contract="{}", format="JSON")
-
-        # Should handle empty contract
         self.assertIsInstance(result, dict)
+        self.assertIn("validation_status", result,
+            "Response must include validation_status even for empty contract")
 
     def test_validate_large_contract(self):
-        """Test validate handles large contract"""
+        """Validate handles large contract — must not crash, must return a dict."""
         large_contract = '{"id": "test", "data": "' + "x" * 100000 + '"}'
 
-        try:
-            result = self.client.validate(raw_contract=large_contract, format="JSON")
-            # Should handle large contract (may trigger async or timeout)
-            self.assertIsInstance(result, dict)
-        except Exception:
-            # May timeout with large contract - that's OK
-            pass
+        result = self.client.validate(raw_contract=large_contract, format="JSON")
+        self.assertIsInstance(result, dict,
+            "Large contract must return a dict (fallback or async trigger)")
+        self.assertIn("validation_status", result)
+        self.assertIn(result["validation_status"], {"VALID", "WARNING_ONLY", "INVALID", "ERROR", "SKIPPED"},
+            "Large contract must return a valid validation_status value")
 
 
 class InterpretValidationStatusTest(TestCase):

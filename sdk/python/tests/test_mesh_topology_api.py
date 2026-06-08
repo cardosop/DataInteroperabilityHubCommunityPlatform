@@ -10,7 +10,7 @@ Tests topology operations with comprehensive error handling.
 import os
 import pytest
 import uuid
-import subprocess
+import asyncio
 from typing import Optional
 from unittest.mock import AsyncMock, MagicMock
 from datahub_interoperability import DataHubClient, DataHubClientConfig, MeshAPI
@@ -18,113 +18,20 @@ from datahub_interoperability.errors import (
     ValidationError,
     NotFoundError,
 )
-
-
-def setup_authentication_for_sdk_tests(api_base_url: str) -> Optional[str]:
-    """
-    Set up authentication for SDK tests.
-
-    Tries multiple methods:
-    1. Use TEST_API_KEY environment variable if available
-    2. Use DATAHUB_API_KEY environment variable
-    3. Try to create API key via Django shell (if Docker Compose is available)
-    4. Return None if no key available
-
-    Args:
-        api_base_url: API base URL
-
-    Returns:
-        API key string or None
-    """
-    # Method 1: Use environment variables
-    api_key = os.environ.get('TEST_API_KEY') or os.environ.get('DATAHUB_API_KEY')
-    if api_key:
-        return api_key
-
-    # Method 2: Try to create API key via Django shell in Docker Compose
-    try:
-        django_shell_script = """
-from hub.apps.tenants.models import Tenant
-from hub.apps.users.models import User, UserStatus, Role, UserRole
-from hub.apps.auth.models import APIKey
-import os
-
-tenant, _ = Tenant.objects.get_or_create(
-    slug='mesh-topology-sdk-test-tenant',
-    defaults={'name': 'Mesh Topology SDK Test Tenant'}
+from tests._sdk_test_helpers import (
+    check_api_available,
+    create_real_api_config,
 )
 
-# Get or create TENANT_ADMIN role
-admin_role, _ = Role.objects.get_or_create(
-    tenant=tenant,
-    name='TENANT_ADMIN',
-    defaults={'description': 'Tenant Administrator'}
-)
-
-user, _ = User.objects.get_or_create(
-    email='mesh-topology-sdk-test@example.com',
-    defaults={
-        'tenant': tenant,
-        'status': UserStatus.ACTIVE
-    }
-)
-if user.tenant != tenant:
-    user.tenant = tenant
-    user.status = UserStatus.ACTIVE
-    user.save()
-
-# Assign TENANT_ADMIN role to user
-UserRole.objects.get_or_create(user=user, role=admin_role)
-
-# Delete existing API key if it exists
-APIKey.objects.filter(user=user, name='mesh-topology-sdk-test-key').delete()
-
-# Create new API key with mesh:write and mesh:read scopes
-api_key_value = APIKey.generate_key()
-api_key_hash = APIKey.hash_key(api_key_value)
-api_key_obj = APIKey.objects.create(
-    user=user,
-    tenant=tenant,
-    name='mesh-topology-sdk-test-key',
-    key_hash=api_key_hash,
-    scopes=['mesh:write', 'mesh:read']
-)
-print(api_key_value)
-"""
-        result = subprocess.run(
-            ['docker', 'compose', 'exec', '-T', 'api-service', 'python', 'manage.py', 'shell'],
-            input=django_shell_script,
-            text=True,
-            capture_output=True,
-            timeout=30,
-            cwd='/home/ph/Desktop/DataInteroperabilityHub'
-        )
-        if result.returncode == 0:
-            output_lines = result.stdout.strip().split('\n')
-            # Look for line starting with API key (long alphanumeric string)
-            for line in reversed(output_lines):
-                line = line.strip()
-                # API keys are typically long strings (40+ characters)
-                if line and len(line) > 40:
-                    # Additional validation: check if it looks like an API key
-                    cleaned = line.replace('-', '').replace('_', '')
-                    if cleaned.isalnum() and ' ' not in line:
-                        return line
-    except Exception:
-        pass
-
-    return None
+# File-specific tenant parameters
+_TOPOLOGY_TENANT_SLUG = "mesh-topology-sdk-test-tenant"
+_TOPOLOGY_TENANT_NAME = "Mesh Topology SDK Test Tenant"
+_TOPOLOGY_API_KEY_NAME = "mesh-topology-sdk-test-key"
+_TOPOLOGY_SCOPES = ["mesh:write", "mesh:read"]
+_TOPOLOGY_EXTRA_TENANT_SETUP = "tenant.data_mesh_enabled = True; tenant.save()"
 
 
-def check_api_available(api_base_url: str) -> bool:
-    """Check if API service is available"""
-    try:
-        import requests
-        response = requests.get(f"{api_base_url}/", timeout=2)
-        return response.status_code < 600  # Any HTTP response means API is up
-    except Exception:
-        return False
-
+# ── Unit-test fixtures (no API calls) ───────────────────────────────
 
 @pytest.fixture
 def config():
@@ -151,38 +58,29 @@ def mesh_api(client):
     return MeshAPI(client)
 
 
-@pytest.fixture
+# ── Integration-test fixtures (real API) ────────────────────────────
+
+@pytest.fixture(scope="module")
 def real_api_config():
-    """Fixture for real API configuration"""
-    api_base_url = os.environ.get('API_BASE_URL', 'http://localhost:8000/api/v1')
-
-    # Check if API is available
-    if not check_api_available(api_base_url):
-        pytest.skip("API service is not available. Ensure Docker Compose services are running.")
-
-    api_key = setup_authentication_for_sdk_tests(api_base_url)
-
-    if not api_key:
-        pytest.skip(
-            "No API key available. Set TEST_API_KEY or DATAHUB_API_KEY environment variable, "
-            "or ensure Docker Compose api-service is accessible."
-        )
-
-    return DataHubClientConfig(
-        base_url=api_base_url,
-        api_token=api_key,
-        timeout=30.0,
-        max_retries=3,
-        user_agent="DataHub-SDK-Test",
-        enable_logging=False,
+    """Fixture for real API configuration (module-scoped)."""
+    return create_real_api_config(
+        tenant_slug=_TOPOLOGY_TENANT_SLUG,
+        tenant_name=_TOPOLOGY_TENANT_NAME,
+        api_key_name=_TOPOLOGY_API_KEY_NAME,
+        scopes=_TOPOLOGY_SCOPES,
+        extra_tenant_setup=_TOPOLOGY_EXTRA_TENANT_SETUP,
     )
 
 
 @pytest.fixture
 async def real_client(real_api_config):
-    """Create SDK client with real API configuration"""
+    """Create SDK client with real API configuration."""
+    import asyncio
     async with DataHubClient(real_api_config) as client:
         yield client
+        # Longer delay for topology tests — the get_topology polling
+        # in structure tests generates heavy server load.
+        await asyncio.sleep(0.5)
 
 
 # Unit Tests - Method Structure and Parameters
@@ -305,6 +203,15 @@ async def test_get_topology_without_health_metrics_integration(real_client):
     assert "metadata" in result
     assert "summary" in result
 
+    # Verify health metrics are actually excluded
+    assert "health_metrics" not in result.get("summary", {}), (
+        "Health metrics should be excluded when include_health_metrics=False"
+    )
+    for node in result.get("nodes", []):
+        assert "health_status" not in node, (
+            f"Node {node.get('id')} has health_status despite include_health_metrics=False"
+        )
+
 
 @pytest.mark.asyncio
 async def test_get_domain_topology_integration(real_client):
@@ -354,12 +261,20 @@ async def test_get_topology_with_domains_integration(real_client):
     domain2 = await real_client.mesh.create_domain(name=domain2_name)
 
     try:
-        # Wait a bit for topology to update
+        # Poll until both domains appear in topology (up to 15s)
         import asyncio
-        await asyncio.sleep(2)
-
-        # Get topology
-        topology = await real_client.mesh.get_topology()
+        import time as _time
+        topology = None
+        deadline = _time.monotonic() + 15
+        while _time.monotonic() < deadline:
+            topology = await real_client.mesh.get_topology()
+            node_ids = [str(node.get("id", "")) for node in topology.get("nodes", [])]
+            if domain1["id"] in node_ids and domain2["id"] in node_ids:
+                break
+            await asyncio.sleep(0.5)
+        else:
+            # Timeout — use whatever topology we have
+            pass
 
         assert topology is not None
         assert "nodes" in topology
@@ -367,7 +282,12 @@ async def test_get_topology_with_domains_integration(real_client):
 
         # Verify our domains are in the topology
         node_ids = [str(node.get("id", "")) for node in topology.get("nodes", [])]
-        assert domain1["id"] in node_ids or domain2["id"] in node_ids
+        assert domain1["id"] in node_ids, (
+            f"Domain {domain1['id']} not found in topology nodes: {node_ids}"
+        )
+        assert domain2["id"] in node_ids, (
+            f"Domain {domain2['id']} not found in topology nodes: {node_ids}"
+        )
 
         # Verify summary
         summary = topology.get("summary", {})
@@ -383,36 +303,70 @@ async def test_get_topology_with_domains_integration(real_client):
 
 @pytest.mark.asyncio
 async def test_get_topology_structure_integration(real_client):
-    """Test topology response structure with real API"""
-    result = await real_client.mesh.get_topology()
+    """Test topology response structure with real API.
 
-    # Verify nodes structure
-    if result.get("nodes"):
+    Creates test domains first to guarantee non-empty topology for
+    node/edge structure validation.
+    """
+    import asyncio
+    import time as _time
+
+    # Create test domains to guarantee non-empty topology
+    domain1 = await real_client.mesh.create_domain(
+        name=f"topology-structure-1-{uuid.uuid4().hex[:8]}"
+    )
+    domain2 = await real_client.mesh.create_domain(
+        name=f"topology-structure-2-{uuid.uuid4().hex[:8]}"
+    )
+
+    try:
+        # Poll until domains appear in topology (up to 15s, 1s intervals
+        # to avoid overwhelming the server with rapid get_topology calls).
+        result = None
+        deadline = _time.monotonic() + 15
+        while _time.monotonic() < deadline:
+            result = await real_client.mesh.get_topology()
+            if len(result.get("nodes", [])) >= 2:
+                break
+            await asyncio.sleep(1.0)
+
+        assert result is not None
+        assert len(result.get("nodes", [])) >= 2, (
+            f"Expected at least 2 nodes in topology, got {len(result.get('nodes', []))}"
+        )
+
+        # Verify nodes structure
         node = result["nodes"][0]
         assert "id" in node
         assert "name" in node
         assert "status" in node
 
-    # Verify edges structure
-    if result.get("edges"):
-        edge = result["edges"][0]
-        assert "source" in edge
-        assert "target" in edge
-        assert "type" in edge
-        assert "weight" in edge
+        # Verify edges structure
+        if result.get("edges"):
+            edge = result["edges"][0]
+            assert "source" in edge
+            assert "target" in edge
+            assert "type" in edge
+            assert "weight" in edge
 
-    # Verify metadata structure
-    metadata = result.get("metadata", {})
-    assert "tenant_id" in metadata
-    assert "domain_count" in metadata
-    assert "relationship_count" in metadata
-    assert "generated_at" in metadata
+        # Verify metadata structure
+        metadata = result.get("metadata", {})
+        assert "tenant_id" in metadata
+        assert "domain_count" in metadata
+        assert "relationship_count" in metadata
+        assert "generated_at" in metadata
 
-    # Verify summary structure
-    summary = result.get("summary", {})
-    assert "total_domains" in summary
-    assert "active_domains" in summary
-    assert "total_relationships" in summary
+        # Verify summary structure
+        summary = result.get("summary", {})
+        assert "total_domains" in summary
+        assert "active_domains" in summary
+        assert "total_relationships" in summary
+    finally:
+        for d_id in [domain1["id"], domain2["id"]]:
+            try:
+                await real_client.mesh.delete_domain(d_id)
+            except Exception:
+                pass
 
 
 @pytest.mark.asyncio

@@ -13,19 +13,25 @@ class MigrationDataIntegrityTest(TestCase):
         """Tenant slug uniqueness enforced by DB (raw SQL bypasses ORM patches)."""
         uid = uuid.uuid4().hex[:8]
         slug = f"slug-{uid}"
-        with connection.cursor() as cursor:
-            cursor.execute(
-                "INSERT INTO tenants (id, name, slug, status, kyc_status, created_at, updated_at) "
-                "VALUES (%s, %s, %s, 'ACTIVE', 'UNVERIFIED', NOW(), NOW())",
-                [str(uuid.uuid4()), f"A {uid}", slug],
-            )
+        # Use the ORM for the first insert so all NOT-NULL columns with
+        # Python-level defaults (JSONField, BooleanField, etc.) are populated.
+        # The second insert goes through raw SQL to validate the DB-level
+        # unique constraint directly.
+        Tenant.objects.create(
+            name=f"A {uid}", slug=slug, status="ACTIVE", kyc_status="UNVERIFIED"
+        )
         with self.assertRaises(IntegrityError):
             with transaction.atomic():
                 with connection.cursor() as cursor:
+                    # Include NOT NULL JSONField columns that lack DB-level
+                    # defaults so the UNIQUE constraint on slug is the one
+                    # that fires, not a NOT NULL violation.
                     cursor.execute(
-                        "INSERT INTO tenants (id, name, slug, status, kyc_status, created_at, updated_at) "
-                        "VALUES (%s, %s, %s, 'ACTIVE', 'UNVERIFIED', NOW(), NOW())",
-                        [str(uuid.uuid4()), f"B {uid}", slug],
+                        "INSERT INTO tenants (id, name, slug, status, kyc_status, "
+                        "lineage_redact_field_patterns, tenant_dq_warehouse_profile, "
+                        "notification_opt_outs, created_at, updated_at) "
+                        "VALUES (%s, %s, %s, 'ACTIVE', 'UNVERIFIED', %s, %s, %s, NOW(), NOW())",
+                        [str(uuid.uuid4()), f"B {uid}", slug, "[]", "{}", "{}"],
                     )
 
     def test_unique_constraint_on_asset_key_per_tenant(self):

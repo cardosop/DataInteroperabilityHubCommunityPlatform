@@ -37,7 +37,7 @@ def test_tenant_admin_invites_user():
     """Provision a tenant_admin, then POST /users/invite/ to invite a new
     email address. Expect 201 with user data.
     """
-    admin_creds = provision_persona("tenant_admin")
+    admin_creds = provision_persona("tenant_admin")  # noqa: PHASE216-STATIC-ID
     invitee_email = _unique_email()
 
     resp = api_post(
@@ -66,7 +66,7 @@ def test_invited_user_accepts():
     response. This test verifies only the creation step; accepting requires
     the token from the email system, which is not accessible in E2E tests.
     """
-    admin_creds = provision_persona("tenant_admin")
+    admin_creds = provision_persona("tenant_admin")  # noqa: PHASE216-STATIC-ID
     invitee_email = _unique_email()
     base = api_base_url()
 
@@ -117,7 +117,7 @@ def test_invitation_already_accepted_returns_conflict():
     """Inviting the same email twice should either succeed idempotently
     (returning the existing user) or return a conflict error.
     """
-    admin_creds = provision_persona("tenant_admin")
+    admin_creds = provision_persona("tenant_admin")  # noqa: PHASE216-STATIC-ID
     invitee_email = _unique_email()
 
     # First invitation

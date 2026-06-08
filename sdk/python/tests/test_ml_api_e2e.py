@@ -29,16 +29,40 @@ from datahub_interoperability.errors import (
 
 
 def setup_authentication_for_sdk_tests(api_base_url: str):
-    """Set up authentication for SDK tests - same as integration tests"""
-    import subprocess
-    import uuid
+    """Set up authentication for SDK tests.
 
-    # Method 1: Use environment variables
+    Creates a dedicated tenant with ``ml_enabled=True`` so ML endpoints
+    avoid feature-flag gates and admin-token invalidation.
+    """
+    # Method 1: Create dedicated tenant via Django shell (PRIMARY).
+    try:
+        key = _create_ml_e2e_tenant_and_key()
+        if key:
+            return key
+    except Exception:
+        pass
+
+    # Method 2: Use canonical conftest helper
+    try:
+        from tests.conftest import get_api_key
+        canonical = get_api_key()
+        if canonical:
+            return canonical
+    except Exception:
+        pass
+
+    # Method 3: Fall back to env-var keys
     api_key = os.environ.get('TEST_API_KEY') or os.environ.get('DATAHUB_API_KEY')
     if api_key:
         return api_key
 
-    # Method 2: Try to create API key via Django shell in Docker Compose
+    return None
+
+
+def _create_ml_e2e_tenant_and_key():
+    """Create a dedicated tenant with ``ml_enabled=True`` and return an API key."""
+    import subprocess
+    import uuid
     try:
         unique_id = uuid.uuid4().hex[:8]
         # Use .format() instead of f-string to avoid nested brace issues
@@ -51,8 +75,11 @@ unique_id = '{unique_id}'
 
 tenant, _ = Tenant.objects.get_or_create(
     slug='ml-sdk-e2e-tenant-' + unique_id,
-    defaults={{'name': 'ML SDK E2E Test Tenant ' + unique_id}}
+    defaults={{'name': 'ML SDK E2E Test Tenant ' + unique_id, 'ml_enabled': True}}
 )
+if not tenant.ml_enabled:
+    tenant.ml_enabled = True
+    tenant.save(update_fields=['ml_enabled'])
 
 user, _ = User.objects.get_or_create(
     email='ml-sdk-e2e-' + unique_id + '@example.com',
@@ -88,7 +115,7 @@ print(api_key_value)
 print('API_KEY_END')
 """.format(unique_id=unique_id)
         result = subprocess.run(
-            ['docker', 'compose', 'exec', '-T', 'api-service', 'python', 'hub/manage.py', 'shell'],
+                        ['docker', 'compose', '-f', 'docker-compose.test.yml', 'exec', '-T', 'api-service-test', 'python', 'hub/manage.py', 'shell'],
             input=django_shell_script,
             text=True,
             capture_output=True,
@@ -137,7 +164,7 @@ print('API_KEY_END')
 
 def get_test_config():
     """Get test configuration from environment or create API key"""
-    base_url = os.getenv("DATAHUB_API_BASE_URL", "http://localhost:8000/api/v1")
+    base_url = os.getenv("API_BASE_URL", "http://localhost:8001/api/v1")
     api_token = setup_authentication_for_sdk_tests(base_url)
 
     if not api_token:

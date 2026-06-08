@@ -265,7 +265,7 @@ def test_future_ai_and_social_modules_must_carry_marker(module_stem: str) -> Non
 
     Both backend prefixes (``ai/``, ``social/``) are MVP-gated, so any CLI
     surface that ever appears under those names is by definition post-MVP.
-    Today neither file exists; the test passes trivially. The day someone
+    Today neither file exists; the test is skipped. The day someone
     adds one without a marker, the test fails.
     """
     module_file = COMMANDS_DIR / f"{module_stem}.py"

@@ -75,13 +75,24 @@ class TimeTravelQueryTest(DatasetsTestBase):
         v2.save()
         VersionHistoryManager.create_version(v2, parent_version=v1, is_current=True)
 
-        # Query at different timestamps
-        # Note: This test may need adjustment based on TimeTravelQuery implementation
-        # For now, verify versions exist
-        self.assertIsNotNone(v1)
-        self.assertIsNotNone(v2)
-        self.assertEqual(v1.version, 1)
-        self.assertEqual(v2.version, 2)
+        # Query at different timestamps — actually call TimeTravelQuery
+        t_between = v1.created_at + timedelta(hours=12)
+        result = TimeTravelQuery.get_version_at_timestamp(
+            asset_id=self.asset.id, tenant_id=self.tenant.id, timestamp=t_between,
+        )
+        self.assertIsNotNone(result,
+            f"get_version_at_timestamp must return a version for t={t_between}")
+        self.assertEqual(result.id, v1.id,
+            "Between v1 and v2 timestamps, v1 should be the current version")
+
+        t_after_v2 = v2.created_at + timedelta(hours=12)
+        result2 = TimeTravelQuery.get_version_at_timestamp(
+            asset_id=self.asset.id, tenant_id=self.tenant.id, timestamp=t_after_v2,
+        )
+        self.assertIsNotNone(result2,
+            f"get_version_at_timestamp must return a version for t={t_after_v2}")
+        self.assertEqual(result2.id, v2.id,
+            "After v2 timestamp, v2 should be the current version")
 
     # ========== SUCCESS SCENARIOS ==========
 
@@ -101,10 +112,14 @@ class TimeTravelQueryTest(DatasetsTestBase):
         v1.created_at = target_timestamp
         v1.save()
 
-        # Query should return the version
-        # Note: Actual implementation depends on TimeTravelQuery
-        self.assertIsNotNone(v1)
-        self.assertEqual(v1.version, 1)
+        # Query must return the version
+        t_after = target_timestamp + timedelta(hours=1)
+        result = TimeTravelQuery.get_version_at_timestamp(
+            asset_id=self.asset.id, tenant_id=self.tenant.id, timestamp=t_after,
+        )
+        self.assertIsNotNone(result)
+        self.assertEqual(result.id, v1.id)
+        self.assertEqual(result.version, 1)
 
     # ========== FAILURE SCENARIOS ==========
 
@@ -159,6 +174,15 @@ class TimeTravelQueryTest(DatasetsTestBase):
         # Use approximate comparison due to microsecond differences
         time_diff = abs((v1.created_at - exact_timestamp).total_seconds())
         self.assertLess(time_diff, 1.0)  # Within 1 second
+
+        # Actually query: timestamp right after creation must return v1
+        t_later = exact_timestamp + timedelta(seconds=1)
+        result = TimeTravelQuery.get_version_at_timestamp(
+            asset_id=self.asset.id, tenant_id=self.tenant.id, timestamp=t_later,
+        )
+        self.assertIsNotNone(result,
+            f"get_version_at_timestamp must return the version created at {exact_timestamp}")
+        self.assertEqual(result.id, v1.id)
 
     def test_get_version_at_timestamp_future_timestamp(self):
         """Test getting version at future timestamp (edge case)"""
@@ -221,12 +245,22 @@ class TimeTravelQueryTest(DatasetsTestBase):
             created_by=self.user,
         )
 
-        # Should return one of the versions (typically the latest)
+        # Should return one of the versions (typically the latest v2)
         self.assertIsNotNone(v1)
         self.assertIsNotNone(v2)
         # Use approximate comparison due to microsecond differences
         time_diff = abs((v1.created_at - v2.created_at).total_seconds())
         self.assertLess(time_diff, 1.0)  # Within 1 second
+
+        # Actually query: must return one of the two versions
+        t_after = same_timestamp + timedelta(seconds=1)
+        result = TimeTravelQuery.get_version_at_timestamp(
+            asset_id=self.asset.id, tenant_id=self.tenant.id, timestamp=t_after,
+        )
+        self.assertIsNotNone(result,
+            "get_version_at_timestamp must return a version when two exist at same time")
+        self.assertIn(result.id, {v1.id, v2.id},
+            f"Result must be one of the versions at the same timestamp; got {result.id}")
 
     # ========== ERROR HANDLING ==========
 

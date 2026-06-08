@@ -11,6 +11,9 @@ import os
 import pytest
 import requests
 
+_api_test_port = os.environ.get("API_TEST_PORT", "8000")
+_DEFAULT_API_BASE = f"http://localhost:{_api_test_port}"
+
 
 def _api_is_reachable(url: str) -> bool:
     try:
@@ -25,7 +28,7 @@ def pytest_collection_modifyitems(config, items):  # noqa: ARG001
         return
     api_url = os.environ.get(
         "MESHANT_API_URL",
-        "http://localhost:8000/api/v1",
+        f"{_DEFAULT_API_BASE}/api/v1",
     )
     api_root = api_url.rsplit("/api/v1", 1)[0] or api_url
     if _api_is_reachable(api_root):

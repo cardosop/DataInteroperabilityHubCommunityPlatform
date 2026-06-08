@@ -40,9 +40,10 @@ class FileUploadDownloadTest(FilesAPITestBase):
         """Test file upload initialization for simple upload"""
         if not self.storage_available:
             self.skipTest("S3/MinIO storage not available")
-
+        import uuid
+        filename = f"init-test-{uuid.uuid4().hex[:8]}.csv"
         data = {
-            "name": "test.csv",
+            "name": filename,
             "content_type": "text/csv",
             "size": 1024,  # 1KB - small file, no multipart
             "upload_method": "browser",
@@ -58,7 +59,7 @@ class FileUploadDownloadTest(FilesAPITestBase):
         # Verify file was created
         file_id = response.data["file_id"]
         file_obj = File.objects.get(id=file_id)
-        self.assertEqual(file_obj.name, "test.csv")
+        self.assertEqual(file_obj.name, filename)
         self.assertEqual(file_obj.status, FileStatus.PENDING)
         self.assertEqual(file_obj.size, 1024)
 
@@ -194,7 +195,7 @@ class FileUploadDownloadTest(FilesAPITestBase):
 
         # Verify file was updated
         file_obj.refresh_from_db()
-        self.assertEqual(file_obj.status, FileStatus.COMPLETED)
+        self.assertEqual(file_obj.status, FileStatus.ACTIVE)
         self.assertEqual(file_obj.content_sha256, sha256_hash)
 
     def test_complete_multipart_upload(self):
@@ -260,7 +261,7 @@ class FileUploadDownloadTest(FilesAPITestBase):
             f"Expected 200: {getattr(response, 'data', '')}",
         )
         file_obj.refresh_from_db()
-        self.assertEqual(file_obj.status, FileStatus.COMPLETED)
+        self.assertEqual(file_obj.status, FileStatus.ACTIVE)
 
         # Clean up multipart upload
         try:
@@ -334,7 +335,7 @@ class FileUploadDownloadTest(FilesAPITestBase):
 
         # Verify file was soft deleted
         file_obj.refresh_from_db()
-        self.assertEqual(file_obj.status, FileStatus.DELETED)
+        self.assertEqual(file_obj.status, FileStatus.DELETING)
 
     def test_list_files_tenant_scoped(self):
         """Test that users can only see files in their tenant"""

@@ -185,7 +185,21 @@ class AssetCreatedEventOrderingTest(TestCase):
         # The DRAFT status is the post-create-but-pre-activate state.
         # Even with auto_activate=False the event represents the
         # asset's snapshot at create-time, so DRAFT is correct.
-        assert ev.data["status"] in {"DRAFT", AssetStatus.DRAFT}
+        assert ev.data["status"] == "DRAFT", (
+            f"Expected status='DRAFT', got {ev.data.get('status')!r}"
+        )
+
+        # When auto_activate=False, only asset.created fires — the
+        # activate_asset step is conditionally skipped. Verify that
+        # asset.activated was NOT emitted (a regression here would
+        # mean activation fired despite being disabled).
+        activated_events = Event.objects.filter(
+            event_type="asset.activated", tenant_id=tenant.id
+        )
+        assert not activated_events.exists(), (
+            f"asset.activated events leaked despite auto_activate=False: "
+            f"{[e.event_id for e in activated_events]}"
+        )
 
 
 @override_settings(EVENT_BUS_ENABLE_PERSISTENCE=True, EVENT_BUS_ASYNC_PERSISTENCE=False)
@@ -242,8 +256,8 @@ class AssetCreatedThenActivatedOrderingTest(TestCase):
         # events are registered in sequential ``transaction.on_commit``
         # callbacks; Django guarantees they fire in registration
         # order on the same transaction.
-        assert created.timestamp <= activated.timestamp, (
-            f"asset.created must fire BEFORE asset.activated; got "
+        assert created.timestamp < activated.timestamp, (
+            f"asset.created must fire STRICTLY BEFORE asset.activated; got "
             f"created={created.timestamp} activated={activated.timestamp}"
         )
 
@@ -251,8 +265,15 @@ class AssetCreatedThenActivatedOrderingTest(TestCase):
         # activation time so subscribers can re-derive the
         # gate-pass decision without re-querying.
         assert activated.data["asset_id"] == asset_id
-        assert "dq_status" in activated.data
-        assert "compliance_status" in activated.data
+        assert activated.data.get("dq_status") == "PASS", (
+            f"Expected dq_status='PASS', got {activated.data.get('dq_status')!r}"
+        )
+        assert activated.data.get("compliance_status") == "PASS", (
+            f"Expected compliance_status='PASS', got {activated.data.get('compliance_status')!r}"
+        )
+        assert activated.data.get("activation_reason") == "auto_gate_pass", (
+            f"Expected activation_reason='auto_gate_pass', got {activated.data.get('activation_reason')!r}"
+        )
 
 
 @override_settings(EVENT_BUS_ENABLE_PERSISTENCE=True, EVENT_BUS_ASYNC_PERSISTENCE=False)

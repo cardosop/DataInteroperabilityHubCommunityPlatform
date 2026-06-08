@@ -274,14 +274,19 @@ class NotificationsTemplateValidationTest(TestCase):
         self.assertTrue(result.details['variables_validated'])
 
     def test_validate_template_variables_missing_required_variables(self):
-        """Test template variable validation detects missing required variables"""
+        """Template variable validation runs and records findings for empty context."""
         template_name = "notifications/emails/user_invitation.html"
         context = {}  # Missing required variables
         result = self.rules.validate_template_variables(template_name, context)
 
-        # Should have warnings or errors for missing variables
-        self.assertIn('variables_validated', result.details)
-        # May have warnings for missing optional variables
+        self.assertIn('variables_validated', result.details,
+            "Validator must record that variable validation ran")
+        # The validator treats missing variables as warnings (Django templates
+        # render with the ``default`` filter), so is_valid may remain True.
+        # We verify the validator actually inspected the template by checking
+        # that the detail key is a boolean (True = validated, False = skipped).
+        self.assertIsInstance(result.details['variables_validated'], bool,
+            "variables_validated detail must be a boolean")
 
     def test_validate_template_content_length_valid(self):
         """Test template content validation with valid length"""
@@ -311,15 +316,17 @@ class NotificationsTemplateValidationTest(TestCase):
         self.assertIn('security_validated', result.details)
         self.assertTrue(result.details['security_validated'])
 
-    def test_validate_template_security_detects_script_tags(self):
-        """Test template security validation detects script tags in rendered content"""
-        # Create a test template with script tag
+    def test_validate_template_security_passes_clean_template(self):
+        """Template security validation passes for templates with auto-escaped content.
+
+        Django's template engine auto-escapes HTML by default, so a context value
+        containing ``<script>`` tags is rendered as escaped text, not executable JS.
+        The security validator should accept this as valid.
+        """
         from django.template import Template, Context
         from django.template.loader import get_template
 
-        # Test with a template that would render script tags if context had them
         template_name = "notifications/emails/user_invitation.html"
-        # Use safe context - Django templates auto-escape by default
         context = {
             'user': {'display_name': '<script>alert("xss")</script>'},
             'tenant': {'name': 'Test Tenant'},
@@ -327,9 +334,11 @@ class NotificationsTemplateValidationTest(TestCase):
         }
         result = self.rules.validate_template_security(template_name, context)
 
-        # Django auto-escapes, so script tags should be escaped in output
-        self.assertTrue(result.is_valid)
+        self.assertTrue(result.is_valid,
+            "Auto-escaped script tags should not fail security validation")
         self.assertIn('security_validated', result.details)
+        self.assertTrue(result.details['security_validated'],
+            "security_validated detail must be True")
 
 
 class NotificationsTemplateIntegrationTest(TestCase):

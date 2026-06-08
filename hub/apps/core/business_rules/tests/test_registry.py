@@ -113,19 +113,13 @@ class TestBusinessRulesRegistry(TestCase):
         self.assertIn("rule2", dependents)
 
     def test_register_instance(self):
-        """Test registering a rule instance."""
-        rule_instance = SampleRule1(tenant_id="tenant-123")
-        rule_name = self.registry.register_instance(
-            rule_instance,
-            rule_name="test_instance",
-            description="Test instance",
-            tags=["instance"]
-        )
+        """Test register_instance was removed in Phase 274.6.
 
-        self.assertEqual(rule_name, "test_instance")
-        metadata = self.registry.get_rule("test_instance")
-        self.assertIsNotNone(metadata)
-        self.assertEqual(metadata.rule_class, SampleRule1)
+        The method now raises NotImplementedError — use @register_rule
+        decorator or execute_chain() instead.
+        """
+        with self.assertRaises(NotImplementedError):
+            self.registry.register_instance()
 
     def test_get_rule(self):
         """Test getting a rule."""
@@ -241,190 +235,58 @@ class TestBusinessRulesRegistry(TestCase):
         self.assertIn("rule2", order)
         self.assertNotIn("rule3", order)
 
-    def test_execute_rules(self):
-        """Test executing multiple rules."""
-        @self.registry.register(rule_name="rule1")
-        class Rule1(BusinessRules):
-            def validate(self, context=None, *args, **kwargs):
-                return ValidationResult(is_valid=True, details={'rule': 'rule1'})
+    def test_execute_rules_removed_in_phase_274_6(self):
+        """Test execute_rules was removed in Phase 274.6.
 
-        @self.registry.register(rule_name="rule2")
-        class Rule2(BusinessRules):
-            def validate(self, context=None, *args, **kwargs):
-                return ValidationResult(is_valid=True, details={'rule': 'rule2'})
+        The method now raises NotImplementedError — use
+        execute_chain() or individual rule .execute() instead.
+        """
+        with self.assertRaises(NotImplementedError):
+            self.registry.execute_rules()
 
-        context = RuleExecutionContext(tenant_id="tenant-123")
-        results = self.registry.execute_rules(context=context)
+    def test_execute_rules_with_dependencies_removed(self):
+        """Test execute_rules with dependencies was removed in Phase 274.6."""
+        with self.assertRaises(NotImplementedError):
+            self.registry.execute_rules(
+                rule_names=["rule1_dep", "rule2_dep"],
+            )
 
-        self.assertEqual(len(results), 2)
-        self.assertTrue(results["rule1"].is_valid)
-        self.assertTrue(results["rule2"].is_valid)
+    def test_execute_rules_short_circuit_removed(self):
+        """Test execute_rules with short_circuit was removed in Phase 274.6."""
+        with self.assertRaises(NotImplementedError):
+            self.registry.execute_rules(
+                rule_names=["rule1", "rule2", "rule3"],
+                short_circuit=True,
+            )
 
-    def test_execute_rules_with_dependencies(self):
-        """Test executing rules with dependencies."""
-        execution_order = []
+    def test_execute_rules_no_short_circuit_removed(self):
+        """Test execute_rules without short_circuit was removed in Phase 274.6."""
+        with self.assertRaises(NotImplementedError):
+            self.registry.execute_rules(short_circuit=False)
 
-        @self.registry.register(rule_name="rule1_dep", priority=10)
-        class Rule1Dep(BusinessRules):
-            def validate(self, context=None, *args, **kwargs):
-                execution_order.append("rule1_dep")
-                return ValidationResult(is_valid=True)
+    def test_execute_rules_specific_rules_removed(self):
+        """Test execute_rules with specific rules was removed in Phase 274.6."""
+        with self.assertRaises(NotImplementedError):
+            self.registry.execute_rules(rule_names=["rule1"])
 
-        @self.registry.register(
-            rule_name="rule2_dep",
-            depends_on=["rule1_dep"],
-            priority=20
-        )
-        class Rule2Dep(BusinessRules):
-            def validate(self, context=None, *args, **kwargs):
-                execution_order.append("rule2_dep")
-                return ValidationResult(is_valid=True)
+    def test_get_rule_by_tag_removed(self):
+        """Test get_rule_by_tag was removed in Phase 274.6.
 
-        # Use unique tenant_id to avoid cache collisions
-        context = RuleExecutionContext(tenant_id="tenant-deps-test")
-        results = self.registry.execute_rules(
-            rule_names=["rule1_dep", "rule2_dep"],
-            context=context,
-            use_cache=False  # Disable caching
-        )
+        Tag-based rule lookup is no longer supported on the registry.
+        Use individual rule .execute() or execute_chain() instead.
+        """
+        with self.assertRaises(AttributeError):
+            self.registry.get_rule_by_tag
 
-        # Check execution order
-        self.assertGreater(len(execution_order), 0, "Rules should have been executed")
-        self.assertEqual(execution_order[0], "rule1_dep")
-        if len(execution_order) > 1:
-            self.assertEqual(execution_order[1], "rule2_dep")
-        self.assertEqual(len(results), 2)
+    def test_enable_disable_rule_removed(self):
+        """Test enable_rule and disable_rule were removed in Phase 274.6.
 
-    def test_execute_rules_short_circuit(self):
-        """Test executing rules with short-circuit on error."""
-        # Use different priorities to ensure deterministic order
-        @self.registry.register(rule_name="rule1_short", priority=10)
-        class Rule1Short(BusinessRules):
-            def validate(self, context=None, *args, **kwargs):
-                return ValidationResult(is_valid=True)
-
-        @self.registry.register(rule_name="rule2_short", priority=20)
-        class Rule2Short(BusinessRules):
-            def validate(self, context=None, *args, **kwargs):
-                return ValidationResult(is_valid=False, errors=['Error'])
-
-        @self.registry.register(rule_name="rule3_short", priority=30)
-        class Rule3Short(BusinessRules):
-            def validate(self, context=None, *args, **kwargs):
-                return ValidationResult(is_valid=True)
-
-        # Use unique tenant_id to avoid cache collisions
-        context = RuleExecutionContext(tenant_id="tenant-short-circuit-test")
-        results = self.registry.execute_rules(
-            rule_names=["rule1_short", "rule2_short", "rule3_short"],
-            context=context,
-            short_circuit=True,
-            use_cache=False  # Disable caching to avoid interference
-        )
-
-        # Should stop after rule2_short fails
-        self.assertIn("rule1_short", results)
-        self.assertIn("rule2_short", results)
-        self.assertNotIn("rule3_short", results)
-        self.assertFalse(results["rule2_short"].is_valid)
-
-    def test_execute_rules_no_short_circuit(self):
-        """Test executing rules without short-circuit."""
-        @self.registry.register(rule_name="rule1")
-        class Rule1(BusinessRules):
-            def validate(self, context=None, *args, **kwargs):
-                return ValidationResult(is_valid=False, errors=['Error'])
-
-        @self.registry.register(rule_name="rule2")
-        class Rule2(BusinessRules):
-            def validate(self, context=None, *args, **kwargs):
-                return ValidationResult(is_valid=True)
-
-        context = RuleExecutionContext(tenant_id="tenant-123")
-        results = self.registry.execute_rules(
-            context=context,
-            short_circuit=False
-        )
-
-        # Should execute all rules
-        self.assertEqual(len(results), 2)
-        self.assertIn("rule1", results)
-        self.assertIn("rule2", results)
-
-    def test_execute_rules_specific_rules(self):
-        """Test executing specific rules."""
-        @self.registry.register(rule_name="rule1")
-        class Rule1(BusinessRules):
-            def validate(self, context=None, *args, **kwargs):
-                return ValidationResult(is_valid=True)
-
-        @self.registry.register(rule_name="rule2")
-        class Rule2(BusinessRules):
-            def validate(self, context=None, *args, **kwargs):
-                return ValidationResult(is_valid=True)
-
-        context = RuleExecutionContext(tenant_id="tenant-123")
-        results = self.registry.execute_rules(
-            rule_names=["rule1"],
-            context=context
-        )
-
-        self.assertEqual(len(results), 1)
-        self.assertIn("rule1", results)
-        self.assertNotIn("rule2", results)
-
-    def test_get_rule_by_tag(self):
-        """Test getting rules by tag."""
-        @self.registry.register(rule_name="rule1", tags=["validation", "domain"])
-        class Rule1(BusinessRules):
-            def validate(self, context=None, *args, **kwargs):
-                return ValidationResult(is_valid=True)
-
-        @self.registry.register(rule_name="rule2", tags=["validation"])
-        class Rule2(BusinessRules):
-            def validate(self, context=None, *args, **kwargs):
-                return ValidationResult(is_valid=True)
-
-        @self.registry.register(rule_name="rule3", tags=["domain"])
-        class Rule3(BusinessRules):
-            def validate(self, context=None, *args, **kwargs):
-                return ValidationResult(is_valid=True)
-
-        validation_rules = self.registry.get_rule_by_tag("validation")
-        self.assertEqual(len(validation_rules), 2)
-        self.assertIn("rule1", validation_rules)
-        self.assertIn("rule2", validation_rules)
-
-        domain_rules = self.registry.get_rule_by_tag("domain")
-        self.assertEqual(len(domain_rules), 2)
-        self.assertIn("rule1", domain_rules)
-        self.assertIn("rule3", domain_rules)
-
-    def test_enable_disable_rule(self):
-        """Test enabling and disabling rules."""
-        @self.registry.register(rule_name="rule1", enabled=True)
-        class Rule1(BusinessRules):
-            def validate(self, context=None, *args, **kwargs):
-                return ValidationResult(is_valid=True)
-
-        metadata = self.registry.get_rule("rule1")
-        self.assertTrue(metadata.enabled)
-
-        self.registry.disable_rule("rule1")
-        metadata = self.registry.get_rule("rule1")
-        self.assertFalse(metadata.enabled)
-
-        self.registry.enable_rule("rule1")
-        metadata = self.registry.get_rule("rule1")
-        self.assertTrue(metadata.enabled)
-
-    def test_enable_disable_nonexistent_rule(self):
-        """Test enabling/disabling non-existent rule."""
-        with self.assertRaises(ValueError):
-            self.registry.enable_rule("nonexistent")
-
-        with self.assertRaises(ValueError):
-            self.registry.disable_rule("nonexistent")
+        Use per-tenant feature flags instead.
+        """
+        with self.assertRaises(NotImplementedError):
+            self.registry.enable_rule("rule1")
+        with self.assertRaises(NotImplementedError):
+            self.registry.disable_rule("rule1")
 
     def test_clear_registry(self):
         """Test clearing the registry."""

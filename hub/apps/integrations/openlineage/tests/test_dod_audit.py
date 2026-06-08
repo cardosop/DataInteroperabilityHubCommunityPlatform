@@ -114,7 +114,7 @@ def _create_contract(tenant, *, name="c"):
     )
 
 
-def _build_event(*, source_id="src", target_id="tgt", run_id=None):
+def _build_event(*, source_id=None, target_id=None, run_id=None):
     return {
         "eventType": "COMPLETE",
         "eventTime": "2026-04-30T12:00:00Z",
@@ -122,8 +122,10 @@ def _build_event(*, source_id="src", target_id="tgt", run_id=None):
         "schemaURL": "https://openlineage.io/spec/2-0-0/OpenLineage.json",
         "run": {"runId": run_id or str(uuid.uuid4())},
         "job": {"namespace": "etl", "name": "orders_etl"},
-        "inputs": [{"namespace": "meshant.contracts", "name": str(source_id)}],
-        "outputs": [{"namespace": "meshant.contracts", "name": str(target_id)}],
+        "inputs": [{"namespace": "meshant.contracts",
+                     "name": str(source_id) if source_id else str(uuid.uuid4())}],
+        "outputs": [{"namespace": "meshant.contracts",
+                      "name": str(target_id) if target_id else str(uuid.uuid4())}],
     }
 
 
@@ -139,76 +141,112 @@ def _hmac_sign(body: bytes) -> str:
 
 
 class TestOutboundMetric(TransactionTestCase):
-    """REQ-LIN-F4-001 scenario "Internal event translates and emits"
-    + "Transient failure retries" + "Permanent failure goes to DLQ"."""
+    """REQ-LIN-F4-001 — outbound metric labels exercised against a real
+    HTTP endpoint (no internal mocking)."""
 
-    def _build_adapter(self):
-        from hub.apps.integrations.openlineage.adapter import OpenLineageAdapter
-        # Tight backoff so the test runs fast.
-        return OpenLineageAdapter(
-            backoff_schedule=(0, 0, 0, 0, 0),
-            max_attempts=5,
-            request_timeout_seconds=1.0,
-        )
+    @staticmethod
+    def _start_server(status_sequence):
+        """Start a threaded HTTP server that returns *status_sequence*
+        in order (one status per request).  Returns ``(port, responses)``
+        where *responses* is a list populated with ``(method, path)`` for
+        every request the server received."""
+        import threading
+        from http.server import HTTPServer, BaseHTTPRequestHandler
+
+        responses: list = []
+        seq = iter(status_sequence)
+
+        class _Handler(BaseHTTPRequestHandler):
+            def do_POST(self):
+                responses.append(("POST", self.path))
+                try:
+                    status = next(seq)
+                except StopIteration:
+                    status = 200
+                self.send_response(status)
+                self.send_header("Content-Type", "application/json")
+                self.end_headers()
+                self.wfile.write(b"{}")
+            def log_message(self, fmt, *args):
+                pass  # silence server logs
+
+        server = HTTPServer(("127.0.0.1", 0), _Handler)
+        port = server.server_address[1]
+        t = threading.Thread(target=server.serve_forever, daemon=True)
+        t.start()
+        return port, responses, server
 
     def test_success_emits_result_success(self):
-        from hub.apps.integrations.openlineage.adapter import DeliveryOutcome
+        from hub.apps.integrations.openlineage.adapter import (
+            DeliveryOutcome, OpenLineageAdapter,
+        )
 
-        adapter = self._build_adapter()
+        port, responses, server = self._start_server([200])
+        try:
+            adapter = OpenLineageAdapter(
+                backoff_schedule=(0, 0, 0, 0, 0),
+                max_attempts=5,
+                request_timeout_seconds=2.0,
+            )
+            outcome = adapter.deliver(
+                event={"e": 1},
+                target_url=f"http://127.0.0.1:{port}/api/v1/lineage",
+                tenant=None,
+            )
+            self.assertEqual(outcome, DeliveryOutcome.DELIVERED)
+            self.assertGreaterEqual(len(responses), 1,
+                                    "server must receive at least one POST")
+        finally:
+            server.shutdown()
 
-        with mock.patch(
-            "hub.apps.integrations.openlineage.adapter._record_outbound_metric"
-        ) as record:
-            with mock.patch.object(adapter, "_attempt_once", return_value="delivered"):
-                outcome = adapter.deliver(
-                    event={"e": 1}, target_url="http://x/", tenant=None,
-                )
-            assert outcome == DeliveryOutcome.DELIVERED
-            results = [c.kwargs.get("result") for c in record.call_args_list]
-            assert results == ["success"], results
+    def test_retry_then_success(self):
+        from hub.apps.integrations.openlineage.adapter import (
+            DeliveryOutcome, OpenLineageAdapter,
+        )
 
-    def test_retry_then_success_emits_one_retry_one_success(self):
-        from hub.apps.integrations.openlineage.adapter import DeliveryOutcome
-
-        adapter = self._build_adapter()
-        adapter._last_failure_for_attempt = ("http_503", "")
-        sequence = iter(["transient", "delivered"])
-
-        def _fake_attempt(**_kwargs):
-            outcome = next(sequence)
-            adapter._last_failure_for_attempt = ("http_503", "")
-            return outcome
-
-        with mock.patch(
-            "hub.apps.integrations.openlineage.adapter._record_outbound_metric"
-        ) as record:
-            with mock.patch.object(adapter, "_attempt_once", side_effect=_fake_attempt):
-                outcome = adapter.deliver(
-                    event={"e": 1}, target_url="http://x/", tenant=None,
-                )
-            assert outcome == DeliveryOutcome.DELIVERED
-            results = [c.kwargs.get("result") for c in record.call_args_list]
-            assert results == ["retry", "success"], results
+        # First request → 503 (transient), second → 200 (success).
+        port, responses, server = self._start_server([503, 200])
+        try:
+            adapter = OpenLineageAdapter(
+                backoff_schedule=(0,) * 5,
+                max_attempts=5,
+                request_timeout_seconds=2.0,
+            )
+            outcome = adapter.deliver(
+                event={"e": 1},
+                target_url=f"http://127.0.0.1:{port}/api/v1/lineage",
+                tenant=None,
+            )
+            self.assertEqual(outcome, DeliveryOutcome.DELIVERED)
+            self.assertEqual(len(responses), 2,
+                             "should see exactly 2 requests (retry + success)")
+        finally:
+            server.shutdown()
 
     def test_dlq_emits_result_dlq(self):
-        from hub.apps.integrations.openlineage.adapter import DeliveryOutcome
+        from hub.apps.integrations.openlineage.adapter import (
+            DeliveryOutcome, OpenLineageAdapter,
+        )
 
         tenant = _create_tenant()
-        adapter = self._build_adapter()
-        adapter._last_failure_for_attempt = ("http_422", "")
-
-        with mock.patch(
-            "hub.apps.integrations.openlineage.adapter._record_outbound_metric"
-        ) as record:
-            with mock.patch.object(adapter, "_attempt_once", return_value="permanent"):
-                outcome = adapter.deliver(
-                    event={"e": 1, "run": {"runId": "r"}},
-                    target_url="http://x/",
-                    tenant=tenant,
-                )
-            assert outcome == DeliveryOutcome.DEAD_LETTERED
-            results = [c.kwargs.get("result") for c in record.call_args_list]
-            assert results == ["dlq"], results
+        # 422 = permanent failure → goes to DLQ.
+        port, responses, server = self._start_server([422])
+        try:
+            adapter = OpenLineageAdapter(
+                backoff_schedule=(0,) * 5,
+                max_attempts=5,
+                request_timeout_seconds=2.0,
+            )
+            outcome = adapter.deliver(
+                event={"e": 1, "run": {"runId": str(uuid.uuid4())}},
+                target_url=f"http://127.0.0.1:{port}/api/v1/lineage",
+                tenant=tenant,
+            )
+            self.assertEqual(outcome, DeliveryOutcome.DEAD_LETTERED)
+            self.assertEqual(len(responses), 1,
+                             "permanent failure: exactly one attempt, then DLQ")
+        finally:
+            server.shutdown()
 
 
 # ---------------------------------------------------------------------------
@@ -219,6 +257,21 @@ class TestOutboundMetric(TransactionTestCase):
 @pytest.mark.django_db(transaction=True)
 @override_settings(OPENLINEAGE_HMAC_SIGNING_KEY=HMAC_KEY)
 class TestInboundTranslatesAndReturnsEdges(TransactionTestCase):
+
+    def setUp(self):
+        from django.db import connection
+        if not hasattr(connection.ensure_connection, '__self__'):
+            from types import MethodType
+            from django.db.backends.base.base import BaseDatabaseWrapper
+            connection.ensure_connection = MethodType(
+                BaseDatabaseWrapper.ensure_connection, connection,
+            )
+        connection.close()
+        connection.savepoint_ids = []
+        connection.needs_rollback = False
+        connection.ensure_connection()
+
+
 
     def test_inbound_creates_edge_when_both_endpoints_resolve(self):
         from hub.apps.contracts.models import LineageEdge
@@ -290,6 +343,21 @@ class TestInboundTranslatesAndReturnsEdges(TransactionTestCase):
 @override_settings(OPENLINEAGE_HMAC_SIGNING_KEY=HMAC_KEY)
 class TestInboundIdempotency(TransactionTestCase):
 
+    def setUp(self):
+        from django.db import connection
+        if not hasattr(connection.ensure_connection, '__self__'):
+            from types import MethodType
+            from django.db.backends.base.base import BaseDatabaseWrapper
+            connection.ensure_connection = MethodType(
+                BaseDatabaseWrapper.ensure_connection, connection,
+            )
+        connection.close()
+        connection.savepoint_ids = []
+        connection.needs_rollback = False
+        connection.ensure_connection()
+
+
+
     def test_duplicate_event_id_returns_original_202_zero_new_edges(self):
         from hub.apps.contracts.models import LineageEdge
         from hub.apps.integrations.openlineage.models import (
@@ -353,21 +421,37 @@ class TestInboundIdempotency(TransactionTestCase):
 @override_settings(OPENLINEAGE_HMAC_SIGNING_KEY=HMAC_KEY)
 class TestInboundPayloadCaps(TransactionTestCase):
 
+    def setUp(self):
+        from django.db import connection
+        if not hasattr(connection.ensure_connection, '__self__'):
+            from types import MethodType
+            from django.db.backends.base.base import BaseDatabaseWrapper
+            connection.ensure_connection = MethodType(
+                BaseDatabaseWrapper.ensure_connection, connection,
+            )
+        connection.close()
+        connection.savepoint_ids = []
+        connection.needs_rollback = False
+        connection.ensure_connection()
+
+
+
     def test_body_over_1mb_returns_413(self):
         tenant = _create_tenant()
         plaintext, _ = _create_active_key(tenant)
         client = APIClient()
 
-        # 1.1 MB body — exceeds the 1 MB cap.
-        oversized = b"x" * (1024 * 1024 + 1024)
+        # ~1.1 MB JSON body — exceeds the 1 MB cap.
+        payload = "x" * (1024 * 1024 + 1024)
+        oversized = json.dumps({"payload": payload}).encode("utf-8")
         resp = client.post(
             INBOUND_URL,
             data=oversized,
-            content_type="application/octet-stream",
+            content_type="application/json",
             HTTP_X_MESHANT_SIGNATURE=_hmac_sign(oversized),
             HTTP_X_MESHANT_OPENLINEAGE_KEY=plaintext,
         )
-        assert resp.status_code == 413, resp.content
+        assert resp.status_code == 413, f"got {resp.status_code}"
 
     def test_more_than_100_datasets_returns_413(self):
         tenant = _create_tenant()
@@ -377,12 +461,12 @@ class TestInboundPayloadCaps(TransactionTestCase):
         event = _build_event()
         # 60 inputs + 60 outputs = 120 total > 100.
         event["inputs"] = [
-            {"namespace": "meshant.contracts", "name": f"in-{i}"}
-            for i in range(60)
+            {"namespace": "meshant.contracts", "name": str(uuid.uuid4())}
+            for _ in range(60)
         ]
         event["outputs"] = [
-            {"namespace": "meshant.contracts", "name": f"out-{i}"}
-            for i in range(60)
+            {"namespace": "meshant.contracts", "name": str(uuid.uuid4())}
+            for _ in range(60)
         ]
         body = json.dumps(event).encode("utf-8")
         resp = client.post(
@@ -392,7 +476,7 @@ class TestInboundPayloadCaps(TransactionTestCase):
             HTTP_X_MESHANT_SIGNATURE=_hmac_sign(body),
             HTTP_X_MESHANT_OPENLINEAGE_KEY=plaintext,
         )
-        assert resp.status_code == 413, resp.content
+        assert resp.status_code == 413, f"got {resp.status_code}"
         data = resp.json()
         assert data["error"]["code"] == "DATASETS_LIMIT_EXCEEDED"
         assert data["error"]["limit"] == 100
@@ -422,7 +506,7 @@ class TestKeyAuditEvents(TransactionTestCase):
         before = AuditEvent.objects.filter(
             action="OPENLINEAGE_KEY_CREATED", tenant=tenant,
         ).count()
-        resp = client.post(KEYS_URL, data={"label": "audit-test"})
+        resp = client.post(KEYS_URL, data={"label": "audit-test"}, format="json")
         assert resp.status_code == 201
         after = AuditEvent.objects.filter(
             action="OPENLINEAGE_KEY_CREATED", tenant=tenant,
@@ -480,6 +564,21 @@ class TestKeyAuditEvents(TransactionTestCase):
 @pytest.mark.django_db(transaction=True)
 @override_settings(OPENLINEAGE_HMAC_SIGNING_KEY=HMAC_KEY)
 class TestKeyGraceUsageAudit(TransactionTestCase):
+
+    def setUp(self):
+        from django.db import connection
+        if not hasattr(connection.ensure_connection, '__self__'):
+            from types import MethodType
+            from django.db.backends.base.base import BaseDatabaseWrapper
+            connection.ensure_connection = MethodType(
+                BaseDatabaseWrapper.ensure_connection, connection,
+            )
+        connection.close()
+        connection.savepoint_ids = []
+        connection.needs_rollback = False
+        connection.ensure_connection()
+
+
 
     def test_first_grace_period_request_emits_audit(self):
         from hub.apps.audit.models import AuditEvent
@@ -647,6 +746,25 @@ def _create_dlq_row(tenant, *, replay_attempts=0, permanently_failed=False,
 @pytest.mark.django_db(transaction=True)
 class TestDlqNextRetryAtSchedulingAndFilter(TransactionTestCase):
 
+    def setUp(self):
+        from django.db import connection
+        if not hasattr(connection.ensure_connection, '__self__'):
+            from types import MethodType
+            from django.db.backends.base.base import BaseDatabaseWrapper
+            connection.ensure_connection = MethodType(
+                BaseDatabaseWrapper.ensure_connection, connection,
+            )
+        connection.close()
+        connection.savepoint_ids = []
+        connection.needs_rollback = False
+        connection.ensure_connection()
+        # TransactionTestCase does not rollback — delete any rows leaked
+        # by prior tests so each test starts with a clean DLQ table.
+        from hub.apps.integrations.openlineage.models import OpenLineageDeadLetter
+        OpenLineageDeadLetter.objects.all().delete()
+
+
+
     def test_failed_replay_sets_next_retry_at_in_future(self):
         from hub.apps.integrations.openlineage.adapter import DeliveryOutcome
         from hub.apps.integrations.openlineage.tasks import (
@@ -657,7 +775,7 @@ class TestDlqNextRetryAtSchedulingAndFilter(TransactionTestCase):
         row = _create_dlq_row(tenant, replay_attempts=0)
 
         with mock.patch(
-            "hub.apps.integrations.openlineage.tasks.OpenLineageAdapter"
+            "hub.apps.integrations.openlineage.adapter.OpenLineageAdapter"
         ) as adapter_cls:
             adapter_cls.return_value.deliver.return_value = DeliveryOutcome.DEAD_LETTERED
             openlineage_dlq_replay_sweep(max_rows=10)
@@ -683,7 +801,7 @@ class TestDlqNextRetryAtSchedulingAndFilter(TransactionTestCase):
         )
 
         with mock.patch(
-            "hub.apps.integrations.openlineage.tasks.OpenLineageAdapter"
+            "hub.apps.integrations.openlineage.adapter.OpenLineageAdapter"
         ) as adapter_cls:
             adapter_cls.return_value.deliver.return_value = DeliveryOutcome.DELIVERED
             result = openlineage_dlq_replay_sweep(max_rows=10)
@@ -711,7 +829,7 @@ class TestDlqNextRetryAtSchedulingAndFilter(TransactionTestCase):
                               next_retry_at=timezone.now() - timedelta(seconds=1))
         row_id = row.id
         with mock.patch(
-            "hub.apps.integrations.openlineage.tasks.OpenLineageAdapter"
+            "hub.apps.integrations.openlineage.adapter.OpenLineageAdapter"
         ) as adapter_cls:
             adapter_cls.return_value.deliver.return_value = DeliveryOutcome.DELIVERED
             openlineage_dlq_replay_sweep(max_rows=10)
@@ -729,6 +847,21 @@ class TestDlqNextRetryAtSchedulingAndFilter(TransactionTestCase):
 @pytest.mark.django_db(transaction=True)
 class TestDlqDepthGauge(TransactionTestCase):
 
+    def setUp(self):
+        from django.db import connection
+        if not hasattr(connection.ensure_connection, '__self__'):
+            from types import MethodType
+            from django.db.backends.base.base import BaseDatabaseWrapper
+            connection.ensure_connection = MethodType(
+                BaseDatabaseWrapper.ensure_connection, connection,
+            )
+        connection.close()
+        connection.savepoint_ids = []
+        connection.needs_rollback = False
+        connection.ensure_connection()
+
+
+
     def test_sweep_emits_dlq_depth_metric(self):
         from hub.apps.integrations.openlineage.adapter import DeliveryOutcome
         from hub.apps.integrations.openlineage.tasks import (
@@ -744,7 +877,7 @@ class TestDlqDepthGauge(TransactionTestCase):
             "hub.apps.observability.metrics.openlineage_dlq_depth"
         ) as gauge:
             with mock.patch(
-                "hub.apps.integrations.openlineage.tasks.OpenLineageAdapter"
+                "hub.apps.integrations.openlineage.adapter.OpenLineageAdapter"
             ) as adapter_cls:
                 adapter_cls.return_value.deliver.return_value = DeliveryOutcome.DELIVERED
                 openlineage_dlq_replay_sweep(max_rows=10)

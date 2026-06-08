@@ -249,6 +249,8 @@ def _check_ip_rate_limit(ip: str, current_ts: float | None = None) -> bool:
 
     Returns True if the request is within limits, False if it should be rejected.
     """
+    if not getattr(settings, "RATE_LIMIT_ENABLED", True):
+        return True
     max_per_minute = getattr(settings, "LOGIN_IP_RATE_PER_MINUTE", 10)
     cache_key = f"login_ip_rate:{ip}"
     return _sliding_window_rate_limit_allow(
@@ -267,6 +269,8 @@ def _check_refresh_rate_limit(ip: str) -> bool:
     Higher limit than login (30/min vs 10/min) since legitimate SPAs
     refresh proactively and from multiple tabs.
     """
+    if not getattr(settings, "RATE_LIMIT_ENABLED", True):
+        return True
     max_per_minute = getattr(settings, "REFRESH_IP_RATE_PER_MINUTE", 30)
     cache_key = f"refresh_ip_rate:{ip}"
     count = cache.get(cache_key, 0)
@@ -286,6 +290,8 @@ def _check_password_reset_rate_limit(email: str, current_ts: float | None = None
     Returns True if within limits, False if rate-limited.
     Defaults to 5 requests per hour per email address.
     """
+    if not getattr(settings, "RATE_LIMIT_ENABLED", True):
+        return True
     max_per_window = int(
         getattr(settings, "PASSWORD_RESET_RATE_LIMIT_PER_WINDOW", 5),
     )
@@ -307,6 +313,8 @@ def _check_email_verification_resend_rate_limit(email: str) -> bool:
 
     Allows 3 requests per hour per email address (cache-backed, same pattern as password reset).
     """
+    if not getattr(settings, "RATE_LIMIT_ENABLED", True):
+        return True
     max_per_hour = 3
     cache_key = f"email_verify_resend:{email.lower()}"
     cache.add(cache_key, 0, 3600)
@@ -356,6 +364,8 @@ def _verify_email_token_cache_key(token: str) -> str:
 
 
 def _check_verify_email_ip_rate_limit(ip: str) -> tuple[bool, str, int]:
+    if not getattr(settings, "RATE_LIMIT_ENABLED", True):
+        return True, "", 3600
     max_per_hour = getattr(settings, "VERIFY_EMAIL_IP_RATE_PER_HOUR", 10)
     window_seconds = 3600
     cache_key = _verify_email_ip_cache_key(ip)
@@ -368,6 +378,8 @@ def _check_verify_email_ip_rate_limit(ip: str) -> tuple[bool, str, int]:
 
 
 def _check_verify_email_token_rate_limit(token: str) -> tuple[bool, str, int]:
+    if not getattr(settings, "RATE_LIMIT_ENABLED", True):
+        return True, "", 3600
     max_per_hour = getattr(settings, "VERIFY_EMAIL_TOKEN_RATE_PER_HOUR", 5)
     window_seconds = 3600
     cache_key = _verify_email_token_cache_key(token)
@@ -392,7 +404,12 @@ def _get_verify_email_rate_limit_ip(request) -> str:
 
 
 def _account_lockout_cache_key(email: str) -> str:
-    return f"login_lockout_failures:{email.lower().strip()}"
+    # Hash the email to keep the key under 250 chars (memcached limit).
+    # Raw emails can be up to 254 chars per RFC 5321.
+    import hashlib
+    normalized = email.lower().strip()
+    email_hash = hashlib.md5(normalized.encode()).hexdigest()
+    return f"login_lockout_failures:{email_hash}"
 
 
 def _account_lockout_window_seconds() -> int:
@@ -427,7 +444,13 @@ def _check_account_lockout(email: str, user=None) -> bool:
       1. If user exists and has locked_until set: progressive backoff.
       2. Otherwise: flat window based on LoginAttempt count (graceful
          for unknown-email lockouts).
+
+    Gated by RATE_LIMIT_ENABLED — when disabled (e.g. test environments)
+    all lockout checks are skipped so auto-provisioning works.
     """
+    if not getattr(settings, "RATE_LIMIT_ENABLED", True):
+        return True
+
     normalized_email = email.lower().strip()
 
     # ── Tier 1: Progressive lockout for known users ────────────────────────
@@ -1509,7 +1532,7 @@ def register(request):
             # PLAN_NOT_FOUND means the database was not seeded — this is an infra/operator error.
             # Never leak the internal hint ("Run seed_default_plans") to end users.
             if getattr(e, "code", None) == "PLAN_NOT_FOUND":
-                logger.error(
+                logger.warning(
                     "registration_plan_not_found",
                     email=email,
                     hint="Run 'python manage.py seed_default_plans' to create default plans",
@@ -1641,12 +1664,7 @@ def register(request):
         from hub.apps.users.services import UserTenantMembershipService
 
         with tenant_context(tenant.id):
-            UserTenantMembershipService().add_membership(
-                user,
-                tenant,
-                actor_user=user,
-                reason="user_registration",
-            )
+            UserTenantMembershipService().add_membership(user, tenant)
 
     if tenant:
         from django.db import transaction as django_transaction
@@ -1797,7 +1815,7 @@ def _build_me_response(user):
             )
             needs_reconsent = len(stale_purposes) > 0
     except Exception:
-        pass  # Best-effort: consent DB outage must not block /me
+        logger.warning("consent_stale_check_failed", exc_info=True)
 
     return {
         "id": str(user.id),

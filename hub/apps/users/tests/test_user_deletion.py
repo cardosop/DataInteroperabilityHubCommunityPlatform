@@ -71,29 +71,29 @@ class UserDeletionTest(TestCase):
         self.assertFalse(User.objects.filter(id=user_id).exists())
     
     def test_soft_delete_user_with_resources(self):
-        """Test soft delete when user has resources"""
+        """Test delete behaviour when user deletion endpoint is called.
+
+        When _user_has_resources returns False (no resources exist yet),
+        the endpoint hard-deletes the user.  When resources are implemented,
+        this test should be updated to create resources, then verify the
+        user is soft-deleted (status=DISABLED, not removed from DB).
+        """
         self.client.force_authenticate(user=self.tenant_admin)
-        
-        # Create a user
+
         test_user = User.objects.create_user(
             email=f"todelete-{uuid.uuid4().hex[:8]}@example.com",
             password="testpass123",
             tenant=self.tenant,
-            status=UserStatus.ACTIVE
+            status=UserStatus.ACTIVE,
         )
         user_id = test_user.id
-        
-        # TODO: When resources are implemented (assets, datasets, etc.),
-        # create some resources for this user and verify soft delete behavior
-        # For now, _user_has_resources returns False, so this will hard delete
-        
-        # When resources exist, deletion should:
-        # 1. Set status to DISABLED
-        # 2. Return 200 OK with message
-        # 3. Not actually delete the user
-        
-        # This test will be updated when resource checking is implemented
-        pass
+
+        response = self.client.delete(f"/api/v1/users/{user_id}/")
+        # _user_has_resources currently returns False, so hard delete (204)
+        # is the expected behaviour.  When resources are implemented, this
+        # should expect 200 with DISABLED status instead.
+        self.assertIn(response.status_code, [status.HTTP_200_OK, status.HTTP_204_NO_CONTENT])
+        self.assertFalse(User.objects.filter(id=user_id).exists())
     
     def test_cannot_delete_self(self):
         """Test that a user cannot delete themselves"""

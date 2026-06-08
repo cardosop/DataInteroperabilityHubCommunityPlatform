@@ -35,7 +35,8 @@ class MarketplaceConnectionViewSetTest(TestCase):
         # Create tenant
         uid = uuid.uuid4().hex[:8]
         self.tenant = Tenant.objects.create(
-            name=f"Test Tenant {uid}", slug=f"test-tenant-{uid}", kyc_status=KYCStatus.VERIFIED
+            name=f"Test Tenant {uid}", slug=f"test-tenant-{uid}", kyc_status=KYCStatus.VERIFIED,
+            marketplace_integrations_enabled=True,
         )
         # Active subscription required so TenantSuspensionMiddleware allows API writes
         ensure_tenant_has_active_subscription(self.tenant)
@@ -653,10 +654,10 @@ class MarketplaceConnectionViewSetTest(TestCase):
             format="json",
         )
 
-        # May return 400 (validation error), 409 (conflict), or succeed if duplicate names allowed
+        # Duplicate name must be rejected — either 400 or 409
         self.assertIn(
             response.status_code,
-            [status.HTTP_200_OK, status.HTTP_400_BAD_REQUEST, status.HTTP_409_CONFLICT],
+            [status.HTTP_400_BAD_REQUEST, status.HTTP_409_CONFLICT],
         )
 
     def test_test_connection_error_handling(self):
@@ -672,14 +673,10 @@ class MarketplaceConnectionViewSetTest(TestCase):
             f"/api/v1/integrations/marketplace/connections/{connection.id}/test/"
         )
 
-        # Should handle errors gracefully (may return 200 with success=False or 400/500)
+        # Should handle errors gracefully (200 with success=False or 400)
         self.assertIn(
             response.status_code,
-            [
-                status.HTTP_200_OK,
-                status.HTTP_400_BAD_REQUEST,
-                status.HTTP_500_INTERNAL_SERVER_ERROR,
-            ],
+            [status.HTTP_200_OK, status.HTTP_400_BAD_REQUEST],
         )
 
         if response.status_code == status.HTTP_200_OK:
@@ -708,11 +705,8 @@ class MarketplaceConnectionViewSetTest(TestCase):
             "/api/v1/integrations/marketplace/connections/", invalid_config_data, format="json"
         )
 
-        # Should return validation error (400) not 500
-        self.assertIn(
-            response.status_code,
-            [status.HTTP_400_BAD_REQUEST, status.HTTP_500_INTERNAL_SERVER_ERROR],
-        )
+        # Null config must be rejected as a validation error
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
 
     def test_update_connection_not_found_error(self):
         """Test that updating nonexistent connection returns 404"""

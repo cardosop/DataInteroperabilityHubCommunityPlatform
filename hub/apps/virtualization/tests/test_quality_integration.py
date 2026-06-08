@@ -58,6 +58,8 @@ class VirtualizationServiceQualityIntegrationTest(TestCase):
 
     def setUp(self):
         """Set up test fixtures"""
+        from hub.apps.orchestration.registry import reset_workflow_definition_cache
+        reset_workflow_definition_cache()
         from hub.apps.users.models import Role, UserRole
 
         uid = uuid.uuid4().hex[:8]
@@ -165,7 +167,7 @@ class VirtualizationServiceQualityIntegrationTest(TestCase):
 
     @pytest.mark.skipif(not dq_service_available(), reason="DQService not available")
     def test_execute_query_validates_quality_threshold(self):
-        """Test that quality metrics are validated against threshold"""
+        """Test that executing a query triggers quality validation."""
         dataset = VirtualDataset.objects.create(
             tenant=self.tenant,
             created_by=self.user,
@@ -197,6 +199,13 @@ class VirtualizationServiceQualityIntegrationTest(TestCase):
                 self.skipTest(f"Database source not reachable: {e}")
 
         self.assertIsNotNone(execution)
+        # Quality validation should produce an execution_log with either
+        # quality-check entries or a status field reflecting the outcome.
+        if execution.execution_log:
+            self.assertIn(
+                'status', execution.execution_log,
+                "execution_log should record quality check status"
+            )
 
     @pytest.mark.skipif(not dq_service_available(), reason="DQService not available")
     def test_execute_query_stores_quality_metrics_in_execution_log(self):
@@ -233,6 +242,13 @@ class VirtualizationServiceQualityIntegrationTest(TestCase):
 
         self.assertIsNotNone(execution)
         self.assertIsNotNone(execution.execution_log)
+        # FIXME: The virtualization workflow currently stores an empty list
+        # in execution_log for completed executions.  This field should
+        # contain quality metric entries.  When the workflow is updated to
+        # populate execution_log, change this to assertGreater(len, 0).
+        # Tracking: hub/apps/orchestration/workflows/virtualization.py
+        self.assertIsInstance(execution.execution_log, list,
+                              "execution_log must be a list")
 
     def test_execute_query_handles_quality_service_unavailable(self):
         """Test that query execution continues if quality service is unavailable"""
@@ -278,6 +294,8 @@ class VirtualizationQualityIntegrationTest(TestCase):
 
     def setUp(self):
         """Set up test fixtures"""
+        from hub.apps.orchestration.registry import reset_workflow_definition_cache
+        reset_workflow_definition_cache()
         from hub.apps.users.models import Role, UserRole
 
         uid = uuid.uuid4().hex[:8]
@@ -369,14 +387,10 @@ class VirtualizationQualityIntegrationTest(TestCase):
         # Verify execution was created and tracked
         self.assertEqual(execution.virtual_dataset_id, federated_dataset.id)
 
-        # If execution completed, quality checks may have run
         if execution.status == QueryExecutionStatus.COMPLETED:
-            # Quality metrics should be in execution_log if quality check ran
-            if execution.execution_log:
-                # Verify quality check was attempted or completed
-                quality_related_logs = [
-                    log for log in execution.execution_log
-                    if isinstance(log, dict) and "quality" in log.get("message", "").lower()
-                ]
-                # Quality check may have run and logged results
+            # execution_log is a JSONField (nullable). Verify it is not None.
+            self.assertIsNotNone(
+                execution.execution_log,
+                "Completed execution should have execution_log populated"
+            )
 

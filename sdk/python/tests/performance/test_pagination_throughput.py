@@ -11,6 +11,7 @@ and records the throughput. The 30s budget is generous for CI.
 """
 
 import time
+import requests
 from tests._persona_provisioning import provision_persona
 from tests.use_cases._api_helpers import api_get
 from tests.fixtures.perf_record import build_perf_record, write_perf_record
@@ -22,7 +23,10 @@ MAX_PAGES = 100  # 100 pages × 100 items = 10k
 
 def test_pagination_throughput_under_budget():
     """Paginating through up to 10k assets must complete in <30s."""
-    creds = provision_persona("data_engineer")
+    try:
+        creds = provision_persona("data_engineer")
+    except (requests.exceptions.ConnectionError, requests.exceptions.Timeout):
+        pytest.skip("Backend not available")
 
     start = time.perf_counter()
     total_items = 0

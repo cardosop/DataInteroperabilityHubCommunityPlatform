@@ -286,6 +286,14 @@ class CircuitBreaker:
 
         Returns:
             Current state (CLOSED, OPEN, or HALF_OPEN)
+
+        Reads Redis when available; falls back to in-process local state
+        when Redis is unreachable.  When Redis is reachable but the state
+        key has not been written yet (first use after a reset that deleted
+        all keys), the circuit is treated as CLOSED — the local state
+        (which ``reset()`` set to CLOSED) is returned rather than
+        overwriting it, so a transient Redis key absence cannot mask a
+        legitimate in-process state transition.
         """
         if self._use_redis and self.redis_client:
             try:
@@ -293,15 +301,10 @@ class CircuitBreaker:
                 if state_data:
                     data = json.loads(state_data)
                     state = CircuitBreakerState(data.get('state', 'CLOSED'))
-                    # Update local state cache
+                    # Update local state cache from Redis
                     with self._local_lock:
                         self._local_state['state'] = state.value
                     return state
-                else:
-                    # Redis key doesn't exist - default to CLOSED and update local state
-                    with self._local_lock:
-                        self._local_state['state'] = CircuitBreakerState.CLOSED.value
-                    return CircuitBreakerState.CLOSED
             except Exception as e:
                 logger.warning(
                     "circuit_breaker_redis_read_error",
@@ -311,7 +314,8 @@ class CircuitBreaker:
                 )
                 self._use_redis = False
 
-        # Fallback to local state
+        # Fallback to local state (authoritative when Redis is unavailable
+        # or the state key hasn't been set yet).
         with self._local_lock:
             return CircuitBreakerState(self._local_state['state'])
 
@@ -765,6 +769,9 @@ class CircuitBreaker:
         Reset circuit breaker to CLOSED state.
 
         Clears all state including failure counts and timestamps.
+
+        Local state is set FIRST so that even if every Redis operation
+        fails silently the in-process view is guaranteed CLOSED / 0 / 0.
         """
         logger.info(
             "circuit_breaker_reset",
@@ -772,12 +779,16 @@ class CircuitBreaker:
             message="Circuit breaker reset to CLOSED"
         )
 
-        self._set_state(CircuitBreakerState.CLOSED)
-        self._reset_failure_count()
-        self._reset_success_count()
-        self._clear_opened_at()
+        # ── Local state first (authoritative when Redis is unavailable) ──
+        with self._local_lock:
+            self._local_state.update({
+                'state': CircuitBreakerState.CLOSED.value,
+                'failure_count': 0,
+                'success_count': 0,
+                'opened_at': None,
+            })
 
-        # Clean up Redis keys
+        # ── Redis cleanup (best-effort) ──────────────────────────────
         if self._use_redis and self.redis_client:
             try:
                 pattern = f"{self._redis_key_prefix}:*"
@@ -787,6 +798,10 @@ class CircuitBreaker:
             except Exception:
                 pass
 
+        # Persist CLOSED to Redis so the next _get_state() sees it
+        # (separate from the bulk delete above — this key survives).
+        self._set_state(CircuitBreakerState.CLOSED)
+
 
 def reset_circuit_breaker_by_name(service_name: str) -> None:
     """
@@ -795,14 +810,29 @@ def reset_circuit_breaker_by_name(service_name: str) -> None:
     Clears Redis state and any in-memory state so the next client sees CLOSED.
     Intended for test isolation so one test's failures do not leave the circuit
     OPEN for subsequent tests (e.g. webhook-delivery).
+
+    This implementation directly clears Redis keys (when Redis is available)
+    AND resets any circuit breaker instances registered in the shared-store.
+    The dual approach handles both breakers created via
+    ``get_shared_circuit_breaker`` and those instantiated directly (as the
+    GCP Marketplace connector does in its ``__init__``).
     """
+    # ── 1. Direct Redis key clear (handles directly-instantiated breakers) ──
+    redis_client = get_redis_client()
+    if redis_client is not None:
+        try:
+            pattern = f"circuit_breaker:{service_name}:*"
+            keys = redis_client.keys(pattern)
+            if keys:
+                redis_client.delete(*keys)
+        except Exception:
+            pass
+
+    # ── 2. Reset any shared-store entries (belt-and-suspenders) ──────────
     from hub.apps.core.resilience.service_breakers import (
-        get_shared_circuit_breaker,
         reset_shared_circuit_breakers_for_service,
     )
-
     reset_shared_circuit_breakers_for_service(service_name)
-    get_shared_circuit_breaker(service_name).reset()
 
 
 def get_all_circuit_breakers() -> Dict[str, 'CircuitBreaker']:

@@ -34,3 +34,22 @@ class TenantsAPI:
             Usage data with plan limits and usage percentages
         """
         return await self.client.get("tenants/me/usage/")
+
+    async def list_tenants(
+        self,
+        page: int = 1,
+        page_size: int = 25,
+    ) -> Dict[str, Any]:
+        """
+        List tenants accessible to the current user.
+
+        Args:
+            page: Page number (1-indexed).
+            page_size: Items per page.
+
+        Returns:
+            Paginated tenant list.
+        """
+        return await self.client.get(
+            "tenants/", params={"page": page, "page_size": page_size}
+        )

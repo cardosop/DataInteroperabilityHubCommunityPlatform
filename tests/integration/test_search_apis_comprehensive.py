@@ -50,13 +50,13 @@ class TestSearchAPI(TestCase):
 
         # Create tenants
         self.tenant_a = TenantFactory.create_tenant(
-            name="Tenant A",
+            name=f"Tenant A {uuid.uuid4().hex[:8]}",
             slug=f"tenant-a-{uuid.uuid4().hex[:8]}",
             status=TenantStatus.ACTIVE.value,
             kyc_status=KYCStatus.VERIFIED.value
         )
         self.tenant_b = TenantFactory.create_tenant(
-            name="Tenant B",
+            name=f"Tenant B {uuid.uuid4().hex[:8]}",
             slug=f"tenant-b-{uuid.uuid4().hex[:8]}",
             status=TenantStatus.ACTIVE.value,
             kyc_status=KYCStatus.VERIFIED.value

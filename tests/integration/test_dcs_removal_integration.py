@@ -1,4 +1,6 @@
 """
+
+import uuid
 Integration tests for DCS removal.
 
 These tests verify that DCS removal works correctly across the entire system,
@@ -18,6 +20,7 @@ from hub.apps.contracts.normalization import normalize_contract
 from hub.apps.contracts.spec_detection import detect_spec_type
 from hub.apps.tenants.models import Tenant
 from hub.apps.testing.billing_support import ensure_tenant_has_active_subscription
+from hub.apps.testing.role_support import ensure_user_has_data_provider_role
 
 User = get_user_model()
 
@@ -52,6 +55,7 @@ class DCSRemovalIntegrationTest(TestCase):
         self.user.tenant = self.tenant
         self.user.save()
         self.client.force_authenticate(user=self.user)
+        ensure_user_has_data_provider_role(self.user)
 
     def test_odcs_contract_full_workflow(self):
         """Test complete ODCS contract workflow: creation -> normalization -> validation"""

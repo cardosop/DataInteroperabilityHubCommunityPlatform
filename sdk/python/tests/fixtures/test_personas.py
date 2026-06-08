@@ -64,6 +64,6 @@ def test_expected_personas_present():
         "visitor", "auditor", "community_manager", "compliance_officer",
         "data_analyst", "data_consumer", "data_engineer",
         "data_mesh_domain_owner", "data_product_owner", "data_scientist",
-        "external_developer", "platform_admin", "tenant_admin",
+        "external_developer", "platform_admin", "tenant_admin",  # noqa: PHASE216-STATIC-ID
     }
     assert set(MVP_PERSONA_ROLES) == expected

@@ -43,8 +43,8 @@ class WorkflowRegressionTest(TestCase):
         self.client = APIClient()
         plan = get_pro_plan()
         self.tenant = Tenant.objects.create(
-            name="Workflow Test Tenant",
-            slug="workflow-test-tenant",
+            name=f"Workflow Test Tenant {uuid.uuid4().hex[:8]}",
+            slug=f"workflow-test-tenant-{uuid.uuid4().hex[:8]}",
             plan=plan,
         )
         Subscription.objects.create(

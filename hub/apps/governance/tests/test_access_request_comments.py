@@ -22,19 +22,24 @@ from rest_framework.test import APIClient
 from hub.apps.assets.models import Asset, AssetStatus
 from hub.apps.governance.models import AccessRequest, AccessRequestStatus
 from hub.apps.tenants.models import Tenant
+from hub.apps.users.models import Role, UserRole, UserStatus
 
 pytestmark = pytest.mark.django_db(transaction=True)
 User = get_user_model()
 
 
 def _create_tenant(name_prefix="AC", slug_prefix=None):
+    from hub.apps.testing.billing_support import ensure_tenant_has_active_subscription
+
     slug = slug_prefix or uuid.uuid4().hex[:8]
-    return Tenant.objects.create(
+    tenant = Tenant.objects.create(
         name=f"{name_prefix}-{slug}",
         slug=f"{slug}-{slug}",
         status="ACTIVE",
         kyc_status="UNVERIFIED",
     )
+    ensure_tenant_has_active_subscription(tenant)
+    return tenant
 
 
 def _create_user(tenant, email_prefix="user"):
@@ -43,7 +48,7 @@ def _create_user(tenant, email_prefix="user"):
         email=f"{email_prefix}-{sfx}@meshant.test",
         password="testpass",
         tenant=tenant,
-        status=User.Status.ACTIVE if hasattr(User, "Status") else None,
+        status=UserStatus.ACTIVE,
     )
 
 
@@ -69,6 +74,16 @@ def _create_access_request(tenant, requested_by, asset, status_val=AccessRequest
     )
 
 
+def _make_admin(tenant, user):
+    """Grant TENANT_ADMIN role to a user."""
+    role, _ = Role.objects.get_or_create(
+        tenant=tenant,
+        name="TENANT_ADMIN",
+        defaults={"description": "Tenant Administrator"},
+    )
+    UserRole.objects.get_or_create(user=user, role=role, tenant=tenant)
+
+
 # ===========================================================================
 # 1. Comment persistence with approve / reject
 # ===========================================================================
@@ -84,21 +99,11 @@ class TestCommentPersistsWithApprove(TestCase):
         self.requester = _create_user(self.tenant, "req")
         self.approver = _create_user(self.tenant, "approver")
         # Give approver TENANT_ADMIN role so they can approve.
-        from hub.apps.users.models import UserRole
         self.asset = _create_asset(self.tenant, self.requester)
         self.access_request = _create_access_request(
             self.tenant, self.requester, self.asset,
         )
-        # Ensure approver has TENANT_ADMIN role.
-        try:
-            role = UserRole.objects.get_or_create(
-                name="TENANT_ADMIN", tenant=self.tenant,
-            )[0]
-            UserRole.objects.get_or_create(
-                user=self.approver, role=role,
-            )
-        except Exception:
-            pass
+        _make_admin(self.tenant, self.approver)
         self.client.force_authenticate(user=self.approver)
 
     def test_approve_with_comments_creates_comment_row(self):
@@ -146,17 +151,7 @@ class TestCommentPersistsWithReject(TestCase):
         self.access_request = _create_access_request(
             self.tenant, self.requester, self.asset,
         )
-        # Give rejecter TENANT_ADMIN role.
-        try:
-            from hub.apps.users.models import UserRole
-            role = UserRole.objects.get_or_create(
-                name="TENANT_ADMIN", tenant=self.tenant,
-            )[0]
-            UserRole.objects.get_or_create(
-                user=self.rejecter, role=role,
-            )
-        except Exception:
-            pass
+        _make_admin(self.tenant, self.rejecter)
         self.client.force_authenticate(user=self.rejecter)
 
     def test_reject_with_comments_creates_comment_row(self):
@@ -251,6 +246,45 @@ class TestStandaloneComment(TestCase):
         # Chronological = oldest first.
         assert data[0]["body"] == "First comment."
         assert data[1]["body"] == "Second comment."
+
+    def test_standalone_comment_requires_authentication(self):
+        """POST to comments endpoint without auth returns 401."""
+        # Force client to be unauthenticated
+        self.client.logout()
+        resp = self.client.post(
+            f"/api/v1/governance/access-requests/{self.access_request.id}/comments/",
+            data={"body": "test"},
+            format="json",
+        )
+        assert resp.status_code == 401, (
+            f"Expected 401 for unauthenticated comment POST, got {resp.status_code}: {resp.content}"
+        )
+
+    def test_standalone_comment_missing_body_field(self):
+        """POST to comments endpoint without 'body' key returns 400."""
+        resp = self.client.post(
+            f"/api/v1/governance/access-requests/{self.access_request.id}/comments/",
+            data={},  # No 'body' key at all
+            format="json",
+        )
+        assert resp.status_code == 400, (
+            f"Expected 400 for missing body field, got {resp.status_code}: {resp.content}"
+        )
+        error_text = str(resp.data).lower()
+        assert "body" in error_text, (
+            f"Error response should mention 'body', got: {resp.content}"
+        )
+
+    def test_standalone_comment_malformed_json(self):
+        """POST to comments endpoint with malformed JSON returns 400."""
+        resp = self.client.post(
+            f"/api/v1/governance/access-requests/{self.access_request.id}/comments/",
+            data="not valid json {{{",
+            content_type="application/json",
+        )
+        assert resp.status_code == 400, (
+            f"Expected 400 for malformed JSON, got {resp.status_code}: {resp.content}"
+        )
 
 
 # ===========================================================================

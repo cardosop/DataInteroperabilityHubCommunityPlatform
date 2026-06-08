@@ -25,6 +25,15 @@ logger = structlog.get_logger(__name__)
 class ComplianceServiceClient:
     """
     Client for interacting with the Compliance service.
+
+    Supports context manager protocol for deterministic connection cleanup::
+
+        with ComplianceServiceClient() as client:
+            result = client.scan_file(...)
+
+    The underlying ``httpx.Client`` connection pool is closed on
+    ``.close()`` / ``__exit__``, preventing socket leaks in long-running
+    processes.
     """
 
     def __init__(self):
@@ -40,8 +49,11 @@ class ComplianceServiceClient:
         if not self.base_url.endswith('/'):
             self.base_url = self.base_url.rstrip('/')
         self.client = httpx.Client(base_url=self.base_url, timeout=self.timeout)
-        self.max_retries = 2
-        self.backoff_factor = 1
+        # Use Django settings when available so test environments can
+        # reduce retries (--no-deps means the service is unreachable
+        # and every retry just adds connection-timeout + backoff delay).
+        self.max_retries = getattr(settings, 'COMPLIANCE_SERVICE_MAX_RETRIES', 2)
+        self.backoff_factor = getattr(settings, 'COMPLIANCE_SERVICE_BACKOFF_FACTOR', 1)
 
         self._circuit_breaker = get_shared_circuit_breaker("compliance-service")
 
@@ -96,7 +108,7 @@ class ComplianceServiceClient:
             data = response.json()
             return data.get("status") == "healthy", data.get("service", "compliance-service")
         except Exception as e:
-            logger.error("compliance_service_health_check_failed", error=str(e))
+            logger.warning("compliance_service_health_check_failed", error=str(e))
             return False, "unknown"
 
     def scan_file(
@@ -211,7 +223,7 @@ class ComplianceServiceClient:
             )
             return result
         except Exception as e:
-            logger.error("compliance_service_scan_file_error", error=str(e))
+            logger.warning("compliance_service_scan_file_error", error=str(e))
             return fallback_response()
 
     def scan_file_async(
@@ -353,4 +365,35 @@ class ComplianceServiceClient:
         return self._circuit_breaker.call(
             _execute_poll, fallback=_fallback_poll_open
         )
+
+    # ------------------------------------------------------------------
+    # Resource lifecycle
+    # ------------------------------------------------------------------
+
+    def close(self) -> None:
+        """Close the underlying ``httpx.Client`` connection pool.
+
+        Safe to call multiple times — subsequent calls are no-ops.
+
+        After ``close()`` the client instance should not be reused; create
+        a new ``ComplianceServiceClient`` if further requests are needed.
+        """
+        if hasattr(self, "client") and self.client is not None:
+            self.client.close()
+            self.client = None
+
+    def __enter__(self) -> "ComplianceServiceClient":
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb) -> None:
+        self.close()
+        return None  # do not suppress exceptions
+
+    def __del__(self) -> None:
+        """Last-resort cleanup guard — prefer explicit ``.close()`` or ``with``."""
+        try:
+            self.close()
+        except Exception:
+            # __del__ must not raise; the interpreter may be tearing down
+            pass
 

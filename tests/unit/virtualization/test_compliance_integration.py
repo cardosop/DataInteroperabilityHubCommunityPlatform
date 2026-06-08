@@ -155,8 +155,8 @@ class VirtualizationComplianceIntegrationTest(TestCase):
         """Test compliance check validates cross-tenant source access"""
         # Create another tenant
         other_tenant = Tenant.objects.create(
-            name="Other Tenant",
-            slug="other-tenant"
+            name=f"Other Tenant {uuid.uuid4().hex[:8]}",
+            slug=f"other-tenant-{uuid.uuid4().hex[:8]}"
         )
 
         # Create asset in other tenant

@@ -242,6 +242,18 @@ def get_capabilities_for_request(request) -> Dict[str, Any]:
         _compute_asset_creation_blocked_reason(tenant)
     )
 
+    # Phase 285.13 — per-tenant datasets/files kill switch capabilities
+    if tenant:
+        base["datasets"] = bool(getattr(tenant, "datasets_enabled", True))
+        base["files"] = bool(getattr(tenant, "files_enabled", True))
+        base["transformation_pipelines"] = bool(
+            getattr(tenant, "transformation_enabled", False)
+        )
+    else:
+        base["datasets"] = True
+        base["files"] = True
+        base["transformation_pipelines"] = False
+
     return base
 
 

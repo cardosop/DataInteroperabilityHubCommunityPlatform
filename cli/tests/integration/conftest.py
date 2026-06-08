@@ -13,6 +13,9 @@ import requests
 import subprocess
 import time
 
+_api_test_port = os.environ.get("API_TEST_PORT", "8000")
+_DEFAULT_API_BASE = f"http://localhost:{_api_test_port}"
+
 
 def _api_is_reachable(url: str) -> bool:
     """Return True if the Meshant API root responds within the timeout."""
@@ -43,7 +46,7 @@ def pytest_collection_modifyitems(config, items):
         return
     api_url = os.environ.get(
         "MESHANT_API_URL",
-        "http://localhost:8000/api/v1",
+        f"{_DEFAULT_API_BASE}/api/v1",
     )
     # Probe the API root once per session.
     api_root = api_url.rsplit("/api/v1", 1)[0] or api_url
@@ -80,7 +83,9 @@ def check_service_health(service_name: str, port: int, health_path: str = "/heal
             response = requests.get(f"http://localhost:{port}{health_path}", timeout=2)
             if response.status_code == 200:
                 return True
-        except Exception:
+        except requests.RequestException:
+            # Connection refused / timeout is expected when the service
+            # isn't up yet.  Let the retry loop keep trying.
             pass
         if attempt < max_wait - 1:
             time.sleep(1)
@@ -115,7 +120,8 @@ def start_service_if_needed(service_name: str, port: int, health_path: str = "/h
         if result.returncode == 0:
             # Wait for service to be healthy
             return check_service_health(service_name, port, health_path, max_wait=60)
-    except Exception:
+    except (subprocess.SubprocessError, FileNotFoundError, OSError):
+        # docker / docker-compose missing or broken — not a test failure.
         pass
     return False
 

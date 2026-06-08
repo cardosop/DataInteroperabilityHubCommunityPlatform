@@ -22,6 +22,7 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
 from hub.apps.audit.utils import create_audit_event
+from hub.apps.core.idempotency import IdempotencyError, IdempotencyService
 from hub.apps.core.responses import handle_service_exception
 from hub.apps.core.services.base import ValidationError as ServiceValidationError
 from hub.apps.core.utils.prefect_deployment import delete_prefect_deployment
@@ -33,6 +34,7 @@ from .models import (
     ScheduledExportRunStatus,
     ScheduledExportStatus,
 )
+from .throttles import ScheduledExportTenantThrottle
 from .serializers import (
     ScheduledExportCreateSerializer,
     ScheduledExportRunSerializer,
@@ -149,6 +151,9 @@ def _trigger_deployment_via_prefect_integration_service(
         return False, None, str(e)
 
 
+_TRIGGER_IDEMPOTENCY_SCOPE: str = "scheduled-export.trigger.v1"
+
+
 @extend_schema_view(
     list=extend_schema(
         summary="List scheduled exports",
@@ -191,6 +196,7 @@ class ScheduledExportViewSet(viewsets.ModelViewSet):
     serializer_class = ScheduledExportSerializer
     permission_classes = [IsAuthenticated]
     lookup_field = "id"
+    throttle_classes = [ScheduledExportTenantThrottle]
 
     def get_queryset(self):
         """Filter queryset by tenant and optional status, excluding soft-deleted records."""
@@ -539,6 +545,75 @@ class ScheduledExportViewSet(viewsets.ModelViewSet):
         Creates a Prefect flow run for the scheduled export.
         """
         scheduled_export = self.get_object()
+
+        # ── Idempotency-Key guard (277.B.073) ───────────────────────
+        # Validates the key format, checks for a cached replay, and
+        # acquires a concurrent-request lock so two parallel POSTs with
+        # the same key don't both create a run.
+        idem_key_header = request.META.get("HTTP_IDEMPOTENCY_KEY")
+        if idem_key_header:
+            tenant_id, tenant = get_request_tenant(request)
+            if not tenant:
+                tenant = scheduled_export.tenant
+                tenant_id = str(tenant.id) if tenant else None
+
+            try:
+                IdempotencyService.assert_body_matches_key(
+                    key=idem_key_header,
+                    body=request.body,
+                    request_tenant_uuid=tenant_id,
+                )
+            except IdempotencyError as exc:
+                return Response(
+                    {"error": str(exc), "code": exc.code},
+                    status=exc.http_status,
+                )
+
+            cached = IdempotencyService.get_cached_response(
+                idem_key_header,
+                scope=_TRIGGER_IDEMPOTENCY_SCOPE,
+            )
+            if cached is not None:
+                import logging as _logging
+                _logging.getLogger(__name__).info(
+                    "idempotency_replay_hit",
+                    extra={
+                        "tenant_id": tenant_id,
+                        "scope": _TRIGGER_IDEMPOTENCY_SCOPE,
+                        "cached_status": cached.status_code,
+                    },
+                )
+                replay_response = Response(
+                    cached.data, status=cached.status_code,
+                )
+                for header_name, header_value in cached.headers.items():
+                    replay_response[header_name] = header_value
+                replay_response["Idempotent-Replay"] = "true"
+                return replay_response
+
+            if not IdempotencyService.acquire_lock(
+                idem_key_header,
+                scope=_TRIGGER_IDEMPOTENCY_SCOPE,
+            ):
+                response = Response(
+                    {
+                        "error": (
+                            "Another request with this Idempotency-Key "
+                            "is currently in progress. Retry shortly."
+                        ),
+                        "code": "IDEMPOTENCY_REQUEST_IN_PROGRESS",
+                    },
+                    status=status.HTTP_409_CONFLICT,
+                )
+                response["Retry-After"] = "5"
+                return response
+
+            _idem_lock_held = True
+        else:
+            _idem_lock_held = False
+
+        # Non-active check runs regardless of idempotency — it's a
+        # fast-fail that doesn't need lock/store semantics.
         if scheduled_export.status != ScheduledExportStatus.ACTIVE:
             return Response(
                 {
@@ -548,6 +623,7 @@ class ScheduledExportViewSet(viewsets.ModelViewSet):
                 },
                 status=status.HTTP_400_BAD_REQUEST,
             )
+
         serializer = ScheduledExportTriggerSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
 
@@ -660,6 +736,12 @@ class ScheduledExportViewSet(viewsets.ModelViewSet):
                 },
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
+        finally:
+            if _idem_lock_held:
+                IdempotencyService.release_lock(
+                    idem_key_header,
+                    scope=_TRIGGER_IDEMPOTENCY_SCOPE,
+                )
 
 
 @extend_schema_view(
@@ -682,6 +764,7 @@ class ScheduledExportRunViewSet(viewsets.ReadOnlyModelViewSet):
     serializer_class = ScheduledExportRunSerializer
     permission_classes = [IsAuthenticated]
     lookup_field = "id"
+    throttle_classes = [ScheduledExportTenantThrottle]
 
     def get_queryset(self):
         """Filter queryset by tenant"""

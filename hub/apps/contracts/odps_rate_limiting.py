@@ -183,7 +183,7 @@ def check_rate_limit(
             redis_url = getattr(settings, 'REDIS_URL', 'redis://localhost:6379/0')
             redis_client = redis.from_url(redis_url, decode_responses=False, socket_connect_timeout=0.1)
         except Exception as e:
-            logger.error("rate_limit_redis_connection_error", error=str(e))
+            logger.warning("rate_limit_redis_connection_error", error=str(e))
             # Fail open if Redis is unavailable
             return True, None
 
@@ -221,7 +221,7 @@ def check_rate_limit(
                 )
             return False, error
     except Exception as e:
-        logger.error("rate_limit_check_error", level="global", error=str(e))
+        logger.warning("rate_limit_check_error", level="global", error=str(e))
         # Fail open on errors
         pass
 
@@ -260,7 +260,7 @@ def check_rate_limit(
                     )
                 return False, error
         except Exception as e:
-            logger.error("rate_limit_check_error", level="tenant", error=str(e))
+            logger.warning("rate_limit_check_error", level="tenant", error=str(e))
             # Fail open on errors
             pass
 
@@ -301,7 +301,7 @@ def check_rate_limit(
                     )
                 return False, error
         except Exception as e:
-            logger.error("rate_limit_check_error", level="user", error=str(e))
+            logger.warning("rate_limit_check_error", level="user", error=str(e))
             # Fail open on errors
             pass
 
@@ -374,7 +374,7 @@ def _check_single_limit(
         return True, current_count + 1, reset_time
 
     except Exception as e:
-        logger.error("rate_limit_redis_error", key=key, error=str(e))
+        logger.warning("rate_limit_redis_error", key=key, error=str(e))
         # Fail open on Redis errors
         return True, 0, int(current_time + RATE_LIMIT_WINDOW)
 

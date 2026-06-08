@@ -110,6 +110,27 @@ class TransformationPipeline(models.Model):
         help_text="Additional metadata (tags, categories, source/target assets, etc.)"
     )
 
+    # ── dbt-native fields (Phase 285.9) ──────────────────────────────
+
+    warehouse_credential_ref = models.CharField(
+        max_length=2048,
+        null=True,
+        blank=True,
+        help_text="AWS Secrets Manager ARN for warehouse credentials (required for dbt-native pipelines).",
+    )
+    git_credential_ref = models.CharField(
+        max_length=2048,
+        null=True,
+        blank=True,
+        help_text="AWS Secrets Manager ARN for git credentials (dbt project clone).",
+    )
+    git_repository_url = models.CharField(
+        max_length=2048,
+        null=True,
+        blank=True,
+        help_text="Git repository URL for the dbt project (e.g., https://github.com/org/repo.git).",
+    )
+
     class Meta:
         db_table = "transformation_pipelines"
         ordering = ["-created_at"]
@@ -540,6 +561,13 @@ class PipelineExecution(models.Model):
         unique=True,
         db_index=True,
         help_text="Idempotency key for retry safety (uses execution_id by default)"
+    )
+    prefect_flow_run_id = models.CharField(
+        max_length=255,
+        null=True,
+        blank=True,
+        db_index=True,
+        help_text="Prefect flow run ID for this execution. Set after Prefect flow run creation.",
     )
     created_at = models.DateTimeField(
         auto_now_add=True,

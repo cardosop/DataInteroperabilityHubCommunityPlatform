@@ -10,13 +10,36 @@ latency-sensitive.
 """
 from __future__ import annotations
 
+import contextlib
 import logging
+from typing import Any, Callable, Optional, TypeVar
 
 import django_rq
 
 logger = logging.getLogger(__name__)
 
 _QUEUE = "job_low"
+
+_T = TypeVar("_T")
+
+
+def _run_with_tenant_context(
+    tenant_id: Optional[str],
+    func: Callable[[], _T],
+) -> _T:
+    """Run *func* inside ``tenant_context(tenant_id)`` when *tenant_id*
+    is provided, or directly when it is ``None``.
+
+    Worker/signal code that touches tenant-scoped models MUST use this
+    helper so that RLS policies (which reference
+    ``current_setting('app.current_tenant_id')``) can resolve rows.
+    """
+    if tenant_id is None:
+        return func()
+    from hub.apps.tenants.request_tenant import tenant_context
+
+    with tenant_context(tenant_id):
+        return func()
 
 
 def enqueue_asset_search_vector_update(asset_id: str) -> None:

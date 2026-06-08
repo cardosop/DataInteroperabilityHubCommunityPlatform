@@ -86,6 +86,8 @@ class VirtualizationExecuteQueryIntegrationTest(TestCase):
 
     def setUp(self):
         """Set up test fixtures"""
+        from hub.apps.orchestration.registry import reset_workflow_definition_cache
+        reset_workflow_definition_cache()
         from hub.apps.users.models import Role, UserRole
 
         uid = uuid.uuid4().hex[:8]
@@ -274,6 +276,8 @@ class VirtualizationExecuteQueryE2ETest(TestCase):
 
     def setUp(self):
         """Set up test fixtures"""
+        from hub.apps.orchestration.registry import reset_workflow_definition_cache
+        reset_workflow_definition_cache()
         from hub.apps.users.models import Role, UserRole
 
         uid = uuid.uuid4().hex[:8]
@@ -479,6 +483,8 @@ class VirtualizationGetQueryResultIntegrationTest(TestCase):
 
     def setUp(self):
         """Set up test fixtures"""
+        from hub.apps.orchestration.registry import reset_workflow_definition_cache
+        reset_workflow_definition_cache()
         from hub.apps.users.models import Role, UserRole
 
         uid = uuid.uuid4().hex[:8]

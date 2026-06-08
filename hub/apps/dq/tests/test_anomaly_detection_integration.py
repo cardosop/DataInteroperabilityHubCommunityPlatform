@@ -127,17 +127,28 @@ class AnomalyDetectionIntegrationTest(TestCase):
         for anomaly in anomalies:
             anomaly.save()
         
-        # Verify anomalies were created
+        # Verify anomalies were created — exactly 1 anomaly for the
+        # single outlier run (quality_score 40 vs baseline 90).
         saved_anomalies = DQAnomaly.objects.filter(
             tenant=self.tenant,
-            asset=self.asset
+            asset=self.asset,
         )
-        self.assertGreater(saved_anomalies.count(), 0)
-        
-        # Verify anomaly details
+        self.assertEqual(saved_anomalies.count(), 1)
+
+        # Verify anomaly properties carry meaningful computed values,
+        # not just is-not-None vacuously passing placeholders.
         anomaly = saved_anomalies.first()
         self.assertEqual(anomaly.metric_type, "quality_score")
         self.assertIsNotNone(anomaly.expected_value)
         self.assertIsNotNone(anomaly.actual_value)
         self.assertIsNotNone(anomaly.deviation)
+        # The outlier value (40.0) should be reflected.
+        self.assertAlmostEqual(anomaly.actual_value, 40.0, places=1)
+        # Severity must be high for a 90→40 drop.
+        self.assertIn(anomaly.severity, ["HIGH", "CRITICAL"])
+        # Anomaly type must be set to a meaningful value.
+        self.assertIsNotNone(anomaly.anomaly_type)
+        self.assertGreater(len(anomaly.anomaly_type), 0)
+        # Deviation should be non-zero (the drop magnitude, negative for a fall).
+        self.assertNotEqual(anomaly.deviation, 0)
 

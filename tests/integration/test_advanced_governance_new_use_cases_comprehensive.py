@@ -24,6 +24,7 @@ from hub.apps.assets.models import AssetStatus
 from hub.apps.governance.models import RetentionPolicy, RetentionPolicyType, RetentionAction
 from hub.apps.tenants.models import KYCStatus, TenantStatus
 from hub.apps.testing.billing_support import ensure_tenant_has_active_subscription
+from hub.apps.testing.role_support import ensure_user_has_data_provider_role
 from hub.apps.users.models import Role, UserRole
 from tests.fixtures.test_data_factories import (
     AssetFactory,

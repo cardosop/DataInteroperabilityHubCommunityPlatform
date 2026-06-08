@@ -195,7 +195,10 @@ class DQServiceClient:
             data = response.json()
             return data.get("status") == "healthy", data.get("service", "dq-service")
         except Exception as e:
-            logger.error("dq_service_health_check_failed", error=str(e))
+            # Health-check failures are expected operational events (e.g. service
+            # restart, transient network partition).  WARNING, not ERROR, so that
+            # test suites and monitoring don't treat them as system failures.
+            logger.warning("dq_service_health_check_failed", error=str(e))
             return False, "unknown"
 
     def run_dq(
@@ -360,12 +363,10 @@ class DQServiceClient:
             result = self._circuit_breaker.call(execute_dq_check, fallback=fallback_response)
             return result
         except Exception as e:
-            # If circuit breaker raised an exception (not caught by fallback),
-            # re-raise it to allow callers to handle it
-            # This allows tests to verify error handling behavior
-            logger.error("dq_service_run_error", error=str(e))
-            # Re-raise the exception to allow callers to handle it
-            # The circuit breaker will have already called the fallback if appropriate
+            # The circuit breaker re-raised after the fallback (or the fallback
+            # was bypassed).  This is an *operational* event — the caller is
+            # expected to handle it — so log at WARNING, not ERROR.
+            logger.warning("dq_service_run_error", error=str(e))
             raise
 
 

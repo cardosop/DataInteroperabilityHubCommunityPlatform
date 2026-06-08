@@ -58,3 +58,8 @@ sphinx-rtd-theme>=2.0.0
 
 # Pre-commit Hooks
 pre-commit>=3.5.0
+
+# Prefect for integration testing — matches prefect-integration service version
+# (docker-compose.test.yml uses prefecthq/prefect:3-python3.12).
+# Required by test_prefect_full_flow_integration.py subprocess flow execution.
+prefect>=3.6.15,<4.0

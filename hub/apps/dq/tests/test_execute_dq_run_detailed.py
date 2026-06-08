@@ -87,7 +87,8 @@ class TestExecuteDQRunDetailed(DQTestBase):
     def test_successful_run_persists_all_fields(self, MockClient, MockStorage):
         MockStorage.return_value.download_file.return_value = b"col1,col2\n1,2\n"
         mock_result = self._mock_dq_result()
-        MockClient.return_value.run_dq.return_value = mock_result
+        mock_client_instance = MockClient.return_value
+        mock_client_instance.run_dq.return_value = mock_result
 
         run = self._create_dq_run()
         execute_dq_run(str(run.id))
@@ -100,6 +101,14 @@ class TestExecuteDQRunDetailed(DQTestBase):
         self.assertEqual(len(run.checks_json), 1)
         self.assertIn("metering", run.details_json)
         self.assertIsNotNone(run.completed_at)
+
+        # M5: verify run_dq was called with the correct arguments.
+        mock_client_instance.run_dq.assert_called_once()
+        call_kwargs = mock_client_instance.run_dq.call_args.kwargs
+        self.assertEqual(call_kwargs["file_format"], "csv")
+        self.assertEqual(call_kwargs["profile_key"], "intake_basic_gx")
+        self.assertIn("file_content", call_kwargs)
+        self.assertIn("tenant_id", call_kwargs)
 
     # ------------------------------------------------------------------
     # 2. Asset DQ status set to PASS on success
@@ -170,11 +179,16 @@ class TestExecuteDQRunDetailed(DQTestBase):
         self.assertEqual(run.quality_score, 0.0)
 
     # ------------------------------------------------------------------
-    # 6. Exception → fail-closed: FAILED + UNKNOWN + asset.dq_status=UNKNOWN
+    # 6. Unhandled exception → fail-closed: FAILED + UNKNOWN + asset=UNKNOWN
     # ------------------------------------------------------------------
     @patch("hub.apps.files.storage.S3StorageClient")
     @patch("hub.apps.dq.views.DQServiceClient")
-    def test_error_sets_fail_closed(self, MockClient, MockStorage):
+    def test_unhandled_exception_sets_fail_closed(self, MockClient, MockStorage):
+        """Unhandled RuntimeError from run_dq → FAILED + UNKNOWN + fail_closed.
+
+        Note: this tests the outer exception handler in execute_dq_run, not
+        the circuit breaker path. The mock raises directly, bypassing the
+        breaker entirely."""
         MockStorage.return_value.download_file.return_value = b"col1\n1\n"
         MockClient.return_value.run_dq.side_effect = RuntimeError("service down")
 
@@ -192,10 +206,16 @@ class TestExecuteDQRunDetailed(DQTestBase):
     # ------------------------------------------------------------------
     # 7. Deadline exceeded → FAILED + UNKNOWN
     # ------------------------------------------------------------------
-    @override_settings(DQ_POLL_MAX_SECONDS=0)
+    @override_settings(DQ_POLL_MAX_SECONDS=300)
     @patch("hub.apps.files.storage.S3StorageClient")
     @patch("hub.apps.dq.views.DQServiceClient")
-    def test_timeout_sets_fail_closed(self, MockClient, MockStorage):
+    @patch("time.monotonic")
+    def test_timeout_sets_fail_closed(self, mock_monotonic, MockClient, MockStorage):
+        """Deadline past → FAILED + UNKNOWN + POLL_TIMEOUT.
+
+        Uses deterministic monotonic values: 100 sets the deadline (100+300=400),
+        500 is past the deadline, so the fail-closed branch fires."""
+        mock_monotonic.side_effect = [100.0, 500.0]
         MockStorage.return_value.download_file.return_value = b"col1\n1\n"
         MockClient.return_value.run_dq.return_value = self._mock_dq_result()
 
@@ -205,14 +225,16 @@ class TestExecuteDQRunDetailed(DQTestBase):
         run.refresh_from_db()
         self.assertEqual(run.status, DQRunStatus.FAILED)
         self.assertEqual(run.overall_status, "UNKNOWN")
+        self.assertEqual(run.details_json.get("error_code"), "POLL_TIMEOUT")
 
     # ------------------------------------------------------------------
     # 8. No file/dataset → FAILED
     # ------------------------------------------------------------------
-    @patch("hub.apps.files.storage.S3StorageClient")
-    @patch("hub.apps.dq.views.DQServiceClient")
-    def test_no_file_raises_error(self, MockClient, MockStorage):
-        """DQRun with no file, dataset, or asset-with-dataset → FAILED."""
+    def test_no_file_raises_error(self):
+        """DQRun with no file, dataset, or asset-with-dataset → FAILED.
+
+        The ValueError("No file found for DQ run") is caught by the outer
+        handler which sets FAILED + UNKNOWN + error_type=ValueError."""
         # Create asset without any datasets
         bare_asset = Asset.objects.create(
             tenant=self.tenant,
@@ -226,4 +248,7 @@ class TestExecuteDQRunDetailed(DQTestBase):
 
         run.refresh_from_db()
         self.assertEqual(run.status, DQRunStatus.FAILED)
+        self.assertEqual(run.overall_status, "UNKNOWN")
         self.assertIn("error", run.details_json)
+        self.assertEqual(run.details_json.get("error_type"), "ValueError")
+        self.assertTrue(run.details_json.get("fail_closed"))

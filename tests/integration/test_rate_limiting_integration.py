@@ -11,6 +11,7 @@ from rest_framework.test import APIClient
 from rest_framework import status
 import json
 import time
+import uuid
 
 from hub.apps.tenants.models import Tenant, TenantConfig
 from hub.apps.auth.models import APIKey
@@ -29,8 +30,8 @@ class RateLimitingIntegrationTest(TestCase):
         """Set up test fixtures"""
         self.client = APIClient()
         self.tenant = Tenant.objects.create(
-            name='Test Tenant',
-            slug='test-tenant'
+            name=f"Test Tenant {uuid.uuid4().hex[:8]}",
+            slug=f"test-tenant-{uuid.uuid4().hex[:8]}"
         )
         self.user = User.objects.create_user(
             email='test@example.com',

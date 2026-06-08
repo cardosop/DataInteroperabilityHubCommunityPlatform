@@ -166,7 +166,7 @@ class TrendAnalysisIntegrationTest(TestCase):
         
         # Verify visualizations
         self.assertIsInstance(json_viz, list)
-        self.assertGreater(len(json_viz), 0)
+        self.assertGreaterEqual(len(json_viz), 1)
         
         self.assertIsInstance(chart_viz, dict)
         self.assertIn("labels", chart_viz)

@@ -9,7 +9,7 @@ from django.db import migrations
 
 class Migration(migrations.Migration):
     dependencies = [
-        ("contracts", "0031"),
+        ("contracts", "0031_enable_rls_contracts_lineage_edge"),
     ]
 
     operations = [

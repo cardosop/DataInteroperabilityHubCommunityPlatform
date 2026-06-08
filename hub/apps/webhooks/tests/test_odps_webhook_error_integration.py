@@ -159,10 +159,12 @@ class ODPSWebhookErrorIntegrationTest(TransactionTestCase):
         finally:
             server.stop()
 
+    @override_settings(WEBHOOK_DELIVERY_MAX_RETRIES=2)
     def test_error_handling_with_retry_success(self):
         """Test error handling with retry that eventually succeeds via real server (500 then 200)."""
         # Client retries on 5xx (max_retries=2 → 3 attempts). Need 3×500 so first _attempt_delivery
         # fails with FAILED, then retry_delivery gets 200.
+        # Override WEBHOOK_DELIVERY_MAX_RETRIES because the test-mode default is 0.
         with StatefulTestWebhookServer([500, 500, 500, 200]) as server:
             self.webhook.url = server.get_url()
             self.webhook.save(update_fields=["url"])

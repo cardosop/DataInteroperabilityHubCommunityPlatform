@@ -41,8 +41,8 @@ class FileStorageRegressionTest(TestCase):
         self.client = APIClient()
         plan = get_pro_plan()
         self.tenant = Tenant.objects.create(
-            name="File Storage Test Tenant",
-            slug="file-storage-test-tenant",
+            name=f"File Storage Test Tenant {uuid.uuid4().hex[:8]}",
+            slug=f"file-storage-test-tenant-{uuid.uuid4().hex[:8]}",
             plan=plan,
         )
         Subscription.objects.create(

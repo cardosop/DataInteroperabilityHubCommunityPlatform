@@ -193,6 +193,17 @@ class AssetsBusinessRules(BusinessRules):
                 warnings.extend(lifecycle_result.warnings)
                 details.update(lifecycle_result.details)
 
+        # Safety net: unrecognized validation_type silently ran no checks
+        # and would return is_valid=True — warn the caller.
+        if validation_type not in ('structure', 'tenant_context', 'permissions',
+                                   'lifecycle', 'all'):
+            warnings.append(
+                f"Unrecognized validation_type '{validation_type}' — "
+                f"no validation rules were executed. "
+                f"Expected one of: structure, tenant_context, permissions, "
+                f"lifecycle, all."
+            )
+
         # Determine overall validity
         is_valid = len(errors) == 0
 
@@ -2162,12 +2173,12 @@ class AssetActivationRule:
 
         # Risk exceeds tenant threshold → THRESHOLD_EXCEEDED.
         if asset.tenant_id:
-            from hub.apps.tenants.models import Tenant
+            from hub.apps.tenants.models import TenantConfig
             try:
-                tenant = Tenant.objects.only("compliance_risk_threshold").get(
-                    pk=asset.tenant_id,
+                cfg = TenantConfig.objects.only("compliance_risk_threshold").get(
+                    tenant_id=asset.tenant_id,
                 )
-                threshold = getattr(tenant, "compliance_risk_threshold", "HIGH") or "HIGH"
+                threshold = getattr(cfg, "compliance_risk_threshold", "HIGH") or "HIGH"
                 if latest.risk_level and RiskLevel.exceeds(latest.risk_level, threshold):
                     return {
                         "can_activate": False,
@@ -2184,7 +2195,13 @@ class AssetActivationRule:
                         },
                     }
             except Tenant.DoesNotExist:
-                pass
+                logger.warning(
+                    "validate_activation: tenant not found for asset %s; "
+                    "falling through without compliance threshold check.",
+                    str(asset.id),
+                )
+                # Fall through — we cannot check the threshold, so we
+                # allow activation rather than blocking it on missing config.
 
         # No compliance blocker.
         return {

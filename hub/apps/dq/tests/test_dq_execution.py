@@ -283,6 +283,77 @@ class DQExecutionTest(DQTestBase):
         self.assertIsNotNone(dq_run.completed_at)
         self.assertIn("error", dq_run.details_json)
 
+    def test_execute_dq_run_circuit_breaker_open_fallback(self):
+        """Circuit breaker OPEN → fallback UNKNOWN result returned.
+
+        Unlike test_execute_dq_run_failure (which patches away the circuit
+        breaker), this test actually opens the breaker via repeated failures
+        and verifies that execute_dq_run processes the fallback response:
+        SUCCEEDED + overall_status=UNKNOWN + quality_score=0.0."""
+        if not self.storage_available:
+            self.skipTest("Storage not available")
+
+        dq_run = DQRun.objects.create(
+            tenant=self.tenant,
+            file=self.file,
+            job=self.job,
+            profile_key="intake_basic_gx",
+            engine=DQEngine.GREAT_EXPECTATIONS,
+            status=DQRunStatus.PENDING,
+        )
+
+        # Force the dq-service circuit breaker OPEN via repeated failures.
+        # We construct a real client, then force the breaker open.
+        from hub.apps.core.resilience.circuit_breaker import CircuitBreakerState
+        from hub.apps.core.resilience.service_breakers import get_shared_circuit_breaker
+
+        breaker = get_shared_circuit_breaker("dq-service")
+        breaker.reset()
+
+        # Use MockTransport to deliver 500s so the breaker opens.
+        def failing_handler(request):
+            raise Exception("simulated service crash")
+
+        test_client = DQServiceClient()
+        transport = httpx.MockTransport(failing_handler)
+        test_client.client = httpx.Client(
+            transport=transport, base_url=test_client.base_url,
+        )
+
+        # Open the breaker by exhausting failure threshold.
+        for _ in range(breaker.failure_threshold + 1):
+            try:
+                test_client._circuit_breaker.call(
+                    lambda: test_client.client.get("/health"),
+                )
+            except Exception:
+                pass
+
+        self.assertEqual(breaker.get_state(), CircuitBreakerState.OPEN)
+
+        # Now inject this client (with OPEN breaker) into the views module.
+        import hub.apps.dq.views as views_module
+
+        original_dq_client_class = views_module.DQServiceClient
+        views_module.DQServiceClient = lambda: test_client
+
+        try:
+            execute_dq_run(str(dq_run.id))
+        finally:
+            views_module.DQServiceClient = original_dq_client_class
+            if hasattr(test_client, "client") and test_client.client:
+                test_client.client.close()
+            breaker.reset()
+
+        dq_run.refresh_from_db()
+        # The run "succeeds" because it got a fallback result.
+        self.assertEqual(dq_run.status, DQRunStatus.SUCCEEDED)
+        self.assertEqual(dq_run.overall_status, "UNKNOWN")
+        self.assertEqual(dq_run.quality_score, 0.0)
+        self.assertEqual(len(dq_run.checks_json), 0)
+        self.assertIn("metadata", dq_run.details_json)
+        self.assertIn("DQ service unavailable", dq_run.details_json["metadata"]["error"])
+
     def test_execute_dq_run_no_file_found(self):
         """Test DQ run execution when no file is found (error handling)"""
         # DQRun requires at least one of asset, dataset, or file. Use an asset with no
@@ -333,14 +404,14 @@ class DQExecutionTest(DQTestBase):
             status=DQRunStatus.PENDING,
         )
 
-        # Execute DQ run - should handle storage error gracefully
-        try:
-            execute_dq_run(str(dq_run.id))
-        except Exception:
-            # If storage unavailable, DQ run should be marked as failed
-            pass
+        # Execute DQ run — execute_dq_run MUST trap the storage error
+        # internally and transition the status to FAILED. If it throws
+        # the test errors, revealing an unhandled code path.
+        execute_dq_run(str(dq_run.id))
 
         # Verify DQ run was marked as failed
         dq_run.refresh_from_db()
-        # Status could be FAILED or still PENDING if error occurred before status update
-        self.assertIn(dq_run.status, [DQRunStatus.FAILED, DQRunStatus.PENDING])
+        self.assertEqual(dq_run.status, DQRunStatus.FAILED,
+            "execute_dq_run must set FAILED when storage is unavailable; "
+            "PENDING means the error handler never ran")
+        self.assertIn("error", dq_run.details_json)

@@ -260,7 +260,11 @@ def process_job(job_id: str, job_type: str, timeout: int = 600):
                 ]
             )
 
-            logger.error(
+            # ValueError means the job payload was invalid (missing
+            # resource ID, resource not found, etc.) — a client / data
+            # issue, not a system fault.  Log at WARNING so on-call
+            # pages don't fire on malformed test jobs.
+            logger.warning(
                 "job_failed_validation",
                 job_id=job_id,
                 job_type=job_type,
@@ -588,8 +592,57 @@ def _execute_job_logic(job_obj: Job, job_type: str) -> dict:
 
         return _execute_ldn_outbound_delivery_job(job_obj)
 
+    elif job_type == JobType.AUDIT_MERKLE_SNAPSHOT:
+        return _execute_audit_merkle_snapshot_job(job_obj)
+
     else:
         raise ValueError(f"Unknown job type: {job_type}")
+
+
+def _execute_audit_merkle_snapshot_job(job_obj: Job) -> dict:
+    """Execute a Merkle snapshot job for active tenants.
+
+    Uses ``window_hours`` from ``job_obj.details_json`` (default 1) to
+    define snapshot windows. Returns a dict with ``success`` and
+    ``summary`` keys.
+    """
+    import logging
+    from datetime import timedelta
+
+    from django.utils import timezone
+
+    from hub.apps.audit.merkle import snapshot_tenant_window
+    from hub.apps.tenants.models import Tenant
+
+    _log = logging.getLogger(__name__)
+    details = job_obj.details_json or {}
+    window_hours = int(details.get("window_hours", 1))
+    now = timezone.now()
+    period_end = now.replace(minute=0, second=0, microsecond=0) + timedelta(hours=1)
+    period_start = period_end - timedelta(hours=window_hours)
+
+    tenants = Tenant.objects.filter(status="ACTIVE")
+    snapshots_produced = 0
+
+    for tenant in tenants:
+        try:
+            result = snapshot_tenant_window(
+                tenant=tenant,
+                period_start=period_start,
+                period_end=period_end,
+            )
+            if result is not None:
+                snapshots_produced += 1
+        except Exception:
+            _log.exception("audit_merkle_snapshot_job failed for tenant %s", tenant.id)
+
+    return {
+        "success": True,
+        "summary": {
+            "snapshots_produced": snapshots_produced,
+            "tenants_scanned": tenants.count(),
+        },
+    }
 
 
 def check_job_timeouts():

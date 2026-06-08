@@ -72,8 +72,10 @@ class TestDatabricksConnectorE2E(TestCase):
     @classmethod
     def setUpClass(cls):
         """Set up test class with real credentials"""
-        super().setUpClass()
+        # Check credentials BEFORE super().setUpClass() to avoid
+        # _fixture_teardown() closing connections on the skip path.
         cls.credentials = get_databricks_credentials()
+        super().setUpClass()
         cls.host = cls.credentials['host']
         cls.token = cls.credentials['token']
         cls.cluster_id = cls.credentials.get('cluster_id')
@@ -169,11 +171,11 @@ class TestDatabricksConnectorE2E(TestCase):
         # Step 4: If we have listings, test pull sync
         if listings:
             listing = listings[0]
-            listing_id = listing.listing_id
+            listing_id = listing.marketplace_id
 
             # Test get_listing
             retrieved_listing = connector.get_listing(listing_id)
-            self.assertEqual(retrieved_listing.listing_id, listing_id)
+            self.assertEqual(retrieved_listing.marketplace_id, listing_id)
 
             # Test list_resources
             resources = connector.list_resources(listing_id)
@@ -181,10 +183,11 @@ class TestDatabricksConnectorE2E(TestCase):
 
             # Step 5: Create sync job and perform pull sync
             sync_job = MarketplaceSyncJob.objects.create(
+                tenant=self.tenant,
                 connection=connection,
-                sync_direction='PULL',
+                direction='PULL',
                 status=SyncStatus.PENDING.value,
-                options={'include_resources': True}
+                metadata={'include_resources': True}
             )
             self.created_sync_jobs.append(sync_job)
 
@@ -235,16 +238,17 @@ class TestDatabricksConnectorE2E(TestCase):
 
         # Create sync job
         sync_job = MarketplaceSyncJob.objects.create(
+            tenant=self.tenant,
             connection=connection,
-            sync_direction='PULL',
+            direction='PULL',
             status=SyncStatus.PENDING.value,
-            options={'include_resources': True}
+            metadata={'include_resources': True}
         )
         self.created_sync_jobs.append(sync_job)
 
         # Perform pull sync
         sync_result = connector.sync_pull(
-            listing_ids=[listing.listing_id],
+            listing_ids=[listing.marketplace_id],
             options={'include_resources': True}
         )
 
@@ -320,7 +324,7 @@ class TestDatabricksConnectorE2E(TestCase):
         # Find a listing with resources
         listing_with_resources = None
         for listing in listings:
-            resources = connector.list_resources(listing.listing_id)
+            resources = connector.list_resources(listing.marketplace_id)
             if resources:
                 listing_with_resources = listing
                 break
@@ -335,19 +339,15 @@ class TestDatabricksConnectorE2E(TestCase):
         # Test schema extraction for first resource (if it's a table)
         resource = resources[0]
         if hasattr(resource, 'metadata') and resource.metadata.get('table_name'):
-            # Try to extract schema (this may require consuming the share first)
-            # For E2E test, we verify the method exists and can be called
-            # Actual schema extraction requires share consumption which may not be possible in test workspace
-            try:
-                # This will likely fail if share is not consumed, which is OK for E2E test
-                table_name = resource.metadata.get('table_name')
-                if table_name:
-                    # Verify the method exists and can handle the table name format
-                    self.assertTrue(hasattr(connector, '_extract_schema_from_table'))
-            except Exception as e:
-                # Expected if share is not consumed - this is OK for E2E test
-                # We're testing the workflow, not the actual schema extraction
-                pass
+            # Verify the connector exposes the schema extraction hook.
+            # Actual extraction requires share consumption which may not
+            # be available in the test workspace — just check the method exists.
+            table_name = resource.metadata.get('table_name')
+            if table_name:
+                self.assertTrue(
+                    hasattr(connector, '_extract_schema_from_table'),
+                    "Connector must expose _extract_schema_from_table"
+                )
 
     def test_error_scenarios(self):
         """Test error scenarios with real Databricks workspace"""

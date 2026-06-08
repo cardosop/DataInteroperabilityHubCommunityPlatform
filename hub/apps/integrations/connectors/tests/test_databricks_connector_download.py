@@ -18,6 +18,8 @@ class TestDatabricksConnectorDownloadResource(TestCase):
 
     def setUp(self):
         """Set up test fixtures."""
+        from hub.apps.core.resilience.circuit_breaker import reset_circuit_breaker_by_name
+        reset_circuit_breaker_by_name('databricks-connector')
         self.connector = DatabricksConnector(
             host="https://test-workspace.cloud.databricks.com",
             token="test-token"
@@ -108,6 +110,8 @@ class TestDatabricksConnectorConsumeShare(TestCase):
 
     def setUp(self):
         """Set up test fixtures."""
+        from hub.apps.core.resilience.circuit_breaker import reset_circuit_breaker_by_name
+        reset_circuit_breaker_by_name('databricks-connector')
         self.connector = DatabricksConnector(
             host="https://test-workspace.cloud.databricks.com",
             token="test-token"
@@ -147,6 +151,8 @@ class TestDatabricksConnectorCreateCatalog(TestCase):
 
     def setUp(self):
         """Set up test fixtures."""
+        from hub.apps.core.resilience.circuit_breaker import reset_circuit_breaker_by_name
+        reset_circuit_breaker_by_name('databricks-connector')
         self.connector = DatabricksConnector(
             host="https://test-workspace.cloud.databricks.com",
             token="test-token"
@@ -182,6 +188,8 @@ class TestDatabricksConnectorExtractSchema(TestCase):
 
     def setUp(self):
         """Set up test fixtures."""
+        from hub.apps.core.resilience.circuit_breaker import reset_circuit_breaker_by_name
+        reset_circuit_breaker_by_name('databricks-connector')
         self.connector = DatabricksConnector(
             host="https://test-workspace.cloud.databricks.com",
             token="test-token"
@@ -244,6 +252,8 @@ class TestDatabricksConnectorMapType(TestCase):
     """Test _map_databricks_type helper method."""
 
     def setUp(self):
+        from hub.apps.core.resilience.circuit_breaker import reset_circuit_breaker_by_name
+        reset_circuit_breaker_by_name('databricks-connector')
         """Set up test fixtures."""
         self.connector = DatabricksConnector(
             host="https://test-workspace.cloud.databricks.com",

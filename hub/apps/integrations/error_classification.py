@@ -142,7 +142,27 @@ def classify_connector_error(exc: Exception) -> ConnectorErrorType:
             )
             return ConnectorErrorType.PERMANENT
 
-    # ── 3. Fallback ─────────────────────────────────────────────
+    # ── 3. Known permanent internal types ────────────────────────
+    # ServiceError is raised by the sync executor itself (e.g.
+    # connector returned no result) — it's a deliberate permanent
+    # failure signal, not an external connector exception.
+    try:
+        from hub.apps.core.services.base import ServiceError  # noqa: F811
+
+        if isinstance(exc, ServiceError):
+            logger.debug(
+                "error_classified",
+                extra={
+                    "error_type": ConnectorErrorType.PERMANENT.value,
+                    "exception_class": exc_type,
+                    "reason": "internal_service_error",
+                },
+            )
+            return ConnectorErrorType.PERMANENT
+    except ImportError:
+        pass
+
+    # ── 4. Fallback ─────────────────────────────────────────────
     logger.debug(
         "error_classified",
         extra={

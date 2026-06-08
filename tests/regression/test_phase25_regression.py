@@ -36,8 +36,8 @@ class Phase25PlanLimitsRegressionTest(TestCase):
 
         # Create tenant
         self.tenant = Tenant.objects.create(
-            name="Plan Limits Test Tenant",
-            slug="plan-limits-test-tenant",
+            name=f"Plan Limits Test Tenant {uuid.uuid4().hex[:8]}",
+            slug=f"plan-limits-test-tenant-{uuid.uuid4().hex[:8]}",
             status=TenantStatus.ACTIVE,
         )
 
@@ -174,8 +174,8 @@ class Phase25SubscriptionStateRegressionTest(TestCase):
 
         # Create tenant
         self.tenant = Tenant.objects.create(
-            name="Subscription State Test Tenant",
-            slug="subscription-state-test-tenant",
+            name=f"Subscription State Test Tenant {uuid.uuid4().hex[:8]}",
+            slug=f"subscription-state-test-tenant-{uuid.uuid4().hex[:8]}",
             status=TenantStatus.ACTIVE,
         )
 
@@ -311,8 +311,8 @@ class Phase25TenantSuspensionRegressionTest(TestCase):
 
         # Create tenant
         self.tenant = Tenant.objects.create(
-            name="Suspension Test Tenant",
-            slug="suspension-test-tenant",
+            name=f"Suspension Test Tenant {uuid.uuid4().hex[:8]}",
+            slug=f"suspension-test-tenant-{uuid.uuid4().hex[:8]}",
             status=TenantStatus.ACTIVE,
         )
 
@@ -424,8 +424,8 @@ class Phase25APIVersionHeadersRegressionTest(TestCase):
 
         # Create tenant and user
         self.tenant = Tenant.objects.create(
-            name="Version Headers Test Tenant",
-            slug="version-headers-test-tenant",
+            name=f"Version Headers Test Tenant {uuid.uuid4().hex[:8]}",
+            slug=f"version-headers-test-tenant-{uuid.uuid4().hex[:8]}",
             status=TenantStatus.ACTIVE,
         )
 

@@ -197,7 +197,7 @@ class TestAuthRegisterAPI(TestCase):
     def test_register_inactive_tenant(self):
         """Test registration with inactive tenant fails"""
         inactive_tenant = TenantFactory.create_tenant(
-            name="Inactive Tenant", slug="inactive-tenant", status=TenantStatus.SUSPENDED.value
+            name=f"Inactive Tenant {uuid.uuid4().hex[:8]}", slug=f"inactive-tenant-{uuid.uuid4().hex[:8]}", status=TenantStatus.SUSPENDED.value
         )
 
         response = self.client.post(

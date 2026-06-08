@@ -24,6 +24,7 @@ export function ScheduledIngestionEditPage() {
   const [description, setDescription] = useState('');
   const [sourceType, setSourceType] = useState<SourceType>('S3');
   const [scheduleType, setScheduleType] = useState<ScheduleType>('DAILY');
+  const [credentialRef, setCredentialRef] = useState('');
 
   useEffect(() => {
     if (schedule) {
@@ -31,6 +32,7 @@ export function ScheduledIngestionEditPage() {
       setDescription(schedule.description || '');
       setSourceType(schedule.source_type);
       setScheduleType(schedule.schedule_type);
+      setCredentialRef(schedule.credential_ref || '');
     }
   }, [schedule]);
 
@@ -45,6 +47,7 @@ export function ScheduledIngestionEditPage() {
           description: description || undefined,
           source_type: sourceType,
           schedule_type: scheduleType,
+          credential_ref: credentialRef || undefined,
         },
       });
       navigate(`/scheduled-ingestions/${id}`);
@@ -128,7 +131,25 @@ export function ScheduledIngestionEditPage() {
             <option value="FTP">FTP</option>
             <option value="SFTP">SFTP</option>
             <option value="DATABASE">Database</option>
+            <option value="SNOWFLAKE_SOURCE">Snowflake Source</option>
+            <option value="BIGQUERY_SOURCE">BigQuery Source</option>
+            <option value="DATABRICKS_SOURCE">Databricks Source</option>
+            <option value="ATHENA_SOURCE">Athena Source</option>
           </select>
+        </div>
+
+        <div className="form-group">
+          <label htmlFor="credential_ref">Credential Reference</label>
+          <input
+            id="credential_ref"
+            type="text"
+            value={credentialRef}
+            onChange={(e) => setCredentialRef(e.target.value)}
+            placeholder="arn:aws:secretsmanager:... or prefect://block-name"
+          />
+          <small className="form-help">
+            AWS Secrets Manager ARN or Prefect block reference for dlt credentials.
+          </small>
         </div>
 
         <div className="form-group">

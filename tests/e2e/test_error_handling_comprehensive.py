@@ -202,9 +202,9 @@ class ErrorResponseFormatE2ETest(E2ETestBase):
                 parsed_time = datetime.fromisoformat(timestamp_parsed)
                 # Make timezone-aware if needed
                 if parsed_time.tzinfo is None:
-                    parsed_time = timezone.make_aware(parsed_time, timezone.utc)
+                    parsed_time = timezone.make_aware(parsed_time, datetime.timezone.utc)
                 else:
-                    parsed_time = parsed_time.astimezone(timezone.utc)
+                    parsed_time = parsed_time.astimezone(datetime.timezone.utc)
 
                 # Should be recent (within last minute)
                 now = timezone.now()

@@ -661,7 +661,7 @@ class DLQAPITest(TestCase):
             resp_data = getattr(response, 'data', None)
             if resp_data is None:
                 import json
-                resp_data = json.loads(response.content)
+                resp_data = response.data
             print(f"Response status: {response.status_code}")
             print(f"Response data: {resp_data}")
 
@@ -670,7 +670,7 @@ class DLQAPITest(TestCase):
         resp_data = getattr(response, 'data', None)
         if resp_data is None:
             import json
-            resp_data = json.loads(response.content)
+            resp_data = response.data
         self.assertTrue(resp_data['success'])
 
         # Verify entry was resolved

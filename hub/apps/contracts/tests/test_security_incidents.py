@@ -151,6 +151,85 @@ class SecurityIncidentDetectionTest(ContractsTestBase):
         self.assertEqual(incident.status, "OPEN")
         self.assertEqual(incident.severity, "CRITICAL")
 
+    def test_rate_limit_abuse_boundary_below_threshold(self):
+        """Test that no incident is created below the rate limit threshold (N-1)"""
+        tenant_id = str(self.tenant.id)
+        user_id = str(self.user.id)
+
+        # Create 9 rate limit violations (1 below threshold of 10)
+        for i in range(9):
+            self.security_logger.log_security_violation(
+                event_type=SecurityEventType.RATE_LIMIT_EXCEEDED,
+                severity=SecuritySeverity.MEDIUM,
+                violation_type="Rate Limit Exceeded",
+                description=f"Rate limit exceeded {i}",
+                tenant_id=tenant_id,
+                user_id=user_id,
+                metadata={"level": "global"},
+            )
+
+        # Check that NO incident was created (below threshold)
+        incidents = SecurityIncident.objects.filter(
+            event_type=SecurityEventType.RATE_LIMIT_EXCEEDED.value, tenant=self.tenant
+        )
+        self.assertEqual(
+            incidents.count(), 0,
+            "No incident should be created below the rate limit threshold of 10",
+        )
+
+    def test_rate_limit_abuse_boundary_at_threshold(self):
+        """Test that incident IS created exactly at the rate limit threshold (N)"""
+        tenant_id = str(self.tenant.id)
+        user_id = str(self.user.id)
+
+        # Create exactly 10 rate limit violations (at threshold)
+        for i in range(10):
+            self.security_logger.log_security_violation(
+                event_type=SecurityEventType.RATE_LIMIT_EXCEEDED,
+                severity=SecuritySeverity.MEDIUM,
+                violation_type="Rate Limit Exceeded",
+                description=f"Rate limit exceeded {i}",
+                tenant_id=tenant_id,
+                user_id=user_id,
+                metadata={"level": "global"},
+            )
+
+        # Check that incident was created
+        incidents = SecurityIncident.objects.filter(
+            event_type=SecurityEventType.RATE_LIMIT_EXCEEDED.value, tenant=self.tenant
+        )
+        self.assertEqual(incidents.count(), 1)
+        incident = incidents.first()
+        self.assertEqual(incident.status, "OPEN")
+        self.assertEqual(incident.severity, "HIGH")
+        self.assertGreaterEqual(incident.violation_count, 10)
+
+    def test_path_traversal_boundary_below_threshold(self):
+        """Test that no incident is created below the path traversal threshold (N-1)"""
+        tenant_id = str(self.tenant.id)
+        user_id = str(self.user.id)
+
+        # Create 4 path traversal attempts (1 below threshold of 5)
+        for i in range(4):
+            self.security_logger.log_security_violation(
+                event_type=SecurityEventType.PATH_TRAVERSAL,
+                severity=SecuritySeverity.HIGH,
+                violation_type="Path Traversal Attempt",
+                description=f"Path traversal attempt {i}",
+                attempted_path=f"../../../etc/passwd{i}",
+                tenant_id=tenant_id,
+                user_id=user_id,
+            )
+
+        # Check that NO incident was created (below threshold)
+        incidents = SecurityIncident.objects.filter(
+            event_type=SecurityEventType.PATH_TRAVERSAL.value, tenant=self.tenant
+        )
+        self.assertEqual(
+            incidents.count(), 0,
+            "No incident should be created below the path traversal threshold of 5",
+        )
+
     def test_incident_updates_existing(self):
         """Test that incidents are updated if they already exist"""
         tenant_id = str(self.tenant.id)

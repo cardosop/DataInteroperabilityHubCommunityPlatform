@@ -1681,14 +1681,15 @@ class MarketplaceIntegrationBusinessRules(BusinessRules):
             details['has_odps_metadata'] = True
             odps_metadata = asset_mapping.odps_metadata
 
-            # Validate ODPS metadata structure (basic validation)
-            # ODPS should have product information
-            if 'product' not in odps_metadata:
-                errors.append("ODPS metadata must contain 'product' field")
+            # Validate ODPS metadata structure (basic validation).
+            # ODPS should have product information — some connectors
+            # store it under ``product``, others under ``product_details``.
+            if 'product' not in odps_metadata and 'product_details' not in odps_metadata:
+                errors.append("ODPS metadata must contain 'product' or 'product_details' field")
                 details['odps_structure_valid'] = False
             else:
                 details['odps_structure_valid'] = True
-                product = odps_metadata.get('product', {})
+                product = odps_metadata.get('product') or odps_metadata.get('product_details', {})
 
                 # Validate product has details
                 if 'details' not in product:
@@ -2377,8 +2378,22 @@ class MarketplaceIntegrationBusinessRules(BusinessRules):
         try:
             from hub.apps.integrations.models import MarketplaceConnection
 
-            # Get current connection count for tenant
-            current_count = MarketplaceConnection.objects.filter(tenant_id=tenant_id).count()
+            # Validate tenant_id is a valid UUID before ORM query
+            # to avoid Django ValidationError on invalid tenant_id strings.
+            valid_tenant_uuid = True
+            try:
+                import uuid as _uuid
+                _uuid.UUID(str(tenant_id))
+            except (ValueError, AttributeError):
+                valid_tenant_uuid = False
+                errors.append(f"Invalid tenant_id: {tenant_id!r} is not a valid UUID")
+                details['invalid_tenant_id'] = True
+
+            if not valid_tenant_uuid:
+                current_count = None  # Can't query with invalid UUID
+            else:
+                # Get current connection count for tenant
+                current_count = MarketplaceConnection.objects.filter(tenant_id=tenant_id).count()
             details['current_connection_count'] = current_count
 
             # Default max connections per tenant (can be configured per tenant in future)
@@ -2386,26 +2401,30 @@ class MarketplaceIntegrationBusinessRules(BusinessRules):
             max_connections_per_tenant = 50
             details['max_connections_per_tenant'] = max_connections_per_tenant
 
-            # Check if quota would be exceeded
-            if current_count >= max_connections_per_tenant:
-                errors.append(
-                    f"Tenant {tenant_id} has reached maximum connection limit ({max_connections_per_tenant}). "
-                    f"Current connections: {current_count}. Please delete unused connections or contact support."
-                )
-                details['quota_exceeded'] = True
-            else:
-                details['quota_exceeded'] = False
-                details['remaining_connections'] = max_connections_per_tenant - current_count
-
-                # Warning if approaching limit (80% threshold)
-                if current_count >= (max_connections_per_tenant * 0.8):
-                    warnings.append(
-                        f"Tenant {tenant_id} is approaching connection limit. "
-                        f"Current: {current_count}/{max_connections_per_tenant} connections."
+            # Check if quota would be exceeded (skip if tenant_id was invalid)
+            if current_count is not None:
+                if current_count >= max_connections_per_tenant:
+                    errors.append(
+                        f"Tenant {tenant_id} has reached maximum connection limit ({max_connections_per_tenant}). "
+                        f"Current connections: {current_count}. Please delete unused connections or contact support."
                     )
-                    details['quota_warning'] = True
+                    details['quota_exceeded'] = True
                 else:
-                    details['quota_warning'] = False
+                    details['quota_exceeded'] = False
+                    details['remaining_connections'] = max_connections_per_tenant - current_count
+
+                    # Warning if approaching limit (80% threshold)
+                    if current_count >= (max_connections_per_tenant * 0.8):
+                        warnings.append(
+                            f"Tenant {tenant_id} is approaching connection limit. "
+                            f"Current: {current_count}/{max_connections_per_tenant} connections."
+                        )
+                        details['quota_warning'] = True
+                    else:
+                        details['quota_warning'] = False
+            else:
+                details['quota_exceeded'] = None
+                details['quota_warning'] = None
         except Exception as e:
             errors.append(f"Error checking resource quotas: {str(e)}")
             details['quota_check_error'] = str(e)

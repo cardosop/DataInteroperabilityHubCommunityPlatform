@@ -27,9 +27,8 @@ pytestmark = pytest.mark.django_db(transaction=True)
 class TraceIdModelTests(TestCase):
     """Verify the model field is correctly configured."""
 
-    @classmethod
-    def setUpTestData(cls):
-        cls.tenant = Tenant.objects.create(
+    def setUp(self):
+        self.tenant = Tenant.objects.create(
             name="TraceTest", slug="trace-test", status=TenantStatus.ACTIVE,
         )
 
@@ -82,9 +81,8 @@ class TraceIdModelTests(TestCase):
 class TraceIdOtelExtractionTests(TestCase):
     """Verify OTel span extraction in create_audit_event()."""
 
-    @classmethod
-    def setUpTestData(cls):
-        cls.tenant = Tenant.objects.create(
+    def setUp(self):
+        self.tenant = Tenant.objects.create(
             name="OTelTrace", slug="otel-trace", status=TenantStatus.ACTIVE,
         )
 
@@ -112,18 +110,19 @@ class TraceIdOtelExtractionTests(TestCase):
 
         event = AuditEvent.objects.filter(action="OTEL_SPAN_TEST").first()
         assert event is not None
-        assert event.trace_id is not None
-        # OTel trace_id is a 128-bit integer; str() gives a numeric string
-        # For UUIDField validation, the value must be a valid UUID
-        # The raw OTel trace_id is NOT a UUID, so this test verifies
-        # graceful behavior
-        assert isinstance(event.trace_id, uuid.UUID) or event.trace_id is None
+        assert event.trace_id is not None, (
+            "trace_id should be populated from OTel span"
+        )
+        # OTel trace_id (128-bit int) is formatted as a 32-char hex UUID
+        # by create_audit_event.  We assert it is a real UUID — not None
+        # and not a raw decimal string.
+        assert isinstance(event.trace_id, uuid.UUID), (
+            f"trace_id should be a UUID, got {type(event.trace_id).__name__}: "
+            f"{event.trace_id}"
+        )
 
     def test_trace_id_none_when_otel_unavailable(self):
         """When OTel is not installed, trace_id gracefully defaults to None."""
-        with patch("hub.apps.audit.utils.create_audit_event", wraps=None) as _:
-            pass  # Tested via the no-otel test below
-
         from hub.apps.audit.utils import create_audit_event
 
         create_audit_event(
@@ -134,9 +133,10 @@ class TraceIdOtelExtractionTests(TestCase):
         )
         event = AuditEvent.objects.filter(action="NO_OTEL_TEST").first()
         assert event is not None
-        # In test environments without OTel, trace_id should be None
-        # (the OTel import may succeed but the span may be invalid)
-        # This is expected graceful fallback behaviour
+        assert event.trace_id is None, (
+            f"trace_id should be None when OTel is unavailable, "
+            f"but got {event.trace_id}"
+        )
 
     def test_trace_id_none_when_span_invalid(self):
         """Invalid span context → trace_id=None."""
@@ -189,9 +189,8 @@ class TraceIdOtelExtractionTests(TestCase):
 class TraceIdSerializerTests(TestCase):
     """Verify serializer includes trace_id in output."""
 
-    @classmethod
-    def setUpTestData(cls):
-        cls.tenant = Tenant.objects.create(
+    def setUp(self):
+        self.tenant = Tenant.objects.create(
             name="SerializerTrace", slug="serializer-trace", status=TenantStatus.ACTIVE,
         )
 
@@ -230,26 +229,29 @@ class TraceIdSerializerTests(TestCase):
 class TraceIdFilterTests(TestCase):
     """Verify ?trace_id= query parameter on audit list API."""
 
-    @classmethod
-    def setUpTestData(cls):
-        cls.tenant = Tenant.objects.create(
+    def setUp(self):
+        from hub.apps.users.models import Role, UserRole
+
+        self.tenant = Tenant.objects.create(
             name="FilterTrace", slug="filter-trace", status=TenantStatus.ACTIVE,
         )
-        cls.user = User.objects.create_user(
+        self.user = User.objects.create_user(
             email="trace-filter@example.com", password="testpass",
-            tenant=cls.tenant,
+            tenant=self.tenant,
         )
-        cls.tid = uuid.uuid4()
+        role = Role.objects.create(
+            tenant=self.tenant, name="TENANT_ADMIN", description=""
+        )
+        UserRole.objects.create(user=self.user, tenant=self.tenant, role=role)
+        self.tid = uuid.uuid4()
         AuditEvent.objects.create(
-            tenant=cls.tenant, resource_type="A", action="FILTER_A",
-            result="SUCCESS", trace_id=cls.tid,
+            tenant=self.tenant, resource_type="A", action="FILTER_A",
+            result="SUCCESS", trace_id=self.tid,
         )
         AuditEvent.objects.create(
-            tenant=cls.tenant, resource_type="B", action="FILTER_B",
+            tenant=self.tenant, resource_type="B", action="FILTER_B",
             result="SUCCESS", trace_id=None,
         )
-
-    def setUp(self):
         self.client = APIClient()
         self.client.force_authenticate(user=self.user)
 
@@ -295,7 +297,8 @@ class TraceIdMigrationSafetyTests(TestCase):
 
         # Check the AddField operation
         for op in migration.operations:
-            if hasattr(op, "field") and hasattr(op, "field", "null"):
+            if hasattr(op, "field"):
                 field = op.field
-                assert field.null is True, "trace_id must be null=True"
+                if hasattr(field, "null"):
+                    assert field.null is True, "trace_id must be null=True"
                 # default=None is the Django default for nullable fields

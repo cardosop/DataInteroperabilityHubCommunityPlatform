@@ -688,6 +688,7 @@ class CircuitBreakerTransitionTests(TestCase):
     def test_half_open_recovers_to_closed_on_success(self):
         from hub.apps.core.resilience.circuit_breaker import (
             CircuitBreakerState,
+            reset_circuit_breaker_by_name,
         )
         from hub.apps.core.resilience.service_breakers import (
             get_shared_circuit_breaker,
@@ -697,6 +698,16 @@ class CircuitBreakerTransitionTests(TestCase):
         # Use a short timeout so we can test the OPEN→HALF_OPEN
         # transition without sleeping a real minute.
         from unittest.mock import patch as _patch
+
+        # C8: Reset any cached breaker before creating the client.
+        # Without this, a prior test may have created the shared
+        # "dq_alert_slack" breaker with timeout_seconds=60, and
+        # get_shared_circuit_breaker returns the cached instance
+        # (ignoring the patched timeout). The test then sleeps 1.5s
+        # but the breaker never transitions to HALF_OPEN — the
+        # final CLOSED assertion passes vacuously because the
+        # breaker was never really tested.
+        reset_circuit_breaker_by_name("dq_alert_slack")
 
         with _patch.object(
             SlackAlertClient, "circuit_breaker_timeout_seconds", 1,

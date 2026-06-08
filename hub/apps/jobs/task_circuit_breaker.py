@@ -17,12 +17,14 @@ Usage — decorate any ``@job`` function::
         ...
 
 Behaviour:
-* Before the wrapped function runs, ``guard.check()`` is called.
-  If the circuit is OPEN the function returns immediately (no-op)
-  and logs a warning with ``task_skipped_circuit_open``.
-* On success, ``guard.success()`` is called.
-* On exception, ``guard.failure()`` is called and the original
-  exception is re-raised (so RQ's retry machinery still operates).
+* The decorator delegates to ``CircuitBreaker.call()`` which handles
+  state checks, success/failure tracking, and half-open transitions.
+* If the circuit is OPEN, ``CircuitBreakerError`` is caught and the
+  wrapper returns ``None`` (no-op) so RQ does not consume retries on a
+  known-broken downstream.
+* On exception inside the wrapped function, ``call()`` records the
+  failure and re-raises the original exception so RQ's retry machinery
+  still operates.
 """
 from __future__ import annotations
 
@@ -64,7 +66,7 @@ def circuit_breaker_guard(
         @functools.wraps(func)
         def wrapper(*args, **kwargs):
             try:
-                breaker.check()
+                return breaker.call(func, *args, **kwargs)
             except CircuitBreakerError:
                 logger.warning(
                     "task_skipped_circuit_open",
@@ -76,15 +78,6 @@ def circuit_breaker_guard(
                 # Return None so RQ treats it as a no-op success rather than
                 # consuming retries on a known-broken downstream.
                 return None
-
-            try:
-                result = func(*args, **kwargs)
-            except Exception:
-                breaker.failure()
-                raise
-
-            breaker.success()
-            return result
 
         return wrapper
 

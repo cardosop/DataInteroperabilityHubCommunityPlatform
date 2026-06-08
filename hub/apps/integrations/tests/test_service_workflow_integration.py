@@ -55,7 +55,9 @@ class MarketplaceServiceWorkflowIntegrationTest(TestCase):
 
         uid = uuid.uuid4().hex[:8]
         self.tenant = Tenant.objects.create(
-            name=f"Test Tenant {uid}", slug=f"test-tenant-{uid}", status="ACTIVE", kyc_status="VERIFIED"
+            name=f"Test Tenant {uid}", slug=f"test-tenant-{uid}", status="ACTIVE", kyc_status="VERIFIED",
+            marketplace_integrations_enabled=True,
+            federated_import_enabled=True,
         )
         self.user = User.objects.create_user(
             email=f"test-{uid}@example.com", password="testpass", tenant=self.tenant
@@ -77,6 +79,14 @@ class MarketplaceServiceWorkflowIntegrationTest(TestCase):
             StubMarketplaceConnector,
         )
 
+        # Save the original connector class before overwriting with the
+        # stub, so tearDownClass can restore it and subsequent test
+        # files don't find a stale stub.
+        self._saved_snowflake_connector = (
+            MarketplaceConnectorFactory._connectors.get(
+                MarketplaceType.SNOWFLAKE_DATA_MARKETPLACE.value
+            )
+        )
         MarketplaceConnectorFactory.register_connector(
             MarketplaceType.SNOWFLAKE_DATA_MARKETPLACE, StubMarketplaceConnector
         )
@@ -84,6 +94,11 @@ class MarketplaceServiceWorkflowIntegrationTest(TestCase):
         # Initialize workflow engine and registry
         self.engine = WorkflowEngine()
         self.registry = WorkflowRegistry()
+        # Clear the process-wide workflow cache so we don't serve a
+        # WorkflowDefinition rolled back by the previous TestCase
+        # transaction (avoids FK errors on WorkflowInstance creation).
+        from hub.apps.orchestration.registry import reset_workflow_definition_cache
+        reset_workflow_definition_cache()
         MarketplaceSyncWorkflow.register_workflow(self.registry)
         MarketplaceSyncWorkflow.register_tasks(self.engine)
 
@@ -300,6 +315,27 @@ class MarketplaceServiceWorkflowIntegrationTest(TestCase):
         )
         self.assertEqual(updated_sync_job.metadata["progress_percentage"], 0)
 
+    @classmethod
+    def tearDownClass(cls):
+        """Restore the original Snowflake connector (if available) so
+        subsequent test files don't find the stub registered by setUp."""
+        from hub.apps.integrations.factory import MarketplaceConnectorFactory
+
+        # Try to restore the real Snowflake connector; if the library
+        # isn't available, just remove the stub so the factory has no
+        # Snowflake entry (same state as before the stub was registered).
+        try:
+            from hub.apps.integrations.connectors.snowflake_connector import \
+                SnowflakeConnector
+            MarketplaceConnectorFactory.register_connector(
+                MarketplaceType.SNOWFLAKE_DATA_MARKETPLACE, SnowflakeConnector
+            )
+        except ImportError:
+            MarketplaceConnectorFactory.unregister_connector(
+                MarketplaceType.SNOWFLAKE_DATA_MARKETPLACE
+            )
+        super().tearDownClass()
+
 
 @override_settings(
     EVENT_BUS_ENABLE_PERSISTENCE=True,
@@ -326,7 +362,9 @@ class MarketplaceSyncE2ETest(TestCase):
 
         uid = uuid.uuid4().hex[:8]
         self.tenant = Tenant.objects.create(
-            name=f"Test Tenant {uid}", slug=f"test-tenant-{uid}", status="ACTIVE", kyc_status="VERIFIED"
+            name=f"Test Tenant {uid}", slug=f"test-tenant-{uid}", status="ACTIVE", kyc_status="VERIFIED",
+            marketplace_integrations_enabled=True,
+            federated_import_enabled=True,
         )
         self.user = User.objects.create_user(
             email=f"test-{uid}@example.com", password="testpass", tenant=self.tenant
@@ -355,6 +393,8 @@ class MarketplaceSyncE2ETest(TestCase):
         # Initialize workflow engine and registry
         self.engine = WorkflowEngine()
         self.registry = WorkflowRegistry()
+        from hub.apps.orchestration.registry import reset_workflow_definition_cache
+        reset_workflow_definition_cache()
         MarketplaceSyncWorkflow.register_workflow(self.registry)
         MarketplaceSyncWorkflow.register_tasks(self.engine)
 
@@ -573,3 +613,21 @@ class MarketplaceSyncE2ETest(TestCase):
             post_save.connect(asset_saved, sender=Asset, weak=False)
         except (ImportError, AttributeError):
             pass
+
+    @classmethod
+    def tearDownClass(cls):
+        """Restore the original Snowflake connector so subsequent test files
+        don't find the stub registered by setUp."""
+        from hub.apps.integrations.factory import MarketplaceConnectorFactory
+
+        try:
+            from hub.apps.integrations.connectors.snowflake_connector import \
+                SnowflakeConnector
+            MarketplaceConnectorFactory.register_connector(
+                MarketplaceType.SNOWFLAKE_DATA_MARKETPLACE, SnowflakeConnector
+            )
+        except ImportError:
+            MarketplaceConnectorFactory.unregister_connector(
+                MarketplaceType.SNOWFLAKE_DATA_MARKETPLACE
+            )
+        super().tearDownClass()

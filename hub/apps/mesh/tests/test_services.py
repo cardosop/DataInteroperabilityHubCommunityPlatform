@@ -195,7 +195,7 @@ class DataMeshServiceEventPublishingTest(TestCase):
         events = Event.objects.filter(
             event_type="domain.created", tenant_id=self.tenant.id
         ).order_by("-created_at")
-        self.assertGreaterEqual(events.count(), initial_count + 1)
+        self.assertEqual(events.count(), initial_count + 1)
 
         # Verify event details
         event = events.first()
@@ -246,7 +246,7 @@ class DataMeshServiceEventPublishingTest(TestCase):
         events = Event.objects.filter(
             event_type="domain.created", tenant_id=other_tenant.id
         ).order_by("-created_at")
-        self.assertGreaterEqual(events.count(), initial_count + 1)
+        self.assertEqual(events.count(), initial_count + 1)
 
         # Verify event details
         event = events.first()
@@ -557,7 +557,7 @@ class DataMeshServiceDomainOperationsTest(TestCase):
         events = Event.objects.filter(
             event_type="domain.created", tenant_id=self.tenant.id
         ).order_by("-created_at")
-        self.assertGreaterEqual(events.count(), initial_count + 1)
+        self.assertEqual(events.count(), initial_count + 1)
 
         # Verify event details
         event = events.first()
@@ -629,7 +629,7 @@ class DataMeshServiceDomainOperationsTest(TestCase):
         events = Event.objects.filter(
             event_type="domain.updated", tenant_id=self.tenant.id
         ).order_by("-created_at")
-        self.assertGreaterEqual(events.count(), initial_count + 1)
+        self.assertEqual(events.count(), initial_count + 1)
 
         # Verify event details
         event = events.first()
@@ -658,8 +658,8 @@ class DataMeshServiceDomainOperationsTest(TestCase):
 
         # Verify no event was published if no actual changes
         events = Event.objects.filter(event_type="domain.updated", tenant_id=self.tenant.id)
-        # The service layer may or may not publish events when there are no changes
-        # This depends on implementation - we verify the domain was not changed
+        self.assertEqual(events.count(), initial_count,
+                         "No domain.updated event should be published for a no-op update")
         domain.refresh_from_db()
         self.assertEqual(domain.name, "Test Domain")
 
@@ -694,7 +694,7 @@ class DataMeshServiceDomainOperationsTest(TestCase):
         events = Event.objects.filter(
             event_type="domain.deleted", tenant_id=self.tenant.id
         ).order_by("-created_at")
-        self.assertGreaterEqual(events.count(), initial_count + 1)
+        self.assertEqual(events.count(), initial_count + 1)
 
         # Verify event details
         event = events.first()
@@ -890,7 +890,7 @@ class DataMeshServicePolicyOperationsTest(TestCase):
         events = Event.objects.filter(
             event_type="policy.applied", tenant_id=self.tenant.id
         ).order_by("-created_at")
-        self.assertGreaterEqual(events.count(), initial_count + 1)
+        self.assertEqual(events.count(), initial_count + 1)
 
         # Verify event details
         event = events.first()

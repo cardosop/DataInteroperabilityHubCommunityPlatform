@@ -325,18 +325,23 @@ class TestDadosGovBrAPIClient:
             assert "HTML error" in str(exc_info.value)
 
     def test_new_api_methods_exist(self):
-        """Test that new API methods exist."""
+        """Test that new API methods are both present and callable."""
         client = DadosGovBrAPIClient(
             base_url="https://dados.gov.br",
             jwt_token="test-token"
         )
 
-        # Check that new methods exist
-        assert hasattr(client, 'get_dataset_tags')
-        assert hasattr(client, 'get_themes')
-        assert hasattr(client, 'get_tags')
-        assert hasattr(client, 'list_organizations')
-        assert hasattr(client, 'get_organization')
+        for method_name in (
+            'get_dataset_tags', 'get_themes', 'get_tags',
+            'list_organizations', 'get_organization',
+        ):
+            method = getattr(client, method_name, None)
+            assert method is not None, (
+                f"{method_name} should exist on DadosGovBrAPIClient"
+            )
+            assert callable(method), (
+                f"{method_name} should be callable"
+            )
 
     def test_get_dataset_tags(self):
         """Test getting dataset tags."""

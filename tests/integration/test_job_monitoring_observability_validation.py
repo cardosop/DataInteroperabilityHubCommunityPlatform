@@ -128,8 +128,8 @@ class JobMetricsCollectionTest(TestCase):
     def setUp(self):
         cache.clear()
         self.tenant = Tenant.objects.create(
-            name="Metrics Test Tenant",
-            slug="metrics-test-tenant",
+            name=f"Metrics Test Tenant {uuid.uuid4().hex[:8]}",
+            slug=f"metrics-test-tenant-{uuid.uuid4().hex[:8]}",
             status="ACTIVE",
             kyc_status="UNVERIFIED",
         )
@@ -349,8 +349,8 @@ class JobPerformanceMonitoringTest(TestCase):
     def setUp(self):
         cache.clear()
         self.tenant = Tenant.objects.create(
-            name="Performance Test Tenant",
-            slug="performance-test-tenant",
+            name=f"Performance Test Tenant {uuid.uuid4().hex[:8]}",
+            slug=f"performance-test-tenant-{uuid.uuid4().hex[:8]}",
             status="ACTIVE",
             kyc_status="UNVERIFIED",
         )
@@ -542,8 +542,8 @@ class JobFailureTrackingTest(TestCase):
     def setUp(self):
         cache.clear()
         self.tenant = Tenant.objects.create(
-            name="Failure Tracking Test Tenant",
-            slug="failure-tracking-test-tenant",
+            name=f"Failure Tracking Test Tenant {uuid.uuid4().hex[:8]}",
+            slug=f"failure-tracking-test-tenant-{uuid.uuid4().hex[:8]}",
             status="ACTIVE",
             kyc_status="UNVERIFIED",
         )
@@ -711,8 +711,8 @@ class JobQueueMetricsTest(TestCase):
     def setUp(self):
         cache.clear()
         self.tenant = Tenant.objects.create(
-            name="Queue Metrics Test Tenant",
-            slug="queue-metrics-test-tenant",
+            name=f"Queue Metrics Test Tenant {uuid.uuid4().hex[:8]}",
+            slug=f"queue-metrics-test-tenant-{uuid.uuid4().hex[:8]}",
             status="ACTIVE",
             kyc_status="UNVERIFIED",
         )
@@ -842,8 +842,8 @@ class JobWorkerHealthMonitoringTest(TestCase):
     def setUp(self):
         cache.clear()
         self.tenant = Tenant.objects.create(
-            name="Worker Health Test Tenant",
-            slug="worker-health-test-tenant",
+            name=f"Worker Health Test Tenant {uuid.uuid4().hex[:8]}",
+            slug=f"worker-health-test-tenant-{uuid.uuid4().hex[:8]}",
             status="ACTIVE",
             kyc_status="UNVERIFIED",
         )

@@ -26,6 +26,14 @@ class RiskLevel(models.TextChoices):
     CRITICAL = "CRITICAL", "Critical"
     UNKNOWN = "UNKNOWN", "Unknown"  # Service unavailable/indeterminate (fail-closed)
 
+    @staticmethod
+    def exceeds(level: str, threshold: str) -> bool:
+        """Return True when *level* exceeds *threshold* in severity.
+        The order dict is defined at call-time to avoid being captured
+        as an enum member by Django's TextChoices metaclass."""
+        order = {"NONE": 0, "LOW": 1, "MEDIUM": 2, "HIGH": 3, "CRITICAL": 4, "UNKNOWN": 5}
+        return order.get(level, 0) > order.get(threshold, 0)
+
 
 class ComplianceRun(models.Model):
     """
@@ -68,6 +76,8 @@ class ComplianceRun(models.Model):
         "jobs.Job",
         on_delete=models.CASCADE,
         related_name="compliance_runs",
+        null=True,
+        blank=True,
         help_text="Job that orchestrates this compliance run"
     )
     regulations = models.JSONField(
@@ -154,6 +164,19 @@ class ComplianceRun(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
     
+
+    scan_mode = models.CharField(
+        max_length=50,
+        default="FILE_SCAN",
+        choices=[
+            ("FILE_SCAN", "File Scan"),
+            ("IN_MEMORY", "In-Memory"),
+            ("WAREHOUSE_SQL", "Warehouse SQL"),
+        ],
+        help_text="Scan mode for this compliance run",
+    )
+    webhook_fired_at = models.DateTimeField(null=True, blank=True, help_text="When the completion webhook was fired")
+    warehouse_config = models.JSONField(default=dict, blank=True, help_text="Warehouse config for DQ warehouse integration")
     class Meta:
         db_table = "compliance_runs"
         ordering = ["-created_at"]

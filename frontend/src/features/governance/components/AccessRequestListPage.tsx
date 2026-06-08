@@ -254,12 +254,11 @@ export function AccessRequestListPage() {
       {isAdmin && (
         <BulkActionBar
           selectedCount={selection.selectedCount}
-          onDeselectAll={selection.deselectAll}
-          description="Only PENDING requests can be bulk-acted."
+          onClear={selection.deselectAll}
           actions={[
             {
               label: 'Approve',
-              variant: 'primary',
+              variant: 'default',
               onClick: handleBulkApprove,
               disabled: bulkApprove.isPending,
               'data-testid': 'bulk-approve',

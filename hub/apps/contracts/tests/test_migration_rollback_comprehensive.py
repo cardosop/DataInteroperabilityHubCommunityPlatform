@@ -18,7 +18,6 @@ from io import StringIO
 
 import pytest
 
-pytestmark = pytest.mark.slow
 from django.core.management import call_command
 from django.db import transaction
 
@@ -28,7 +27,7 @@ from hub.apps.contracts.migration_validation import MigrationValidator
 from hub.apps.contracts.models import Contract, ContractStatus, OriginalSpecType
 from hub.apps.contracts.tests.test_base import ContractsTestBase
 
-pytestmark = pytest.mark.django_db(transaction=True)
+pytestmark = [pytest.mark.slow, pytest.mark.django_db(transaction=True)]
 
 
 class MigrationRollbackTestBase(ContractsTestBase):
@@ -157,7 +156,7 @@ class MigrationRollbackCorrectnessTest(MigrationRollbackTestBase):
         x_odps = extensions.get("x_odps", {})
         self.assertNotIn("odps_link", x_odps, "ODPS link should be removed from ODCS contract")
 
-    def test_rollback_removes_odcs_links_from_odps(self):
+    def test_rollback_deletes_odps_contract(self):
         """Test that rollback removes ODCS links from ODPS contracts."""
         odcs_contract, odps_contract = self._create_linked_odcs_odps_contracts()
 
@@ -248,11 +247,10 @@ class MigrationRollbackCorrectnessTest(MigrationRollbackTestBase):
 
         # Verify ODCS contract data is preserved (except for removed link)
         odcs_contract.refresh_from_db()
-        if original_odcs_data:
-            # Contract should still have hub_contract_json (with link removed)
-            self.assertIsNotNone(
-                odcs_contract.hub_contract_json, "ODCS contract should still have hub_contract_json"
-            )
+        # Contract should still have hub_contract_json (with link removed)
+        self.assertIsNotNone(
+            odcs_contract.hub_contract_json, "ODCS contract should still have hub_contract_json"
+        )
 
     def test_rollback_validates_state_after_rollback(self):
         """Test that rollback validates state after rollback."""
@@ -270,6 +268,13 @@ class MigrationRollbackCorrectnessTest(MigrationRollbackTestBase):
         # Verify rollback completed (validation happens internally)
         output = out.getvalue()
         self.assertIsNotNone(output)
+        self.assertIn("rollback", output.lower(), "Output should indicate rollback was performed")
+
+        # Verify ODPS contract was deleted
+        odps_contract_exists = Contract.objects.filter(id=odps_contract.id).exists()
+        self.assertFalse(
+            odps_contract_exists, "ODPS contract should be deleted after rollback"
+        )
 
     def test_rollback_supports_dry_run_mode(self):
         """Test that rollback supports dry-run mode."""
@@ -453,6 +458,8 @@ class MigrationRollbackErrorHandlingTest(MigrationRollbackTestBase):
         # Should handle gracefully (may skip or report as already rolled back)
         output = out.getvalue()
         self.assertIsNotNone(output)
+        self.assertIn("not found or not eligible", output.lower(),
+                      "Output should indicate contract not found or not eligible")
 
     def test_rollback_handles_unlinked_contracts(self):
         """Test that rollback handles unlinked contracts."""
@@ -502,6 +509,7 @@ class MigrationRollbackErrorHandlingTest(MigrationRollbackTestBase):
             # Should handle gracefully (may skip or report as no action needed)
             output = out.getvalue()
             self.assertIsNotNone(output)
+            self.assertIn("no", output.lower(), "Output should indicate no action needed")
 
     def test_rollback_handles_invalid_contract_id(self):
         """Test that rollback handles invalid contract ID through public API."""
@@ -519,29 +527,33 @@ class MigrationRollbackErrorHandlingTest(MigrationRollbackTestBase):
         # Should handle gracefully (command should complete without crashing)
         output = out.getvalue()
         self.assertIsNotNone(output)
+        self.assertIn("not found or not eligible", output.lower(),
+                      "Output should indicate contract not found or not eligible")
 
     def test_rollback_handles_database_errors(self):
-        """Test that rollback handles database errors."""
+        """Test that rollback handles database errors gracefully."""
         odcs_contract, odps_contract = self._create_linked_odcs_odps_contracts()
 
         # Perform rollback through public API - call_command() internally calls _rollback_contract_wrapper()
         out = StringIO()
-        try:
-            call_command(
-                "rollback_odps_migration",
-                "--contract-id",
-                str(odcs_contract.id),
-                stdout=out,
-            )
-            # Should either succeed or fail gracefully
-            output = out.getvalue()
-            self.assertIsNotNone(output)
-        except Exception as e:
-            # If exception is raised, it should be a known type
-            self.assertIsInstance(e, Exception, "Should raise appropriate exception type")
+        call_command(
+            "rollback_odps_migration",
+            "--contract-id",
+            str(odcs_contract.id),
+            stdout=out,
+        )
+        # Should complete without crashing and produce output
+        output = out.getvalue()
+        self.assertIsNotNone(output)
 
-    def test_rollback_is_atomic(self):
-        """Test that rollback operations are atomic."""
+        # Verify ODPS contract was deleted (rollback succeeded)
+        odps_contract_exists = Contract.objects.filter(id=odps_contract.id).exists()
+        self.assertFalse(
+            odps_contract_exists, "ODPS contract should be deleted after rollback"
+        )
+
+    def test_rollback_transaction_rolls_back_on_error(self):
+        """Test that rollback transaction rolls back on error."""
         odcs_contract, odps_contract = self._create_linked_odcs_odps_contracts()
 
         odps_contract_id = odps_contract.id
@@ -579,12 +591,12 @@ class MigrationRollbackErrorHandlingTest(MigrationRollbackTestBase):
                     "ODPS contract should be deleted after successful rollback",
                 )
         except ValueError:
-            # Transaction should be rolled back
-            # Verify state is consistent
+            # Transaction was rolled back — verify ODPS contract still exists
             odps_contract_exists = Contract.objects.filter(id=odps_contract_id).exists()
-            # Contract may or may not exist depending on when error occurred
-            # The important thing is that partial state is not persisted
-            pass
+            self.assertTrue(
+                odps_contract_exists,
+                "ODPS contract should still exist because transaction was rolled back",
+            )
 
     def test_rollback_handles_unicode_characters(self):
         """Test that rollback handles unicode characters correctly."""

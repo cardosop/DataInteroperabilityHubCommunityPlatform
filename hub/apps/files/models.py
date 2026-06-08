@@ -18,6 +18,7 @@ class FileStatus(models.TextChoices):
     COMPLETED = "COMPLETED", "Completed"
     FAILED = "FAILED", "Failed"
     DELETED = "DELETED", "Deleted"
+    DELETING = "DELETING", "Deleting"
 
 
 class FileScanStatus(models.TextChoices):
@@ -28,6 +29,17 @@ class FileScanStatus(models.TextChoices):
     INFECTED = "INFECTED", "Infected"
     SCAN_UNAVAILABLE = "SCAN_UNAVAILABLE", "Scan unavailable"
     SCAN_ERROR = "SCAN_ERROR", "Scan error"
+
+    @staticmethod
+    def _default_scan_status() -> str:
+        """Default ``File.scan_status`` for new rows (migration 0016).
+
+        Returns ``PENDING_SCAN`` — a freshly-created file awaits its
+        ClamAV scan. Defined as a callable (rather than a literal) so the
+        ``0016_alter_file_scan_status_default`` migration and the model
+        field deconstruct to one shared source of truth.
+        """
+        return FileScanStatus.PENDING_SCAN
 
 
 class File(models.Model):
@@ -75,7 +87,7 @@ class File(models.Model):
     scan_status = models.CharField(
         max_length=32,
         choices=FileScanStatus.choices,
-        default=FileScanStatus.PENDING_SCAN,
+        default=FileScanStatus._default_scan_status,
         db_index=True,
         help_text="Malware scan status (ClamAV); independent of upload status",
     )
@@ -98,7 +110,8 @@ class File(models.Model):
     )
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
-    
+    deleted_at = models.DateTimeField(null=True, blank=True, help_text="Soft-delete timestamp")
+
     class Meta:
         db_table = "files"
         ordering = ["-created_at"]
@@ -135,7 +148,7 @@ class File(models.Model):
     
     def is_active(self) -> bool:
         """Check if file is in a terminal usable state."""
-        return self.status in (FileStatus.ACTIVE, FileStatus.COMPLETED)
+        return self.status in (FileStatus.ACTIVE,)
     
     def is_uploading(self) -> bool:
         """Check if file is currently being uploaded"""
@@ -143,7 +156,7 @@ class File(models.Model):
     
     def can_download(self) -> bool:
         """Check if file can be downloaded (lifecycle + malware scan)."""
-        if self.status not in (FileStatus.ACTIVE, FileStatus.COMPLETED):
+        if self.status != FileStatus.ACTIVE:
             return False
         return self.scan_status not in (
             FileScanStatus.PENDING_SCAN,

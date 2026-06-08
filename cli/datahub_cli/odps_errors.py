@@ -187,7 +187,7 @@ def parse_api_error_response(error_data: Dict[str, Any]) -> Optional[ODPSCLIErro
         error_code_upper = error_code.upper()
 
         # Validation errors
-        if any(code in error_code_upper for code in [
+        if any(error_code_upper.startswith(code) for code in [
             'VALIDATION', 'SCHEMA_VALIDATION', 'REQUIRED_FIELD',
             'INVALID_DATA_TYPE', 'INVALID_VALUE', 'VERSION_MISMATCH'
         ]):
@@ -200,7 +200,7 @@ def parse_api_error_response(error_data: Dict[str, Any]) -> Optional[ODPSCLIErro
             )
 
         # Reference resolution errors
-        if any(code in error_code_upper for code in [
+        if any(error_code_upper.startswith(code) for code in [
             'REF_RESOLUTION', 'RESOLUTION_FAILED', 'INVALID_REF',
             'CIRCULAR_REF', 'TIMEOUT', 'RATE_LIMIT', 'SECURITY_VIOLATION'
         ]):
@@ -213,7 +213,7 @@ def parse_api_error_response(error_data: Dict[str, Any]) -> Optional[ODPSCLIErro
             )
 
         # Normalization errors
-        if any(code in error_code_upper for code in [
+        if any(error_code_upper.startswith(code) for code in [
             'NORMALIZATION', 'FIELD_MAPPING', 'TYPE_CONVERSION',
             'MISSING_REQUIRED_FIELD'
         ]):
@@ -226,7 +226,7 @@ def parse_api_error_response(error_data: Dict[str, Any]) -> Optional[ODPSCLIErro
             )
 
         # Export errors
-        if any(code in error_code_upper for code in [
+        if any(error_code_upper.startswith(code) for code in [
             'EXPORT', 'SERIALIZATION', 'FORMAT_NOT_SUPPORTED', 'FILE_WRITE'
         ]):
             suggestion = _get_export_suggestion(error_code, context)
@@ -238,7 +238,7 @@ def parse_api_error_response(error_data: Dict[str, Any]) -> Optional[ODPSCLIErro
             )
 
         # Linking errors
-        if any(code in error_code_upper for code in [
+        if any(error_code_upper.startswith(code) for code in [
             'LINKING', 'LINK_RESOLUTION', 'LINK_VALIDATION', 'CIRCULAR_REFERENCE', 'INVALID_LINK'
         ]):
             suggestion = _get_linking_suggestion(error_code, context)

@@ -738,36 +738,30 @@ class ComplianceRunViewSetTest(TestCase):
     # ========== UPDATE ENDPOINT TESTS ==========
 
     def test_update_compliance_run_success(self):
-        """Test updating compliance run successfully"""
-        self.client.force_authenticate(user=self.user)
-
-        # Note: Most fields are read-only, so update may be limited
-        # Test with valid data
-        response = self.client.put(
-            f"/api/v1/compliance/runs/{self.compliance_run.id}/",
-            {
-                "regulations": ["GDPR", "HIPAA"],
-            },
-            format="json",
-        )
-
-        # Update may succeed or fail depending on serializer configuration
-        self.assertIn(response.status_code, [status.HTTP_200_OK, status.HTTP_400_BAD_REQUEST])
-
-    def test_partial_update_compliance_run_success(self):
-        """Test partially updating compliance run successfully"""
+        """Test patching compliance run regulations successfully"""
         self.client.force_authenticate(user=self.user)
 
         response = self.client.patch(
             f"/api/v1/compliance/runs/{self.compliance_run.id}/",
-            {
-                "regulations": ["GDPR"],
-            },
+            {"regulations": ["GDPR", "HIPAA"]},
             format="json",
         )
 
-        # Partial update may succeed or fail depending on serializer configuration
-        self.assertIn(response.status_code, [status.HTTP_200_OK, status.HTTP_400_BAD_REQUEST])
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["regulations"], ["GDPR", "HIPAA"])
+
+    def test_partial_update_compliance_run_success(self):
+        """Test partially updating compliance run regulations"""
+        self.client.force_authenticate(user=self.user)
+
+        response = self.client.patch(
+            f"/api/v1/compliance/runs/{self.compliance_run.id}/",
+            {"regulations": ["LGPD"]},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["regulations"], ["LGPD"])
 
     def test_update_compliance_run_tenant_isolation(self):
         """Test cannot update compliance run from another tenant"""
@@ -936,10 +930,10 @@ class ComplianceRunViewSetTest(TestCase):
         self.assertIn("violation_details", response.data)
         self.assertIn("remediation_suggestions", response.data)
         self.assertIn("risk_assessment", response.data)
-        self.assertIn("cross_border_alert", response.data)
-        self.assertIn("localisation_alert", response.data)
-        self.assertIn("legal_basis_violations", response.data)
-        self.assertIn("regulation_summaries", response.data)
+        self.assertIn("score_breakdown", response.data)
+        self.assertIn("violation_timeline", response.data)
+        self.assertIn("regulations", response.data)
+        self.assertIn("detected_categories", response.data)
 
     def test_results_action_tenant_isolation(self):
         """Test results action respects tenant isolation"""
@@ -1167,5 +1161,112 @@ class ComplianceRunViewSetTest(TestCase):
             format="json",
         )
 
-        # Should fail if tenant doesn't allow this regulation
-        self.assertIn(response.status_code, [status.HTTP_400_BAD_REQUEST, status.HTTP_201_CREATED])
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("error", response.data)
+        self.assertIn("INVALID_REGULATION", response.data.get("error", ""))
+
+    # ========== CANCEL ACTION TESTS ==========
+
+    def test_cancel_compliance_run_pending_success(self):
+        """Cancel a PENDING compliance run marks it FAILED with allowed_to_store=False."""
+        self.client.force_authenticate(user=self.user)
+
+        response = self.client.post(
+            f"/api/v1/compliance/runs/{self.compliance_run.id}/cancel/",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.compliance_run.refresh_from_db()
+        self.assertEqual(self.compliance_run.status, ComplianceRunStatus.FAILED)
+        self.assertFalse(self.compliance_run.allowed_to_store)
+        self.assertIsNotNone(self.compliance_run.completed_at)
+        mapping = self.compliance_run.regulation_mapping_json or {}
+        self.assertTrue(mapping.get("cancelled"))
+
+    def test_cancel_compliance_run_terminal_status_rejected(self):
+        """Cannot cancel a run already in a terminal status (SUCCEEDED)."""
+        from hub.apps.jobs.models import Job, JobStatus, JobType
+
+        job = Job.objects.create(
+            tenant=self.tenant,
+            type=JobType.COMPLIANCE_RUN,
+            status=JobStatus.COMPLETED,
+            resource_type="COMPLIANCE_RUN",
+            resource_id=str(uuid.uuid4()),
+            created_by=self.user,
+        )
+        run = ComplianceRun.objects.create(
+            tenant=self.tenant,
+            job=job,
+            asset=self.asset,
+            status=ComplianceRunStatus.SUCCEEDED,
+        )
+
+        self.client.force_authenticate(user=self.user)
+        response = self.client.post(
+            f"/api/v1/compliance/runs/{run.id}/cancel/",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertEqual(response.data.get("code"), "INVALID_STATUS")
+
+    def test_cancel_compliance_run_auditor_cannot_cancel(self):
+        """AUDITOR role cannot cancel compliance runs."""
+        self.client.force_authenticate(user=self.auditor_user)
+
+        response = self.client.post(
+            f"/api/v1/compliance/runs/{self.compliance_run.id}/cancel/",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+    # ========== RESULTS SCORE EDGE CASES ==========
+
+    def test_results_compliance_score_all_columns_clean(self):
+        """Score is 100 when no columns have PII."""
+        self.compliance_run.status = ComplianceRunStatus.SUCCEEDED
+        self.compliance_run.overall_status = "PASS"
+        self.compliance_run.risk_level = RiskLevel.NONE
+        self.compliance_run.allowed_to_store = True
+        self.compliance_run.column_findings_json = [
+            {"column": "id", "categories": []},
+            {"column": "name", "categories": []},
+        ]
+        self.compliance_run.detected_categories_json = {}
+        self.compliance_run.regulation_mapping_json = {}
+        self.compliance_run.completed_at = timezone.now()
+        self.compliance_run.save()
+
+        self.client.force_authenticate(user=self.user)
+        response = self.client.get(
+            f"/api/v1/compliance/runs/{self.compliance_run.id}/results/"
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["compliance_score"], 100.0)
+        self.assertEqual(response.data["score_breakdown"]["columns_with_pii"], 0)
+
+    def test_results_compliance_score_all_columns_with_pii(self):
+        """Score is max(0, 100 - 50) = 50 when all columns have PII."""
+        self.compliance_run.status = ComplianceRunStatus.SUCCEEDED
+        self.compliance_run.overall_status = "FAIL"
+        self.compliance_run.risk_level = RiskLevel.HIGH
+        self.compliance_run.allowed_to_store = False
+        self.compliance_run.column_findings_json = [
+            {"column": "email", "categories": ["PII_DIRECT_EMAIL"]},
+            {"column": "ssn", "categories": ["PII_DIRECT_SSN"]},
+        ]
+        self.compliance_run.detected_categories_json = {}
+        self.compliance_run.regulation_mapping_json = {}
+        self.compliance_run.completed_at = timezone.now()
+        self.compliance_run.save()
+
+        self.client.force_authenticate(user=self.user)
+        response = self.client.get(
+            f"/api/v1/compliance/runs/{self.compliance_run.id}/results/"
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["compliance_score"], 50.0)
+        self.assertEqual(response.data["score_breakdown"]["columns_with_pii"], 2)
+        self.assertEqual(response.data["score_breakdown"]["pii_detection_rate"], 1.0)

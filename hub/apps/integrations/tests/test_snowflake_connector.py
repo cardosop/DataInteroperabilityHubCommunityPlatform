@@ -1134,6 +1134,13 @@ class TestSnowflakeConnectorMapping(TestCase):
 class TestSnowflakeConnectorCircuitBreaker(TestCase):
     """Test Snowflake connector circuit breaker protection"""
 
+    def setUp(self):
+        """Reset circuit breaker so prior test failures don't leave it OPEN."""
+        try:
+            reset_circuit_breaker_by_name("snowflake-connector")
+        except Exception:
+            pass
+
     def test_circuit_breaker_initialized(self):
         """Test that circuit breaker is initialized"""
         connector = SnowflakeConnector(
@@ -1209,16 +1216,16 @@ class TestSnowflakeConnectorContextManager(TestCase):
         if not SNOWFLAKE_AVAILABLE:
             self.skipTest("Snowflake connector not available")
 
+        # Only catch connection failures — assertions must fail on violation.
         try:
             connector = SnowflakeConnector(**credentials)
             connector.authenticate(credentials)
+        except (ConnectionError, TimeoutError) as e:
+            self.skipTest(f"Snowflake connection unavailable: {e}")
 
-            listings = connector.list_listings(limit=0)
-            self.assertIsInstance(listings, list)
-            self.assertEqual(len(listings), 0)
-        except Exception as e:
-            # May fail if connection unavailable
-            self.skipTest(f"Snowflake connection failed: {e}")
+        listings = connector.list_listings(limit=0)
+        self.assertIsInstance(listings, list)
+        self.assertEqual(len(listings), 0)
 
     def test_list_listings_with_none_limit(self):
         """Test list_listings() error handling with None limit"""
@@ -1240,9 +1247,9 @@ class TestSnowflakeConnectorContextManager(TestCase):
             except (ValueError, TypeError):
                 # Expected if validation is strict
                 pass
-        except Exception as e:
-            # May fail if connection unavailable
-            self.skipTest(f"Snowflake connection failed: {e}")
+        except (ConnectionError, TimeoutError) as e:
+            # Only skip on connection failures — assertions must propagate.
+            self.skipTest(f"Snowflake connection unavailable: {e}")
 
     def test_get_listing_with_empty_id(self):
         """Test get_listing() error handling with empty ID"""
@@ -1259,9 +1266,9 @@ class TestSnowflakeConnectorContextManager(TestCase):
 
             with self.assertRaises((ValueError, NotFoundError)):
                 connector.get_listing("")
-        except Exception as e:
-            # May fail if connection unavailable
-            self.skipTest(f"Snowflake connection failed: {e}")
+        except (ConnectionError, TimeoutError) as e:
+            # Only skip on connection failures — assertions must propagate.
+            self.skipTest(f"Snowflake connection unavailable: {e}")
 
     def test_get_listing_with_none_id(self):
         """Test get_listing() error handling with None ID"""
@@ -1278,9 +1285,9 @@ class TestSnowflakeConnectorContextManager(TestCase):
 
             with self.assertRaises((ValueError, TypeError, NotFoundError)):
                 connector.get_listing(None)  # type: ignore[arg-type]  # test: edge-case type exercise
-        except Exception as e:
-            # May fail if connection unavailable
-            self.skipTest(f"Snowflake connection failed: {e}")
+        except (ConnectionError, TimeoutError) as e:
+            # Only skip on connection failures — assertions must propagate.
+            self.skipTest(f"Snowflake connection unavailable: {e}")
 
     def test_list_resources_with_empty_listing_id(self):
         """Test list_resources() error handling with empty listing ID"""
@@ -1297,9 +1304,9 @@ class TestSnowflakeConnectorContextManager(TestCase):
 
             with self.assertRaises((ValueError, NotFoundError)):
                 connector.list_resources("")
-        except Exception as e:
-            # May fail if connection unavailable
-            self.skipTest(f"Snowflake connection failed: {e}")
+        except (ConnectionError, TimeoutError) as e:
+            # Only skip on connection failures — assertions must propagate.
+            self.skipTest(f"Snowflake connection unavailable: {e}")
 
     def test_list_resources_with_none_listing_id(self):
         """Test list_resources() error handling with None listing ID"""
@@ -1316,6 +1323,6 @@ class TestSnowflakeConnectorContextManager(TestCase):
 
             with self.assertRaises((ValueError, TypeError, NotFoundError)):
                 connector.list_resources(None)  # type: ignore[arg-type]  # test: edge-case type exercise
-        except Exception as e:
-            # May fail if connection unavailable
-            self.skipTest(f"Snowflake connection failed: {e}")
+        except (ConnectionError, TimeoutError) as e:
+            # Only skip on connection failures — assertions must propagate.
+            self.skipTest(f"Snowflake connection unavailable: {e}")

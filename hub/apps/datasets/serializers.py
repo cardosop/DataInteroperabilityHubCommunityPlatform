@@ -60,6 +60,10 @@ class DatasetSerializer(serializers.ModelSerializer):
             'semantic_version',
             'version_tags',
             'is_current',
+            'status',
+            'retired_at',
+            'kind',
+            'file_handle_purpose',
             'created_by',
             'created_at',
             'updated_at',
@@ -76,6 +80,10 @@ class DatasetSerializer(serializers.ModelSerializer):
             'semantic_version',
             'version_tags',
             'is_current',
+            'status',
+            'retired_at',
+            'kind',
+            'file_handle_purpose',
             'created_by',
             'created_at',
             'updated_at',
@@ -91,6 +99,38 @@ class DatasetCreateSerializer(serializers.Serializer):
         allow_null=True,
         help_text="ID of the asset to attach dataset to (optional)"
     )
+    kind = serializers.ChoiceField(
+        choices=[
+            ("FILE", "File-based dataset"),
+            ("EXTERNAL_REF", "External reference dataset"),
+        ],
+        default="FILE",
+        help_text="Dataset kind. Only FILE is settable via API; "
+                  "EXTERNAL_REF is set server-side by the federation pipeline.",
+    )
+    file_handle_purpose = serializers.ChoiceField(
+        choices=[
+            ("PRIMARY", "Primary"),
+            ("SAMPLE", "Sample"),
+            ("SCHEMA_ONLY", "Schema Only"),
+        ],
+        required=False,
+        help_text="Purpose for which the file handle was stored (e.g. primary, sample, schema_only)"
+    )
+
+    def validate_kind(self, value):
+        """Block external clients from creating EXTERNAL_REF datasets.
+
+        Per OQ260.3: only FILE-kind datasets are settable via the API.
+        EXTERNAL_REF is written server-side by the federation pipeline.
+        """
+        if value == "EXTERNAL_REF":
+            raise serializers.ValidationError(
+                "EXTERNAL_REF datasets cannot be created via the API. "
+                "They are set server-side by the federation pipeline.",
+                code="EXTERNAL_REF_NOT_API_SETTABLE",
+            )
+        return value
 
 
 class DatasetVersionCreateSerializer(serializers.Serializer):
@@ -165,4 +205,19 @@ class SchemaVersionCompareSerializer(serializers.Serializer):
         allow_null=True,
         help_text="Second version ID (defaults to current version if not provided)"
     )
+
+
+class DatasetRefreshFromFileSerializer(serializers.Serializer):
+    """Request serializer for refreshing a dataset from its source file."""
+    file_id = serializers.UUIDField(required=True)
+
+
+class DatasetRefreshFromFileResponseSerializer(serializers.Serializer):
+    """Response serializer for dataset refresh operation."""
+    pass
+
+
+class DatasetManualRefreshResponseSerializer(serializers.Serializer):
+    """Response serializer for manual dataset refresh."""
+    pass
 

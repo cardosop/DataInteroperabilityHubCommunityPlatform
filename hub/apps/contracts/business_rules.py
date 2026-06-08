@@ -613,7 +613,7 @@ class ODPSBusinessRules(BusinessRules):
             return ValidationResult(is_valid=False, errors=errors, warnings=warnings)
         except Exception as e:
             # Unexpected error
-            logger.error(f"Unexpected error during ODPS linking validation: {e}", exc_info=True)
+            logger.warning(f"Validation error during ODPS linking: {e}")
             errors.append(f"Unexpected error during linking validation: {str(e)}")
             return ValidationResult(is_valid=False, errors=errors, warnings=warnings)
 
@@ -881,7 +881,10 @@ class ODPSLinkingRules(BusinessRules):
 
             return ValidationResult(is_valid=False, errors=errors, warnings=warnings)
         except Exception as e:
-            logger.error(f"Unexpected error validating ODPS → ODCS link: {e}", exc_info=True)
+            # Edge-case inputs (malformed UUIDs, excessively long strings)
+            # can cause Django ORM ValidationErrors that are the caller's
+            # fault, not a system fault.  Log at WARNING.
+            logger.warning(f"Validation error in ODPS → ODCS link: {e}")
             errors.append(f"Unexpected error during validation: {str(e)}")
             return ValidationResult(is_valid=False, errors=errors, warnings=warnings)
 
@@ -947,7 +950,7 @@ class ODPSLinkingRules(BusinessRules):
 
             return ValidationResult(is_valid=False, errors=errors, warnings=warnings)
         except Exception as e:
-            logger.error(f"Unexpected error validating circular references: {e}", exc_info=True)
+            logger.warning(f"Validation error in circular references: {e}")
             errors.append(f"Unexpected error during validation: {str(e)}")
             return ValidationResult(is_valid=False, errors=errors, warnings=warnings)
 
@@ -1000,7 +1003,7 @@ class ODPSLinkingRules(BusinessRules):
 
             return ValidationResult(is_valid=False, errors=errors, warnings=warnings)
         except Exception as e:
-            logger.error(f"Unexpected error validating referential integrity: {e}", exc_info=True)
+            logger.warning(f"Validation error in referential integrity: {e}")
             errors.append(f"Unexpected error during validation: {str(e)}")
             return ValidationResult(is_valid=False, errors=errors, warnings=warnings)
 
@@ -2602,7 +2605,7 @@ class StructuralFloorRule:
             return ValidationResult(is_valid=True)
 
         payload = hub_contract if isinstance(hub_contract, dict) else {}
-        subcode = _classify(payload, spec_type=spec_type)
+        subcode = _classify(payload, spec_type=spec_type, warnings=None)
         return ValidationResult(
             is_valid=False,
             errors=[

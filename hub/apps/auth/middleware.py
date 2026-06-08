@@ -12,6 +12,7 @@ REST Framework authentication will run later and can override/validate.
 from django.contrib.auth.models import AnonymousUser
 from django.db import OperationalError, DatabaseError
 from django.http import HttpResponse
+from rest_framework.response import Response
 from django.contrib.auth import get_user_model
 import structlog
 
@@ -222,6 +223,25 @@ class TenantScopingMiddleware:
                         user = getattr(request, "user", None)
                         if user and not isinstance(user, AnonymousUser):
                             is_anon = False
+                # No Authorization header — try the httpOnly access_token cookie
+                # (set by login when USE_HTTPONLY_AUTH_COOKIES=True).  This runs
+                # before DRF authentication, which normally handles cookie fallback.
+                if is_anon:
+                    cookie_token = request.COOKIES.get("access_token", "")
+                    if cookie_token:
+                        try:
+                            from hub.apps.auth.jwt_utils import JWTTokenGenerator
+
+                            payload = JWTTokenGenerator.decode_access_token(
+                                cookie_token, verify_version=False
+                            )
+                            if payload:
+                                user = JWTTokenGenerator.get_user_from_token(payload)
+                                if user and user.is_active():
+                                    request.user = user
+                                    is_anon = False
+                        except (ValueError, TypeError, KeyError, AttributeError):
+                            pass
             is_authenticated = (
                 not is_anon
                 and (getattr(user, "is_authenticated", False) or (hasattr(user, "id") and user.id is not None))
@@ -281,24 +301,22 @@ class TenantScopingMiddleware:
                 if not hasattr(request, 'tenant') or not request.tenant:
                     request.tenant = Tenant.objects.get(id=request.tenant_id)
             except Tenant.DoesNotExist:
-                from django.http import JsonResponse
-                return JsonResponse({"error": "TENANT_NOT_FOUND"}, status=403)
+                return Response({"error": "TENANT_NOT_FOUND"}, status=403)
             except (OperationalError, DatabaseError):
-                from django.http import JsonResponse
-                return JsonResponse({"error": "SERVICE_UNAVAILABLE"}, status=503)
+                return Response({"error": "SERVICE_UNAVAILABLE"}, status=503)
             return None
-        
+
         # Try to extract tenant_id from Authorization header (for rate limiting)
         # This runs BEFORE REST Framework authentication
         tenant_id = None
-        
+
         # Try API key first
         tenant_id = self._extract_tenant_id_from_api_key(request)
-        
+
         # If not found, try JWT token
         if not tenant_id:
             tenant_id = self._extract_tenant_id_from_jwt(request)
-        
+
         # If found from header, set it
         if tenant_id:
             request.tenant_id = str(tenant_id)
@@ -306,11 +324,9 @@ class TenantScopingMiddleware:
                 from hub.apps.tenants.models import Tenant
                 request.tenant = Tenant.objects.get(id=tenant_id)
             except Tenant.DoesNotExist:
-                from django.http import JsonResponse
-                return JsonResponse({"error": "TENANT_NOT_FOUND"}, status=403)
+                return Response({"error": "TENANT_NOT_FOUND"}, status=403)
             except (OperationalError, DatabaseError):
-                from django.http import JsonResponse
-                return JsonResponse({"error": "SERVICE_UNAVAILABLE"}, status=503)
+                return Response({"error": "SERVICE_UNAVAILABLE"}, status=503)
             return None
         
         # Fallback: get tenant from request.user (set by Django's AuthenticationMiddleware)

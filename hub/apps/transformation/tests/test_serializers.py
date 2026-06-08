@@ -6,6 +6,7 @@ import uuid
 import pytest
 from django.test import TestCase
 
+from hub.apps.tenants.models import Tenant
 from hub.apps.transformation.models import PipelineStatus
 from hub.apps.transformation.serializers import (
     TransformationPipelineSerializer,
@@ -14,12 +15,30 @@ from hub.apps.transformation.serializers import (
 
 pytestmark = pytest.mark.django_db(transaction=True)
 
+User = None
+
 
 class TransformationPipelineSerializerTest(TestCase):
     """Test TransformationPipelineSerializer."""
 
+    def setUp(self):
+        """Create shared fixtures for each test."""
+        from django.contrib.auth import get_user_model
+        global User
+        User = get_user_model()
+        uid = uuid.uuid4().hex[:8]
+        self.tenant = Tenant.objects.create(
+            name=f"test-tenant-{uid}",
+            slug=f"ts-{uid}",
+        )
+        self.user = User.objects.create_user(
+            email=f"ser-{uid}@test.com",
+            password="testpass123",
+            tenant=self.tenant,
+        )
+
     def test_valid_pipeline_serialization(self):
-        """Serializer accepts valid pipeline data."""
+        """Serializer validates and saves valid pipeline data."""
         data = {
             "name": "Test Pipeline",
             "description": "A test pipeline",
@@ -32,10 +51,10 @@ class TransformationPipelineSerializerTest(TestCase):
             },
         }
         serializer = TransformationPipelineSerializer(data=data)
-        # Validation may need tenant/created_by context; check field types
-        self.assertIn("name", serializer.fields)
-        self.assertIn("pipeline_definition", serializer.fields)
-        self.assertIn("version", serializer.fields)
+        self.assertTrue(serializer.is_valid())
+        pipeline = serializer.save(tenant=self.tenant, created_by=self.user)
+        self.assertIsNotNone(pipeline.id)
+        self.assertEqual(pipeline.name, "Test Pipeline")
 
     def test_status_is_read_only(self):
         """Status field should be read-only."""

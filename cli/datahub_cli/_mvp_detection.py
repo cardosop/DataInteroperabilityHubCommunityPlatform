@@ -32,7 +32,7 @@ def _normalize_relative(path: str) -> str:
     if not path:
         return ""
     if _API_V1_PREFIX in path:
-        return path.split(_API_V1_PREFIX, 1)[1]
+        return path.split(_API_V1_PREFIX, 1)[1].lstrip("/")
     return path.lstrip("/")
 
 

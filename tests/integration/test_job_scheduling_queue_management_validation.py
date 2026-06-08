@@ -76,8 +76,8 @@ class JobQueueInfrastructureTest(TestCase):
 
         # Create test tenant and user
         self.tenant = Tenant.objects.create(
-            name="Queue Test Tenant",
-            slug="queue-test-tenant",
+            name=f"Queue Test Tenant {uuid.uuid4().hex[:8]}",
+            slug=f"queue-test-tenant-{uuid.uuid4().hex[:8]}",
             status="ACTIVE",
             kyc_status="UNVERIFIED",
         )
@@ -349,7 +349,7 @@ class JobQueueInfrastructureTest(TestCase):
         # Create second tenant
         tenant2 = Tenant.objects.create(
             name="Queue Test Tenant 2",
-            slug="queue-test-tenant-2",
+            slug=f"queue-test-tenant-2-{uuid.uuid4().hex[:8]}",
             status="ACTIVE",
             kyc_status="UNVERIFIED",
         )
@@ -503,8 +503,8 @@ class JobSchedulingTest(TestCase):
             self.redis_available = False
 
         self.tenant = Tenant.objects.create(
-            name="Scheduling Test Tenant",
-            slug="scheduling-test-tenant",
+            name=f"Scheduling Test Tenant {uuid.uuid4().hex[:8]}",
+            slug=f"scheduling-test-tenant-{uuid.uuid4().hex[:8]}",
             status="ACTIVE",
             kyc_status="UNVERIFIED",
         )
@@ -542,7 +542,7 @@ class JobSchedulingTest(TestCase):
         # Create a job
         job = Job.objects.create(
             tenant=self.tenant,
-            type=JobType.CONTRACT_VALIDATION.value,
+            job_type=JobType.CONTRACT_VALIDATION.value,
             status=JobStatus.PENDING.value,
             priority=JobPriority.LOW.value,
             resource_type="CONTRACT",
@@ -790,8 +790,8 @@ class JobQueueManagementTest(TestCase):
             self.redis_available = False
 
         self.tenant = Tenant.objects.create(
-            name="Queue Management Test Tenant",
-            slug="queue-mgmt-test-tenant",
+            name=f"Queue Management Test Tenant {uuid.uuid4().hex[:8]}",
+            slug=f"queue-mgmt-test-tenant-{uuid.uuid4().hex[:8]}",
             status="ACTIVE",
             kyc_status="UNVERIFIED",
         )
@@ -1086,7 +1086,7 @@ class JobQueueManagementTest(TestCase):
 
         # Re-enqueue jobs from database
         pending_jobs = Job.objects.filter(
-            tenant=self.tenant, status=JobStatus.PENDING.value, type=JobType.DQ_RUN.value
+            tenant=self.tenant, status=JobStatus.PENDING.value, job_type=JobType.DQ_RUN.value
         )
 
         self.assertEqual(pending_jobs.count(), 3, "All 3 jobs should be in database")
@@ -1127,8 +1127,8 @@ class JobWorkerManagementTest(TestCase):
             self.redis_available = False
 
         self.tenant = Tenant.objects.create(
-            name="Worker Management Test Tenant",
-            slug="worker-mgmt-test-tenant",
+            name=f"Worker Management Test Tenant {uuid.uuid4().hex[:8]}",
+            slug=f"worker-mgmt-test-tenant-{uuid.uuid4().hex[:8]}",
             status="ACTIVE",
             kyc_status="UNVERIFIED",
         )

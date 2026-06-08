@@ -73,6 +73,7 @@ class TestRefreshTokenCookie(TestCase):
             format="json",
         )
 
+    @override_settings(USE_HTTPONLY_AUTH_COOKIES=True)
     def test_login_response_has_no_refresh_token_in_body(self):
         resp = self._login()
         assert resp.status_code == 200
@@ -182,6 +183,7 @@ class TestRefreshTokenFamilyRotation(TestCase):
         old_rt = RefreshToken.objects.get(token_hash=old_hash)
         assert old_rt.revoked_at is not None
 
+    @override_settings(REFRESH_TOKEN_GRACE_PERIOD_SECONDS=0)
     def test_replay_of_revoked_token_revokes_entire_family(self):
         login_resp = self._login()
         cookie_name = getattr(settings, "REFRESH_COOKIE_NAME", "refresh_token")
@@ -469,7 +471,7 @@ class TestLoginSecurity(TestCase):
             email=self.user.email, success=True
         ).exists()
 
-    @override_settings(LOGIN_IP_RATE_PER_MINUTE=2)
+    @override_settings(LOGIN_IP_RATE_PER_MINUTE=2, RATE_LIMIT_ENABLED=True)
     def test_ip_rate_limit_returns_429(self):
         for _ in range(2):
             self.client.post(
@@ -752,6 +754,12 @@ class TestPhase14AuthSecurity(TestCase):
         assert locked_resp.status_code in (429, 403), (
             f"Expected lockout response, got {locked_resp.status_code}"
         )
+
+        # Clear the account lockout cache counter so the stale value from the
+        # previously-locked request does not control the outcome for the
+        # time-patched second request.
+        from hub.apps.auth.views import _account_lockout_cache_key
+        cache.delete(_account_lockout_cache_key(self.user.email))
 
         # Advance time by 16 minutes (past the lockout window)
         future = now + timedelta(minutes=16)
@@ -1128,6 +1136,7 @@ class TestAccountLockout(TestCase):
 class TestRefreshTokenFamilyRevocation(TestCase):
     """49.6: Replaying a revoked refresh token triggers family revocation."""
 
+    @override_settings(REFRESH_TOKEN_GRACE_PERIOD_SECONDS=0)
     def test_revoked_token_replay_triggers_family_revocation(self):
         """Using a revoked refresh token must revoke entire family + return 401."""
         from hub.apps.tenants.models import Tenant
@@ -1152,23 +1161,52 @@ class TestRefreshTokenFamilyRevocation(TestCase):
             {"email": user.email, "password": "TestPass123!"},
             format="json",
         )
+        self.assertEqual(
+            resp.status_code, 200,
+            f"Login must succeed for replay test, got {resp.status_code}",
+        )
         # Extract refresh token from cookie
         refresh_cookie = resp.cookies.get(
             getattr(settings, "REFRESH_COOKIE_NAME", "refresh_token")
         )
-        if not refresh_cookie:
-            # Skip if login failed (auth might not be fully configured in test env)
-            self.skipTest("Login did not return refresh cookie")
+        self.assertIsNotNone(
+            refresh_cookie,
+            "Login response must include a refresh cookie",
+        )
 
         refresh_token_str = refresh_cookie.value
 
-        # First refresh — should succeed and rotate
-        resp2 = client.post("/api/v1/auth/refresh/", HTTP_COOKIE=f"refresh_token={refresh_token_str}")
-        if resp2.status_code != 200:
-            self.skipTest(f"First refresh failed with {resp2.status_code}")
+        # Resolve T0's family_id for the later revocation assertion.
+        t0_hash = RefreshToken.hash_token(refresh_token_str)
+        t0 = RefreshToken.objects.get(token_hash=t0_hash)
+        family_id = t0.family_id
 
-        # Replay the OLD (now-revoked) token
-        resp3 = client.post("/api/v1/auth/refresh/", HTTP_COOKIE=f"refresh_token={refresh_token_str}")
-        assert resp3.status_code in (400, 401), (
-            f"Replaying revoked refresh token should return 400 or 401, got {resp3.status_code}"
+        # First refresh — should succeed and rotate.
+        resp2 = client.post(
+            "/api/v1/auth/refresh/",
+            HTTP_COOKIE=f"refresh_token={refresh_token_str}",
+        )
+        self.assertEqual(
+            resp2.status_code, 200,
+            f"First refresh must succeed, got {resp2.status_code}",
+        )
+
+        # Replay the OLD (now-revoked) token — must trigger family revocation.
+        resp3 = client.post(
+            "/api/v1/auth/refresh/",
+            HTTP_COOKIE=f"refresh_token={refresh_token_str}",
+        )
+        self.assertIn(
+            resp3.status_code, (400, 401),
+            f"Replaying revoked refresh token should return 400 or 401, got {resp3.status_code}",
+        )
+
+        # Verify the entire family was revoked, not just the replayed token.
+        active_in_family = RefreshToken.objects.filter(
+            family_id=family_id,
+            revoked_at__isnull=True,
+        )
+        self.assertFalse(
+            active_in_family.exists(),
+            "All tokens in the family must be revoked after replay",
         )

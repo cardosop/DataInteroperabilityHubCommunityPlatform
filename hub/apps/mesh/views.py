@@ -101,6 +101,15 @@ class DomainViewSet(viewsets.ModelViewSet):
     serializer_class = DomainSerializer
     permission_classes = [permissions.IsAuthenticated]
     lookup_field = "id"
+
+    def initial(self, request, *args, **kwargs):
+        from hub.apps.tenants.feature_flag_gates import check_data_mesh_enabled
+        from rest_framework.exceptions import PermissionDenied
+        result = check_data_mesh_enabled(request)
+        if isinstance(result, Response):
+            raise PermissionDenied(detail=result.data)
+        super().initial(request, *args, **kwargs)
+
     filter_backends = [OrderingFilter, SearchFilter]
     ordering_fields = ["name", "status", "created_at", "updated_at"]
     ordering = ["-created_at"]  # Default ordering

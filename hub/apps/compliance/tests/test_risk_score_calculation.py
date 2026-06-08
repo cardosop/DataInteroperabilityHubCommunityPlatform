@@ -228,3 +228,112 @@ class RiskScoreCalculationTest(TestCase):
         self.assertIsInstance(data["regulation_mapping_json"], dict)
         self.assertIn("GDPR", data["regulations"])
         self.assertIn("CCPA", data["regulations"])
+
+    def test_risk_level_choices_completeness(self):
+        """Test that all expected RiskLevel choices exist."""
+        expected = {"NONE", "LOW", "MEDIUM", "HIGH", "CRITICAL", "UNKNOWN"}
+        actual = {choice[0] for choice in RiskLevel.choices}
+        self.assertTrue(expected.issubset(actual),
+            f"Missing RiskLevel choices: {expected - actual}")
+
+    def test_risk_level_exceeds_method(self):
+        """Test RiskLevel.exceeds() static method for severity comparison."""
+        # Same level does not exceed
+        self.assertFalse(RiskLevel.exceeds("LOW", "LOW"))
+        self.assertFalse(RiskLevel.exceeds("HIGH", "HIGH"))
+
+        # Lower does not exceed higher
+        self.assertFalse(RiskLevel.exceeds("LOW", "MEDIUM"))
+        self.assertFalse(RiskLevel.exceeds("MEDIUM", "HIGH"))
+
+        # Higher exceeds lower
+        self.assertTrue(RiskLevel.exceeds("MEDIUM", "LOW"))
+        self.assertTrue(RiskLevel.exceeds("HIGH", "LOW"))
+        self.assertTrue(RiskLevel.exceeds("CRITICAL", "LOW"))
+
+        # UNKNOWN exceeds all concrete levels (fail-closed posture)
+        for level in ("NONE", "LOW", "MEDIUM", "HIGH", "CRITICAL"):
+            self.assertTrue(RiskLevel.exceeds("UNKNOWN", level),
+                f"UNKNOWN must exceed {level} (fail-closed)")
+
+        # Nothing exceeds UNKNOWN (ceiling)
+        for level in ("NONE", "LOW", "MEDIUM", "HIGH", "CRITICAL"):
+            self.assertFalse(RiskLevel.exceeds(level, "UNKNOWN"),
+                f"{level} must NOT exceed UNKNOWN")
+
+        # Unknown level defaults to 0 (lowest)
+        self.assertFalse(RiskLevel.exceeds("UNKNOWN", "UNKNOWN"))
+        self.assertTrue(RiskLevel.exceeds("HIGH", "BOGUS_LEVEL"),
+            "Bogus level must default to 0, so HIGH exceeds it")
+
+    def test_allowed_to_store_null_when_not_completed(self):
+        """Test allowed_to_store is None when run has not completed."""
+        job = Job.objects.create(
+            tenant=self.tenant,
+            type=JobType.COMPLIANCE_RUN,
+            resource_type="COMPLIANCE_RUN",
+            resource_id=uuid.uuid4(),
+            created_by=self.user,
+        )
+        run = ComplianceRun.objects.create(
+            tenant=self.tenant,
+            file=self.file,
+            job=job,
+            status=ComplianceRunStatus.RUNNING,
+            allowed_to_store=None,
+        )
+        run.refresh_from_db()
+        self.assertIsNone(run.allowed_to_store)
+
+    def test_unknown_risk_level_on_fail_closed(self):
+        """Test that UNKNOWN risk level is stored and retrievable."""
+        job = Job.objects.create(
+            tenant=self.tenant,
+            type=JobType.COMPLIANCE_RUN,
+            resource_type="COMPLIANCE_RUN",
+            resource_id=uuid.uuid4(),
+            created_by=self.user,
+        )
+        run = ComplianceRun.objects.create(
+            tenant=self.tenant,
+            file=self.file,
+            job=job,
+            status=ComplianceRunStatus.FAILED,
+            overall_status="UNKNOWN",
+            risk_level=RiskLevel.UNKNOWN,
+            allowed_to_store=False,
+        )
+        run.refresh_from_db()
+        self.assertEqual(run.risk_level, RiskLevel.UNKNOWN)
+        self.assertFalse(run.allowed_to_store)
+
+    def test_empty_detected_categories_json(self):
+        """Test empty detected_categories_json is handled correctly."""
+        job = Job.objects.create(
+            tenant=self.tenant,
+            type=JobType.COMPLIANCE_RUN,
+            resource_type="COMPLIANCE_RUN",
+            resource_id=uuid.uuid4(),
+            created_by=self.user,
+        )
+        # Empty list
+        run_empty = ComplianceRun.objects.create(
+            tenant=self.tenant,
+            file=self.file,
+            job=job,
+            status=ComplianceRunStatus.SUCCEEDED,
+            detected_categories_json=[],
+        )
+        run_empty.refresh_from_db()
+        self.assertEqual(run_empty.detected_categories_json, [])
+
+        # None
+        run_none = ComplianceRun.objects.create(
+            tenant=self.tenant,
+            file=self.file,
+            job=job,
+            status=ComplianceRunStatus.SUCCEEDED,
+            detected_categories_json=None,
+        )
+        run_none.refresh_from_db()
+        self.assertIsNone(run_none.detected_categories_json)

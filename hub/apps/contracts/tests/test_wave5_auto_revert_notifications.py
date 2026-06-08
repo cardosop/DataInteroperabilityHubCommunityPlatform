@@ -113,34 +113,39 @@ def _create_structureless_active_contract(tenant, *, asset=None):
 # ===========================================================================
 
 
-def test_w5_email_type_registered():
-    """``EmailType`` must register the W5 final-warning entry so
-    subscribers / business-rules-validation paths recognise it."""
-    from hub.apps.notifications.models import EmailType
+@pytest.mark.django_db(transaction=True)
+class EmailTypeRegistrationTests(TestCase):
+    """Verify W5 email-type constants are registered on the EmailType model
+    so subscribers / business-rules-validation paths can reference them."""
 
-    assert hasattr(EmailType, "ASSET_AUTO_REVERT_WARNING"), (
-        "EmailType must register ASSET_AUTO_REVERT_WARNING for the "
-        "W5.1 T+30 final warning email"
-    )
-    assert (
-        EmailType.ASSET_AUTO_REVERT_WARNING.value
-        == "ASSET_AUTO_REVERT_WARNING"
-    )
+    def test_w5_email_type_registered(self):
+        """``EmailType`` must register the W5 final-warning entry."""
+        from hub.apps.notifications.models import EmailType
 
+        self.assertTrue(
+            hasattr(EmailType, "ASSET_AUTO_REVERT_WARNING"),
+            "EmailType must register ASSET_AUTO_REVERT_WARNING for the "
+            "W5.1 T+30 final warning email",
+        )
+        self.assertEqual(
+            EmailType.ASSET_AUTO_REVERT_WARNING.value,
+            "ASSET_AUTO_REVERT_WARNING",
+        )
 
-def test_w53_email_type_registered():
-    """``EmailType`` must register the W5.3 per-asset post-revert
-    notification email type."""
-    from hub.apps.notifications.models import EmailType
+    def test_w53_email_type_registered(self):
+        """``EmailType`` must register the W5.3 per-asset post-revert
+        notification email type."""
+        from hub.apps.notifications.models import EmailType
 
-    assert hasattr(EmailType, "ASSET_AUTO_REVERTED_NOTIFICATION"), (
-        "EmailType must register ASSET_AUTO_REVERTED_NOTIFICATION "
-        "for the W5.3 post-revert per-asset notification"
-    )
-    assert (
-        EmailType.ASSET_AUTO_REVERTED_NOTIFICATION.value
-        == "ASSET_AUTO_REVERTED_NOTIFICATION"
-    )
+        self.assertTrue(
+            hasattr(EmailType, "ASSET_AUTO_REVERTED_NOTIFICATION"),
+            "EmailType must register ASSET_AUTO_REVERTED_NOTIFICATION "
+            "for the W5.3 post-revert per-asset notification",
+        )
+        self.assertEqual(
+            EmailType.ASSET_AUTO_REVERTED_NOTIFICATION.value,
+            "ASSET_AUTO_REVERTED_NOTIFICATION",
+        )
 
 
 # ===========================================================================
@@ -175,12 +180,12 @@ class FinalWarningHelperTests(TestCase):
             deadline=_dt.date(2026, 6, 15),
         )
         recipients = sorted(r["to_email"] for r in results)
-        assert recipients == ["a1@example.com", "a2@example.com"]
-        assert plain.email not in recipients
+        self.assertEqual(recipients , ["a1@example.com", "a2@example.com"])
+        self.assertNotIn(plain.email, recipients)
         for r in results:
-            assert r["success"] is True
-            assert r["error"] is None
-            assert r["email_type"] == "ASSET_AUTO_REVERT_WARNING"
+            self.assertTrue(r["success"] is True)
+            self.assertIsNone(r["error"])
+            self.assertEqual(r["email_type"] , "ASSET_AUTO_REVERT_WARNING")
 
     def test_per_recipient_failure_does_not_block_remaining_admins(self):
         """A broken email address for admin A must not block dispatch
@@ -211,10 +216,10 @@ class FinalWarningHelperTests(TestCase):
             )
 
         emails_seen = {r["to_email"] for r in results}
-        assert emails_seen == {"bad@example.com", "good@example.com"}
+        self.assertEqual(emails_seen , {"bad@example.com", "good@example.com"})
         outcomes = {r["to_email"]: r["success"] for r in results}
-        assert outcomes["bad@example.com"] is False
-        assert outcomes["good@example.com"] is True
+        self.assertTrue(outcomes["bad@example.com"] is False)
+        self.assertTrue(outcomes["good@example.com"] is True)
 
     def test_no_admins_raises_typed_error(self):
         """Tenant without TENANT_ADMIN raises ``NoTenantAdminsError``
@@ -255,10 +260,10 @@ class FinalWarningHelperTests(TestCase):
                 ],
             },
         )
-        assert "Acme Co" in rendered["html"]
-        assert "2026-06-15" in rendered["html"]
-        assert "orders" in rendered["html"]
-        assert "Meshant" in rendered["html"]
+        self.assertIn("Acme Co", rendered["html"])
+        self.assertIn("2026-06-15", rendered["html"])
+        self.assertIn("orders", rendered["html"])
+        self.assertIn("Meshant", rendered["html"])
 
 
 # ===========================================================================
@@ -311,8 +316,8 @@ class FinalWarningDriverScopeTests(TestCase):
             tenant=clean_tenant,
             action="ASSET_AUTO_REVERT_WARNING_NOTIFIED",
         )
-        assert rows.count() == 0
-        assert "sent=0" in out
+        self.assertEqual(rows.count() , 0)
+        self.assertIn("sent=0", out)
 
     def test_default_scope_targets_structureless_active_tenants(self):
         from hub.apps.audit.models import AuditEvent
@@ -331,8 +336,8 @@ class FinalWarningDriverScopeTests(TestCase):
             tenant=residue_tenant,
             action="ASSET_AUTO_REVERT_WARNING_NOTIFIED",
         )
-        assert rows.count() == 1
-        assert "sent=1" in out
+        self.assertEqual(rows.count() , 1)
+        self.assertIn("sent=1", out)
 
     def test_tenant_id_flag_targets_single_tenant(self):
         from hub.apps.audit.models import AuditEvent
@@ -348,12 +353,8 @@ class FinalWarningDriverScopeTests(TestCase):
         _run_w51(f"--deadline={deadline}", f"--tenant-id={t1.id}")
 
         # Only t1 was notified.
-        assert AuditEvent.objects.filter(
-            tenant=t1, action="ASSET_AUTO_REVERT_WARNING_NOTIFIED"
-        ).count() == 1
-        assert AuditEvent.objects.filter(
-            tenant=t2, action="ASSET_AUTO_REVERT_WARNING_NOTIFIED"
-        ).count() == 0
+        self.assertEqual(AuditEvent.objects.filter( tenant=t1, action="ASSET_AUTO_REVERT_WARNING_NOTIFIED" ).count() , 1)
+        self.assertEqual(AuditEvent.objects.filter( tenant=t2, action="ASSET_AUTO_REVERT_WARNING_NOTIFIED" ).count() , 0)
 
     def test_tenant_id_with_clean_tenant_skips_send(self):
         """SELF-AUDIT-1 regression guard — passing ``--tenant-id`` for
@@ -387,10 +388,8 @@ class FinalWarningDriverScopeTests(TestCase):
         out, _ = _run_w51(f"--deadline={deadline}", f"--tenant-id={clean_tenant.id}")
 
         # No NOTIFIED row, no-op summary.
-        assert AuditEvent.objects.filter(
-            tenant=clean_tenant, action="ASSET_AUTO_REVERT_WARNING_NOTIFIED"
-        ).count() == 0
-        assert "[no-op]" in out or "sent=0" in out
+        self.assertEqual(AuditEvent.objects.filter( tenant=clean_tenant, action="ASSET_AUTO_REVERT_WARNING_NOTIFIED" ).count() , 0)
+        self.assertTrue("[no-op]" in out or "sent=0" in out, f"Expected no-op or sent=0 in output; got {out!r}")
 
     def test_all_tenants_excludes_clean_tenants_too(self):
         """SELF-AUDIT-1 regression guard — ``--all-tenants`` is a
@@ -426,13 +425,9 @@ class FinalWarningDriverScopeTests(TestCase):
         _run_w51(f"--deadline={deadline}", "--all-tenants")
 
         # Clean tenant: zero NOTIFIED rows.
-        assert AuditEvent.objects.filter(
-            tenant=clean_tenant, action="ASSET_AUTO_REVERT_WARNING_NOTIFIED"
-        ).count() == 0
+        self.assertEqual(AuditEvent.objects.filter( tenant=clean_tenant, action="ASSET_AUTO_REVERT_WARNING_NOTIFIED" ).count() , 0)
         # Residue tenant: exactly one NOTIFIED row.
-        assert AuditEvent.objects.filter(
-            tenant=residue_tenant, action="ASSET_AUTO_REVERT_WARNING_NOTIFIED"
-        ).count() == 1
+        self.assertEqual(AuditEvent.objects.filter( tenant=residue_tenant, action="ASSET_AUTO_REVERT_WARNING_NOTIFIED" ).count() , 1)
 
 
 @pytest.mark.django_db(transaction=True)
@@ -467,8 +462,8 @@ class FinalWarningDriverIdempotencyTests(TestCase):
         after = AuditEvent.objects.filter(
             tenant=tenant, action="ASSET_AUTO_REVERT_WARNING_NOTIFIED"
         ).count()
-        assert after == before, "second send should not write a new audit row"
-        assert "skipped-idempotent" in out
+        self.assertEqual(after , before, "second send should not write a new audit row")
+        self.assertIn("skipped-idempotent", out)
 
     def test_force_bypasses_idempotency(self):
         from hub.apps.audit.models import AuditEvent
@@ -495,9 +490,7 @@ class FinalWarningDriverIdempotencyTests(TestCase):
         after = AuditEvent.objects.filter(
             tenant=tenant, action="ASSET_AUTO_REVERT_WARNING_NOTIFIED"
         ).count()
-        assert after == before + 1, (
-            "force should re-send AND record a fresh audit row capturing the intent"
-        )
+        self.assertEqual(after , before + 1, ( "force should re-send AND record a fresh audit row capturing the intent" ))
 
     def test_all_failed_batch_does_not_write_audit_row(self):
         """Critical retry-correctness invariant: if every dispatch in
@@ -524,10 +517,7 @@ class FinalWarningDriverIdempotencyTests(TestCase):
         rows = AuditEvent.objects.filter(
             tenant=tenant, action="ASSET_AUTO_REVERT_WARNING_NOTIFIED"
         )
-        assert rows.count() == 0, (
-            "all-failed batch must NOT record the NOTIFIED row so retry "
-            "can self-heal"
-        )
+        self.assertEqual(rows.count() , 0, ( "all-failed batch must NOT record the NOTIFIED row so retry " "can self-heal" ))
 
 
 @pytest.mark.django_db(transaction=True)
@@ -547,15 +537,10 @@ class FinalWarningDriverSafetyTests(TestCase):
         deadline = (_dt.date.today() + _dt.timedelta(days=14)).isoformat()
         out, _ = _run_w51(f"--deadline={deadline}", "--dry-run")
 
-        assert "[dry-run]" in out
-        assert AuditEvent.objects.filter(
-            tenant=tenant, action="ASSET_AUTO_REVERT_WARNING_NOTIFIED"
-        ).count() == 0
+        self.assertIn("[dry-run]", out)
+        self.assertEqual(AuditEvent.objects.filter( tenant=tenant, action="ASSET_AUTO_REVERT_WARNING_NOTIFIED" ).count() , 0)
         # No EmailDelivery rows for this tenant.
-        assert EmailDelivery.objects.filter(
-            tenant_id=str(tenant.id),
-            email_type="ASSET_AUTO_REVERT_WARNING",
-        ).count() == 0
+        self.assertEqual(EmailDelivery.objects.filter( tenant_id=str(tenant.id), email_type="ASSET_AUTO_REVERT_WARNING", ).count() , 0)
 
     def test_no_admin_tenant_skipped_not_crashed(self):
         """Tenant with structureless contracts but no admin produces
@@ -570,10 +555,8 @@ class FinalWarningDriverSafetyTests(TestCase):
         deadline = (_dt.date.today() + _dt.timedelta(days=14)).isoformat()
         out, _ = _run_w51(f"--deadline={deadline}")
 
-        assert "[skipped-no-admin]" in out
-        assert AuditEvent.objects.filter(
-            tenant=tenant, action="ASSET_AUTO_REVERT_WARNING_NOTIFIED"
-        ).count() == 0
+        self.assertIn("[skipped-no-admin]", out)
+        self.assertEqual(AuditEvent.objects.filter( tenant=tenant, action="ASSET_AUTO_REVERT_WARNING_NOTIFIED" ).count() , 0)
 
     def test_past_deadline_raises_command_error(self):
         from hub.apps.audit.models import AuditEvent
@@ -605,11 +588,11 @@ class FinalWarningDriverSafetyTests(TestCase):
 
         with open(audit_path, "r") as fp:
             lines = [json.loads(ln) for ln in fp if ln.strip()]
-        assert len(lines) >= 1
+        self.assertGreaterEqual(len(lines) , 1)
         rec = lines[0]
         # Canonical keys for ops cross-check.
         for key in ("tenant_id", "to_email", "email_type", "success", "deadline"):
-            assert key in rec, f"audit JSONL missing {key!r}"
+            self.assertIn(key, rec, f"audit JSONL missing {key!r}")
 
 
 # ===========================================================================
@@ -661,18 +644,15 @@ class AssetAutoRevertNotificationTests(TestCase):
         ).count()
 
         # One email per tenant admin (2 admins → 2 emails).
-        assert after - before == 2, (
-            f"Expected 2 ASSET_AUTO_REVERTED_NOTIFICATION emails (one per "
-            f"admin); got {after - before}"
-        )
+        self.assertEqual(after - before , 2, ( f"Expected 2 ASSET_AUTO_REVERTED_NOTIFICATION emails (one per " f"admin); got {after - before}" ))
         recipients = set(
             EmailDelivery.objects.filter(
                 email_type="ASSET_AUTO_REVERTED_NOTIFICATION",
                 tenant_id=str(tenant.id),
             ).values_list("to_email", flat=True)
         )
-        assert recipients == {"rev1@example.com", "rev2@example.com"}
-        assert "plain@example.com" not in recipients
+        self.assertEqual(recipients , {"rev1@example.com", "rev2@example.com"})
+        self.assertNotIn("plain@example.com", recipients)
 
     def test_in_app_notification_created_per_admin(self):
         from hub.apps.notifications.models import UserNotification
@@ -691,15 +671,9 @@ class AssetAutoRevertNotificationTests(TestCase):
             resource_type="ASSET",
             resource_id=asset.id,
         )
-        assert rows.count() == 1, (
-            f"Expected exactly one in-app UserNotification for the admin; "
-            f"got {rows.count()}"
-        )
+        self.assertEqual(rows.count() , 1, ( f"Expected exactly one in-app UserNotification for the admin; " f"got {rows.count()}" ))
         n = rows.first()
-        assert "DRAFT" in n.message or "structureless" in n.message.lower(), (
-            f"in-app message should mention the demotion / structureless "
-            f"reason; got {n.message!r}"
-        )
+        self.assertTrue("DRAFT" in n.message or "structureless" in n.message.lower(), f"in-app message should mention the demotion / structureless reason; got {n.message!r}")
 
     def test_revert_does_not_emit_notification_when_no_revert(self):
         """If the asset was already DRAFT (so no revert applied), the
@@ -715,13 +689,8 @@ class AssetAutoRevertNotificationTests(TestCase):
 
         _run_apply_revert(tenant=tenant)
 
-        assert EmailDelivery.objects.filter(
-            email_type="ASSET_AUTO_REVERTED_NOTIFICATION",
-            tenant_id=str(tenant.id),
-        ).count() == 0
-        assert UserNotification.objects.filter(
-            tenant=tenant, resource_type="ASSET", resource_id=asset.id,
-        ).count() == 0
+        self.assertEqual(EmailDelivery.objects.filter( email_type="ASSET_AUTO_REVERTED_NOTIFICATION", tenant_id=str(tenant.id), ).count() , 0)
+        self.assertEqual(UserNotification.objects.filter( tenant=tenant, resource_type="ASSET", resource_id=asset.id, ).count() , 0)
 
     def test_notification_failure_does_not_roll_back_revert(self):
         """A simulated SES outage during revert notification must NOT
@@ -745,7 +714,4 @@ class AssetAutoRevertNotificationTests(TestCase):
             _run_apply_revert(tenant=tenant)
 
         asset.refresh_from_db()
-        assert asset.status == AssetStatus.DRAFT, (
-            "Asset demotion is the load-bearing op; a notification "
-            "failure must NOT roll it back"
-        )
+        self.assertEqual(asset.status , AssetStatus.DRAFT, ( "Asset demotion is the load-bearing op; a notification " "failure must NOT roll it back" ))

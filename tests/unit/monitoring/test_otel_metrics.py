@@ -408,7 +408,7 @@ class OpenTelemetryMetricsTest(TestCase):
         """Test that metrics endpoint contains expected metric names"""
         # Record some metrics first
         http_requests_total.labels(method='GET', route='/test/', status_class='2xx').inc()
-        jobs_started_total.labels(job_type='DQ_RUN', tenant_id=str(self.tenant.id)).inc()
+        jobs_started_total.labels(type='DQ_RUN', tenant_id=str(self.tenant.id)).inc()
         
         response = self.client.get('/metrics/')
         if response.status_code == 200:

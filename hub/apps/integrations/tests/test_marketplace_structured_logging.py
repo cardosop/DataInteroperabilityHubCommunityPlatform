@@ -61,6 +61,14 @@ class MarketplaceStructuredLoggingTest(TestCase):
             cache_logger_on_first_use=False,
         )
 
+        # Ensure stdlib logging is at DEBUG level so structlog's
+        # filter_by_level processor does not discard the INFO/WARNING
+        # messages this test intentionally logs.
+        import logging
+
+        logging.getLogger("hub.apps.integrations.logging_utils").setLevel(logging.DEBUG)
+        logging.getLogger("hub.apps.integrations").setLevel(logging.DEBUG)
+
     def tearDown(self):
         """Restore original structlog configuration"""
         # Restore original configuration

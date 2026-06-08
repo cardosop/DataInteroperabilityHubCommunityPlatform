@@ -69,8 +69,8 @@ class VirtualDatasetManagementTest(TestCase):
         """Set up test data"""
         self.client = APIClient()
         self.tenant = Tenant.objects.create(
-            name="Virtualization Test Tenant",
-            slug="virtualization-test-tenant",
+            name=f"Virtualization Test Tenant {uuid.uuid4().hex[:8]}",
+            slug=f"virtualization-test-tenant-{uuid.uuid4().hex[:8]}",
             kyc_status=KYCStatus.VERIFIED,
         )
         unique_id = uuid.uuid4().hex[:8]
@@ -404,8 +404,8 @@ class FederatedQueryExecutionTest(TestCase):
         """Set up test data"""
         self.client = APIClient()
         self.tenant = Tenant.objects.create(
-            name="Federated Query Test Tenant",
-            slug="federated-query-test-tenant",
+            name=f"Federated Query Test Tenant {uuid.uuid4().hex[:8]}",
+            slug=f"federated-query-test-tenant-{uuid.uuid4().hex[:8]}",
             kyc_status=KYCStatus.VERIFIED,
         )
         unique_id = uuid.uuid4().hex[:8]
@@ -745,7 +745,7 @@ class FederationTopologyTest(TestCase):
         """Set up test data"""
         self.client = APIClient()
         self.tenant = Tenant.objects.create(
-            name="Topology Test Tenant", slug="topology-test-tenant", kyc_status=KYCStatus.VERIFIED
+            name=f"Topology Test Tenant {uuid.uuid4().hex[:8]}", slug=f"topology-test-tenant-{uuid.uuid4().hex[:8]}", kyc_status=KYCStatus.VERIFIED
         )
         unique_id = uuid.uuid4().hex[:8]
         self.user = User.objects.create_user(
@@ -1007,7 +1007,7 @@ class FederationTopologyTest(TestCase):
 
         # Test with invalid tenant (should be filtered automatically)
         other_tenant = Tenant.objects.create(
-            name="Other Tenant", slug="other-tenant", kyc_status=KYCStatus.VERIFIED
+            name=f"Other Tenant {uuid.uuid4().hex[:8]}", slug=f"other-tenant-{uuid.uuid4().hex[:8]}", kyc_status=KYCStatus.VERIFIED
         )
         other_user = User.objects.create_user(
             email=f"other_user_{uuid.uuid4().hex[:8]}@example.com",
@@ -1045,8 +1045,8 @@ class VirtualizationPerformanceTest(TestCase):
         """Set up test data"""
         self.client = APIClient()
         self.tenant = Tenant.objects.create(
-            name="Performance Test Tenant",
-            slug="performance-test-tenant",
+            name=f"Performance Test Tenant {uuid.uuid4().hex[:8]}",
+            slug=f"performance-test-tenant-{uuid.uuid4().hex[:8]}",
             kyc_status=KYCStatus.VERIFIED,
         )
         unique_id = uuid.uuid4().hex[:8]
@@ -1396,8 +1396,8 @@ class VirtualizationODPSIntegrationTest(TestCase):
         """Set up test data"""
         self.client = APIClient()
         self.tenant = Tenant.objects.create(
-            name="ODPS Integration Test Tenant",
-            slug="odps-integration-test-tenant",
+            name=f"ODPS Integration Test Tenant {uuid.uuid4().hex[:8]}",
+            slug=f"odps-integration-test-tenant-{uuid.uuid4().hex[:8]}",
             kyc_status=KYCStatus.VERIFIED,
         )
         unique_id = uuid.uuid4().hex[:8]

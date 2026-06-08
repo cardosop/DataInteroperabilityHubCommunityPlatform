@@ -25,29 +25,21 @@ User = get_user_model()
 class TransformationPipelineSerializerDecryptionTest(TestCase):
     """Test that to_representation decrypts pipeline_definition."""
 
-    @classmethod
-    def setUpTestData(cls):
-        """Create shared fixtures once per class.
-
-        Tenant and User are never mutated by individual tests, so creating
-        them once avoids repeated INSERT+SAVEPOINT churn that causes
-        statement_timeout under Docker resource constraints.
-        """
+    def setUp(self):
         uid = uuid.uuid4().hex[:8]
-        cls.tenant = Tenant.objects.create(
+        self.tenant = Tenant.objects.create(
             name=f"Tenant {uid}",
             slug=f"tenant-{uid}",
             kyc_status=KYCStatus.VERIFIED,
         )
-        ensure_tenant_has_active_subscription(cls.tenant)
-        cls.user = User.objects.create_user(
+        ensure_tenant_has_active_subscription(self.tenant)
+        self.user = User.objects.create_user(
             email=f"user-{uid}@example.com",
             password="testpass123",
-            tenant=cls.tenant,
+            tenant=self.tenant,
             status=UserStatus.ACTIVE,
         )
 
-    def setUp(self):
         self.pipeline_def = {
             "version": "1.0",
             "steps": [

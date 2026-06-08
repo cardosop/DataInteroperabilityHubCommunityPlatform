@@ -6,6 +6,7 @@ Tests partial updates, validation errors, and concurrent updates.
 
 import threading
 import time
+import uuid
 
 import pytest
 from django.contrib.auth import get_user_model
@@ -17,6 +18,7 @@ from hub.apps.contracts.models import Contract, ContractStatus, NormalizationSta
 from hub.apps.contracts.tests.factories import ContractFactoryEnhanced
 from hub.apps.users.models import UserStatus
 from hub.apps.testing.billing_support import ensure_tenant_has_active_subscription
+from hub.apps.testing.role_support import ensure_user_has_data_provider_role
 from tests.factories import TenantFactory
 
 pytestmark = pytest.mark.django_db(transaction=True)
@@ -53,6 +55,7 @@ class APIEdgeCaseTest(TransactionTestCase):
         )
         self.client = APIClient()
         self.client.force_authenticate(user=self.user)
+        ensure_user_has_data_provider_role(self.user)
 
     # Partial Updates Tests
 

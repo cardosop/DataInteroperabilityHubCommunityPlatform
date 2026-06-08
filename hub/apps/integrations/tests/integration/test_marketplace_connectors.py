@@ -240,7 +240,7 @@ class DadosGovBrConnectorIntegrationTest(TestCase):
             self.assertTrue(result)
         except (ValueError, HubConnectionError, ConnectionError) as e:
             error_str = str(e).lower()
-            if 'authentication failed' in error_str or 'signin' in error_str or 'jwt token' in error_str:
+            if any(kw in error_str for kw in ('authentication failed', 'signin', 'jwt token', '401', 'unauthorized')):
                 raise unittest.SkipTest(f"JWT token authentication failed (token may be expired or invalid): {e}")
             raise
 
@@ -255,8 +255,9 @@ class DadosGovBrConnectorIntegrationTest(TestCase):
                 listing = listings[0]
                 self.assertIsInstance(listing, MarketplaceListing)
                 self.assertEqual(listing.marketplace_type, MarketplaceType.CKAN_INSTANCE)
-        except ValueError as e:
-            if 'authentication failed' in str(e).lower():
+        except (ValueError, HubConnectionError) as e:
+            error_str = str(e).lower()
+            if any(kw in error_str for kw in ('authentication failed', 'signin', 'jwt token', '401', 'unauthorized')):
                 raise unittest.SkipTest(f"Authentication failed: {e}")
             raise
 
@@ -275,8 +276,9 @@ class DadosGovBrConnectorIntegrationTest(TestCase):
             self.assertEqual(listing.marketplace_id, listing_id)
         except NotFoundError:
             raise unittest.SkipTest("Listing not found - may have been deleted")
-        except ValueError as e:
-            if 'authentication failed' in str(e).lower():
+        except (ValueError, HubConnectionError) as e:
+            error_str = str(e).lower()
+            if any(kw in error_str for kw in ('authentication failed', 'signin', 'jwt token', '401', 'unauthorized')):
                 raise unittest.SkipTest(f"Authentication failed: {e}")
             raise
 
@@ -289,7 +291,7 @@ class DadosGovBrConnectorIntegrationTest(TestCase):
             # are caught internally — skip when caused by auth issues
             if result.status == SyncStatus.FAILED and result.errors:
                 error_text = " ".join(str(e) for e in result.errors).lower()
-                if "authentication failed" in error_text or "redirected to signin" in error_text:
+                if any(kw in error_text for kw in ("authentication failed", "redirected to signin", "401", "unauthorized")):
                     raise unittest.SkipTest(
                         f"Authentication failed during sync_pull: {result.errors}"
                     )

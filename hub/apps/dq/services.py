@@ -16,6 +16,32 @@ from hub.apps.dq.models import DQRun, DQRunStatus, DQEngine
 from hub.apps.dq.business_rules import DQBusinessRules
 
 
+def _resolve_warehouse_connector(warehouse_config: dict, tenant_id: str):
+    """Instantiate the correct ``WarehouseConnector`` subclass for
+    *warehouse_config*.
+
+    Reuses the pattern from ``hub/apps/warehouses/tasks._get_connector``.
+    """
+    from hub.apps.warehouses.connectors.athena import AthenaConnector
+    from hub.apps.warehouses.connectors.bigquery import BigQueryConnector
+    from hub.apps.warehouses.connectors.databricks import DatabricksConnector
+    from hub.apps.warehouses.connectors.snowflake import SnowflakeConnector
+
+    wt = (warehouse_config.get("warehouse_type") or "").lower()
+    credential_ref = warehouse_config.get("credential_ref") or ""
+
+    connector_map = {
+        "snowflake": SnowflakeConnector,
+        "bigquery": BigQueryConnector,
+        "databricks": DatabricksConnector,
+        "athena": AthenaConnector,
+    }
+    cls = connector_map.get(wt)
+    if cls is None:
+        raise ValueError(f"Unsupported warehouse type: {wt}")
+    return cls(credential_ref=credential_ref, tenant_id=tenant_id)
+
+
 def resolve_engine_for_profile(profile_key: str) -> str:
     """Phase 240.3.A.8 — single source of truth for engine routing.
 
@@ -326,6 +352,225 @@ class DQService(BaseService):
                     "updated_at",
                 ]
             )
+
+        run.refresh_from_db()
+        return run
+
+    # ── Warehouse-native DQ (Phase 285.10) ─────────────────────────────
+
+    @staticmethod
+    def _resolve_engine(
+        dataset=None,
+        warehouse_config=None,
+        requested_engine=None,
+    ) -> str:
+        """Auto-detect DQ engine from dataset storage_type.
+
+        - Explicit ``requested_engine`` always wins.
+        - ``EXTERNAL_WAREHOUSE`` / ``EXTERNAL_REF`` → WAREHOUSE_SQL.
+        - Otherwise → GREAT_EXPECTATIONS (default).
+        """
+        if requested_engine:
+            return requested_engine
+        if dataset is not None:
+            meta = getattr(dataset, "snapshot_metadata", None) or {}
+            if meta.get("storage_type") == "EXTERNAL_WAREHOUSE":
+                return DQEngine.WAREHOUSE_SQL
+            if getattr(dataset, "kind", None) == "EXTERNAL_REF":
+                return DQEngine.WAREHOUSE_SQL
+        if warehouse_config and warehouse_config.get("warehouse_type"):
+            return DQEngine.WAREHOUSE_SQL
+        return DQEngine.GREAT_EXPECTATIONS
+
+    @staticmethod
+    @transaction.atomic
+    def scan_inmemory_warehouse(
+        dataset,
+        tenant,
+        check_definitions=None,
+        warehouse_config=None,
+        user=None,
+        correlation_id=None,
+    ) -> DQRun:
+        """Run DQ checks directly in the customer's warehouse via SQL pushdown.
+
+        Phase 285.10 — uses ``DQWarehouseSQLCompiler`` to compile check
+        definitions to warehouse-specific SQL, then executes via the
+        ``WarehouseConnector`` for the target warehouse type.
+
+        Only aggregate metadata (counts, pass/fail booleans) returns to
+        Meshant.  Customer data never leaves their warehouse.
+        """
+        from hub.apps.dq.warehouse_sql_compiler import DQWarehouseSQLCompiler
+        from hub.apps.jobs.models import JobType
+        from hub.apps.jobs.utils import create_job, get_job_timeout
+
+        if not tenant:
+            raise ValidationError(
+                "tenant is required for warehouse DQ scan",
+                code="BUSINESS_RULES_VALIDATION",
+            )
+        if not warehouse_config or not warehouse_config.get("table_fqn"):
+            raise ValidationError(
+                "warehouse_config.table_fqn is required for warehouse DQ",
+                code="BUSINESS_RULES_VALIDATION",
+            )
+
+        warehouse_type = (warehouse_config.get("warehouse_type") or "").lower()
+        if warehouse_type not in ("snowflake", "bigquery", "databricks"):
+            raise ValidationError(
+                f"Unsupported warehouse type: {warehouse_type}",
+                code="WAREHOUSE_UNSUPPORTED_DIALECT",
+            )
+
+        effective_correlation_id = correlation_id or str(dataset.id)
+        engine = DQEngine.WAREHOUSE_SQL
+        profile_key = "warehouse_sql"
+
+        job = create_job(
+            tenant=tenant,
+            user=user,
+            job_type=JobType.DQ_RUN,
+            resource_type="DQ_RUN",
+            resource_id=str(dataset.id),
+            details_json={
+                "profile_key": profile_key,
+                "engine": engine,
+                "warehouse_native": True,
+                "correlation_id": effective_correlation_id,
+                "warehouse_type": warehouse_type,
+            },
+            timeout_seconds=get_job_timeout(JobType.DQ_RUN),
+            executed_by_prefect=True,
+        )
+
+        run: DQRun = DQRun.objects.create(
+            tenant=tenant,
+            dataset=dataset,
+            job=job,
+            profile_key=profile_key,
+            engine=engine,
+            warehouse_config=warehouse_config,
+            status=DQRunStatus.RUNNING,
+            started_at=timezone.now(),
+        )
+        job.resource_id = str(run.id)
+        job.details_json["dq_run_id"] = str(run.id)
+        job.save(update_fields=["resource_id", "details_json"])
+
+        try:
+            # Compile checks to warehouse-specific SQL.
+            checks = check_definitions or []
+            compiled = DQWarehouseSQLCompiler.compile(
+                check_definitions=checks,
+                warehouse_type=warehouse_type,
+                table_fqn=warehouse_config["table_fqn"],
+            )
+
+            # Resolve credentials and connect to the warehouse.
+            connector = _resolve_warehouse_connector(
+                warehouse_config, tenant_id=str(tenant.id),
+            )
+
+            results: list[dict] = []
+            connector.connect()
+            try:
+                for c in compiled:
+                    rows, _cols = connector.execute_query(c.sql)
+                    passed = rows[0][0] == 0 if rows else True
+                    results.append({
+                        "check_name": c.check_name,
+                        "check_type": c.check_type,
+                        "column_name": c.column_name,
+                        "passed": passed,
+                        "failures": rows[0][0] if rows else 0,
+                    })
+            finally:
+                try:
+                    connector.close()
+                except Exception:
+                    pass
+
+            # Compute aggregate quality score.
+            total_checks = len(results)
+            passed_checks = sum(1 for r in results if r["passed"])
+            quality_score = (passed_checks / total_checks * 100.0) if total_checks > 0 else 100.0
+
+            execution_time = (
+                timezone.now() - run.started_at
+            ).total_seconds() if run.started_at else 0.0
+
+            run.status = DQRunStatus.SUCCEEDED
+            run.overall_status = "PASS" if quality_score >= 100.0 else "WARN"
+            run.quality_score = quality_score
+            run.checks_json = results
+            run.details_json = {
+                "engine_type": f"{warehouse_type}_warehouse_sql",
+                "warehouse_type": warehouse_type,
+                "warehouse_table": warehouse_config.get("table_fqn"),
+                "checks_count": total_checks,
+                "passed_checks": passed_checks,
+                "metering": {
+                    "operation_type": "DQ_RUN_WAREHOUSE",
+                    "execution_time_seconds": round(execution_time, 2),
+                    "checks_count": total_checks,
+                    "warehouse_type": warehouse_type,
+                    "quality_score": quality_score,
+                    "warehouse_native": True,
+                },
+            }
+            run.completed_at = timezone.now()
+            run.save(update_fields=[
+                "status", "overall_status", "quality_score",
+                "checks_json", "details_json", "completed_at", "updated_at",
+            ])
+
+            # Emit audit event.
+            try:
+                from hub.apps.audit.utils import create_audit_event
+                create_audit_event(
+                    resource_type="DQ_RUN",
+                    action="DQ_WAREHOUSE_EXECUTED",
+                    tenant=tenant,
+                    resource_id=str(run.id),
+                    details={
+                        "dq_run_id": str(run.id),
+                        "warehouse_type": warehouse_type,
+                        "table_fqn": warehouse_config.get("table_fqn"),
+                        "checks_total": total_checks,
+                        "passed": passed_checks,
+                        "correlation_id": effective_correlation_id,
+                    },
+                )
+            except Exception:
+                logger.warning("dq_warehouse_audit_failed", exc_info=True)
+
+        except Exception as exc:
+            logger.warning(
+                "dq_scan_inmemory_warehouse_failed",
+                extra={
+                    "dataset_id": str(dataset.id),
+                    "tenant_id": str(tenant.id),
+                    "warehouse_type": warehouse_type,
+                    "correlation_id": effective_correlation_id,
+                    "error": str(exc),
+                },
+                exc_info=True,
+            )
+            run.status = DQRunStatus.FAILED
+            run.overall_status = "UNKNOWN"
+            run.quality_score = 0.0
+            run.checks_json = []
+            run.details_json = {
+                "error": str(exc),
+                "error_code": "WAREHOUSE_EXECUTION_ERROR",
+                "warehouse_native": True,
+            }
+            run.completed_at = timezone.now()
+            run.save(update_fields=[
+                "status", "overall_status", "quality_score",
+                "checks_json", "details_json", "completed_at", "updated_at",
+            ])
 
         run.refresh_from_db()
         return run

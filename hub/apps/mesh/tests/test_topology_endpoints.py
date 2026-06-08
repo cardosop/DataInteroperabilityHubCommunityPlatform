@@ -12,7 +12,7 @@ from django.urls import reverse
 from rest_framework.test import APIClient
 from rest_framework import status
 
-from hub.apps.tenants.models import Tenant, KYCStatus
+from hub.apps.tenants.models import KYCStatus, Tenant
 from hub.apps.mesh.models import (
     DataMeshDomain,
     DomainStatus,
@@ -21,8 +21,12 @@ from hub.apps.mesh.models import (
     ComplianceReport,
     MeshComplianceStatus,
 )
-from hub.apps.auth.models import APIKey
-from hub.apps.users.models import Role, UserRole, UserStatus
+from hub.apps.mesh.tests.setup_helpers import (
+    create_mesh_test_tenant,
+    create_mesh_test_users,
+    create_mesh_test_api_keys,
+    setup_mesh_test_environment,
+)
 from hub.apps.governance.models import AccessPolicy
 
 pytestmark = pytest.mark.django_db(transaction=True)
@@ -36,61 +40,13 @@ class TopologyViewSetTestCase(TestCase):
         """Set up test fixtures"""
         self.client = APIClient()
 
-        # Create tenant
-        uid = uuid.uuid4().hex[:8]
-        self.tenant = Tenant.objects.create(
-            name=f"Test Tenant {uid}",
-            slug=f"test-tenant-{uid}",
-            kyc_status=KYCStatus.VERIFIED
+        # Shared helpers: tenant with billing + ABAC, users with API keys
+        self.tenant = create_mesh_test_tenant(data_mesh_enabled=True)
+        self.admin_user, self.regular_user = create_mesh_test_users(self.tenant)
+        self.admin_api_key, self.user_api_key = create_mesh_test_api_keys(
+            self.tenant, self.admin_user, self.regular_user
         )
-
-        # Create roles
-        self.admin_role, _ = Role.objects.get_or_create(
-            tenant=self.tenant,
-            name="TENANT_ADMIN",
-            defaults={"description": "Tenant Administrator"}
-        )
-
-        # Create users
-        self.admin_user = User.objects.create_user(
-            email=f"admin-{uuid.uuid4().hex[:8]}@example.com",
-            password="testpass123",
-            tenant=self.tenant,
-            display_name="Admin User",
-            status=UserStatus.ACTIVE
-        )
-        UserRole.objects.create(user=self.admin_user, role=self.admin_role)
-
-        self.regular_user = User.objects.create_user(
-            email=f"user-{uid}@example.com",
-            password="testpass123",
-            tenant=self.tenant,
-            display_name="Regular User",
-            status=UserStatus.ACTIVE
-        )
-
-        # Create API keys
-        admin_key_value = APIKey.generate_key()
-        admin_key_hash = APIKey.hash_key(admin_key_value)
-        self.admin_api_key = APIKey.objects.create(
-            tenant=self.tenant,
-            user=self.admin_user,
-            name="Admin API Key",
-            key_hash=admin_key_hash,
-            scopes=['mesh:write', 'mesh:read']
-        )
-        self.admin_api_key._plaintext_key = admin_key_value
-
-        user_key_value = APIKey.generate_key()
-        user_key_hash = APIKey.hash_key(user_key_value)
-        self.user_api_key = APIKey.objects.create(
-            tenant=self.tenant,
-            user=self.regular_user,
-            name="User API Key",
-            key_hash=user_key_hash,
-            scopes=['mesh:read']
-        )
-        self.user_api_key._plaintext_key = user_key_value
+        setup_mesh_test_environment(self.tenant)
 
         # Create test domains
         self.domain1 = DataMeshDomain.objects.create(
@@ -172,15 +128,15 @@ class TopologyListEndpointTest(TopologyViewSetTestCase):
         self.assertIn(str(self.domain1.id), node_ids)
         self.assertIn(str(self.domain2.id), node_ids)
 
-        # Verify edges (relationships)
+        # Verify edges (relationships via shared policies + ABAC policy)
         edges = response.data['edges']
-        self.assertGreater(len(edges), 0)  # Should have at least one relationship
+        self.assertEqual(len(edges), 2)
 
         # Verify metadata
         metadata = response.data['metadata']
         self.assertEqual(metadata['tenant_id'], str(self.tenant.id))
         self.assertEqual(metadata['domain_count'], 2)
-        self.assertGreaterEqual(metadata['relationship_count'], 0)
+        self.assertEqual(metadata['relationship_count'], 2)
 
         # Verify summary
         summary = response.data['summary']
@@ -196,7 +152,7 @@ class TopologyListEndpointTest(TopologyViewSetTestCase):
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         nodes = response.data['nodes']
-        self.assertGreater(len(nodes), 0)
+        self.assertEqual(len(nodes), 2)
 
         # Check that health metrics are included
         first_node = nodes[0]
@@ -217,7 +173,7 @@ class TopologyListEndpointTest(TopologyViewSetTestCase):
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         nodes = response.data['nodes']
-        self.assertGreater(len(nodes), 0)
+        self.assertEqual(len(nodes), 2)
         first_node = nodes[0]
         self.assertIsNone(first_node.get('health_metrics'))
 
@@ -375,8 +331,8 @@ class TopologyRelationshipsEndpointTest(TopologyViewSetTestCase):
         self.assertIsInstance(relationships, list)
         self.assertEqual(response.data['total_count'], len(relationships))
 
-        # Should have at least one relationship (shared policy between domain1 and domain2)
-        self.assertGreater(len(relationships), 0)
+        # Should have 2 relationships (shared test policy + ABAC policy)
+        self.assertEqual(len(relationships), 2)
 
         # Verify relationship structure
         if len(relationships) > 0:

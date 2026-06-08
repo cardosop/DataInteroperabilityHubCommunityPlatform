@@ -1,11 +1,12 @@
 """
 Tests for DQ service client caching behaviour.
 
-Mocks the HTTP layer to verify cache-miss, cache-hit, different cache keys
-for different contracts, and cache-disabled bypass.
+Uses real DQServiceClient construction (no __init__ bypass) and patches
+only the HTTP boundary (client.send) to keep the constructor, circuit
+breaker, and attribute initialization exercised.  This follows the
+pattern established in test_service_client_circuit_breaker.py.
 """
 
-import hashlib
 import uuid
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
@@ -27,8 +28,10 @@ _FILE_FORMAT = "csv"
 _PROFILE_KEY = "intake_basic_gx"
 
 
-def _mock_dq_result():
-    return {
+def _mock_response(json_body=None):
+    """Build a mock httpx response with json() returning the given body."""
+    resp = MagicMock()
+    resp.json.return_value = json_body or {
         "overall_status": "PASS",
         "quality_score": 100.0,
         "checks": [],
@@ -37,10 +40,12 @@ def _mock_dq_result():
         "profile_key": _PROFILE_KEY,
         "metadata": {},
     }
+    resp.raise_for_status = MagicMock()
+    return resp
 
 
 class TestServiceClientCache(TestCase):
-    """Tests for DQServiceClient caching logic."""
+    """Tests for DQServiceClient caching logic with real construction."""
 
     def setUp(self):
         super().setUp()
@@ -53,102 +58,58 @@ class TestServiceClientCache(TestCase):
     # ------------------------------------------------------------------
     # 1. Cache miss → service is called, result returned
     # ------------------------------------------------------------------
-    @patch.object(DQServiceClient, "_request_with_retry")
-    @patch.object(DQServiceClient, "__init__", lambda self: None)
-    def test_cache_miss_calls_service(self, mock_request):
+    def test_cache_miss_calls_service(self):
         """On cache miss the HTTP layer is called and the result is returned."""
-        client = DQServiceClient.__new__(DQServiceClient)
-        client.base_url = "http://localhost:8083"
-        client.timeout = 120
-        client.max_retries = 0
-        client.backoff_factor = 0
+        client = DQServiceClient()
+        mock_resp = _mock_response()
 
-        mock_response = MagicMock()
-        mock_response.json.return_value = _mock_dq_result()
-        mock_response.raise_for_status = MagicMock()
-        mock_request.return_value = mock_response
-
-        # Bypass circuit breaker
-        client._circuit_breaker = MagicMock()
-        client._circuit_breaker.call.side_effect = lambda fn, fallback=None: fn()
-        client.client = MagicMock()
-        client.client.request = mock_request
-
-        result = client.run_dq(
-            file_content=_FILE_CONTENT,
-            file_format=_FILE_FORMAT,
-            profile_key=_PROFILE_KEY,
-            use_cache=True,
-        )
+        with patch.object(client.client, "send", return_value=mock_resp):
+            result = client.run_dq(
+                file_content=_FILE_CONTENT,
+                file_format=_FILE_FORMAT,
+                profile_key=_PROFILE_KEY,
+                use_cache=True,
+            )
 
         self.assertEqual(result["overall_status"], "PASS")
-        # The circuit breaker call was invoked (meaning service was called)
-        client._circuit_breaker.call.assert_called_once()
+        self.assertEqual(result["quality_score"], 100.0)
 
     # ------------------------------------------------------------------
     # 2. Cache hit → service NOT called on second invocation
     # ------------------------------------------------------------------
-    @patch.object(DQServiceClient, "__init__", lambda self: None)
     def test_cache_hit_returns_cached(self):
         """Second call returns cached result without calling the service."""
-        client = DQServiceClient.__new__(DQServiceClient)
-        client.base_url = "http://localhost:8083"
-        client.timeout = 120
-        client.max_retries = 0
-        client.backoff_factor = 0
-        client._circuit_breaker = MagicMock()
-        client._circuit_breaker.call.side_effect = lambda fn, fallback=None: fn()
-        client.client = MagicMock()
+        client = DQServiceClient()
+        mock_resp = _mock_response()
 
-        mock_response = MagicMock()
-        mock_response.json.return_value = _mock_dq_result()
-        mock_response.raise_for_status = MagicMock()
-        client.client.request.return_value = mock_response
+        with patch.object(client.client, "send", return_value=mock_resp) as mock_send:
+            # First call: populates cache
+            result1 = client.run_dq(
+                file_content=_FILE_CONTENT,
+                file_format=_FILE_FORMAT,
+                profile_key=_PROFILE_KEY,
+                use_cache=True,
+            )
+            call_count_after_first = mock_send.call_count
 
-        # First call: populates cache
-        result1 = client.run_dq(
-            file_content=_FILE_CONTENT,
-            file_format=_FILE_FORMAT,
-            profile_key=_PROFILE_KEY,
-            use_cache=True,
-        )
-        first_call_count = client._circuit_breaker.call.call_count
+            # Second call: should hit cache, no additional HTTP call
+            result2 = client.run_dq(
+                file_content=_FILE_CONTENT,
+                file_format=_FILE_FORMAT,
+                profile_key=_PROFILE_KEY,
+                use_cache=True,
+            )
 
-        # Second call: should hit cache
-        result2 = client.run_dq(
-            file_content=_FILE_CONTENT,
-            file_format=_FILE_FORMAT,
-            profile_key=_PROFILE_KEY,
-            use_cache=True,
-        )
-
-        self.assertEqual(result1, result2)
-        # Circuit breaker should NOT have been called again
-        self.assertEqual(client._circuit_breaker.call.call_count, first_call_count)
+            self.assertEqual(result1, result2)
+            self.assertEqual(mock_send.call_count, call_count_after_first)
 
     # ------------------------------------------------------------------
     # 3. Different contracts → different cache keys
     # ------------------------------------------------------------------
-    @patch.object(DQServiceClient, "__init__", lambda self: None)
     def test_different_contracts_different_cache_keys(self):
         """Same file content + different contract → different cache keys → both call service."""
-        client = DQServiceClient.__new__(DQServiceClient)
-        client.base_url = "http://localhost:8083"
-        client.timeout = 120
-        client.max_retries = 0
-        client.backoff_factor = 0
-        client._circuit_breaker = MagicMock()
-        client._circuit_breaker.call.side_effect = lambda fn, fallback=None: fn()
-        client.client = MagicMock()
-
-        mock_response = MagicMock()
-        mock_response.json.return_value = _mock_dq_result()
-        mock_response.raise_for_status = MagicMock()
-        client.client.request.return_value = mock_response
-
-        # Build two mock contracts; checks must be JSON-serializable (see service_client.run_dq).
-        contract_a = MagicMock()
-        contract_b = MagicMock()
+        client = DQServiceClient()
+        mock_resp = _mock_response()
 
         def _serializable_check(check_id: str, name: str):
             return SimpleNamespace(
@@ -163,71 +124,61 @@ class TestServiceClientCache(TestCase):
                 target_pattern=None,
             )
 
-        with patch(
-            "hub.apps.dq.contract_integration.ContractQualityRulesExtractor"
-        ) as MockExtractor:
-            MockExtractor.get_contract_quality_checks.return_value = [
-                _serializable_check("a", "rule_a")
-            ]
-            MockExtractor.get_contract_profile_key.return_value = _PROFILE_KEY
+        # Build two mock contracts
+        import hub.apps.dq.contract_integration as ci_module
 
+        with patch.object(
+            ci_module.ContractQualityRulesExtractor, "get_contract_quality_checks"
+        ) as mock_checks, patch.object(
+            ci_module.ContractQualityRulesExtractor, "get_contract_profile_key"
+        ) as mock_profile, patch.object(
+            client.client, "send", return_value=mock_resp,
+        ) as mock_send:
+            mock_profile.return_value = _PROFILE_KEY
+
+            mock_checks.return_value = [_serializable_check("a", "rule_a")]
             client.run_dq(
                 file_content=_FILE_CONTENT,
                 file_format=_FILE_FORMAT,
                 profile_key=_PROFILE_KEY,
                 use_cache=True,
-                contract=contract_a,
+                contract=MagicMock(),
             )
-            first_call_count = client._circuit_breaker.call.call_count
+            first_call_count = mock_send.call_count
 
-            MockExtractor.get_contract_quality_checks.return_value = [
-                _serializable_check("b", "rule_b")
-            ]
-
+            mock_checks.return_value = [_serializable_check("b", "rule_b")]
             client.run_dq(
                 file_content=_FILE_CONTENT,
                 file_format=_FILE_FORMAT,
                 profile_key=_PROFILE_KEY,
                 use_cache=True,
-                contract=contract_b,
+                contract=MagicMock(),
             )
 
         # Both calls should have hit the service (different cache keys)
-        self.assertEqual(client._circuit_breaker.call.call_count, first_call_count + 1)
+        self.assertEqual(mock_send.call_count, first_call_count + 1)
 
     # ------------------------------------------------------------------
     # 4. use_cache=False → always calls service
     # ------------------------------------------------------------------
-    @patch.object(DQServiceClient, "__init__", lambda self: None)
     def test_cache_disabled_always_calls_service(self):
         """use_cache=False bypasses cache entirely."""
-        client = DQServiceClient.__new__(DQServiceClient)
-        client.base_url = "http://localhost:8083"
-        client.timeout = 120
-        client.max_retries = 0
-        client.backoff_factor = 0
-        client._circuit_breaker = MagicMock()
-        client._circuit_breaker.call.side_effect = lambda fn, fallback=None: fn()
-        client.client = MagicMock()
+        client = DQServiceClient()
+        mock_resp = _mock_response()
 
-        mock_response = MagicMock()
-        mock_response.json.return_value = _mock_dq_result()
-        mock_response.raise_for_status = MagicMock()
-        client.client.request.return_value = mock_response
-
-        # Call twice with use_cache=False
-        client.run_dq(
-            file_content=_FILE_CONTENT,
-            file_format=_FILE_FORMAT,
-            profile_key=_PROFILE_KEY,
-            use_cache=False,
-        )
-        client.run_dq(
-            file_content=_FILE_CONTENT,
-            file_format=_FILE_FORMAT,
-            profile_key=_PROFILE_KEY,
-            use_cache=False,
-        )
+        with patch.object(client.client, "send", return_value=mock_resp) as mock_send:
+            client.run_dq(
+                file_content=_FILE_CONTENT,
+                file_format=_FILE_FORMAT,
+                profile_key=_PROFILE_KEY,
+                use_cache=False,
+            )
+            client.run_dq(
+                file_content=_FILE_CONTENT,
+                file_format=_FILE_FORMAT,
+                profile_key=_PROFILE_KEY,
+                use_cache=False,
+            )
 
         # Both calls should have hit the service
-        self.assertEqual(client._circuit_breaker.call.call_count, 2)
+        self.assertEqual(mock_send.call_count, 2)

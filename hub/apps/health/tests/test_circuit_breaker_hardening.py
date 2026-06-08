@@ -109,8 +109,8 @@ class CircuitBreakerResponseSanitizationTest(TestCase):
         )
         # Both should return the same top-level keys
         if response_all.status_code == 200 and response_named.status_code == 200:
-            data_all = json.loads(response_all.content)
-            data_named = json.loads(response_named.content)
+            data_all = response_all.data
+            data_named = response_named.data
             self.assertEqual(
                 set(data_all.keys()),
                 set(data_named.keys()),
@@ -123,7 +123,7 @@ class CircuitBreakerResponseSanitizationTest(TestCase):
         """The 'circuit_breakers' dict (keyed by service name) must be absent."""
         response = self.client.get("/health/circuit-breakers/")
         if response.status_code == 200:
-            data = json.loads(response.content)
+            data = response.data
             self.assertNotIn(
                 "circuit_breakers",
                 data,
@@ -134,7 +134,7 @@ class CircuitBreakerResponseSanitizationTest(TestCase):
         """The 'open_breaker_names' list must be absent."""
         response = self.client.get("/health/circuit-breakers/")
         if response.status_code == 200:
-            data = json.loads(response.content)
+            data = response.data
             self.assertNotIn(
                 "open_breaker_names",
                 data,
@@ -145,7 +145,7 @@ class CircuitBreakerResponseSanitizationTest(TestCase):
         """The 'circuit_breaker' key (single-service detail) must be absent."""
         response = self.client.get("/health/circuit-breakers/")
         if response.status_code == 200:
-            data = json.loads(response.content)
+            data = response.data
             self.assertNotIn(
                 "circuit_breaker",
                 data,
@@ -158,7 +158,7 @@ class CircuitBreakerResponseSanitizationTest(TestCase):
         """Response must contain only status + aggregate counts."""
         response = self.client.get("/health/circuit-breakers/")
         if response.status_code == 200:
-            data = json.loads(response.content)
+            data = response.data
             allowed_keys = {"status", "total_breakers", "open_breakers"}
             self.assertTrue(
                 set(data.keys()).issubset(allowed_keys),

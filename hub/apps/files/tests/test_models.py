@@ -2,6 +2,8 @@
 Unit tests for File model.
 """
 
+import uuid
+
 import pytest
 from django.test import TestCase
 
@@ -31,14 +33,16 @@ class FileModelTest(FilesTestBase):
         self.assertEqual(file_obj.status, FileStatus.UPLOADING)
 
     def test_file_status_choices(self):
-        """Test file status enum"""
+        """Test file status enum — ACTIVE is the terminal upload state
+        (migration 0009 retired COMPLETED with a check constraint)."""
         file_obj = File.objects.create(
             tenant=self.tenant,
             name="test.csv",
             size=1024,
             content_type="text/csv",
+            storage_path=f"tenants/{self.tenant.id}/files/{uuid.uuid4()}.csv",
         )
 
-        file_obj.status = FileStatus.COMPLETED
+        file_obj.status = FileStatus.ACTIVE
         file_obj.save()
-        self.assertEqual(file_obj.status, FileStatus.COMPLETED)
+        self.assertEqual(file_obj.status, FileStatus.ACTIVE)

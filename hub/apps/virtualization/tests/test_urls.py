@@ -43,7 +43,8 @@ class VirtualizationURLRoutingTest(TestCase):
         self.tenant = Tenant.objects.create(
             name=f"Test Tenant {uid}",
             slug=f"test-tenant-{uid}",
-            kyc_status=KYCStatus.VERIFIED
+            kyc_status=KYCStatus.VERIFIED,
+            virtualization_enabled=True,
         )
 
         # Create roles

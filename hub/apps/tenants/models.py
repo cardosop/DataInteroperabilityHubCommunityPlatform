@@ -93,6 +93,20 @@ def _default_compliance_legal_basis_strict() -> bool:
     return environment.lower() == "production"
 
 
+def _default_ux_v2_enabled() -> bool:
+    """Phase 278.0.3 / 285.12.8 — default for ``Tenant.ux_v2_enabled``.
+
+    Returns True so newly-created tenants opt into the UX v2 (redesigned
+    UI) surfaces by default — per the help text on
+    ``0077_add_ux_v2_enabled`` / ``0097`` ("Default True for new
+    tenants"). Django evaluates ``default=callable`` at INSERT time, so
+    this governs the per-row default for tenants created after the field
+    landed; existing rows were handled by the field's add_field
+    migration.
+    """
+    return True
+
+
 class TenantStatus(models.TextChoices):
     """Tenant status enumeration"""
 
@@ -288,6 +302,9 @@ class TenantPlan(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
+    flsc_estimate_cents = models.IntegerField(null=True, blank=True, help_text="Estimated FLSC in cents")
+    marketplace_take_rate_bps = models.IntegerField(default=0, help_text="Marketplace take rate in basis points")
+    markup_bps = models.IntegerField(null=True, blank=True, help_text="Markup in basis points")
     class Meta:
         db_table = "tenant_plans"
         ordering = ["order", "name"]
@@ -838,6 +855,66 @@ class Tenant(models.Model):
         default=False,
         help_text="Phase 275 — enable Athena warehouse connector.",
     )
+    warehouse_dq_enabled = models.BooleanField(
+        default=False,
+        help_text="Enable DQ warehouse integration.",
+    )
+    warehouse_compliance_enabled = models.BooleanField(
+        default=False,
+        help_text="Enable compliance warehouse integration.",
+    )
+    tenant_dq_warehouse_profile = models.JSONField(
+        default=dict, blank=True,
+        help_text="DQ warehouse profile assigned to this tenant."
+    )
+    notification_opt_outs = models.JSONField(
+        default=dict, blank=True,
+        help_text="Per-tenant notification opt-out configuration."
+    )
+    pipeline_dependency_enabled = models.BooleanField(
+        default=False,
+        help_text="Enable pipeline dependency features.",
+    )
+    marketplace_integrations_enabled = models.BooleanField(
+        default=False,
+        help_text="Enable marketplace integrations.",
+    )
+    baas_enabled = models.BooleanField(
+        default=False,
+        help_text="Enable Backend-as-a-Service features.",
+    )
+    ml_enabled = models.BooleanField(
+        default=False,
+        help_text="Enable ML features.",
+    )
+    transformation_enabled = models.BooleanField(
+        default=False,
+        help_text="Enable transformation features.",
+    )
+    data_movement_enabled = models.BooleanField(
+        default=False,
+        help_text="Enable data movement features.",
+    )
+    data_mesh_enabled = models.BooleanField(
+        default=False,
+        help_text="Enable data mesh features.",
+    )
+    virtualization_enabled = models.BooleanField(
+        default=False,
+        help_text="Enable virtualization features.",
+    )
+    developer_enabled = models.BooleanField(
+        default=False,
+        help_text="Enable developer features.",
+    )
+    mfa_required = models.BooleanField(
+        default=False,
+        help_text="Require MFA for this tenant.",
+    )
+    ux_v2_enabled = models.BooleanField(
+        default=_default_ux_v2_enabled,
+        help_text="Phase 285.12.8 — when True, the tenant has access to UX v2 (redesigned UI). Default True for new tenants via ``_default_ux_v2_enabled``.",
+    )
     # Phase 270.C.4.1 — per-tenant compliance legal-basis strict mode.
     # backward-compat), the scan succeeds with an ERROR-severity
     # issue in the report (existing Phase 19.7.1 behaviour). The
@@ -1335,6 +1412,22 @@ class Tenant(models.Model):
 
         super().save(*args, **kwargs)
 
+    def get_tax_address(self) -> dict:
+        """Phase 270.D.1 — return decrypted tax address.
+
+        Mirrors ``TenantConfig.get_tax_address`` semantics: legacy
+        plaintext dicts are returned as-is; encrypted
+        ``{"_encrypted": <cipher>}`` shapes are decrypted. Returns
+        an empty dict when the field is NULL/empty.
+        """
+        if not self.tax_address:
+            return {}
+        if isinstance(self.tax_address, dict):
+            if "_encrypted" in self.tax_address:
+                return decrypt_json_field(self.tax_address["_encrypted"])
+            return self.tax_address
+        return {}
+
     def suspend(self):
         """Suspend the tenant (read-only mode)"""
         if self.status == TenantStatus.DELETED:
@@ -1515,6 +1608,12 @@ class TenantConfig(models.Model):
         help_text="Enable workflow orchestration for this tenant",
     )
 
+    notification_opt_outs = models.JSONField(
+        default=dict,
+        blank=True,
+        help_text="Per-tenant notification opt-out configuration.",
+    )
+
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -1650,6 +1749,12 @@ class TenantUsageSummary(models.Model):
         null=True,
         blank=True,
         help_text="Total cost for scheduled ingestion runs in period",
+    )
+
+    # Metadata
+    notification_opt_outs = models.JSONField(
+        default=dict, blank=True,
+        help_text="Per-tenant notification opt-out configuration at the time of calculation."
     )
 
     # Metadata
@@ -1983,3 +2088,195 @@ class ImpersonationSession(models.Model):
                 "updated_at",
             ]
         )
+
+
+class LimitDimension(models.Model):
+    """Machine-readable limit dimension registry for plan-based rate-limiting.
+
+    Maps a key (e.g. ``max_assets``) to a human-readable display name,
+    category, and unit so the admin UI and billing service share a
+    single source of truth.
+    """
+
+    id = models.BigAutoField(primary_key=True)
+    key = models.CharField(
+        max_length=128,
+        unique=True,
+        db_index=True,
+        help_text="Machine-readable limit key (e.g. 'max_assets')",
+    )
+    display_name = models.CharField(
+        max_length=200, help_text="Human-readable name"
+    )
+    description = models.TextField(
+        blank=True, default="", help_text="What this limit controls"
+    )
+    category = models.CharField(
+        max_length=64,
+        default="base",
+        help_text="Grouping category for admin UI (base, compliance, ml, marketplace)",
+    )
+    unit = models.CharField(
+        max_length=32,
+        default="count",
+        help_text="Unit of measurement (count, bytes, requests, seconds)",
+    )
+    sort_order = models.IntegerField(default=0, help_text="Display ordering")
+    is_active = models.BooleanField(db_index=True, default=True)
+
+    class Meta:
+        db_table = "limit_dimensions"
+        ordering = ["category", "sort_order", "key"]
+
+    def __str__(self):
+        return f"LimitDimension {self.key}"
+
+
+class TierProfile(models.Model):
+    """Marketing and pricing-page metadata for a ``TenantPlan``.
+
+    Each plan may carry one TierProfile; the profile drives the
+    public pricing page and self-serve upgrade flow.
+    """
+
+    id = models.BigAutoField(primary_key=True)
+    headline = models.CharField(
+        max_length=200,
+        help_text="Short marketing headline (e.g. 'For growing teams')",
+    )
+    description_markdown = models.TextField(
+        blank=True, default="", help_text="Long-form markdown description for the pricing page"
+    )
+    features_highlight = models.TextField(
+        blank=True, default="", help_text="Bullet list of key features (markdown)"
+    )
+    feature_checkmarks = models.JSONField(
+        blank=True,
+        default=dict,
+        help_text="Feature comparison matrix: {feature_key: bool} for pricing table checkmarks",
+    )
+    is_recommended = models.BooleanField(
+        default=False,
+        help_text="When True, this plan is the recommended/highlighted tier",
+    )
+    is_public = models.BooleanField(
+        default=False,
+        help_text="When True, shown on public pricing page and self-serve flow",
+    )
+    self_serve = models.BooleanField(
+        default=False,
+        help_text="When True, tenants can self-upgrade to this tier without sales",
+    )
+    sales_only = models.BooleanField(
+        default=False,
+        help_text="When True, this tier is only available through sales (enterprise)",
+    )
+    sort_order = models.IntegerField(default=0, help_text="Display ordering on pricing page")
+    plan = models.OneToOneField(
+        "tenants.TenantPlan",
+        on_delete=models.CASCADE,
+        related_name="tier_profile",
+        help_text="Plan this profile belongs to",
+    )
+
+    class Meta:
+        db_table = "tier_profiles"
+        ordering = ["sort_order"]
+        constraints = [
+            models.CheckConstraint(
+                condition=~models.Q(sales_only=True, self_serve=True),
+                name="tier_profile_self_serve_xor_sales_only",
+            ),
+        ]
+
+    def clean(self):
+        if self.self_serve and self.sales_only:
+            from django.core.exceptions import ValidationError
+            raise ValidationError(
+                "TierProfile cannot be both self-serve and sales-only. "
+                "Choose at most one."
+            )
+        super().clean()
+
+    def save(self, *args, **kwargs):
+        self.full_clean()
+        super().save(*args, **kwargs)
+
+    def __str__(self):
+        return f"TierProfile for {self.plan_id}"
+
+
+class PlanPriceChangeApproval(models.Model):
+    """Approval workflow for plan price changes.
+
+    A pending price change must be approved (or rejected) before the
+    new price takes effect.  Only one PENDING change per plan is
+    allowed at any time.
+    """
+
+    class Status(models.TextChoices):
+        PENDING = "PENDING", "Pending"
+        APPROVED = "APPROVED", "Approved"
+        REJECTED = "REJECTED", "Rejected"
+        EXPIRED = "EXPIRED", "Expired"
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    old_price_cents = models.IntegerField(
+        help_text="Current price_amount_cents before the change.",
+        validators=[MinValueValidator(0)],
+    )
+    new_price_cents = models.IntegerField(
+        help_text="Proposed price_amount_cents after approval.",
+        validators=[MinValueValidator(0)],
+    )
+    status = models.CharField(
+        max_length=20,
+        choices=Status.choices,
+        default=Status.PENDING,
+    )
+    reason = models.TextField(blank=True, default="")
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    approved_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.PROTECT,
+        blank=True,
+        null=True,
+        related_name="approved_price_changes",
+    )
+    requested_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.PROTECT,
+        related_name="requested_price_changes",
+    )
+    notification_opt_outs = models.JSONField(default=dict, blank=True)
+    tenant_plan = models.ForeignKey(
+        "tenants.TenantPlan",
+        on_delete=models.CASCADE,
+        related_name="price_change_approvals",
+    )
+
+    class Meta:
+        db_table = "plan_price_change_approvals"
+        ordering = ["-created_at"]
+        indexes = [
+            models.Index(fields=["tenant_plan", "status"], name="ppca_plan_status_idx"),
+            models.Index(fields=["status", "created_at"], name="ppca_status_created_idx"),
+        ]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["tenant_plan"],
+                condition=models.Q(status="PENDING"),
+                name="one_pending_price_change_per_plan",
+            ),
+        ]
+
+    def __str__(self):
+        return (
+            f"PlanPriceChangeApproval {self.tenant_plan_id}: "
+            f"{self.old_price_cents}c → {self.new_price_cents}c ({self.status})"
+        )
+
+
+# Module-level alias for the nested Status choices class.
+PriceChangeApprovalStatus = PlanPriceChangeApproval.Status

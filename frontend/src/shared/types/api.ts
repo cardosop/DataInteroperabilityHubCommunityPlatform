@@ -17,6 +17,10 @@ export interface ApiError {
       code: string;
     }>;
   };
+  /** Convenience accessor — same as `error.message`. */
+  message?: string;
+  /** Convenience accessor — same as `error.code`. */
+  code?: string;
 }
 
 export interface PaginatedResponse<T> {

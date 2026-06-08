@@ -150,6 +150,16 @@ class RefResolverCacheStorageTest(TestCase):
     Test cache storage and retrieval using real Redis.
 
     Uses real Redis client to verify cache storage and retrieval functionality.
+
+    NOTE on monkey-patched tests: Several tests in this class monkey-patch
+    ``resolve_external()`` with a mock transport that bypasses the INTERNAL
+    cache layer — the mock calls ``httpx.Client.get()`` directly rather than
+    going through ``RefResolver._get_from_cache()`` / ``_set_cache()``.
+    These tests verify the METRICS layer (cache hit/miss counters are
+    incremented) and the EXISTENCE layer (values survive round-trips through
+    Redis), not the full caching code path.  The real caching code path is
+    tested by the *Invalidation + *SizeLimit classes which use unpatched
+    ``resolve_external()`` against a real ``TestHTTPServer``.
     """
 
     reset_sequences = False
@@ -244,9 +254,12 @@ class RefResolverCacheStorageTest(TestCase):
             result2 = self.resolver.resolve_external(url)
             self.assertEqual(result2, data)
 
-            # Verify cache was used (call count should not increase)
-            # If cache is working, second call should not make HTTP request
-            # Note: This depends on cache implementation, but tests behavior through public API
+            # NOTE: this test monkey-patches resolve_external() with a mock
+            # transport that bypasses the internal cache layer, so cache-hit
+            # behaviour cannot be verified through call_count alone.
+            # The real cache is tested by the *Invalidation + *SizeLimit
+            # test classes which call the unpatched resolve_external against
+            # a real TestHTTPServer.
         finally:
             self.resolver.resolve_external = original_resolve
 
@@ -574,9 +587,12 @@ class RefResolverCacheHitRateTest(TestCase):
             result2 = self.resolver.resolve_external(url)
             self.assertEqual(result2, data)
 
-            # Verify cache hit rate can be retrieved (public API)
+            # NOTE: monkey-patched resolve_external bypasses internal cache.
+            # Cache-hit verification through call_count is not possible here;
+            # the real cache is tested via unpatched resolve_external in the
+            # *Invalidation and *SizeLimit classes.
+
             hit_rate = self.resolver.get_cache_hit_rate()
-            # hit_rate should be available if Redis is available and cache is working
             if hit_rate is not None:
                 self.assertGreater(hit_rate, 0.0)
                 self.assertLessEqual(hit_rate, 1.0)
@@ -914,27 +930,14 @@ class RefResolverCacheIntegrationTest(TestCase):
 
     # Edge cases and error handling tests
     def test_cache_key_generation_with_none_url(self):
-        """Test cache key generation with None URL through public API."""
-        # Test through public API - resolve_external() validates URL internally
-        # None URL should raise exception or handle gracefully
-        try:
-            result = self.resolver.resolve_external(None)  # type: ignore[misc]  # test: edge-case type exercise
-            # If it doesn't raise, that's also acceptable behavior
-            self.assertIsNotNone(result)
-        except (TypeError, ValueError, ODPSRefResolutionError):
-            # None URL should raise exception
-            pass
+        """None URL argument must raise TypeError or ODPSRefResolutionError."""
+        with self.assertRaises((TypeError, ValueError, ODPSRefResolutionError)):
+            self.resolver.resolve_external(None)  # type: ignore[misc]
 
     def test_cache_key_generation_with_empty_url(self):
-        """Test cache key generation with empty URL through public API."""
-        # Test through public API - resolve_external() validates URL internally
-        try:
-            result = self.resolver.resolve_external("")
-            # If it doesn't raise, that's also acceptable behavior
-            self.assertIsNotNone(result)
-        except (ValueError, ODPSRefResolutionError):
-            # Empty URL should raise exception
-            pass
+        """Empty URL must raise ValueError or ODPSRefResolutionError."""
+        with self.assertRaises((ValueError, ODPSRefResolutionError)):
+            self.resolver.resolve_external("")
 
     def test_cache_key_generation_with_special_characters(self):
         """Test cache key generation with special characters in URL through public API."""
@@ -1045,22 +1048,17 @@ class RefResolverCacheIntegrationTest(TestCase):
             self.resolver.resolve_external = original_resolve
 
     def test_cache_storage_with_none_data(self):
-        """Test cache storage with None data through public API."""
+        """None/null response data raises TypeError or ValueError during cache storage."""
         import httpx
 
         url = "https://example.com/schema.json"
 
-        # Use MockTransport that returns None-like response
         def handler(request: httpx.Request) -> httpx.Response:
-            # Return empty JSON or null
-            return httpx.Response(200, json=None, request=request)  # type: ignore[misc]  # test: edge-case type exercise
+            return httpx.Response(200, json=None, request=request)  # type: ignore[misc]
 
         transport = httpx.MockTransport(handler)
-
-        # Store original resolve_external
         original_resolve = self.resolver.resolve_external
 
-        # Mock resolve_external to use MockTransport
         def mock_resolve_external(ref_path: str):
             with httpx.Client(transport=transport) as client:
                 response = client.get(ref_path, timeout=5)
@@ -1070,13 +1068,8 @@ class RefResolverCacheIntegrationTest(TestCase):
         self.resolver.resolve_external = mock_resolve_external
 
         try:
-            # Should handle None/null data through public API
-            result = self.resolver.resolve_external(url)
-            # May return None or handle gracefully
-            # If it raises, that's also acceptable behavior
-        except (TypeError, ValueError):
-            # None data may raise exception
-            pass
+            with self.assertRaises((TypeError, ValueError)):
+                self.resolver.resolve_external(url)
         finally:
             self.resolver.resolve_external = original_resolve
 
@@ -1148,14 +1141,10 @@ class RefResolverCacheIntegrationTest(TestCase):
             self.resolver.resolve_external = original_resolve
 
     def test_cache_invalidation_with_none_url(self):
-        """Test cache invalidation with None URL."""
-        try:
-            deleted = self.resolver.invalidate_cache(None)  # type: ignore[misc]  # test: edge-case type exercise
-            # May return 0 or raise exception
-            self.assertEqual(deleted, 0)
-        except (TypeError, ValueError):
-            # None URL should raise exception
-            pass
+        """None URL is handled gracefully: invalidate_cache returns 0 (nothing deleted)."""
+        deleted = self.resolver.invalidate_cache(None)  # type: ignore[misc]
+        self.assertEqual(deleted, 0,
+            "invalidate_cache(None) must return 0 — no cache entries to delete")
 
     def test_cache_invalidation_with_empty_url(self):
         """Test cache invalidation with empty URL."""
@@ -1203,16 +1192,15 @@ class RefResolverCacheIntegrationTest(TestCase):
         self.resolver.resolve_external = mock_resolve_external
 
         try:
-            # Resolve through public API - resolve_external() internally uses _set_cache() and _get_from_cache()
-            # Should handle very large data (may fail if size limit exceeded)
+            # Very large data may exceed Redis memory limits and raise an error.
+            # This is expected behavior — the resolver must not silently succeed
+            # with truncated data.
             result = self.resolver.resolve_external(url)
-            if result:
-                self.assertIsNotNone(result)
-                # Verify cache hit rate is available
-                hit_rate = self.resolver.get_cache_hit_rate()
-                # hit_rate may be None if Redis unavailable
-        except Exception:
-            # May raise exception if size limit exceeded
+            self.assertIsNotNone(result)
+            hit_rate = self.resolver.get_cache_hit_rate()
+            # hit_rate may be None if Redis unavailable
+        except (redis.RedisError, MemoryError, OSError):
+            # Data too large for cache — acceptable degradation
             pass
         finally:
             self.resolver.resolve_external = original_resolve

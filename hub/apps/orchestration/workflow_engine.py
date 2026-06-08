@@ -19,6 +19,7 @@ from django.db import transaction
 from django.utils import timezone
 
 from hub.apps.core.events.service_publishers import ODPSEventPublisher, WorkflowEventPublisher
+from hub.apps.core.services.base import ValidationError as ServiceValidationError
 
 from .business_rules import OrchestrationBusinessRules, OrchestrationRuleExecutionContext
 from .compensation import WorkflowCompensation
@@ -70,6 +71,35 @@ except ImportError:
     _tracer = None
 
 
+class ControlledWorkflowException(Exception):
+    """Marker for exceptions that represent an expected / controlled
+    business outcome rather than an unanticipated system fault.
+
+    Step failures derived from this marker are logged at WARNING level
+    (they are normal domain rejections, timeouts, or validation
+    failures).  Everything else continues to log at ERROR level because
+    it represents an unhandled code path or infrastructure problem.
+
+    Subclasses:
+      * ``FailClosedRejection`` — gate refused intake (by design)
+      * ``WorkflowDeadlineExceeded`` — wall-clock cap (by design)
+      * ``WorkflowStepValueError`` — domain rejection from a task
+        (file not found in storage, invalid input, etc.)
+    """
+
+
+class WorkflowStepValueError(ControlledWorkflowException, ValueError):
+    """A ``ValueError`` raised by a workflow step that represents a
+    controlled domain rejection (e.g. file missing from storage,
+    unsupported format, missing required field), not an unanticipated
+    system fault.
+
+    Inherits from both ``ControlledWorkflowException`` (so the engine
+    logs at WARNING) and ``ValueError`` (so existing ``except
+    ValueError`` handlers continue to work without modification).
+    """
+
+
 class WorkflowExecutionError(Exception):
     """Workflow execution error"""
 
@@ -83,14 +113,23 @@ class WorkflowEngine(WorkflowEventPublisher):
     Executes workflow instances, manages step execution, retries, and error handling.
     """
 
-    def __init__(self):
+    def __init__(
+        self,
+        step_failure_injector: Optional[Callable[[int, str], None]] = None,
+        compensation_observer: Optional[Callable[[str], None]] = None,
+    ):
         super().__init__()
         self.dsl_parser = WorkflowDSLParser()
         self.version_manager = WorkflowVersionManager()
         self.task_registry: Dict[str, Callable] = {}
-        self.compensation = WorkflowCompensation(task_registry=self.task_registry)
+        self.compensation = WorkflowCompensation(
+            task_registry=self.task_registry,
+            compensation_observer=compensation_observer,
+        )
         # Track registered task names to avoid duplicate registrations
         self._registered_task_names: Set[str] = set()
+        # Phase 250.1.A test-mode hook — only set during property-based testing.
+        self._step_failure_injector = step_failure_injector
 
         # ODPS workflows that should publish ODPS-specific events (Task 7.1.4)
         self._odps_workflow_names = {"product_creation"}
@@ -141,6 +180,19 @@ class WorkflowEngine(WorkflowEventPublisher):
 
         if not workflow_def:
             raise WorkflowExecutionError(f"Workflow definition not found: {workflow_name}")
+
+        # Defensive: the cached definition may reference a row that was
+        # truncated/rolled-back by a prior test.  Force a DB refresh so
+        # we fail early with a clear error rather than hitting a FK
+        # violation on WorkflowInstance insert.
+        try:
+            workflow_def.refresh_from_db()
+        except Exception:
+            raise WorkflowExecutionError(
+                f"Workflow definition {workflow_name!r} exists in the "
+                f"process cache but its DB row is gone (likely a stale "
+                f"cache entry from a rolled-back transaction)."
+            )
 
         # Create workflow instance
         # Convert tenant_id to Tenant object if provided
@@ -790,6 +842,15 @@ class WorkflowEngine(WorkflowEventPublisher):
         sid = None
         try:
             sid = transaction.savepoint()
+
+            # Phase 250.1.A test-mode hook — when a step_failure_injector
+            # is configured (property-based testing only), call it inside
+            # the savepoint so that a raised exception is caught by the
+            # except block below, the step is marked FAILED, and the saga
+            # compensation path activates. In production this is always
+            # None (zero overhead).
+            if self._step_failure_injector is not None:
+                self._step_failure_injector(step.step_index, step.step_name)
             step_type = step_def.get("type", "task")
 
             if step_type == "task":
@@ -929,7 +990,23 @@ class WorkflowEngine(WorkflowEventPublisher):
             return {"output": output, "state": output.get("state", {})}
 
         except Exception as e:
-            logger.exception("Error executing step", step_name=step.step_name, error=str(e))
+            # Controlled / expected business-outcome exceptions (fail-closed
+            # gate rejections, deadline caps) are normal domain events, not
+            # system faults — log at WARNING so they don't pollute ERROR-rate
+            # dashboards or mask real infrastructure incidents.
+            if isinstance(e, ControlledWorkflowException):
+                logger.warning(
+                    "Step failed (controlled)",
+                    step_name=step.step_name,
+                    error=str(e),
+                    exception_type=type(e).__name__,
+                )
+            else:
+                logger.exception(
+                    "Error executing step",
+                    step_name=step.step_name,
+                    error=str(e),
+                )
             # Rollback savepoint to restore transaction to valid state before DB writes.
             # Without this, Django marks the transaction for rollback on exception, and
             # subsequent queries (mark_failed, instance.save) fail with "can't execute
@@ -1548,8 +1625,13 @@ class WorkflowEngine(WorkflowEventPublisher):
                 tenant_id=tenant_id_str,
             )
 
-        # Execute task
-        result = task_func(task_input, instance, step)
+        # Execute task.  Domain-level ValidationError (business rule
+        # rejections) is a controlled outcome — wrap it so the error
+        # handler logs at WARNING instead of ERROR.
+        try:
+            result = task_func(task_input, instance, step)
+        except (ValidationError, ServiceValidationError) as e:
+            raise WorkflowStepValueError(str(e)) from e
 
         # Ensure result is a dictionary
         result = result if isinstance(result, dict) else {"result": result}

@@ -72,10 +72,12 @@ def test_parse_bool_env_truthy_values_are_correct(monkeypatch) -> None:
     """Behavioural smoke against the local copy. Locks the truthy contract."""
     from tests._pytest_helpers import _parse_bool_env
 
-    for v in ("true", "TRUE", "True", "1", "yes", "YES", "on", "y", "t"):
+    for v in ("true", "TRUE", "True", "1", "yes", "YES", "on", "y", "t",
+              " true ", "  TRUE", "1\t", "\ttrue\n"):
         monkeypatch.setenv("__PHASE216_TEST", v)
         assert _parse_bool_env("__PHASE216_TEST") is True, f"{v!r} should be truthy"
-    for v in ("false", "0", "no", "off", "n", "f", "", "  ", "maybe"):
+    for v in ("false", "0", "no", "off", "n", "f", "", "  ", "maybe",
+              " false ", "\tfalse\n", " no "):
         monkeypatch.setenv("__PHASE216_TEST", v)
         assert _parse_bool_env("__PHASE216_TEST") is False, f"{v!r} should be falsy"
     monkeypatch.delenv("__PHASE216_TEST", raising=False)

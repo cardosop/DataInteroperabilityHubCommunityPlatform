@@ -248,7 +248,7 @@ class AdminUserEditTest(TestCase):
             resource_id=str(self.regular_user_a.id),
             action="USER_UPDATED",
         ).order_by("-timestamp")
-        self.assertGreaterEqual(events.count(), 1)
+        self.assertEqual(events.count(), 1)
 
     def test_put_invalid_role_ids_returns_400(self):
         """PUT /users/{id}/ with role from other tenant returns 400."""

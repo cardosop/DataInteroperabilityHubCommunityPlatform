@@ -363,7 +363,7 @@ class AWSDataExchangeConnector(DataMarketplaceConnector):
         except Exception as e:
             # Log unexpected errors
             self._log_with_context(
-                'error',
+                'warning',
                 f"AWS Data Exchange {operation_name} failed",
                 operation=operation_name,
                 error=str(e),
@@ -594,7 +594,7 @@ class AWSDataExchangeConnector(DataMarketplaceConnector):
             raise
         except Exception as e:
             self._authenticated = False
-            logger.error(f"AWS Data Exchange authentication failed: {e}")
+            logger.warning(f"AWS Data Exchange authentication failed: {e}")
             raise ConnectionError(f"Unable to authenticate with AWS Data Exchange: {e}") from e
 
     def test_connection(self) -> bool:
@@ -625,7 +625,7 @@ class AWSDataExchangeConnector(DataMarketplaceConnector):
             raise
         except Exception as e:
             self._log_with_context(
-                'error',
+                'warning',
                 "AWS Data Exchange connection test failed",
                 error=str(e),
                 error_type=type(e).__name__
@@ -972,7 +972,11 @@ class AWSDataExchangeConnector(DataMarketplaceConnector):
             next_token = None
             items_skipped = 0
             items_collected = 0
-            max_results = min(limit, 100) if limit else 100  # AWS max is 100
+            # Guard: limit=0 means the caller wants zero results.
+            # Bypass the API entirely to avoid treating 0 as falsy.
+            if limit == 0:
+                return []
+            max_results = min(limit, 100) if limit is not None else 100  # AWS max is 100
 
             # Handle offset via pagination (skip items until offset is reached)
             if offset and offset > 0:
@@ -984,12 +988,13 @@ class AWSDataExchangeConnector(DataMarketplaceConnector):
                 # Build request parameters
                 params = {'MaxResults': max_results}
 
-                # Apply filters
+                # Apply server-side filters.
+                # Only ``Origin`` is a native ListDataSets parameter.
+                # ``Name`` filtering is applied client-side below because
+                # the AWS API does not accept a Name parameter.
                 if filters:
                     if filters.get('origin'):
                         params['Origin'] = filters['origin']
-                    if filters.get('name'):
-                        params['Name'] = filters['name']
 
                 if next_token:
                     params['NextToken'] = next_token
@@ -1056,6 +1061,12 @@ class AWSDataExchangeConnector(DataMarketplaceConnector):
                             updated_at=self._parse_aws_datetime(dataset_details.get('UpdatedAt')),
                             url=f"https://console.aws.amazon.com/dataexchange/home?region={self._region_name}#/data-sets/{dataset_id}"
                         )
+                        # Apply client-side name filter (AWS API doesn't
+                        # accept a Name parameter on ListDataSets).
+                        name_filter = (filters or {}).get("name")
+                        if name_filter and name_filter.lower() not in listing.title.lower():
+                            continue
+
                         listings.append(listing)
                         items_collected += 1
 
@@ -1102,7 +1113,7 @@ class AWSDataExchangeConnector(DataMarketplaceConnector):
             raise
         except Exception as e:
             self._log_with_context(
-                'error',
+                'warning',
                 "AWS Data Exchange list listings failed",
                 error=str(e),
                 error_type=type(e).__name__
@@ -1183,7 +1194,7 @@ class AWSDataExchangeConnector(DataMarketplaceConnector):
             except NotFoundError:
                 raise
             except Exception as e:
-                logger.error(f"Failed to get listing '{listing_id}': {e}")
+                logger.warning(f"Failed to get listing '{listing_id}': {e}")
                 raise ConnectionError(f"Unable to get listing '{listing_id}': {e}") from e
 
         try:
@@ -1191,7 +1202,7 @@ class AWSDataExchangeConnector(DataMarketplaceConnector):
         except NotFoundError:
             raise
         except Exception as e:
-            logger.error(f"AWS Data Exchange get listing failed: {e}")
+            logger.warning(f"AWS Data Exchange get listing failed: {e}")
             raise ConnectionError(f"Failed to get listing '{listing_id}': {e}") from e
 
     def list_resources(self, listing_id: str) -> List[MarketplaceResource]:
@@ -1342,7 +1353,7 @@ class AWSDataExchangeConnector(DataMarketplaceConnector):
             raise
         except Exception as e:
             self._log_with_context(
-                'error',
+                'warning',
                 "AWS Data Exchange list resources failed",
                 dataset_id=listing_id,
                 error=str(e),
@@ -2230,7 +2241,20 @@ class AWSDataExchangeConnector(DataMarketplaceConnector):
 
             # Get listings to sync
             try:
-                if listing_ids:
+                if listing_ids is not None:
+                    if not listing_ids:
+                        # Empty list explicitly passed — return zero items.
+                        return SyncResult(
+                            status=SyncStatus.COMPLETED,
+                            total_items=0,
+                            successful_items=0,
+                            failed_items=0,
+                            skipped_items=0,
+                            errors=[],
+                            metadata={"dry_run": dry_run, "reason": "empty_listing_ids"},
+                            started_at=started_at,
+                            completed_at=timezone.now(),
+                        )
                     # Fetch specific listings
                     listings = []
                     for listing_id in listing_ids:
@@ -2244,14 +2268,14 @@ class AWSDataExchangeConnector(DataMarketplaceConnector):
                             failed_items += 1
                             error_msg = f"Failed to fetch dataset {listing_id}: {e}"
                             errors.append(error_msg)
-                            logger.error(error_msg, exc_info=True)
+                            logger.warning(error_msg, exc_info=True)
                 else:
                     # Fetch listings using filters
                     listings = self.list_listings(filters=filters, limit=limit)
             except Exception as e:
                 error_msg = f"Failed to fetch datasets: {e}"
                 errors.append(error_msg)
-                logger.error(error_msg, exc_info=True)
+                logger.warning(error_msg, exc_info=True)
                 return SyncResult(
                     status=SyncStatus.FAILED,
                     total_items=0,
@@ -2357,14 +2381,14 @@ class AWSDataExchangeConnector(DataMarketplaceConnector):
                         failed_items += 1
                         error_msg = f"Dataset {listing.marketplace_id}: Failed to map to Hub asset: {e}"
                         errors.append(error_msg)
-                        logger.error(error_msg, exc_info=True)
+                        logger.warning(error_msg, exc_info=True)
                         continue
 
                 except Exception as e:
                     failed_items += 1
                     error_msg = f"Dataset {listing.marketplace_id}: Unexpected error: {e}"
                     errors.append(error_msg)
-                    logger.error(error_msg, exc_info=True)
+                    logger.warning(error_msg, exc_info=True)
                     continue
 
             completed_at = timezone.now()

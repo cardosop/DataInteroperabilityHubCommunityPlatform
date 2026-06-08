@@ -29,6 +29,7 @@ class CoreConfig(AppConfig):
     def ready(self) -> None:
         """Import subpackage models so Django discovers them, then run config validation."""
         import hub.apps.core.bug_prevention.models  # noqa: F401
+        import hub.apps.core.business_rules.chain_registry  # noqa: F401 — register all chains
 
         if not _should_run_startup_validation():
             return

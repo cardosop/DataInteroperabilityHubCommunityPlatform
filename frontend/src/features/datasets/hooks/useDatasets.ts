@@ -98,6 +98,19 @@ export function useDeleteDataset() {
  * Fetch sample data rows from a dataset.
  * GET /api/v1/datasets/{id}/sample/?limit=50
  */
+export function useRefreshDatasetFromFile() {
+  const queryClient = useQueryClient();
+  return useMutationWithNotification({
+    mutationFn: ({ datasetId }: { datasetId: string }) =>
+      datasetService.refreshFromFile(datasetId),
+    successMessage: 'Dataset refreshed from file',
+    errorMessage: 'Failed to refresh dataset from file',
+    onSuccess: (_data, variables) => {
+      queryClient.invalidateQueries({ queryKey: ['datasets', 'detail', variables.datasetId] });
+    },
+  });
+}
+
 export function useDatasetSample(datasetId: string | null, limit = 50) {
   return useQuery({
     queryKey: ['datasets', 'sample', datasetId, limit],

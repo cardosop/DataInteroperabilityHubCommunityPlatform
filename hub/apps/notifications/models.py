@@ -35,6 +35,8 @@ class EmailType(models.TextChoices):
     MARKETPLACE_CONNECTION_TEST_FAILURE = "MARKETPLACE_CONNECTION_TEST_FAILURE", "Marketplace Connection Test Failure"
     API_KEY_CREATED = "API_KEY_CREATED", "API Key Created"
     API_KEY_REVOKED = "API_KEY_REVOKED", "API Key Revoked"
+    API_KEY_EXPIRING = "API_KEY_EXPIRING", "API Key Expiring"
+    API_KEY_EXPIRED = "API_KEY_EXPIRED", "API Key Expired"
 
     # Customer billing (Phase 116A.8)
     CUSTOMER_BILLING_REPORT = "CUSTOMER_BILLING_REPORT", "Customer Billing Report"
@@ -87,6 +89,25 @@ class EmailType(models.TextChoices):
         "ASSET_AUTO_REVERTED_NOTIFICATION",
         "Asset auto-reverted to DRAFT (Phase 227 Wave 5)",
     )
+
+
+# ── Marketing email classification (Phase 277.B.097) ──────────────────
+# CAN-SPAM / GDPR: commercial emails require an unsubscribe link;
+# transactional emails (password reset, email verification, etc.) do not.
+_MARKETING_EMAIL_TYPES = frozenset({
+    EmailType.ASSET_CONTRACT_STRUCTURELESS_PENDING,
+    EmailType.SCHEMA_EDITOR_AVAILABLE,
+    EmailType.SCHEMA_EDITOR_RESIDUE_REMINDER,
+    EmailType.ASSET_AUTO_REVERT_WARNING,
+    EmailType.CUSTOMER_BILLING_REPORT,
+})
+
+
+def is_marketing_email(email_type: str) -> bool:
+    """Return ``True`` if *email_type* is a commercial / marketing email
+    that requires an unsubscribe link per CAN-SPAM / GDPR.
+    """
+    return email_type in _MARKETING_EMAIL_TYPES
 
 
 class EmailDelivery(models.Model):

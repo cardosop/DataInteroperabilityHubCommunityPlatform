@@ -22,6 +22,8 @@ from django.db import migrations
 class Migration(migrations.Migration):
 
     dependencies = [
+
+        ("audit", "0008_audit_event_retention_policy"),
         ("audit", "0004_auditevent_full_details_json"),
     ]
 

@@ -13,6 +13,7 @@ from hub.apps.semantic.utils import map_contract_to_semantic, generate_uri
 from hub.apps.semantic.service_client import SemanticServiceClient
 from hub.apps.contracts.models import Contract, ContractStatus, NormalizationStatus
 from hub.apps.contracts.tests.factories import ContractFactoryEnhanced
+from hub.apps.assets.models import AssetStatus
 from hub.apps.users.models import UserStatus
 from tests.factories import TenantFactory
 import uuid

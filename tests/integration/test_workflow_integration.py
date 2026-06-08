@@ -12,6 +12,7 @@ from rest_framework.test import APIClient
 from hub.apps.assets.models import Asset
 from hub.apps.contracts.models import OriginalFormat, OriginalSpecType
 from hub.apps.testing.billing_support import ensure_tenant_has_active_subscription
+from hub.apps.testing.role_support import ensure_user_has_data_provider_role
 from hub.apps.users.models import UserStatus
 from tests.factories import TenantFactory, UserFactory
 
@@ -27,6 +28,7 @@ class WorkflowIntegrationTest(TestCase):
         self.user = UserFactory.create_user(tenant=self.tenant, status=UserStatus.ACTIVE)
         ensure_tenant_has_active_subscription(self.tenant)
         self.client.force_authenticate(user=self.user)
+        ensure_user_has_data_provider_role(self.user)
 
     def test_contract_creation_workflow(self):
         """POST /api/v1/contracts/ runs contract creation workflow."""

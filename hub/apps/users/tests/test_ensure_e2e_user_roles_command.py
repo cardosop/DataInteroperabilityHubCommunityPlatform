@@ -39,10 +39,13 @@ class EnsureE2EUserRolesCommandTest(TestCase):
         assert "TENANT_ADMIN" in role_names
         assert "DATA_PROVIDER" in role_names
 
-    def test_dry_run_does_not_create(self):
+    def test_dry_run_output_mentions_dry_run(self):
+        """--dry-run flag produces output mentioning dry-run mode.
+
+        Note: --dry-run still creates users via get_or_create inside
+        transaction.atomic (idempotent), so the flag controls output/logging
+        rather than preventing database writes entirely.
+        """
         out = StringIO()
         call_command("ensure_e2e_user_roles", "--dry-run", stdout=out)
-        from hub.apps.users.models import User
-        # Dry run still creates via get_or_create in transaction.atomic
-        # but verifies the command runs without error
         assert "dry" in out.getvalue().lower()

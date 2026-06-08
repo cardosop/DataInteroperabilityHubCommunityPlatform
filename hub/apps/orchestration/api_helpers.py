@@ -32,6 +32,7 @@ def _get_workflow_classes() -> list:
         ProductCreationWorkflow,
         ScheduledIngestionWorkflow,
         VersionCreationWorkflow,
+        VirtualizationWorkflow,
     )
 
     return [
@@ -46,6 +47,7 @@ def _get_workflow_classes() -> list:
         MarketplacePublicationWorkflow,
         ProductCreationWorkflow,
         MarketplaceSyncWorkflow,
+        VirtualizationWorkflow,
     ]
 
 

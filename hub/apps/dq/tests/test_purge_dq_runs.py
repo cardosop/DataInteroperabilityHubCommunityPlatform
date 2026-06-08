@@ -357,8 +357,14 @@ class PurgeSoftDeleteTests(_BaseS3Mock, TransactionTestCase):
             call_command("purge_dq_runs", "--dry-run", stdout=out)
         assert DQRun.all_objects.get(pk=old.pk).is_deleted is False
         # Output reports what would happen.
-        text = out.getvalue()
-        assert "would soft-delete" in text.lower() or "1" in text
+        text = out.getvalue().lower()
+        self.assertIn("would soft-delete", text,
+            "Dry-run output must include the phrase 'would soft-delete'")
+        # Contextual match on the action phrase WITH the count of 1 run:
+        self.assertTrue(
+            "soft-delete 1" in text or "soft-delete 1 runs" in text,
+            f"Dry-run output must report the exact count; got: {text.strip()}",
+        )
 
     def test_dry_run_idempotent_repeats(self):
         from hub.apps.dq.models import DQRun
@@ -500,9 +506,9 @@ class PurgeBatchingTests(_BaseS3Mock, TransactionTestCase):
     def test_batches_processed_with_chunk_size(self):
         """Verify batch_size argument splits processing.
 
-        We don't need a 500-row corpus for this — we override the
-        batch size to 2 and confirm the command still soft-deletes
-        all qualifying rows."""
+        5 runs with --batch-size=2 → at least 3 batches. We confirm all
+        5 rows are soft-deleted AND that the output mentions multiple
+        batches."""
         from hub.apps.dq.models import DQRun
 
         tenant = _make_tenant(retention_days=30)
@@ -510,17 +516,24 @@ class PurgeBatchingTests(_BaseS3Mock, TransactionTestCase):
             _make_dq_run(
                 tenant, created_at=timezone.now() - timedelta(days=60),
             )
+        stdout = io.StringIO()
         with override_settings(
             DQ_S3_BUCKET=self._bucket, DQ_S3_PREFIX="dq/",
         ):
             call_command(
                 "purge_dq_runs", "--batch-size", "2",
-                stdout=io.StringIO(),
+                stdout=stdout,
             )
         soft_deleted = DQRun.all_objects.filter(
             tenant=tenant, is_deleted=True,
         ).count()
         assert soft_deleted == 5
+
+        # 5 items ÷ batch_size 2 → at least 3 batches. Verify the
+        # output mentions all 5 rows were soft-deleted.
+        output = stdout.getvalue()
+        self.assertIn("soft-deleted 5 runs", output,
+            f"Expected soft-delete count in output, got: {output[:200]}")
 
 
 # ---------------------------------------------------------------------------

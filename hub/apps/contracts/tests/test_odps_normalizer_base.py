@@ -300,8 +300,11 @@ class ODPSNormalizerBaseHelperMethodsTest(TestCase):
         self.assertIsNotNone(result.hub_contract)
 
     def test_normalize_field_with_error_context_type_validation(self):
-        """Test that normalize() handles invalid field types through public API"""
-        # Contract with invalid type for a field (e.g., version should be string but is number)
+        """Test that normalize() handles invalid field types through the public API.
+
+        The original contract has version as a number (4.1) instead of a string.
+        The base normalizer may handle this gracefully (with warnings) or fail —
+        but must not silently produce NORMALIZED_OK without any diagnostic."""
         contract_data = {
             "schema": "https://opendataproducts.org/schema/v4.1",
             "version": 4.1,  # Invalid: should be string
@@ -311,14 +314,16 @@ class ODPSNormalizerBaseHelperMethodsTest(TestCase):
             },
         }
 
-        # Test through public API - normalize() internally calls _normalize_field_with_error_context()
         result = self.normalizer.normalize(contract_data, spec_version="4.1")
-        # May fail or succeed with warnings depending on how version is handled
-        # The important thing is that type validation happens
+        # The normalizer must not crash — a result is always returned
         self.assertIsNotNone(result)
-        if result.status == NormalizationStatus.NORMALIZATION_FAILED:
-            error_messages = " ".join(result.errors)
-            self.assertTrue("type" in error_messages.lower() or "invalid" in error_messages.lower())
+        # The invalid type should either be caught as a failure
+        # or accepted with warnings — but never silently OK'd with zero diagnostics
+        if result.status == NormalizationStatus.NORMALIZED_OK:
+            self.fail(
+                "Invalid field type (version=number instead of string) should not "
+                "produce NORMALIZED_OK with no warnings or errors."
+            )
 
     def test_normalize_optional_field(self):
         """Test that normalize() handles optional fields through public API"""
@@ -380,8 +385,9 @@ class ODPSNormalizerBaseHelperMethodsTest(TestCase):
 
         # Should handle unicode characters
         self.assertIsNotNone(result.hub_contract)
-        if result.hub_contract and "info" in result.hub_contract:
-            self.assertIsNotNone(result.hub_contract["info"])
+        self.assertIsNotNone(result.hub_contract, "hub_contract must not be None")
+        self.assertIn("info", result.hub_contract, "info key must be present")
+        self.assertIsNotNone(result.hub_contract["info"], "info must not be None")
 
     def test_normalize_handles_special_characters(self):
         """Test that normalize() handles special characters correctly through public API."""
@@ -404,8 +410,9 @@ class ODPSNormalizerBaseHelperMethodsTest(TestCase):
 
         # Should handle special characters
         self.assertIsNotNone(result.hub_contract)
-        if result.hub_contract and "info" in result.hub_contract:
-            self.assertIsNotNone(result.hub_contract["info"])
+        self.assertIsNotNone(result.hub_contract, "hub_contract must not be None")
+        self.assertIn("info", result.hub_contract, "info key must be present")
+        self.assertIsNotNone(result.hub_contract["info"], "info must not be None")
 
     def test_normalize_handles_very_large_documents(self):
         """Test that normalize() handles very large documents correctly through public API."""
@@ -475,5 +482,6 @@ class ODPSNormalizerBaseHelperMethodsTest(TestCase):
 
         # Should handle nested structures
         self.assertIsNotNone(result.hub_contract)
-        if result.hub_contract and "schema" in result.hub_contract:
-            self.assertIsNotNone(result.hub_contract["schema"])
+        self.assertIsNotNone(result.hub_contract, "hub_contract must not be None")
+        self.assertIn("schema", result.hub_contract, "schema key must be present")
+        self.assertIsNotNone(result.hub_contract["schema"], "schema must not be None")

@@ -41,8 +41,8 @@ class IntegrationRegressionTest(TestCase):
         self.client = APIClient()
         plan = get_pro_plan()
         self.tenant = Tenant.objects.create(
-            name="Integration Test Tenant",
-            slug="integration-test-tenant",
+            name=f"Integration Test Tenant {uuid.uuid4().hex[:8]}",
+            slug=f"integration-test-tenant-{uuid.uuid4().hex[:8]}",
             plan=plan,
         )
         Subscription.objects.create(
@@ -387,8 +387,8 @@ class VirtualizationComplianceIntegrationTest(IntegrationRegressionTest):
 
         # Create another tenant
         other_tenant = Tenant.objects.create(
-            name="Other Tenant",
-            slug="other-tenant"
+            name=f"Other Tenant {uuid.uuid4().hex[:8]}",
+            slug=f"other-tenant-{uuid.uuid4().hex[:8]}"
         )
 
         # Create asset in other tenant

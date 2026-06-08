@@ -84,6 +84,15 @@ class TransformationPipelineViewSet(viewsets.ModelViewSet):
     serializer_class = TransformationPipelineSerializer
     permission_classes = [permissions.IsAuthenticated]
     lookup_field = "id"
+
+    def initial(self, request, *args, **kwargs):
+        from hub.apps.tenants.feature_flag_gates import check_transformation_enabled
+        from rest_framework.exceptions import PermissionDenied
+        result = check_transformation_enabled(request)
+        if isinstance(result, Response):
+            raise PermissionDenied(detail=result.data)
+        super().initial(request, *args, **kwargs)
+
     filter_backends = [OrderingFilter, SearchFilter]
     ordering_fields = ['name', 'status', 'version', 'created_at', 'updated_at']
     ordering = ['-created_at']  # Default ordering
@@ -839,6 +848,24 @@ class TransformationPipelineViewSet(viewsets.ModelViewSet):
         except TransformationPipeline.DoesNotExist:
             raise NotFound("Pipeline not found")
 
+        # ── Legacy engine deprecation (Phase 285.9) ──────────────────
+        try:
+            pipeline_def = pipeline.get_pipeline_definition() if hasattr(pipeline, "get_pipeline_definition") else pipeline.pipeline_definition
+        except Exception:
+            pipeline_def = pipeline.pipeline_definition
+        legacy_mode = pipeline_def.get("mode", "") if isinstance(pipeline_def, dict) else ""
+        if legacy_mode in ("SQL", "VISUAL"):
+            return Response(
+                {
+                    "error": "LEGACY_ENGINE_DEPRECATED",
+                    "message": "The DuckDB/Polars engine has been deprecated. Migrate to dbt-native transformation (Phase 285.9).",
+                    "deprecation": True,
+                    "sunset": "2027-03-01T00:00:00Z",
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+                headers={"Deprecation": "true", "Sunset": "Mon, 01 Mar 2027 00:00:00 GMT"},
+            )
+
         # Check tenant isolation
         user = request.user
         if not hasattr(user, "is_platform_admin") or not user.is_platform_admin:
@@ -911,6 +938,117 @@ class TransformationPipelineViewSet(viewsets.ModelViewSet):
         for header_name, header_value in headers.items():
             response[header_name] = header_value
         return response
+
+    @action(detail=True, methods=["get"], url_path="contract-drift")
+    def contract_drift(self, request, id=None):
+        """
+        Check contract drift for this pipeline (Phase 285.9.5).
+
+        GET /api/v1/transformation/pipelines/{id}/contract-drift/
+        """
+        try:
+            pipeline = self.get_queryset().get(id=id)
+        except TransformationPipeline.DoesNotExist:
+            raise NotFound("Pipeline not found")
+
+        from .contract_drift_detector import ContractDriftDetector, DriftReport
+
+        # Get the pipeline's upstream dataset and its schema history.
+        metadata = pipeline.metadata or {}
+        source_asset_id = metadata.get("source_asset_id")
+        if not source_asset_id:
+            return Response({
+                "status": "no_upstream",
+                "message": "Pipeline has no upstream dataset configured.",
+                "changes": [],
+            })
+
+        # Retrieve schema from the latest and previous dataset versions.
+        previous_schema = metadata.get("previous_output_schema")
+        current_schema = metadata.get("current_output_schema")
+
+        if not previous_schema or not current_schema:
+            return Response({
+                "status": "no_schema_history",
+                "message": "Insufficient schema history for drift detection.",
+                "changes": [],
+            })
+
+        reports = ContractDriftDetector.detect(
+            upstream_dataset=None,  # resolved internally
+            previous_schema=previous_schema,
+            current_schema=current_schema,
+        )
+
+        # Filter to only the report for this pipeline.
+        my_report = next(
+            (r for r in reports if r.pipeline_id == str(pipeline.id)), None,
+        )
+        if my_report is None:
+            return Response({
+                "status": "no_drift",
+                "pipeline_id": str(pipeline.id),
+                "changes": [],
+            })
+
+        return Response({
+            "status": "drift_detected" if my_report.has_breaking_changes else "drift_warning",
+            "pipeline_id": my_report.pipeline_id,
+            "pipeline_name": my_report.pipeline_name,
+            "has_breaking_changes": my_report.has_breaking_changes,
+            "changes": [
+                {
+                    "field": c.field_name,
+                    "severity": c.severity.value,
+                    "description": c.description,
+                    "previous_value": c.previous_value,
+                    "current_value": c.current_value,
+                }
+                for c in my_report.changes
+            ],
+        })
+
+    @action(detail=True, methods=["get"], url_path="impact-preview")
+    def impact_preview(self, request, id=None):
+        """
+        Preview deploy impact for this pipeline (Phase 285.9.6).
+
+        GET /api/v1/transformation/pipelines/{id}/impact-preview/
+        """
+        try:
+            pipeline = self.get_queryset().get(id=id)
+        except TransformationPipeline.DoesNotExist:
+            raise NotFound("Pipeline not found")
+
+        from .deploy_impact_analyzer import DeployImpactAnalyzer
+
+        tenant_id = str(pipeline.tenant_id)
+        try:
+            report = DeployImpactAnalyzer.analyze(
+                pipeline_id=str(pipeline.id), tenant_id=tenant_id,
+            )
+        except ValueError as e:
+            raise NotFound(str(e))
+
+        return Response({
+            "pipeline_id": report.pipeline_id,
+            "pipeline_name": report.pipeline_name,
+            "total_downstream": report.total_downstream,
+            "breaking_count": report.breaking_count,
+            "is_safe_to_deploy": report.is_safe_to_deploy,
+            "estimated_downtime": report.estimated_downtime,
+            "downstream": [
+                {
+                    "pipeline_id": d.pipeline_id,
+                    "pipeline_name": d.pipeline_name,
+                    "pipeline_status": d.pipeline_status,
+                    "contract_compatible": d.contract_compatible,
+                    "contract_conflicts": d.contract_conflicts,
+                    "estimated_impact": d.estimated_impact,
+                }
+                for d in report.downstream_pipelines
+            ],
+        })
 
     @extend_schema(
         summary="Preview transformation pipeline",
@@ -1657,6 +1795,9 @@ class WranglingSessionViewSet(viewsets.ModelViewSet):
     """
     ViewSet for wrangling session management.
 
+    **DEPRECATED**: dbt-native engine (Phase 285.9) replaces wrangling.
+    Sunset: 2027-03-01.
+
     Tenant-scoped: users can only see/manage sessions in their tenant.
     Requires transformation:read for reads, transformation:write for writes.
     """
@@ -1664,6 +1805,13 @@ class WranglingSessionViewSet(viewsets.ModelViewSet):
     serializer_class = WranglingSessionSerializer
     permission_classes = [permissions.IsAuthenticated]
     lookup_field = "id"
+
+    def finalize_response(self, request, response, *args, **kwargs):
+        """Add deprecation headers to all wrangling responses (Phase 285.9)."""
+        response = super().finalize_response(request, response, *args, **kwargs)
+        response["Deprecation"] = "true"
+        response["Sunset"] = "Mon, 01 Mar 2027 00:00:00 GMT"
+        return response
 
     def get_permissions(self):
         if self.action in ('create', 'update', 'partial_update', 'destroy'):

@@ -17,10 +17,6 @@ from tests.fixtures.personas import (
 from tests._persona_provisioning import PersonaCredentials
 
 
-def test_mvp_persona_roles_has_13_entries():
-    assert len(MVP_PERSONA_ROLES) == 13
-
-
 def test_all_mvp_personas_is_a_copy():
     """Modifying the returned list must not affect the canonical list."""
     copy = all_mvp_personas[:]
@@ -40,6 +36,7 @@ def test_all_mvp_personas_excluding_no_args_returns_all():
 
 
 def test_persona_credentials_dataclass():
+    """Verify PersonaCredentials stores and exposes all five fields."""
     creds = PersonaCredentials(
         api_key="tok-123",
         user_id="u-1",
@@ -47,8 +44,17 @@ def test_persona_credentials_dataclass():
         refresh_token="ref-1",
         role="data_engineer",
     )
-    assert creds.role == "data_engineer"
     assert creds.api_key == "tok-123"
+    assert creds.user_id == "u-1"
+    assert creds.tenant_id == "t-1"
+    assert creds.refresh_token == "ref-1"
+    assert creds.role == "data_engineer"
+    # All fields are strings
+    assert isinstance(creds.api_key, str)
+    assert isinstance(creds.user_id, str)
+    assert isinstance(creds.tenant_id, str)
+    assert isinstance(creds.refresh_token, str)
+    assert isinstance(creds.role, str)
 
 
 def test_persona_roles_are_lowercase_underscore():
@@ -64,6 +70,6 @@ def test_expected_personas_present():
         "visitor", "auditor", "community_manager", "compliance_officer",
         "data_analyst", "data_consumer", "data_engineer",
         "data_mesh_domain_owner", "data_product_owner", "data_scientist",
-        "external_developer", "platform_admin", "tenant_admin",
+        "external_developer", "platform_admin", "tenant_admin",  # noqa: PHASE216-STATIC-ID
     }
     assert set(MVP_PERSONA_ROLES) == expected

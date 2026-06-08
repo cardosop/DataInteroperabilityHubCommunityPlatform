@@ -52,8 +52,8 @@ class FormDraft(models.Model):
         ordering = ["-updated_at"]
         constraints = [
             models.UniqueConstraint(
-                fields=["user", "resource_type", "draft_key"],
-                name="unique_form_draft_per_user_resource_key",
+                fields=["user", "tenant", "resource_type", "draft_key"],
+                name="unique_form_draft_per_user_tenant_resource_key",
             ),
         ]
         indexes = [

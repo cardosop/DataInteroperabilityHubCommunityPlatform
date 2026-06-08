@@ -9,7 +9,7 @@ from django.db import migrations
 
 class Migration(migrations.Migration):
     dependencies = [
-        ("transformation", "0003"),
+        ("transformation", "0003_encrypt_node_config"),
     ]
 
     operations = [

@@ -41,7 +41,8 @@ class QueryExecutionViewSetTest(TestCase):
         self.tenant = Tenant.objects.create(
             name=f"Test Tenant {uid}",
             slug=f"test-tenant-{uid}",
-            kyc_status=KYCStatus.VERIFIED
+            kyc_status=KYCStatus.VERIFIED,
+            virtualization_enabled=True,
         )
 
         # Create another tenant for isolation tests
@@ -497,6 +498,8 @@ class VirtualDatasetQueryExecutionTest(TestCase):
 
     def setUp(self):
         """Set up test fixtures"""
+        from hub.apps.orchestration.registry import reset_workflow_definition_cache
+        reset_workflow_definition_cache()
         self.client = APIClient()
 
         # Create tenant
@@ -504,7 +507,8 @@ class VirtualDatasetQueryExecutionTest(TestCase):
         self.tenant = Tenant.objects.create(
             name=f"Test Tenant {uid}",
             slug=f"test-tenant-{uid}",
-            kyc_status=KYCStatus.VERIFIED
+            kyc_status=KYCStatus.VERIFIED,
+            virtualization_enabled=True,
         )
 
         # Create roles

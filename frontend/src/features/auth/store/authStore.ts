@@ -76,6 +76,7 @@ interface AuthState {
   user: User | null;
   /** Active tenant for X-Tenant-Id header; when set, overrides user.tenant_id */
   active_tenant_id: string | null;
+  accessToken: string | null;
   isAuthenticated: boolean;
   isLoading: boolean;
   error: string | null;
@@ -105,6 +106,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   // Phase 213.I.4 — synchronous hydration from localStorage.
   user: getInitialUser(),
   active_tenant_id: getInitialActiveTenantId(),
+  accessToken: null,
   isAuthenticated: getInitialIsAuthenticated(),
   isLoading: false,
   error: null,

@@ -8,6 +8,7 @@ import type { PaginatedResponse } from '../../../shared/types/api';
 import type {
   Webhook,
   WebhookCreateRequest,
+  WebhookDelivery,
   WebhookEventTypesResponse,
   WebhookListFilters,
   WebhookUpdateRequest,
@@ -80,6 +81,26 @@ export const webhookService = {
     const response = await apiClient
       .getClient()
       .post<{ status: string }>(`${WEBHOOKS_BASE_PATH}/${id}/test/`);
+    return response.data;
+  },
+
+  async getDeliveries(
+    webhookId: string,
+    params?: { page?: number; page_size?: number; status?: string }
+  ): Promise<PaginatedResponse<WebhookDelivery>> {
+    const response = await apiClient
+      .getClient()
+      .get<PaginatedResponse<WebhookDelivery> & { next?: string; previous?: string }>(
+        `${WEBHOOKS_BASE_PATH}/${webhookId}/deliveries/`,
+        { params }
+      );
+    return normalizePagination(response.data);
+  },
+
+  async retryDelivery(deliveryId: string): Promise<{ status: string }> {
+    const response = await apiClient
+      .getClient()
+      .post<{ status: string }>(`webhooks/webhook-deliveries/${deliveryId}/retry/`);
     return response.data;
   },
 };

@@ -34,43 +34,41 @@ pytestmark = [
 class TransformationPipelineViewSetTest(TestCase):
     """Test suite for TransformationPipelineViewSet"""
 
-    @classmethod
-    def setUpTestData(cls):
-        """Create shared fixtures once per class (read-only)."""
+    def setUp(self):
+        """Set up per-test fixtures."""
         from hub.apps.testing.billing_support import (
             ensure_tenant_has_active_subscription,
         )
 
         uid = uuid.uuid4().hex[:8]
-        cls.tenant = Tenant.objects.create(
+        self.tenant = Tenant.objects.create(
             name=f"Test Tenant {uid}",
             slug=f"test-tenant-{uid}",
-            kyc_status=KYCStatus.VERIFIED
+            kyc_status=KYCStatus.VERIFIED,
+            transformation_enabled=True,
         )
-        ensure_tenant_has_active_subscription(cls.tenant)
+        ensure_tenant_has_active_subscription(self.tenant)
 
-        cls.user = User.objects.create_user(
+        self.user = User.objects.create_user(
             email=f"user-{uid}@example.com",
             password="testpass123",
-            tenant=cls.tenant,
+            tenant=self.tenant,
             status=UserStatus.ACTIVE
         )
         data_provider_role, _ = Role.objects.get_or_create(
-            tenant=cls.tenant,
+            tenant=self.tenant,
             name="DATA_PROVIDER",
             defaults={"description": "Data Provider Role"}
         )
-        cls.user.user_roles.create(role=data_provider_role)
+        self.user.user_roles.create(role=data_provider_role)
 
-        cls.api_key = APIKey.objects.create(
-            tenant=cls.tenant,
-            user=cls.user,
+        self.api_key = APIKey.objects.create(
+            tenant=self.tenant,
+            user=self.user,
             name="Test API Key",
             scopes=["transformation:write", "transformation:read"]
         )
 
-    def setUp(self):
-        """Set up per-test fixtures."""
         self.client = APIClient()
         self.client.force_authenticate(user=self.user)
 

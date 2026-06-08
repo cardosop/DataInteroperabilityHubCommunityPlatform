@@ -21,22 +21,16 @@ from hub.apps.contracts.models import (
 )
 from hub.apps.contracts.services import ContractService
 from hub.apps.contracts.tests.test_base import ContractsTestBase
-from hub.apps.core.services.base import ConflictError, NotFoundError, ValidationError
+from hub.apps.core.services.base import ConflictError, NotFoundError, ServiceError, ValidationError
 from hub.apps.tenants.models import Tenant
 from hub.apps.users.models import Role, UserRole
+import json
 import uuid
 
 pytestmark = pytest.mark.django_db(transaction=True)
 
 
-def check_datacontract_cli_available():
-    """Check if DataContract CLI service is available"""
-    try:
-        client = DataContractCLIClient()
-        health = client.health_check()
-        return isinstance(health, dict) and health.get("status") == "healthy"
-    except Exception:
-        return False
+from hub.apps.contracts.tests.test_base import check_datacontract_cli_available
 
 
 class ContractServiceTest(ContractsTestBase):
@@ -587,31 +581,33 @@ class ContractServiceTest(ContractsTestBase):
                 tenant_id=str(self.tenant.id),
             )
 
-    @override_settings(DATACONTRACT_SERVICE_URL="http://localhost:99999")
+    @override_settings(DATACONTRACT_SERVICE_URL="http://127.0.0.1:65535")
     def test_validate_contract_cli_unavailable(self):
-        """Test validate_contract handles CLI service unavailability gracefully through public API"""
+        """Synchronous validation with unreachable CLI service returns a
+        structured error dict — the view has a try/except that catches
+        the ConnectionRefusedError and returns 200 with an error payload.
+        ``@override_settings`` patches the URL that the view's fresh
+        ``DataContractCLIClient()`` constructor reads, so the endpoint
+        actually hits the unreachable URL."""
         contract = Contract.objects.create(
             tenant=self.tenant,
-            original_raw='{"id": "test", "name": "Test"}',
+            original_raw='{"id":"test","name":"Test","schema":{"fields":[{"name":"id","type":"string"}]}}',
             original_format="JSON",
             status=ContractStatus.ACTIVE,
         )
 
-        # Test through public API - validate_contract should handle unavailability gracefully
-        try:
-            result = self.service.validate_contract(
-                contract_id=str(contract.id),
-                tenant_id=str(self.tenant.id),
-                user_id=str(self.user.id),
-                use_async=False,
-            )
+        result = self.service.validate_contract(
+            contract_id=str(contract.id),
+            tenant_id=str(self.tenant.id),
+            user_id=str(self.user.id),
+            use_async=False,
+        )
 
-            # Should handle gracefully - may return error or fallback
-            self.assertIsInstance(result, dict)
-        except Exception:
-            # Expected if service unavailable - circuit breaker or connection error
-            # The important thing is that the exception is handled appropriately
-            pass
+        self.assertIsInstance(result, dict)
+        self.assertIn("validation_status", result, "Response must include validation_status")
+        self.assertEqual(result["validation_status"], "ERROR",
+            "Unreachable CLI service must return validation_status='ERROR'")
+        self.assertIn("errors", result, "Response must include 'errors' key")
 
     def test_create_contract_with_disable_external_refs(self):
         """Test creating contract with disable_external_refs flag"""
@@ -629,7 +625,15 @@ class ContractServiceTest(ContractsTestBase):
         )
 
         self.assertIsNotNone(contract)
-        # Contract should be created even with external refs when disabled
+        contract.refresh_from_db()
+        # Normalization must complete even with external refs disabled.
+        self.assertIsNotNone(contract.hub_contract_json,
+            "hub_contract_json must be set when disable_external_refs=True")
+        self.assertIn(
+            contract.normalization_status,
+            [NormalizationStatus.NORMALIZED_OK, NormalizationStatus.NORMALIZED_WITH_WARNINGS],
+            f"Normalization must succeed (OK or WITH_WARNINGS), got {contract.normalization_status}",
+        )
 
     def test_create_contract_with_remove_external_refs(self):
         """Test creating contract with remove_external_refs flag"""
@@ -647,7 +651,15 @@ class ContractServiceTest(ContractsTestBase):
         )
 
         self.assertIsNotNone(contract)
-        # External refs should be removed during normalization
+        contract.refresh_from_db()
+        # Normalization must complete and produce hub_contract_json.
+        self.assertIsNotNone(contract.hub_contract_json,
+            "hub_contract_json must be set when remove_external_refs=True")
+        self.assertIn(
+            contract.normalization_status,
+            [NormalizationStatus.NORMALIZED_OK, NormalizationStatus.NORMALIZED_WITH_WARNINGS],
+            "Normalization must succeed when external refs are removed",
+        )
 
     def test_update_contract_with_normalization(self):
         """Test updating contract triggers normalization"""
@@ -833,27 +845,19 @@ class ContractServiceTest(ContractsTestBase):
                 status=ContractStatus.ACTIVE,
             )
 
-        # Test with page_size 0 (should use default or raise error)
-        # Django Paginator raises EmptyPage for page_size 0, but we catch it
-        try:
-            contracts, meta = self.service.list_contracts(
+        # page_size=0 raises ZeroDivisionError (Paginator.num_pages → ceil/0),
+        # wrapped in ServiceError by execute_with_metrics.
+        with self.assertRaises(ServiceError):
+            self.service.list_contracts(
                 tenant_id=str(self.tenant.id), page=1, page_size=0
             )
-            # If it doesn't raise, verify behavior
-            self.assertIsInstance(contracts, list)
-        except Exception:
-            # Expected if page_size 0 is invalid
-            pass
 
-        # Test with negative page_size (should use default or raise error)
-        try:
-            contracts, meta = self.service.list_contracts(
+        # page_size=-1 raises ValueError (Paginator validates per_page ≥ 1),
+        # wrapped in ServiceError by execute_with_metrics.
+        with self.assertRaises(ServiceError):
+            self.service.list_contracts(
                 tenant_id=str(self.tenant.id), page=1, page_size=-1
             )
-            self.assertIsInstance(contracts, list)
-        except Exception:
-            # Expected if negative page_size is invalid
-            pass
 
         # Test with very large page_size (should work but may be inefficient)
         contracts, meta = self.service.list_contracts(
@@ -1002,34 +1006,36 @@ class ContractServiceTest(ContractsTestBase):
         self.assertIn("tenant_id", str(cm.exception).lower())
 
     def test_validate_contract_invalid_json_handling(self):
-        """Test validate_contract handles contracts with invalid JSON gracefully"""
-        # Create contract with invalid JSON (this should be caught during creation/update)
-        # But if it exists, validation should handle it
+        """Validation of a contract with corrupted original_raw (invalid JSON)
+        returns an error dict — the CLI client always returns a fallback
+        response on failure, never propagates an unhandled exception."""
         contract = Contract.objects.create(
             tenant=self.tenant,
-            original_raw='{"info": {"name": "test-contract"}}',  # Valid JSON
+            original_raw='{"id":"test","name":"Test","schema":{"fields":[{"name":"id","type":"string"}]}}',
             original_format="JSON",
             status=ContractStatus.ACTIVE,
         )
 
-        # Manually corrupt the original_raw to simulate invalid JSON
-        contract.original_raw = '{"info": {"name": "test-contract"}'  # Missing closing brace
+        # Corrupt the raw payload after creation
+        contract.original_raw = '{"id":"test","name":"Test",broken'  # unclosed brace
         contract.save()
 
-        # Validation should handle this gracefully
-        # The CLI client may raise an error or return validation errors
-        try:
-            result = self.service.validate_contract(
-                contract_id=str(contract.id),
-                tenant_id=str(self.tenant.id),
-                user_id=str(self.user.id),
-                use_async=False,
-            )
-            # If validation succeeds, check result structure
-            self.assertIsInstance(result, dict)
-        except Exception:
-            # Expected if invalid JSON causes validation to fail
-            pass
+        result = self.service.validate_contract(
+            contract_id=str(contract.id),
+            tenant_id=str(self.tenant.id),
+            user_id=str(self.user.id),
+            use_async=False,
+        )
+        self.assertIsInstance(result, dict)
+        self.assertIn("validation_status", result)
+        # The corrupted JSON causes either a CLI parse failure (→ ERROR)
+        # or a validation failure (→ INVALID).  Both are valid outcomes
+        # for structurally-broken input.
+        self.assertIn(
+            result["validation_status"],
+            {"ERROR", "INVALID"},
+            f"Expected ERROR or INVALID for corrupted JSON, got {result['validation_status']}",
+        )
 
     def test_delete_contract_missing_tenant_id(self):
         """Test deleting contract without tenant_id raises ValidationError"""

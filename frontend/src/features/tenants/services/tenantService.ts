@@ -12,6 +12,7 @@ import type {
   TenantConfigUpdate,
   TenantOnboardingRequest,
   TenantOnboardingResponse,
+  TenantTaxIdResponse,
   TenantUsage,
 } from '../../../shared/types/tenants';
 
@@ -58,6 +59,32 @@ export const tenantService = {
     const response = await apiClient
       .getClient()
       .patch<TenantConfig>(`${TENANTS_BASE}/me/config/`, payload);
+    return response.data;
+  },
+
+  /**
+   * Get current tenant tax ID info.
+   * GET /api/v1/tenants/me/tax-id/
+   */
+  async getMeTaxId(): Promise<TenantTaxIdResponse> {
+    const response = await apiClient
+      .getClient()
+      .get<TenantTaxIdResponse>(`${TENANTS_BASE}/me/tax-id/`);
+    return response.data;
+  },
+
+  /**
+   * Set or update current tenant tax ID info.
+   * POST /api/v1/tenants/me/tax-id/
+   */
+  async postMeTaxId(data: {
+    tax_id: string;
+    tax_id_type: string;
+    tax_address?: { country?: string; postal_code?: string; line1?: string };
+  }): Promise<TenantTaxIdResponse> {
+    const response = await apiClient
+      .getClient()
+      .post<TenantTaxIdResponse>(`${TENANTS_BASE}/me/tax-id/`, data);
     return response.data;
   },
 

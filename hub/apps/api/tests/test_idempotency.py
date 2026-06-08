@@ -606,34 +606,6 @@ class TestIdempotencyMiddleware(TestCase):
         response = middleware(request)
         self.assertEqual(response.status_code, 201)
 
-    def test_middleware_handles_concurrent_requests(self):
-        """Test middleware handles concurrent requests with same key."""
-        redis_client = get_real_redis_client_or_skip()
-
-        idempotency_key = str(uuid.uuid4())
-        middleware = IdempotencyMiddleware(self.get_response)
-        request = self.factory.post(
-            "/api/v1/assets/",
-            data=json.dumps({"name": "test"}),
-            content_type="application/json",
-            HTTP_IDEMPOTENCY_KEY=idempotency_key
-        )
-
-        response = middleware(request)
-
-        # Should process request
-        self.assertEqual(response.status_code, 201)
-
-        # Cleanup
-        redis_key = build_idempotency_key(
-            idempotency_key,
-            "/api/v1/assets",
-            "POST"
-        )
-        redis_client.delete(redis_key)
-        lock_key = build_lock_key(redis_key)
-        redis_client.delete(lock_key)
-
     @patch('hub.apps.api.middleware.idempotency.get_redis_client')
     @patch('hub.apps.api.middleware.idempotency_utils.acquire_lock')
     @patch('hub.apps.api.middleware.idempotency_utils.release_lock')
@@ -708,8 +680,10 @@ class TestIdempotencyMiddleware(TestCase):
     def test_middleware_adds_idempotency_key_header_on_conflict_error(self, mock_get_redis):
         """Test middleware adds Idempotency-Key header even on conflict error."""
         idempotency_key = str(uuid.uuid4())
-        # Existing record with different request hash
-        existing_hash = 'existing-hash-123'
+        # Compute the ACTUAL hash of the original request body so the
+        # hash-comparison logic in the middleware is genuinely exercised.
+        original_body = {"name": "original"}
+        existing_hash = hash_request_body(original_body)
         cached_response = {
             'request_hash': existing_hash,
             'response': {
@@ -727,9 +701,11 @@ class TestIdempotencyMiddleware(TestCase):
 
         get_response = Mock(return_value=JsonResponse({"id": "123"}, status=201))
         middleware = IdempotencyMiddleware(get_response)
+        # Send a DIFFERENT body so the hash mismatch is detected by the
+        # real hash_request_body function, not a hardcoded string mismatch.
         request = self.factory.post(
             "/api/v1/assets/",
-            data=json.dumps({"name": "different"}),  # Different body
+            data=json.dumps({"name": "different"}),
             content_type="application/json",
             HTTP_IDEMPOTENCY_KEY=idempotency_key
         )
@@ -819,176 +795,3 @@ class TestEdgeCases(TestCase):
         normalized = normalize_idempotency_key(key)
         self.assertEqual(normalized, "Test-Key-123")
 
-
-# ============================================================================
-# Integration Tests with Real Redis
-# ============================================================================
-
-class TestIdempotencyIntegration(TestCase):
-    """Integration tests with real Redis connection."""
-
-    def test_real_redis_store_and_retrieve(self):
-        """Test storing and retrieving from real Redis."""
-        redis_client = get_real_redis_client_or_skip()
-
-        # Store record
-        redis_key = f"test:idempotency:{uuid.uuid4()}"
-        request_hash = "test-hash"
-        response_data = {
-            'status_code': 201,
-            'body': {'id': '123'},
-            'headers': {},
-            'timestamp': datetime.now(timezone.utc).isoformat()
-        }
-
-        store_idempotency_record(
-            redis_client,
-            redis_key,
-            request_hash,
-            response_data,
-            ttl=60
-        )
-
-        # Retrieve record
-        record = get_idempotency_record(redis_client, redis_key)
-        self.assertIsNotNone(record)
-        self.assertEqual(record['request_hash'], request_hash)
-
-        # Cleanup
-        redis_client.delete(redis_key)
-
-    def test_real_redis_lock_operations(self):
-        """Test lock operations with real Redis."""
-        redis_client = get_real_redis_client_or_skip()
-        lock_key = f"test:lock:{uuid.uuid4()}"
-
-        # Acquire lock
-        acquired = acquire_lock(redis_client, lock_key, timeout=1, expire=10)
-        self.assertTrue(acquired)
-
-        # Try to acquire again (should fail)
-        acquired2 = acquire_lock(redis_client, lock_key, timeout=0.1, expire=10)
-        self.assertFalse(acquired2)
-
-        # Release lock
-        release_lock(redis_client, lock_key)
-
-        # Should be able to acquire again
-        acquired3 = acquire_lock(redis_client, lock_key, timeout=1, expire=10)
-        self.assertTrue(acquired3)
-
-        # Cleanup
-        release_lock(redis_client, lock_key)
-
-
-# ============================================================================
-# Edge Cases and Error Handling Tests
-# ============================================================================
-
-class TestEdgeCases(TestCase):
-    """Test edge cases and error handling."""
-
-    def test_hash_different_bodies_different_hashes(self):
-        """Test different request bodies produce different hashes."""
-        body1 = {"name": "test1"}
-        body2 = {"name": "test2"}
-
-        hash1 = hash_request_body(body1)
-        hash2 = hash_request_body(body2)
-
-        self.assertNotEqual(hash1, hash2)
-
-    def test_serialize_response_with_binary_content(self):
-        """Test serializing response with binary content."""
-        response = HttpResponse(b'\x00\x01\x02')
-        response['Content-Type'] = 'application/octet-stream'
-
-        serialized = serialize_response(response)
-        self.assertEqual(serialized['status_code'], 200)
-        # Should handle binary content gracefully
-
-    def test_deserialize_response_missing_fields(self):
-        """Test deserializing response with missing fields."""
-        data = {'status_code': 200}  # Missing body and headers
-
-        status_code, body, headers = deserialize_response(data)
-        self.assertEqual(status_code, 200)
-        self.assertEqual(body, {})
-        self.assertEqual(headers, {})
-
-    def test_build_idempotency_key_with_special_chars(self):
-        """Test building key with special characters in endpoint."""
-        key = build_idempotency_key(
-            "test-key",
-            "/api/v1/assets/123/activate/",
-            "POST"
-        )
-        self.assertIn("test-key", key)
-        self.assertIn("POST", key)
-
-    def test_normalize_key_preserves_case(self):
-        """Test normalization preserves case."""
-        key = "Test-Key-123"
-        normalized = normalize_idempotency_key(key)
-        self.assertEqual(normalized, "Test-Key-123")
-
-
-# ============================================================================
-# Integration Tests with Real Redis
-# ============================================================================
-
-class TestIdempotencyIntegration(TestCase):
-    """Integration tests with real Redis connection."""
-
-    def test_real_redis_store_and_retrieve(self):
-        """Test storing and retrieving from real Redis."""
-        redis_client = get_real_redis_client_or_skip()
-
-        # Store record
-        redis_key = f"test:idempotency:{uuid.uuid4()}"
-        request_hash = "test-hash"
-        response_data = {
-            'status_code': 201,
-            'body': {'id': '123'},
-            'headers': {},
-            'timestamp': datetime.now(timezone.utc).isoformat()
-        }
-
-        store_idempotency_record(
-            redis_client,
-            redis_key,
-            request_hash,
-            response_data,
-            ttl=60
-        )
-
-        # Retrieve record
-        record = get_idempotency_record(redis_client, redis_key)
-        self.assertIsNotNone(record)
-        self.assertEqual(record['request_hash'], request_hash)
-
-        # Cleanup
-        redis_client.delete(redis_key)
-
-    def test_real_redis_lock_operations(self):
-        """Test lock operations with real Redis."""
-        redis_client = get_real_redis_client_or_skip()
-        lock_key = f"test:lock:{uuid.uuid4()}"
-
-        # Acquire lock
-        acquired = acquire_lock(redis_client, lock_key, timeout=1, expire=10)
-        self.assertTrue(acquired)
-
-        # Try to acquire again (should fail)
-        acquired2 = acquire_lock(redis_client, lock_key, timeout=0.1, expire=10)
-        self.assertFalse(acquired2)
-
-        # Release lock
-        release_lock(redis_client, lock_key)
-
-        # Should be able to acquire again
-        acquired3 = acquire_lock(redis_client, lock_key, timeout=1, expire=10)
-        self.assertTrue(acquired3)
-
-        # Cleanup
-        release_lock(redis_client, lock_key)

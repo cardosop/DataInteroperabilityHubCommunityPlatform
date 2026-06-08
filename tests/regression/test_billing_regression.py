@@ -26,7 +26,7 @@ class BillingRegressionTestBase(TestCase):
         super().setUp()
         self.client = APIClient()
         self.tenant = Tenant.objects.create(
-            name="Billing Regression Tenant",
+            name=f"Billing Regression Tenant {uuid.uuid4().hex[:8]}",
             slug="billing-regression",
         )
         self.user = User.objects.create_user(

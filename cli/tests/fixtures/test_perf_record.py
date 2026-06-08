@@ -115,6 +115,11 @@ def test_percentiles_are_sorted_ascending() -> None:
         timestamp_utc="2026-04-08T00:00:00Z",
     )
     assert record.p50_ms <= record.p95_ms <= record.p99_ms
+    # For measurements 1..100 the percentiles must fall within
+    # deterministic ranges (using the 'inclusive' method).
+    assert 45 <= record.p50_ms <= 55, f"p50 out of range: {record.p50_ms}"
+    assert 90 <= record.p95_ms <= 100, f"p95 out of range: {record.p95_ms}"
+    assert 95 <= record.p99_ms <= 100, f"p99 out of range: {record.p99_ms}"
 
 
 def test_rejects_empty_measurements() -> None:
@@ -139,12 +144,34 @@ def test_rejects_negative_measurement() -> None:
         )
 
 
-def test_rejects_zero_or_negative_budget() -> None:
+def test_rejects_nan_measurement() -> None:
+    with pytest.raises(ValueError):
+        build_perf_record(
+            test_name="t",
+            measurements_ms=[1.0, float("nan"), 3.0],
+            budget_ms=10.0,
+            git_sha="x",
+            timestamp_utc="2026-04-08T00:00:00Z",
+        )
+
+
+def test_rejects_zero_budget() -> None:
     with pytest.raises(ValueError):
         build_perf_record(
             test_name="t",
             measurements_ms=[1.0],
             budget_ms=0,
+            git_sha="x",
+            timestamp_utc="2026-04-08T00:00:00Z",
+        )
+
+
+def test_rejects_negative_budget() -> None:
+    with pytest.raises(ValueError):
+        build_perf_record(
+            test_name="t",
+            measurements_ms=[1.0],
+            budget_ms=-10,
             git_sha="x",
             timestamp_utc="2026-04-08T00:00:00Z",
         )
@@ -209,5 +236,5 @@ def test_perfrecord_is_frozen() -> None:
         p95_ms=1.0,
         p99_ms=1.0,
     )
-    with pytest.raises(Exception):
+    with pytest.raises(AttributeError):
         record.test_name = "mutated"  # type: ignore[misc]

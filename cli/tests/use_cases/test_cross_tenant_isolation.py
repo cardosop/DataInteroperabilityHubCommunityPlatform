@@ -45,7 +45,7 @@ def _provision_two_tenants():
     """
     creds_a = provision_persona("data_product_owner")
     try:
-        creds_b = provision_persona("data_product_owner", tenant_slug="tenant-iso")
+        creds_b = provision_persona("data_product_owner", tenant_slug="tenant-iso")  # noqa: PHASE216-STATIC-ID
     except Exception:
         pytest.skip("Multi-tenant provisioning not available")
 

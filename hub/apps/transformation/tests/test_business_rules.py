@@ -34,28 +34,20 @@ from django.contrib.auth import get_user_model
 class TransformationBusinessRulesTest(TestCase):
     """Test cases for TransformationBusinessRules."""
 
-    @classmethod
-    def setUpTestData(cls):
-        """Create shared fixtures once per class (not per test).
-
-        Tenant and User are never mutated by individual tests, so creating
-        them once avoids repeated INSERT+SAVEPOINT churn that causes
-        statement_timeout under Docker resource constraints.
-        """
+    def setUp(self):
+        """Set up per-test fixtures."""
         uid = uuid.uuid4().hex[:8]
-        cls.tenant = Tenant.objects.create(
+        self.tenant = Tenant.objects.create(
             name=f"Test Tenant {uid}",
             slug=f"test-tenant-{uid}"
         )
-        cls.user = User.objects.create_user(
+        self.user = User.objects.create_user(
             email=f"test-{uid}@example.com",
             password="testpass123",
-            tenant=cls.tenant,
+            tenant=self.tenant,
             status=UserStatus.ACTIVE
         )
 
-    def setUp(self):
-        """Set up per-test fixtures (may be mutated by individual tests)."""
         self.business_rules = TransformationBusinessRules(
             tenant_id=str(self.tenant.id),
             user_id=str(self.user.id)
@@ -1085,11 +1077,14 @@ class TransformationBusinessRulesTest(TestCase):
         self.assertIn("asset_compatibility", result.details["validation_results"])
         self.assertIn("schema_alignment", result.details["validation_results"])
 
+        # validate_all should pass
+        self.assertTrue(result.is_valid)
+
         # Structure and node_compatibility should be valid
         structure_valid = result.details["validation_results"]["structure"].get("validation_checks", {})
-        if structure_valid:
-            # Check that basic validations passed
-            self.assertTrue(structure_valid.get("pipeline_definition_type", False))
+        self.assertTrue(structure_valid)
+        # Check that basic validations passed
+        self.assertTrue(structure_valid.get("pipeline_definition_type", False))
 
     def test_validate_all_invalid_pipeline(self):
         """Test validate_all with invalid pipeline."""

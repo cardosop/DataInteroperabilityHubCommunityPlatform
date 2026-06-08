@@ -41,8 +41,8 @@ class JobQueueRegressionTest(TestCase):
         self.client = APIClient()
         plan = get_pro_plan()
         self.tenant = Tenant.objects.create(
-            name="Job Queue Test Tenant",
-            slug="job-queue-test-tenant",
+            name=f"Job Queue Test Tenant {uuid.uuid4().hex[:8]}",
+            slug=f"job-queue-test-tenant-{uuid.uuid4().hex[:8]}",
             plan=plan,
         )
         Subscription.objects.create(

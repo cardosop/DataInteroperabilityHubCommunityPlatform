@@ -82,6 +82,19 @@ class TestOutboundEmissionOnAdd(TransactionTestCase):
     """Adding a lineage edge fires one ``send_openlineage_event_async``
     dispatch per edge."""
 
+    def setUp(self):
+        from django.db import connection
+        if not hasattr(connection.ensure_connection, '__self__'):
+            from types import MethodType
+            from django.db.backends.base.base import BaseDatabaseWrapper
+            connection.ensure_connection = MethodType(
+                BaseDatabaseWrapper.ensure_connection, connection,
+            )
+        connection.close()
+        connection.savepoint_ids = []
+        connection.needs_rollback = False
+        connection.ensure_connection()
+
     def test_add_one_edge_emits_one_event(self):
         tenant = _create_tenant()
         upstream = _create_contract(tenant)
@@ -162,6 +175,19 @@ class TestOutboundEmissionOnRemove(TransactionTestCase):
     """Closing a lineage edge ALSO fires one dispatch — edge removal is
     a lineage transition the downstream catalog must see."""
 
+    def setUp(self):
+        from django.db import connection
+        if not hasattr(connection.ensure_connection, '__self__'):
+            from types import MethodType
+            from django.db.backends.base.base import BaseDatabaseWrapper
+            connection.ensure_connection = MethodType(
+                BaseDatabaseWrapper.ensure_connection, connection,
+            )
+        connection.close()
+        connection.savepoint_ids = []
+        connection.needs_rollback = False
+        connection.ensure_connection()
+
     def test_close_emits_one_event(self):
         # Patch from setup-time so the initial edge-create dispatch
         # doesn't hit the real Marquez URL (which would 31-sec retry +
@@ -207,6 +233,19 @@ class TestCapabilityFlagGatesDispatch(TransactionTestCase):
     """When ``lineage.openlineage_export`` is OFF, zero dispatches fire
     even though the LineageEdge rows are still written."""
 
+    def setUp(self):
+        from django.db import connection
+        if not hasattr(connection.ensure_connection, '__self__'):
+            from types import MethodType
+            from django.db.backends.base.base import BaseDatabaseWrapper
+            connection.ensure_connection = MethodType(
+                BaseDatabaseWrapper.ensure_connection, connection,
+            )
+        connection.close()
+        connection.savepoint_ids = []
+        connection.needs_rollback = False
+        connection.ensure_connection()
+
     def test_flag_off_skips_dispatch(self):
         from hub.apps.contracts.models import LineageEdge
 
@@ -251,6 +290,19 @@ class TestDispatchFailureDoesNotRollback(TransactionTestCase):
     the OpenLineage event is a downstream signal. Mirrors the
     fail-soft contract of ``_emit_edge_audit_events``."""
 
+    def setUp(self):
+        from django.db import connection
+        if not hasattr(connection.ensure_connection, '__self__'):
+            from types import MethodType
+            from django.db.backends.base.base import BaseDatabaseWrapper
+            connection.ensure_connection = MethodType(
+                BaseDatabaseWrapper.ensure_connection, connection,
+            )
+        connection.close()
+        connection.savepoint_ids = []
+        connection.needs_rollback = False
+        connection.ensure_connection()
+
     def test_dispatch_raise_does_not_rollback_edge_write(self):
         from hub.apps.contracts.models import LineageEdge
 
@@ -292,6 +344,19 @@ class TestNoopDoesNotEmit(TransactionTestCase):
     """A same-state save (no add, no remove) MUST NOT emit any
     OpenLineage events — the diff is a noop and there is no lineage
     transition to publish."""
+
+    def setUp(self):
+        from django.db import connection
+        if not hasattr(connection.ensure_connection, '__self__'):
+            from types import MethodType
+            from django.db.backends.base.base import BaseDatabaseWrapper
+            connection.ensure_connection = MethodType(
+                BaseDatabaseWrapper.ensure_connection, connection,
+            )
+        connection.close()
+        connection.savepoint_ids = []
+        connection.needs_rollback = False
+        connection.ensure_connection()
 
     def test_resave_with_identical_lineage_emits_zero(self):
         with mock.patch(

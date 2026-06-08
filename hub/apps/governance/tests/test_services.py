@@ -103,84 +103,62 @@ class GovernanceServiceTest(TestCase):
     def test_create_access_request_success_with_asset(self):
         """Test successful access request creation with asset"""
         # Check if workflow is available
-        workflow_available = True
         try:
-            from hub.apps.orchestration.workflows.access_request import AccessRequestWorkflow
-        except Exception:
-            workflow_available = False
-
-        if not workflow_available:
+            from hub.apps.orchestration.workflows.access_request import AccessRequestWorkflow  # noqa: F811
+        except ImportError:
             self.skipTest("Workflow engine not available - skipping test that requires workflow")
 
-        try:
-            request = self.service.create_access_request(
-                tenant_id=str(self.tenant.id),
-                requested_by_id=str(self.user.id),
-                asset_id=str(self.asset.id),
-                reason="Test reason",
-                requested_access_type="READ",
-            )
+        request = self.service.create_access_request(
+            tenant_id=str(self.tenant.id),
+            requested_by_id=str(self.user.id),
+            asset_id=str(self.asset.id),
+            reason="Test reason",
+            requested_access_type="READ",
+        )
 
-            self.assertIsNotNone(request)
-            self.assertEqual(request.tenant, self.tenant)
-            self.assertEqual(request.requested_by, self.user)
-            self.assertEqual(request.asset, self.asset)
-            self.assertEqual(request.reason, "Test reason")
-        except Exception as e:
-            # Workflow might fail - that's acceptable in test environment
-            self.skipTest(f"Workflow execution failed: {e}")
+        self.assertIsNotNone(request)
+        self.assertEqual(request.tenant, self.tenant)
+        self.assertEqual(request.requested_by, self.user)
+        self.assertEqual(request.asset, self.asset)
+        self.assertEqual(request.reason, "Test reason")
 
     def test_create_access_request_success_with_dataset(self):
         """Test successful access request creation with dataset"""
         # Check if workflow is available
-        workflow_available = True
         try:
-            from hub.apps.orchestration.workflows.access_request import AccessRequestWorkflow
-        except Exception:
-            workflow_available = False
-
-        if not workflow_available:
+            from hub.apps.orchestration.workflows.access_request import AccessRequestWorkflow  # noqa: F811
+        except ImportError:
             self.skipTest("Workflow engine not available - skipping test that requires workflow")
 
-        try:
-            request = self.service.create_access_request(
-                tenant_id=str(self.tenant.id),
-                requested_by_id=str(self.user.id),
-                dataset_id=str(self.dataset.id),
-                reason="Test reason",
-                requested_access_type="READ",
-            )
+        request = self.service.create_access_request(
+            tenant_id=str(self.tenant.id),
+            requested_by_id=str(self.user.id),
+            dataset_id=str(self.dataset.id),
+            reason="Test reason",
+            requested_access_type="READ",
+        )
 
-            self.assertIsNotNone(request)
-            self.assertEqual(request.dataset, self.dataset)
-        except Exception as e:
-            self.skipTest(f"Workflow execution failed: {e}")
+        self.assertIsNotNone(request)
+        self.assertEqual(request.dataset, self.dataset)
 
     def test_create_access_request_success_with_file(self):
         """Test successful access request creation with file"""
         # Check if workflow is available
-        workflow_available = True
         try:
-            from hub.apps.orchestration.workflows.access_request import AccessRequestWorkflow
-        except Exception:
-            workflow_available = False
-
-        if not workflow_available:
+            from hub.apps.orchestration.workflows.access_request import AccessRequestWorkflow  # noqa: F811
+        except ImportError:
             self.skipTest("Workflow engine not available - skipping test that requires workflow")
 
-        try:
-            request = self.service.create_access_request(
-                tenant_id=str(self.tenant.id),
-                requested_by_id=str(self.user.id),
-                file_id=str(self.file.id),
-                reason="Test reason",
-                requested_access_type="READ",
-            )
+        request = self.service.create_access_request(
+            tenant_id=str(self.tenant.id),
+            requested_by_id=str(self.user.id),
+            file_id=str(self.file.id),
+            reason="Test reason",
+            requested_access_type="READ",
+        )
 
-            self.assertIsNotNone(request)
-            self.assertEqual(request.file, self.file)
-        except Exception as e:
-            self.skipTest(f"Workflow execution failed: {e}")
+        self.assertIsNotNone(request)
+        self.assertEqual(request.file, self.file)
 
     def test_create_access_request_validation_error_no_resource(self):
         """Test that creating access request without resource raises ValidationError"""
@@ -206,29 +184,27 @@ class GovernanceServiceTest(TestCase):
     def test_create_access_request_with_expires_at(self):
         """Test creating access request with expiration date"""
         # Check if workflow is available
-        workflow_available = True
         try:
-            from hub.apps.orchestration.workflows.access_request import AccessRequestWorkflow
-        except Exception:
-            workflow_available = False
-
-        if not workflow_available:
+            from hub.apps.orchestration.workflows.access_request import AccessRequestWorkflow  # noqa: F811
+        except ImportError:
             self.skipTest("Workflow engine not available - skipping test that requires workflow")
 
-        expires_at = (timezone.now() + timezone.timedelta(days=30)).isoformat()
+        requested_expires_at = timezone.now() + timezone.timedelta(days=30)
 
-        try:
-            request = self.service.create_access_request(
-                tenant_id=str(self.tenant.id),
-                requested_by_id=str(self.user.id),
-                asset_id=str(self.asset.id),
-                reason="Test reason",
-                expires_at=expires_at,
-            )
+        request = self.service.create_access_request(
+            tenant_id=str(self.tenant.id),
+            requested_by_id=str(self.user.id),
+            asset_id=str(self.asset.id),
+            reason="Test reason",
+            expires_at=requested_expires_at.isoformat(),
+        )
 
-            self.assertIsNotNone(request)
-        except Exception as e:
-            self.skipTest(f"Workflow execution failed: {e}")
+        self.assertIsNotNone(request)
+        self.assertIsNotNone(request.expires_at, "expires_at should be set on the access request")
+        # Verify expires_at matches the requested value within a 1-second delta
+        delta = abs(request.expires_at - requested_expires_at)
+        self.assertLess(delta, timezone.timedelta(seconds=5),
+                        f"expires_at {request.expires_at} should match requested {requested_expires_at}")
 
     # ========== APPROVE ACCESS REQUEST TESTS ==========
 
@@ -469,32 +445,26 @@ class GovernanceServiceTest(TestCase):
     def test_create_access_request_different_access_types(self):
         """Test creating access requests with different access types"""
         # Check if workflow is available
-        workflow_available = True
         try:
-            from hub.apps.orchestration.workflows.access_request import AccessRequestWorkflow
-        except Exception:
-            workflow_available = False
-
-        if not workflow_available:
+            from hub.apps.orchestration.workflows.access_request import AccessRequestWorkflow  # noqa: F811
+        except ImportError:
             self.skipTest("Workflow engine not available - skipping test that requires workflow")
 
         access_types = ["READ", "WRITE", "DOWNLOAD"]
 
         for access_type in access_types:
-            try:
-                request = self.service.create_access_request(
-                    tenant_id=str(self.tenant.id),
-                    requested_by_id=str(self.user.id),
-                    asset_id=str(self.asset.id),
-                    reason=f"Test reason for {access_type}",
-                    requested_access_type=access_type,
-                )
+            request = self.service.create_access_request(
+                tenant_id=str(self.tenant.id),
+                requested_by_id=str(self.user.id),
+                asset_id=str(self.asset.id),
+                reason=f"Test reason for {access_type}",
+                requested_access_type=access_type,
+            )
 
-                self.assertIsNotNone(request)
-                self.assertEqual(request.requested_access_type, access_type)
-            except Exception as e:
-                # Workflow might fail - that's acceptable
-                pass
+            self.assertIsNotNone(request,
+                                f"Request should not be None for access_type={access_type}")
+            self.assertEqual(request.requested_access_type, access_type,
+                             f"requested_access_type should be {access_type}")
 
     def test_approve_access_request_with_comments(self):
         """Test approving access request with comments"""
@@ -521,28 +491,15 @@ class GovernanceServiceTest(TestCase):
 
     def test_create_access_request_validation_error_missing_reason(self):
         """Test that creating access request without reason raises ValidationError"""
-        # This should be caught by business rules
-        # Check if workflow is available
-        workflow_available = True
-        try:
-            from hub.apps.orchestration.workflows.access_request import AccessRequestWorkflow
-        except Exception:
-            workflow_available = False
-
-        if not workflow_available:
-            self.skipTest("Workflow engine not available - skipping test that requires workflow")
-
-        try:
+        # Business rules validation happens BEFORE workflow invocation,
+        # so no workflow availability check is needed.
+        with self.assertRaises(ValidationError) as ctx:
             self.service.create_access_request(
                 tenant_id=str(self.tenant.id),
                 requested_by_id=str(self.user.id),
                 asset_id=str(self.asset.id),
                 reason="",  # Empty reason
             )
-            # If it doesn't raise, that's also acceptable (business rules might allow it)
-        except ValidationError:
-            # Expected behavior
-            pass
-        except Exception:
-            # Other errors are also acceptable
-            pass
+        # Verify the error code is correct
+        self.assertEqual(ctx.exception.code, "BUSINESS_RULES_VALIDATION",
+                         "Should raise BUSINESS_RULES_VALIDATION for missing reason")

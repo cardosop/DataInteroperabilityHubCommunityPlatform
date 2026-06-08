@@ -10,7 +10,7 @@ import logging
 import time
 from typing import Any, Dict, List, Optional
 
-from hub.apps.warehouses.connectors import (
+from hub.apps.warehouses.base import (
     QueryResult,
     SchemaColumn,
     WarehouseConnector,
@@ -49,6 +49,12 @@ class DatabricksConnector(WarehouseConnector):
         try:
             from databricks import sql
 
+            session_cfg = {}
+            if self._tenant_id:
+                session_cfg["spark.databricks.queryTag.tenant_id"] = self._tenant_id
+            if self._asset_id:
+                session_cfg["spark.databricks.queryTag.asset_id"] = self._asset_id
+
             self._conn = sql.connect(
                 server_hostname=self._config.get("host", ""),
                 http_path=self._config.get("http_path", ""),
@@ -56,10 +62,7 @@ class DatabricksConnector(WarehouseConnector):
                 catalog=self._config.get("catalog", ""),
                 schema=self._config.get("schema", ""),
                 _socket_timeout=(self._timeout_ms // 1000) or 30,
-                session_configuration={
-                    "spark.databricks.queryTag.tenant_id": self._tenant_id,
-                    "spark.databricks.queryTag.asset_id": self._asset_id,
-                },
+                session_configuration=(session_cfg or None),
             )
             self._connected = True
 
@@ -100,7 +103,9 @@ class DatabricksConnector(WarehouseConnector):
                 row_count=len(rows),
                 duration_ms=round(elapsed, 2),
             )
-            self._record_cost(self._tenant_id, 0.0, "dbu")
+            # Estimate DBU: SQL Warehouse ~0.55 DBU/hr (2X-Small), min 60s.
+            cost_dbu = max(elapsed, 60.0) / 3600.0 * 0.55
+            self._record_cost(self._tenant_id, cost_dbu, "dbu")
             return result
         except Exception:
             logger.exception(
@@ -112,23 +117,16 @@ class DatabricksConnector(WarehouseConnector):
             cursor.close()
 
     def reflect_schema(self, table_name: str) -> List[SchemaColumn]:
-        parts = table_name.split(".")
-        catalog = parts[0] if len(parts) > 2 else self._config.get("catalog", "main")
-        schema_name = parts[-2] if len(parts) > 1 else self._config.get("schema", "default")
-        tbl = parts[-1]
-
-        sql = (
-            f"SELECT COLUMN_NAME, DATA_TYPE, NULLABLE, COMMENT "
-            f"FROM {catalog}.INFORMATION_SCHEMA.COLUMNS "
-            f"WHERE TABLE_SCHEMA = %(schema)s AND TABLE_NAME = %(table)s "
-            f"ORDER BY ORDINAL_POSITION"
-        )
-        result = self.execute_query(sql, {"schema": schema_name, "table": tbl})
+        # DESCRIBE TABLE is universally supported across Databricks versions
+        # (INFORMATION_SCHEMA.COLUMNS requires fine-grained UC permissions on
+        # some workspaces).
+        sql = f"DESCRIBE TABLE {table_name}"
+        result = self.execute_query(sql)
         return [
             SchemaColumn(
                 name=r[0], data_type=r[1],
-                nullable=bool(r[2]) if r[2] is not None else True,
-                comment=r[3] or "",
+                nullable=True,
+                comment=r[2] or "",
             )
             for r in result.rows
         ]

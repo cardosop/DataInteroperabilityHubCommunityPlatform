@@ -127,16 +127,17 @@ class TestWebSocketAuthEnhancement(AsyncWebSocketTransactionTestCase):
                 return False
             return True
         else:
-            # Should be rejected - check that close message was sent
-            # and next middleware was NOT called
-            if next_called:
+            # Message-based auth: the middleware passes through unauthenticated
+            # connections so the consumer can handle an ``authenticate`` message
+            # after the WebSocket is open.  Verify that:
+            #   1. The next middleware IS called (no handshake rejection).
+            #   2. The scope is set to pending_message_auth.
+            #   3. The user is None (not authenticated).
+            if not next_called:
                 return False
-            if len(messages) == 0:
+            if scope.get("auth_method") != "pending_message_auth":
                 return False
-            close_message = messages[0]
-            if close_message.get("type") != "websocket.close":
-                return False
-            if close_message.get("code") != 4001:
+            if scope.get("user") is not None:
                 return False
             return True
 

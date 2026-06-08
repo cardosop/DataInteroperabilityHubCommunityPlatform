@@ -39,7 +39,9 @@ class WebhookDeliveryClient:
         self.timeout = timeout
         # Use httpx.Client with connection pooling
         self.client = httpx.Client(timeout=self.timeout)
-        self.max_retries = 2
+        # Max retries is configurable so test suites can set 0 to avoid
+        # expensive DNS-resolution retry loops against unresolvable hosts.
+        self.max_retries = getattr(settings, "WEBHOOK_DELIVERY_MAX_RETRIES", 2)
         self.backoff_factor = 1
 
         # Initialize circuit breaker
@@ -51,13 +53,19 @@ class WebhookDeliveryClient:
             redis_client=get_redis_client()
         )
 
-    def _request_with_retry(self, method: str, url: str, **kwargs) -> httpx.Response:
+    def _request_with_retry(
+        self, method: str, url: str, *, follow_redirects: bool = True, **kwargs
+    ) -> httpx.Response:
         """
         Make HTTP request with retry logic and distributed tracing.
 
         Args:
             method: HTTP method (GET, POST, etc.)
             url: Full URL to request
+            follow_redirects: Whether httpx should automatically follow
+                redirects (301/302/307/308).  Set to False when the caller
+                needs to inspect and SSRF-validate the redirect target before
+                following.
             **kwargs: Additional arguments for httpx request
 
         Returns:
@@ -83,24 +91,29 @@ class WebhookDeliveryClient:
             try:
                 # Use circuit breaker to protect against cascading failures
                 response = self._circuit_breaker.call(
-                    lambda: self.client.request(method, url, **kwargs)
+                    lambda m=method, u=url, fw=follow_redirects, kw=kwargs: self.client.request(
+                        m, u, follow_redirects=fw, **kw
+                    )
                 )
-                response.raise_for_status()
-                return response
-            except httpx.HTTPStatusError as e:
-                # Retry on 5xx errors
-                if e.response.status_code >= 500 and attempt < self.max_retries:
+                if response.status_code >= 500 and attempt < self.max_retries:
                     delay = self.backoff_factor * (2 ** attempt)
                     logger.warning(
                         "webhook_delivery_http_retry",
-                        status_code=e.response.status_code,
+                        status_code=response.status_code,
                         delay=delay,
                         attempt=attempt + 1,
                         max_attempts=self.max_retries + 1,
                     )
                     time.sleep(delay)
                     continue
-                # Don't retry on 4xx errors (client errors)
+                # When redirect-following is disabled the caller wants to
+                # inspect the (potentially 3xx) response themselves — only
+                # raise for real errors (4xx/5xx).
+                if follow_redirects or response.status_code >= 400:
+                    response.raise_for_status()
+                return response
+            except httpx.HTTPStatusError:
+                # 4xx (and 3xx when following redirects) — don't retry
                 raise
             except httpx.RequestError as e:
                 # Retry on network errors
@@ -123,7 +136,9 @@ class WebhookDeliveryClient:
         url: str,
         payload: Optional[Dict[str, Any]] = None,
         headers: Optional[Dict[str, str]] = None,
-        data: Optional[str] = None
+        data: Optional[str] = None,
+        *,
+        follow_redirects: bool = True,
     ) -> Tuple[int, str]:
         """
         Deliver webhook with retry and circuit breaker protection.
@@ -133,6 +148,9 @@ class WebhookDeliveryClient:
             payload: JSON payload (if using json parameter)
             headers: HTTP headers
             data: Raw data string (alternative to payload)
+            follow_redirects: Whether to automatically follow HTTP redirects.
+                Set to False when the caller needs to inspect the redirect
+                target for SSRF before following.
 
         Returns:
             Tuple of (status_code, response_text)
@@ -155,12 +173,62 @@ class WebhookDeliveryClient:
         else:
             raise ValueError("Either 'payload' or 'data' must be provided")
 
-        response = self._request_with_retry("POST", url, **request_kwargs)
+        response = self._request_with_retry(
+            "POST", url, follow_redirects=follow_redirects, **request_kwargs
+        )
 
         # Limit response text size
         response_text = response.text[:1000] if response.text else ""
 
         return response.status_code, response_text
+
+    def deliver_webhook_with_response(
+        self,
+        url: str,
+        payload: Optional[Dict[str, Any]] = None,
+        headers: Optional[Dict[str, str]] = None,
+        data: Optional[str] = None,
+        *,
+        follow_redirects: bool = False,
+    ) -> httpx.Response:
+        """
+        Deliver webhook and return the full httpx Response object.
+
+        Unlike ``deliver_webhook`` which returns ``(status_code, text)``,
+        this method returns the full ``httpx.Response`` so callers can
+        inspect headers (e.g. the ``Location`` header on a 301/302
+        redirect for SSRF validation).
+
+        Args:
+            url: Webhook URL
+            payload: JSON payload
+            headers: HTTP headers
+            data: Raw data string (alternative to payload)
+            follow_redirects: Whether to follow HTTP redirects (default False).
+
+        Returns:
+            Full httpx.Response object.
+
+        Raises:
+            httpx.HTTPStatusError: On HTTP errors (when follow_redirects=True)
+            httpx.RequestError: On network errors
+        """
+        request_kwargs: Dict[str, Any] = {
+            'headers': headers or {},
+        }
+
+        if data is not None:
+            request_kwargs['content'] = data
+            if 'headers' in request_kwargs:
+                request_kwargs['headers']['Content-Type'] = 'application/json'
+        elif payload is not None:
+            request_kwargs['json'] = payload
+        else:
+            raise ValueError("Either 'payload' or 'data' must be provided")
+
+        return self._request_with_retry(
+            "POST", url, follow_redirects=follow_redirects, **request_kwargs
+        )
 
     def health_check(self) -> Tuple[bool, str]:
         """

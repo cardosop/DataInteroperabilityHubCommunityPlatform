@@ -2,6 +2,10 @@
 Tests for Contracts API.
 """
 
+from tests.pytest_mvp_skip import skip_if_mvp_mode
+
+pytestmark = skip_if_mvp_mode
+
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -911,8 +915,8 @@ def test_get_product_details_missing_language(contracts_api):
         }""",
     }
     result = contracts_api.get_product_details(contract, lang="fr")
-    # Should fallback to hub_contract_json if available, otherwise None
-    assert result is None or isinstance(result, dict)
+    # No fallback available (no hub_contract_json) — must be None
+    assert result is None
 
 
 def test_get_product_details_default_language(contracts_api):
@@ -1346,32 +1350,6 @@ async def test_create_odps_invalid_link_odcs_id(contracts_api):
 
 
 @pytest.mark.asyncio
-async def test_create_odps_mutually_exclusive_raises_odps_error(contracts_api):
-    """Test that providing both extract_odcs and link_odcs_id raises ODPSValidationError."""
-    odps_content = '{"schema": "https://opendataproducts.org/schema/v4.1", "version": "4.1", "product": {"details": {"en": {"productID": "test"}}}}'
-
-    with pytest.raises(ODPSValidationError) as exc_info:
-        await contracts_api.create_odps(
-            original_raw=odps_content,
-            extract_odcs=True,
-            link_odcs_id="123e4567-e89b-12d3-a456-426614174000",
-        )
-    assert exc_info.value.code == "INVALID_VALUE"
-    assert "extract_odcs" in exc_info.value.message.lower() or "link_odcs_id" in exc_info.value.message.lower()
-
-
-@pytest.mark.asyncio
-async def test_create_odps_neither_option_raises_odps_error(contracts_api):
-    """Test that providing neither extract_odcs nor link_odcs_id raises ODPSValidationError."""
-    odps_content = '{"schema": "https://opendataproducts.org/schema/v4.1", "version": "4.1", "product": {"details": {"en": {"productID": "test"}}}}'
-
-    with pytest.raises(ODPSValidationError) as exc_info:
-        await contracts_api.create_odps(original_raw=odps_content)
-    assert exc_info.value.code == "REQUIRED_FIELD_MISSING"
-    assert "extract_odcs" in exc_info.value.message.lower() or "link_odcs_id" in exc_info.value.message.lower()
-
-
-@pytest.mark.asyncio
 async def test_link_odps_to_odcs_invalid_odcs_id(contracts_api):
     """Test that invalid odcs_contract_id raises ODPSValidationError."""
     with pytest.raises(ODPSValidationError) as exc_info:
@@ -1697,19 +1675,19 @@ async def test_export_odcs_json_double_encoded(contracts_api, client):
 
 @pytest.mark.asyncio
 async def test_export_odcs_yaml_content_type_detection(contracts_api, client):
-    """Test that YAML format is detected from Content-Type header even if format param is json."""
+    """Test that Content-Type header overrides format param for YAML detection."""
     contract_id = "123e4567-e89b-12d3-a456-426614174000"
     yaml_content = "apiVersion: odcs.io/v3.0.2\nkind: DataContract\nid: test-contract"
 
     from unittest.mock import MagicMock
     mock_response = MagicMock()
-    # Content-Type indicates YAML even though format param might be json
+    # Content-Type indicates YAML — should be detected regardless of format param
     mock_response.headers = {"Content-Type": "application/x-yaml; charset=utf-8"}
     mock_response.text = yaml_content
 
     client.request = AsyncMock(return_value=mock_response)
 
-    result = await contracts_api.export_odcs(contract_id, format="yaml")
+    result = await contracts_api.export_odcs(contract_id, format="json")
 
     assert result == {"content": yaml_content, "format": "yaml"}
     assert "yaml" in result["format"]

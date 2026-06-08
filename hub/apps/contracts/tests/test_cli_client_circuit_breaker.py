@@ -77,6 +77,21 @@ class TestDataContractCLIClientCircuitBreaker(TestCase):
         except Exception:
             pass
 
+    def _make_mock_request(self, transport):
+        """Return a mock ``_make_request`` that routes HTTP calls through *transport*.
+
+        Extracted to eliminate ~11 identical inline definitions (Phase E).
+        """
+        def mock_make_request(endpoint, data, timeout=None, max_retries=2):
+            url = f"{self.service_client.base_url}{endpoint}"
+            with httpx.Client(transport=transport, base_url=self.service_client.base_url) as client:
+                response = client.post(
+                    url, json=data, timeout=timeout or self.service_client.timeout
+                )
+                response.raise_for_status()
+                return response.json()
+        return mock_make_request
+
     def test_circuit_breaker_initialized(self):
         """Test circuit breaker is initialized for DataContract CLI client."""
         # Verify circuit breaker exists
@@ -107,17 +122,7 @@ class TestDataContractCLIClientCircuitBreaker(TestCase):
 
         # Temporarily replace _make_request to use MockTransport
         original_make_request = self.service_client._make_request
-
-        def mock_make_request(endpoint, data, timeout=None, max_retries=2):
-            url = f"{self.service_client.base_url}{endpoint}"
-            with httpx.Client(transport=transport, base_url=self.service_client.base_url) as client:
-                response = client.post(
-                    url, json=data, timeout=timeout or self.service_client.timeout
-                )
-                response.raise_for_status()
-                return response.json()
-
-        self.service_client._make_request = mock_make_request
+        self.service_client._make_request = self._make_mock_request(transport)
 
         try:
             result = self.service_client.validate(
@@ -143,17 +148,7 @@ class TestDataContractCLIClientCircuitBreaker(TestCase):
 
         # Temporarily replace _make_request to use MockTransport
         original_make_request = self.service_client._make_request
-
-        def mock_make_request(endpoint, data, timeout=None, max_retries=2):
-            url = f"{self.service_client.base_url}{endpoint}"
-            with httpx.Client(transport=transport, base_url=self.service_client.base_url) as client:
-                response = client.post(
-                    url, json=data, timeout=timeout or self.service_client.timeout
-                )
-                response.raise_for_status()
-                return response.json()
-
-        self.service_client._make_request = mock_make_request
+        self.service_client._make_request = self._make_mock_request(transport)
 
         try:
             # Trigger failures to open circuit
@@ -193,17 +188,7 @@ class TestDataContractCLIClientCircuitBreaker(TestCase):
 
         # Temporarily replace _make_request to use MockTransport
         original_make_request = self.service_client._make_request
-
-        def mock_make_request(endpoint, data, timeout=None, max_retries=2):
-            url = f"{self.service_client.base_url}{endpoint}"
-            with httpx.Client(transport=transport, base_url=self.service_client.base_url) as client:
-                response = client.post(
-                    url, json=data, timeout=timeout or self.service_client.timeout
-                )
-                response.raise_for_status()
-                return response.json()
-
-        self.service_client._make_request = mock_make_request
+        self.service_client._make_request = self._make_mock_request(transport)
 
         try:
             # Trigger failures to open circuit
@@ -242,24 +227,15 @@ class TestDataContractCLIClientCircuitBreaker(TestCase):
 
         transport = httpx.MockTransport(handler)
         original_make_request = self.service_client._make_request
-
-        def mock_make_request(endpoint, data, timeout=None, max_retries=2):
-            url = f"{self.service_client.base_url}{endpoint}"
-            with httpx.Client(transport=transport, base_url=self.service_client.base_url) as client:
-                response = client.post(
-                    url, json=data, timeout=timeout or self.service_client.timeout
-                )
-                response.raise_for_status()
-                return response.json()
-
-        self.service_client._make_request = mock_make_request
+        self.service_client._make_request = self._make_mock_request(transport)
 
         try:
             result = self.service_client.validate(
                 raw_contract=raw_contract, format="json", use_cache=False
             )
-            # Should handle empty contract gracefully
             self.assertIsNotNone(result)
+            self.assertEqual(result["validation_status"], "PASS",
+                "Empty contract sent to service must return PASS from mock")
         finally:
             self.service_client._make_request = original_make_request
 
@@ -276,26 +252,16 @@ class TestDataContractCLIClientCircuitBreaker(TestCase):
 
         transport = httpx.MockTransport(handler)
         original_make_request = self.service_client._make_request
-
-        def mock_make_request(endpoint, data, timeout=None, max_retries=2):
-            url = f"{self.service_client.base_url}{endpoint}"
-            with httpx.Client(transport=transport, base_url=self.service_client.base_url) as client:
-                response = client.post(
-                    url, json=data, timeout=timeout or self.service_client.timeout
-                )
-                if response.status_code >= 400:
-                    return response.json()
-                response.raise_for_status()
-                return response.json()
-
-        self.service_client._make_request = mock_make_request
+        self.service_client._make_request = self._make_mock_request(transport)
 
         try:
             result = self.service_client.validate(
                 raw_contract=raw_contract, format="json", use_cache=False
             )
-            # Should handle invalid JSON gracefully
+            # 400 from service → HTTPStatusError → circuit breaker fallback → ERROR.
             self.assertIsNotNone(result)
+            self.assertEqual(result["validation_status"], "ERROR",
+                "Invalid JSON must trigger circuit breaker fallback with validation_status='ERROR'")
         finally:
             self.service_client._make_request = original_make_request
 
@@ -312,24 +278,15 @@ class TestDataContractCLIClientCircuitBreaker(TestCase):
 
         transport = httpx.MockTransport(handler)
         original_make_request = self.service_client._make_request
-
-        def mock_make_request(endpoint, data, timeout=None, max_retries=2):
-            url = f"{self.service_client.base_url}{endpoint}"
-            with httpx.Client(transport=transport, base_url=self.service_client.base_url) as client:
-                response = client.post(
-                    url, json=data, timeout=timeout or self.service_client.timeout
-                )
-                response.raise_for_status()
-                return response.json()
-
-        self.service_client._make_request = mock_make_request
+        self.service_client._make_request = self._make_mock_request(transport)
 
         try:
             result = self.service_client.validate(
                 raw_contract=raw_contract, format="json", use_cache=False
             )
-            # Should handle very large contract
             self.assertIsNotNone(result)
+            self.assertEqual(result["validation_status"], "PASS",
+                "Very large contract sent to service must return PASS from mock")
         finally:
             self.service_client._make_request = original_make_request
 
@@ -342,17 +299,7 @@ class TestDataContractCLIClientCircuitBreaker(TestCase):
 
         transport = httpx.MockTransport(handler)
         original_make_request = self.service_client._make_request
-
-        def mock_make_request(endpoint, data, timeout=None, max_retries=2):
-            url = f"{self.service_client.base_url}{endpoint}"
-            with httpx.Client(transport=transport, base_url=self.service_client.base_url) as client:
-                response = client.post(
-                    url, json=data, timeout=timeout or self.service_client.timeout
-                )
-                response.raise_for_status()
-                return response.json()
-
-        self.service_client._make_request = mock_make_request
+        self.service_client._make_request = self._make_mock_request(transport)
 
         try:
             # Trigger failures to open circuit
@@ -386,24 +333,15 @@ class TestDataContractCLIClientCircuitBreaker(TestCase):
 
         transport = httpx.MockTransport(handler)
         original_make_request = self.service_client._make_request
-
-        def mock_make_request(endpoint, data, timeout=None, max_retries=2):
-            url = f"{self.service_client.base_url}{endpoint}"
-            with httpx.Client(transport=transport, base_url=self.service_client.base_url) as client:
-                response = client.post(
-                    url, json=data, timeout=timeout or self.service_client.timeout
-                )
-                response.raise_for_status()
-                return response.json()
-
-        self.service_client._make_request = mock_make_request
+        self.service_client._make_request = self._make_mock_request(transport)
 
         try:
             result = self.service_client.validate(
                 raw_contract=raw_contract, format="json", use_cache=False
             )
-            # Should handle special characters
             self.assertIsNotNone(result)
+            self.assertEqual(result["validation_status"], "PASS",
+                "Special characters in contract must return PASS from mock")
         finally:
             self.service_client._make_request = original_make_request
 
@@ -420,24 +358,15 @@ class TestDataContractCLIClientCircuitBreaker(TestCase):
 
         transport = httpx.MockTransport(handler)
         original_make_request = self.service_client._make_request
-
-        def mock_make_request(endpoint, data, timeout=None, max_retries=2):
-            url = f"{self.service_client.base_url}{endpoint}"
-            with httpx.Client(transport=transport, base_url=self.service_client.base_url) as client:
-                response = client.post(
-                    url, json=data, timeout=timeout or self.service_client.timeout
-                )
-                response.raise_for_status()
-                return response.json()
-
-        self.service_client._make_request = mock_make_request
+        self.service_client._make_request = self._make_mock_request(transport)
 
         try:
             result = self.service_client.validate(
                 raw_contract=raw_contract, format="json", use_cache=False
             )
-            # Should handle unicode
             self.assertIsNotNone(result)
+            self.assertEqual(result["validation_status"], "PASS",
+                "Unicode characters in contract must return PASS from mock")
         finally:
             self.service_client._make_request = original_make_request
 
@@ -450,17 +379,7 @@ class TestDataContractCLIClientCircuitBreaker(TestCase):
 
         transport = httpx.MockTransport(handler)
         original_make_request = self.service_client._make_request
-
-        def mock_make_request(endpoint, data, timeout=None, max_retries=2):
-            url = f"{self.service_client.base_url}{endpoint}"
-            with httpx.Client(transport=transport, base_url=self.service_client.base_url) as client:
-                response = client.post(
-                    url, json=data, timeout=timeout or self.service_client.timeout
-                )
-                response.raise_for_status()
-                return response.json()
-
-        self.service_client._make_request = mock_make_request
+        self.service_client._make_request = self._make_mock_request(transport)
 
         try:
             # Trigger timeout failures
@@ -481,7 +400,7 @@ class TestDataContractCLIClientCircuitBreaker(TestCase):
             self.service_client._make_request = original_make_request
 
     def test_circuit_breaker_with_none_contract(self):
-        """Test circuit breaker with None contract."""
+        """Circuit breaker returns fallback when the service rejects a None contract."""
         raw_contract = None  # type: ignore[misc]  # test: edge-case type exercise
 
         def handler(request: httpx.Request) -> httpx.Response:
@@ -493,29 +412,16 @@ class TestDataContractCLIClientCircuitBreaker(TestCase):
 
         transport = httpx.MockTransport(handler)
         original_make_request = self.service_client._make_request
-
-        def mock_make_request(endpoint, data, timeout=None, max_retries=2):
-            url = f"{self.service_client.base_url}{endpoint}"
-            with httpx.Client(transport=transport, base_url=self.service_client.base_url) as client:
-                response = client.post(
-                    url, json=data, timeout=timeout or self.service_client.timeout
-                )
-                if response.status_code >= 400:
-                    return response.json()
-                response.raise_for_status()
-                return response.json()
-
-        self.service_client._make_request = mock_make_request
+        self.service_client._make_request = self._make_mock_request(transport)
 
         try:
-            # Should handle None gracefully
-            try:
-                result = self.service_client.validate(
-                    raw_contract=raw_contract, format="json", use_cache=False  # type: ignore[misc]  # test: edge-case type exercise
-                )
-                self.assertIsNotNone(result)
-            except (TypeError, ValueError):
-                # None contract may raise TypeError/ValueError, which is acceptable
-                pass
+            # The 400 triggers HTTPStatusError → circuit breaker fallback → ERROR dict.
+            result = self.service_client.validate(
+                raw_contract=raw_contract, format="json", use_cache=False  # type: ignore[misc]  # test: edge-case type exercise
+            )
+            self.assertIsNotNone(result)
+            self.assertIsInstance(result, dict)
+            self.assertEqual(result["validation_status"], "ERROR",
+                "None contract must return fallback with validation_status='ERROR'")
         finally:
             self.service_client._make_request = original_make_request

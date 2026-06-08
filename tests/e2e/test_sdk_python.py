@@ -1,4 +1,6 @@
 """
+
+import uuid
 Comprehensive E2E tests for Python SDK.
 
 Tests SDK functionality against real API endpoints with zero mocks.
@@ -699,8 +701,8 @@ class SDKPythonE2ETest(LiveServerTestCase):
         import uuid
         # Create another tenant and user
         other_tenant = Tenant.objects.create(
-            name="Other Tenant",
-            slug="other-tenant",
+            name=f"Other Tenant {uuid.uuid4().hex[:8]}",
+            slug=f"other-tenant-{uuid.uuid4().hex[:8]}",
             kyc_status=KYCStatus.VERIFIED
         )
         User.objects.create_user(

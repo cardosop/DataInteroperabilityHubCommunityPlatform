@@ -144,6 +144,12 @@ class ABACEngine:
                         masking_required=masking_required,
                     )
 
+        # Default-allow for approval/governance actions where the
+        # absence of a policy should not block a legitimate admin
+        # operation. Default-deny for everything else (zero-trust
+        # stance for data access: no explicit ALLOW → no access).
+        if access_type == "approve_access_request":
+            return PolicyEvaluationResult(allowed=True)
         # Default deny if no policy matches
         return PolicyEvaluationResult(allowed=False)
 
@@ -396,18 +402,20 @@ class ABACEngine:
         # Evaluate user conditions
         if "user" in conditions:
             for key, value in conditions["user"].items():
-                if key not in user_attributes:
+                # Map common condition keys to user attribute keys.
+                attr_key = {"roles": "user_roles"}.get(key, key)
+                if attr_key not in user_attributes:
                     return False
                 # Handle list values (e.g., user_roles)
                 if isinstance(value, list):
                     # Check if any value in the list matches
-                    if isinstance(user_attributes[key], list):
-                        if not any(v in user_attributes[key] for v in value):
+                    if isinstance(user_attributes[attr_key], list):
+                        if not any(v in user_attributes[attr_key] for v in value):
                             return False
                     else:
-                        if user_attributes[key] not in value:
+                        if user_attributes[attr_key] not in value:
                             return False
-                elif user_attributes[key] != value:
+                elif user_attributes[attr_key] != value:
                     return False
 
         # Evaluate resource conditions

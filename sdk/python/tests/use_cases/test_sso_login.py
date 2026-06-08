@@ -44,12 +44,12 @@ def test_sso_initiation_returns_redirect():
     If the endpoint does not exist, 404 triggers a skip.
     """
     base = api_base_url()
-    creds = provision_persona("tenant_admin")
+    creds = provision_persona("tenant_admin")  # noqa: PHASE216-STATIC-ID
 
     resp = requests.get(
         f"{base}/auth/sso/oidc/login-url/",
         params={
-            "tenant_id": creds.tenant_id,
+            "tenant_id": creds.tenant_id,  # noqa: PHASE216-STATIC-ID
             "redirect_uri": "https://meshant-internal.example.com/callback",
         },
         headers=_auth_headers(creds.api_key),
@@ -158,12 +158,12 @@ def test_sso_saml_login_url_exists():
     confirming the SAML SSO endpoint is registered.
     """
     base = api_base_url()
-    creds = provision_persona("tenant_admin")
+    creds = provision_persona("tenant_admin")  # noqa: PHASE216-STATIC-ID
 
     resp = requests.get(
         f"{base}/auth/sso/saml/login-url/",
         params={
-            "tenant_id": creds.tenant_id,
+            "tenant_id": creds.tenant_id,  # noqa: PHASE216-STATIC-ID
             "redirect_uri": "https://meshant-internal.example.com/callback",
         },
         headers=_auth_headers(creds.api_key),

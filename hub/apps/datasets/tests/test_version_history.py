@@ -90,17 +90,24 @@ class VersionHistoryManagerTest(DatasetsTestBase):
     # ========== FAILURE SCENARIOS ==========
 
     def test_get_version_history_nonexistent_dataset(self):
-        """Test getting version history for non-existent dataset (failure scenario)"""
+        """get_version_tree on an unsaved dataset returns a list with the dataset node."""
         import uuid
         from hub.apps.datasets.models import Dataset
 
-        fake_dataset_id = uuid.uuid4()
-
-        # Should handle non-existent dataset gracefully
-        # get_version_tree requires a Dataset object, so we need to catch DoesNotExist
-        with self.assertRaises(Dataset.DoesNotExist):
-            fake_dataset = Dataset.objects.get(id=fake_dataset_id, tenant=self.tenant)
-            VersionHistoryManager.get_version_tree(fake_dataset)
+        # Unsaved Dataset — not in DB, but get_version_tree accepts a Dataset instance.
+        fake_dataset = Dataset(
+            id=uuid.uuid4(),
+            tenant=self.tenant,
+            asset=self.asset,
+            file=self.file,
+            version=1,
+            format="CSV",
+        )
+        tree = VersionHistoryManager.get_version_tree(fake_dataset)
+        self.assertIsNotNone(tree,
+            "get_version_tree must return a result for any Dataset instance")
+        self.assertIsInstance(tree, list,
+            "get_version_tree must return a list")
 
     def test_create_version_invalid_dataset(self):
         """Test creating version with invalid dataset (failure scenario)"""
@@ -110,14 +117,11 @@ class VersionHistoryManagerTest(DatasetsTestBase):
             id=uuid.uuid4(), tenant=self.tenant, asset=self.asset, file=self.file
         )
 
-        # Should handle invalid dataset gracefully
-        try:
-            VersionHistoryManager.create_version(fake_dataset, is_current=True)
-            # If succeeds, verify it was created
-            self.assertIsNotNone(fake_dataset.id)
-        except Exception:
-            # If fails, that's acceptable for invalid dataset
-            pass
+        # create_version on a non-persisted dataset returns a result
+        # without raising — the dataset object is populated in-memory.
+        VersionHistoryManager.create_version(fake_dataset, is_current=True)
+        self.assertIsNotNone(fake_dataset.id,
+            "create_version must assign an id to the dataset")
 
     # ========== EDGE CASES ==========
 
@@ -189,7 +193,7 @@ class VersionHistoryManagerTest(DatasetsTestBase):
 
     # ========== ERROR HANDLING ==========
 
-    def test_get_version_history_database_error_handling(self):
+    def test_get_version_tree_with_persisted_dataset(self):
         """Test error handling when database query fails"""
         dataset = Dataset.objects.create(
             tenant=self.tenant,
@@ -202,19 +206,15 @@ class VersionHistoryManagerTest(DatasetsTestBase):
         )
         VersionHistoryManager.create_version(dataset, is_current=True)
 
-        # Should handle errors gracefully
-        # Use get_version_tree instead of get_version_history (correct method name)
-        try:
-            history = VersionHistoryManager.get_version_tree(dataset)
-            # Should return history (list of versions)
-            self.assertIsNotNone(history)
-            self.assertIsInstance(history, list)
-        except Exception:
-            # If raises exception, that's a problem
-            self.fail("get_version_tree should handle database errors gracefully")
+        # get_version_tree must return a result without raising for a
+        # valid persisted dataset with version history.
+        history = VersionHistoryManager.get_version_tree(dataset)
+        self.assertIsNotNone(history,
+            "get_version_tree must return a list of versions")
+        self.assertIsInstance(history, list)
 
-    def test_create_version_error_handling(self):
-        """Test error handling when creating version fails"""
+    def test_create_version_with_persisted_dataset(self):
+        """Test that create_version succeeds for valid dataset without raising."""
         dataset = Dataset.objects.create(
             tenant=self.tenant,
             asset=self.asset,
@@ -225,14 +225,9 @@ class VersionHistoryManagerTest(DatasetsTestBase):
             created_by=self.user,
         )
 
-        # Should handle errors gracefully
-        try:
-            VersionHistoryManager.create_version(dataset, is_current=True)
-            # Should succeed
-            self.assertIsNotNone(dataset)
-        except Exception:
-            # If raises exception, that's a problem
-            self.fail("create_version should handle errors gracefully")
+        VersionHistoryManager.create_version(dataset, is_current=True)
+        self.assertIsNotNone(dataset,
+            "create_version must succeed for a persisted dataset")
 
     def test_create_version_without_parent(self):
         """Test creating version without parent"""

@@ -10,6 +10,8 @@ import type {
   FileCompleteRequest,
   FileInitRequest,
   FileInitResponse,
+  FileScanStatus,
+  FileStorageQuota,
 } from '../../../shared/types/files';
 
 const FILES_BASE_PATH = 'files';
@@ -270,5 +272,48 @@ export const fileService = {
    */
   async delete(id: string): Promise<void> {
     await apiClient.getClient().delete(`${FILES_BASE_PATH}/${id}/`);
+  },
+
+  /**
+   * Get download payload (presigned URL, filename, optional content SHA-256)
+   * TODO(backend): endpoint not yet implemented — GET /files/{id}/download-payload/
+   */
+  async getDownloadPayload(id: string): Promise<{ download_url: string; filename: string; content_sha256?: string | null }> {
+    const response = await apiClient.getClient().get<{ download_url: string; filename: string; content_sha256?: string | null }>(`${FILES_BASE_PATH}/${id}/download-payload/`);
+    return response.data;
+  },
+
+  /**
+   * Get scan status for a file
+   * TODO(backend): endpoint not yet implemented — GET /files/{id}/scan-status/
+   */
+  async getScanStatus(id: string): Promise<{ scan_status: FileScanStatus; scanned_at: string | null }> {
+    const response = await apiClient.getClient().get<{ scan_status: FileScanStatus; scanned_at: string | null }>(`${FILES_BASE_PATH}/${id}/scan-status/`);
+    return response.data;
+  },
+
+  /**
+   * Rename a file
+   */
+  async rename(id: string, name: string): Promise<File> {
+    const response = await apiClient.getClient().patch<File>(`${FILES_BASE_PATH}/${id}/`, { name });
+    return response.data;
+  },
+
+  /**
+   * Get storage quota for the current tenant
+   * TODO(backend): endpoint not yet implemented — GET /files/storage-quota/
+   */
+  async getStorageQuota(): Promise<FileStorageQuota> {
+    const response = await apiClient.getClient().get<FileStorageQuota>(`${FILES_BASE_PATH}/storage-quota/`);
+    return response.data;
+  },
+
+  /**
+   * Report a checksum mismatch (client-computed vs server-expected SHA-256)
+   * TODO(backend): endpoint not yet implemented — POST /files/{id}/report-checksum-mismatch/
+   */
+  async reportChecksumMismatch(id: string, actualSha256: string): Promise<void> {
+    await apiClient.getClient().post(`${FILES_BASE_PATH}/${id}/report-checksum-mismatch/`, { actual_sha256: actualSha256 });
   },
 };

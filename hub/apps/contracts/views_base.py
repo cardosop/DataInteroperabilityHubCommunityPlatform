@@ -35,9 +35,14 @@ def _is_test_environment():
     # PYTEST_CURRENT_TEST is set by pytest for current test; other PYTEST_* in test runs
     if any(k.startswith("PYTEST_") for k in os.environ):
         return True
-    # sys.argv often contains pytest or path with "test" when run as pytest
+    # sys.argv often contains pytest or path with "test" when run as pytest.
+    # ``manage.py test`` passes "test" as a bare argument — detect it here
+    # so that Django test-runner invocations in Docker are recognized.
     argv = getattr(sys, "argv", []) or []
     if any("pytest" in str(x).lower() or "/test" in str(x) or "\\test" in str(x) for x in argv):
+        return True
+    # ``manage.py test <modules>``: "test" appears as the second positional arg
+    if len(argv) >= 2 and "manage.py" in str(argv[0]) and str(argv[1]) == "test":
         return True
 
     # Django settings flag (some setups set settings.TESTING)

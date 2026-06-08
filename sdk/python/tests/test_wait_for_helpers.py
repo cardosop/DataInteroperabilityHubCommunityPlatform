@@ -191,16 +191,16 @@ class TestComplianceWaitFor:
         client.get = AsyncMock(return_value={
             "results": [{
                 "id": "run-1",
-                "asset_id": "asset-1",
+                "asset_id": "asset-1",  # noqa: PHASE216-STATIC-ID
                 "status": "completed",
             }],
         })
 
         result = await compliance_api.wait_for(
-            "asset-1", timeout=10.0,
+            "asset-1", timeout=10.0,  # noqa: PHASE216-STATIC-ID
         )
         assert result["status"] == "completed"
-        assert result["asset_id"] == "asset-1"
+        assert result["asset_id"] == "asset-1"  # noqa: PHASE216-STATIC-ID
 
     @pytest.mark.asyncio
     async def test_waits_for_run_to_appear(
@@ -212,17 +212,17 @@ class TestComplianceWaitFor:
         client.get = AsyncMock(side_effect=[
             {"results": []},  # not yet
             {"results": [{
-                "id": "run-1", "asset_id": "asset-1",
+                "id": "run-1", "asset_id": "asset-1",  # noqa: PHASE216-STATIC-ID
                 "status": "running",
             }]},
             {"results": [{
-                "id": "run-1", "asset_id": "asset-1",
+                "id": "run-1", "asset_id": "asset-1",  # noqa: PHASE216-STATIC-ID
                 "status": "completed",
             }]},
         ])
 
         result = await compliance_api.wait_for(
-            "asset-1", timeout=10.0, interval=0.1,
+            "asset-1", timeout=10.0, interval=0.1,  # noqa: PHASE216-STATIC-ID
         )
         assert result["status"] == "completed"
         assert client.get.await_count == 3
@@ -231,12 +231,12 @@ class TestComplianceWaitFor:
     async def test_returns_failed_terminal(self, compliance_api, client):
         client.get = AsyncMock(return_value={
             "results": [{
-                "id": "run-1", "asset_id": "asset-1",
+                "id": "run-1", "asset_id": "asset-1",  # noqa: PHASE216-STATIC-ID
                 "status": "failed", "reason": "policy_violation",
             }],
         })
 
-        result = await compliance_api.wait_for("asset-1", timeout=10.0)
+        result = await compliance_api.wait_for("asset-1", timeout=10.0)  # noqa: PHASE216-STATIC-ID
         assert result["status"] == "failed"
         assert result["reason"] == "policy_violation"
 
@@ -248,9 +248,9 @@ class TestComplianceWaitFor:
 
         with pytest.raises(TimeoutError) as exc_info:
             await compliance_api.wait_for(
-                "asset-1", timeout=1.0, interval=0.5,
+                "asset-1", timeout=1.0, interval=0.5,  # noqa: PHASE216-STATIC-ID
             )
-        assert "asset-1" in str(exc_info.value)
+        assert "asset-1" in str(exc_info.value)  # noqa: PHASE216-STATIC-ID
 
 
 # ---------------------------------------------------------------------------
@@ -267,12 +267,12 @@ class TestDQWaitFor:
     async def test_returns_when_latest_run_passes(self, dq_api, client):
         client.get = AsyncMock(return_value={
             "results": [{
-                "id": "run-1", "asset_id": "asset-1",
+                "id": "run-1", "asset_id": "asset-1",  # noqa: PHASE216-STATIC-ID
                 "status": "PASS", "score": 0.97,
             }],
         })
 
-        result = await dq_api.wait_for("asset-1", timeout=10.0)
+        result = await dq_api.wait_for("asset-1", timeout=10.0)  # noqa: PHASE216-STATIC-ID
         assert result["status"] == "PASS"
         assert result["score"] == 0.97
 
@@ -280,12 +280,12 @@ class TestDQWaitFor:
     async def test_returns_when_latest_run_fails(self, dq_api, client):
         client.get = AsyncMock(return_value={
             "results": [{
-                "id": "run-1", "asset_id": "asset-1",
+                "id": "run-1", "asset_id": "asset-1",  # noqa: PHASE216-STATIC-ID
                 "status": "FAIL",
             }],
         })
 
-        result = await dq_api.wait_for("asset-1", timeout=10.0)
+        result = await dq_api.wait_for("asset-1", timeout=10.0)  # noqa: PHASE216-STATIC-ID
         assert result["status"] == "FAIL"
 
     @pytest.mark.asyncio
@@ -294,12 +294,12 @@ class TestDQWaitFor:
         raised. The caller's policy decides what to do with WARN."""
         client.get = AsyncMock(return_value={
             "results": [{
-                "id": "run-1", "asset_id": "asset-1",
+                "id": "run-1", "asset_id": "asset-1",  # noqa: PHASE216-STATIC-ID
                 "status": "WARN",
             }],
         })
 
-        result = await dq_api.wait_for("asset-1", timeout=10.0)
+        result = await dq_api.wait_for("asset-1", timeout=10.0)  # noqa: PHASE216-STATIC-ID
         assert result["status"] == "WARN"
 
     @pytest.mark.asyncio
@@ -312,7 +312,7 @@ class TestDQWaitFor:
         ])
 
         result = await dq_api.wait_for(
-            "asset-1", timeout=10.0, interval=0.1,
+            "asset-1", timeout=10.0, interval=0.1,  # noqa: PHASE216-STATIC-ID
         )
         assert result["status"] == "PASS"
         assert client.get.await_count == 3
@@ -324,7 +324,7 @@ class TestDQWaitFor:
         })
         with pytest.raises(TimeoutError):
             await dq_api.wait_for(
-                "asset-1", timeout=1.0, interval=0.5,
+                "asset-1", timeout=1.0, interval=0.5,  # noqa: PHASE216-STATIC-ID
             )
 
 

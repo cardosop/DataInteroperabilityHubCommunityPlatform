@@ -16,6 +16,8 @@ const QUERY_KEYS = {
   list: (filters: WebhookListFilters) => ['webhooks', 'list', filters] as const,
   detail: (id: string) => ['webhooks', 'detail', id] as const,
   eventTypes: ['webhooks', 'event-types'] as const,
+  deliveries: (webhookId: string, filters?: { page?: number; page_size?: number; status?: string }) =>
+    ['webhooks', 'deliveries', webhookId, filters] as const,
 };
 
 export function useWebhooks(filters: WebhookListFilters = {}) {
@@ -83,5 +85,28 @@ export function useTestWebhook() {
     mutationFn: (id: string) => webhookService.test(id),
     successMessage: 'Webhook test sent',
     errorMessage: 'Failed to test webhook',
+  });
+}
+
+export function useWebhookDeliveries(
+  webhookId: string,
+  filters?: { page?: number; page_size?: number; status?: string }
+) {
+  return useQuery({
+    queryKey: QUERY_KEYS.deliveries(webhookId, filters),
+    queryFn: () => webhookService.getDeliveries(webhookId, filters),
+    enabled: !!webhookId,
+  });
+}
+
+export function useRetryWebhookDelivery(webhookId: string) {
+  const queryClient = useQueryClient();
+  return useMutationWithNotification({
+    mutationFn: (deliveryId: string) => webhookService.retryDelivery(deliveryId),
+    successMessage: 'Delivery retry queued',
+    errorMessage: 'Failed to retry delivery',
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['webhooks', 'deliveries', webhookId] });
+    },
   });
 }

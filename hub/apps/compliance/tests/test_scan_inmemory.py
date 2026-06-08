@@ -118,18 +118,18 @@ class ScanInMemoryHappyPathTest(TestCase):
                 legal_basis="CONSENT",
             )
 
-        assert isinstance(run, ComplianceRun)
-        assert run.id is not None
+        self.assertIsInstance(run, ComplianceRun)
+        self.assertIsNotNone(run.id)
         run.refresh_from_db()
-        assert run.tenant_id == tenant.id
-        assert run.file_id == file_obj.id
+        self.assertEqual(run.tenant_id, tenant.id)
+        self.assertEqual(run.file_id, file_obj.id)
         # Critical fail-closed contract: NO asset row should be
         # touched / created by an in-memory scan.
-        assert run.asset_id is None
-        assert run.dataset_id is None
-        assert run.status == ComplianceRunStatus.SUCCEEDED
-        assert run.overall_status == "PASS"
-        assert run.allowed_to_store is True
+        self.assertIsNone(run.asset_id)
+        self.assertIsNone(run.dataset_id)
+        self.assertEqual(run.status, ComplianceRunStatus.SUCCEEDED)
+        self.assertEqual(run.overall_status, "PASS")
+        self.assertTrue(run.allowed_to_store)
 
     def test_no_asset_rows_created_for_inmemory_scan(self):
         """The whole point of 250.1.A.1: the scan must not touch ``Asset``."""
@@ -146,7 +146,7 @@ class ScanInMemoryHappyPathTest(TestCase):
                 legal_basis="CONSENT",
             )
 
-        assert Asset.objects.filter(tenant=tenant).count() == before
+        self.assertEqual(Asset.objects.filter(tenant=tenant).count(), before)
 
 
 class ScanInMemoryFailClosedTest(TestCase):
@@ -170,10 +170,9 @@ class ScanInMemoryFailClosedTest(TestCase):
             )
 
         run.refresh_from_db()
-        assert run.allowed_to_store is False, (
+        self.assertFalse(run.allowed_to_store,
             "fail-closed: UNKNOWN must override the service's "
-            "allowed_to_store hint per the platform contract"
-        )
+            "allowed_to_store hint per the platform contract")
 
     def test_explicit_fail_response_is_persisted(self):
         tenant, _user, file_obj = _seed_tenant_and_user()
@@ -193,8 +192,8 @@ class ScanInMemoryFailClosedTest(TestCase):
             )
 
         run.refresh_from_db()
-        assert run.overall_status == "FAIL"
-        assert run.allowed_to_store is False
+        self.assertEqual(run.overall_status, "FAIL")
+        self.assertFalse(run.allowed_to_store)
 
 
 class ScanInMemoryServiceFailureTest(TestCase):
@@ -213,9 +212,9 @@ class ScanInMemoryServiceFailureTest(TestCase):
             )
 
         run.refresh_from_db()
-        assert run.status == ComplianceRunStatus.FAILED
-        assert run.allowed_to_store is False
-        assert (run.regulation_mapping_json or {}).get("error") is not None
+        self.assertEqual(run.status, ComplianceRunStatus.FAILED)
+        self.assertFalse(run.allowed_to_store)
+        self.assertIsNotNone((run.regulation_mapping_json or {}).get("error"))
 
 
 class ScanInMemoryArgumentValidationTest(TestCase):
@@ -261,8 +260,8 @@ class ScanInMemoryRegulationsForwardingTest(TestCase):
                 applicable_regulations=["GDPR", "LGPD"],
             )
 
-        assert scan_mock.called, "compliance microservice was never called"
+        self.assertTrue(scan_mock.called, "compliance microservice was never called")
         call_kwargs = scan_mock.call_args.kwargs
-        assert call_kwargs.get("applicable_regulations") == ["GDPR", "LGPD"]
-        assert call_kwargs.get("legal_basis") == "LEGITIMATE_INTEREST"
-        assert call_kwargs.get("tenant_id") == str(tenant.id)
+        self.assertEqual(call_kwargs.get("applicable_regulations"), ["GDPR", "LGPD"])
+        self.assertEqual(call_kwargs.get("legal_basis"), "LEGITIMATE_INTEREST")
+        self.assertEqual(call_kwargs.get("tenant_id"), str(tenant.id))

@@ -421,12 +421,11 @@ class VersionComparisonServiceTest(DatasetsTestBase):
         fake_v1 = Dataset(id=uuid.uuid4(), tenant=self.tenant, asset=self.asset, file=self.file)
         fake_v2 = Dataset(id=uuid.uuid4(), tenant=self.tenant, asset=self.asset, file=self.file)
 
-        # Non-existent (unsaved) versions must either return None or raise
-        try:
-            comparison = VersionComparisonService.compare_versions(fake_v1, fake_v2)
-            self.assertIsNone(comparison)
-        except Exception:
-            pass
+        # Non-existent (unsaved) versions — compare_versions returns a
+        # VersionComparison without raising (graceful degradation).
+        comparison = VersionComparisonService.compare_versions(fake_v1, fake_v2)
+        self.assertIsNotNone(comparison,
+            "compare_versions must return a result even for non-persisted datasets")
 
     def test_version_comparison_failure_same_version(self):
         """Test version comparison with same version (failure scenario)"""
@@ -525,7 +524,7 @@ class VersionComparisonServiceTest(DatasetsTestBase):
 
     # ========== ERROR HANDLING ==========
 
-    def test_version_comparison_error_handling(self):
+    def test_compare_versions_valid_datasets(self):
         """Test error handling in version comparison"""
         v1 = Dataset.objects.create(
             tenant=self.tenant,
@@ -557,13 +556,8 @@ class VersionComparisonServiceTest(DatasetsTestBase):
             created_by=self.user,
         )
 
-        # Should handle errors gracefully
-        try:
-            comparison = VersionComparisonService.compare_versions(v1, v2)
-            # Should return comparison
-            self.assertIsNotNone(comparison)
-            # Verify comparison has expected attributes
-            self.assertIsNotNone(comparison.schema_diff)
-        except Exception:
-            # If raises exception, that's a problem
-            self.fail("compare_versions should handle errors gracefully")
+        comparison = VersionComparisonService.compare_versions(v1, v2)
+        self.assertIsNotNone(comparison,
+            "compare_versions must return a comparison for valid persisted datasets")
+        self.assertIsNotNone(comparison.schema_diff,
+            "comparison must have a schema_diff attribute")

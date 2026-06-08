@@ -9,7 +9,6 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 
 BROKEN_FILES = [
     'hub/apps/datasets/tests/test_schema_inference.py',
-    'hub/apps/marketplace/tests/test_access_utils.py',
     'hub/apps/marketplace/tests/test_serializers.py',
     'hub/apps/marketplace/tests/test_models.py',
     'hub/apps/contracts/tests/test_serializers.py',

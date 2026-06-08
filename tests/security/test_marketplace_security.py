@@ -75,8 +75,8 @@ class MarketplaceAuthenticationSecurityTest(TestCase):
         """Set up test fixtures"""
         self.client = APIClient()
         self.tenant = Tenant.objects.create(
-            name="Security Test Tenant",
-            slug="security-test-tenant",
+            name=f"Security Test Tenant {uuid.uuid4().hex[:8]}",
+            slug=f"security-test-tenant-{uuid.uuid4().hex[:8]}",
             kyc_status=KYCStatus.VERIFIED
         )
         self.user = User.objects.create_user(
@@ -397,7 +397,7 @@ class MarketplaceAuthorizationSecurityTest(TestCase):
         # Create tenant 1
         self.tenant1 = Tenant.objects.create(
             name="Security Tenant 1",
-            slug="security-tenant-1",
+            slug=f"security-tenant-1-{uuid.uuid4().hex[:8]}",
             kyc_status=KYCStatus.VERIFIED
         )
         self.user1 = User.objects.create_user(
@@ -419,7 +419,7 @@ class MarketplaceAuthorizationSecurityTest(TestCase):
         # Create tenant 2
         self.tenant2 = Tenant.objects.create(
             name="Security Tenant 2",
-            slug="security-tenant-2",
+            slug=f"security-tenant-2-{uuid.uuid4().hex[:8]}",
             kyc_status=KYCStatus.VERIFIED
         )
         self.user2 = User.objects.create_user(
@@ -640,8 +640,8 @@ class MarketplaceInputValidationSecurityTest(TestCase):
         """Set up test fixtures"""
         self.client = APIClient()
         self.tenant = Tenant.objects.create(
-            name="Security Test Tenant",
-            slug="security-test-tenant",
+            name=f"Security Test Tenant {uuid.uuid4().hex[:8]}",
+            slug=f"security-test-tenant-{uuid.uuid4().hex[:8]}",
             kyc_status=KYCStatus.VERIFIED
         )
         self.user = User.objects.create_user(
@@ -871,8 +871,8 @@ class MarketplaceCredentialEncryptionSecurityTest(TestCase):
         """Set up test fixtures"""
         self.client = APIClient()
         self.tenant = Tenant.objects.create(
-            name="Security Test Tenant",
-            slug="security-test-tenant",
+            name=f"Security Test Tenant {uuid.uuid4().hex[:8]}",
+            slug=f"security-test-tenant-{uuid.uuid4().hex[:8]}",
             kyc_status=KYCStatus.VERIFIED
         )
         self.user = User.objects.create_user(
@@ -1037,8 +1037,8 @@ class MarketplaceRateLimitingSecurityTest(TestCase):
         """Set up test fixtures"""
         self.client = APIClient()
         self.tenant = Tenant.objects.create(
-            name="Security Test Tenant",
-            slug="security-test-tenant",
+            name=f"Security Test Tenant {uuid.uuid4().hex[:8]}",
+            slug=f"security-test-tenant-{uuid.uuid4().hex[:8]}",
             kyc_status=KYCStatus.VERIFIED
         )
         self.user = User.objects.create_user(
@@ -1174,8 +1174,8 @@ class MarketplaceSecureConfigurationStorageTest(TestCase):
         """Set up test fixtures"""
         self.client = APIClient()
         self.tenant = Tenant.objects.create(
-            name="Security Test Tenant",
-            slug="security-test-tenant",
+            name=f"Security Test Tenant {uuid.uuid4().hex[:8]}",
+            slug=f"security-test-tenant-{uuid.uuid4().hex[:8]}",
             kyc_status=KYCStatus.VERIFIED
         )
         self.user = User.objects.create_user(

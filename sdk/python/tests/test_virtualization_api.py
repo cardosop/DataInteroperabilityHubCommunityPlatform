@@ -22,8 +22,7 @@ To run integration tests:
 import asyncio
 import inspect
 import os
-import subprocess
-import time
+import warnings
 import uuid
 from typing import Optional
 
@@ -39,182 +38,24 @@ from datahub_interoperability.errors import (
     ValidationError,
 )
 
+from tests.conftest import is_api_available, get_api_key, default_api_base_url
 
-def setup_authentication_for_sdk_tests(api_base_url: str) -> Optional[str]:
-    """
-    Set up authentication for SDK tests.
-
-    Tries multiple methods:
-    1. Use TEST_API_KEY environment variable if available
-    2. Use DATAHUB_API_KEY environment variable
-    3. Try to create API key directly via Django (if running in Docker)
-    4. Try to create API key via Django shell (if Docker Compose is available)
-    5. Return None if no key available
-
-    Args:
-        api_base_url: API base URL
-
-    Returns:
-        API key string or None
-    """
-    # Method 1: Use environment variables
-    api_key = os.environ.get("TEST_API_KEY") or os.environ.get("DATAHUB_API_KEY")
-    if api_key:
-        return api_key
-
-    # Method 2: Try to create API key via helper script (if running in Docker/container)
-    try:
-        # Check if we're running inside Docker/container
-        import sys
-
-        script_path = "/app/sdk/python/tests/generate_test_api_key.py"
-        if os.path.exists(script_path) or os.path.exists("/app"):
-            # Try to run helper script
-            try:
-                result = subprocess.run(
-                    ["python", script_path],
-                    cwd="/app/sdk/python",
-                    text=True,
-                    capture_output=True,
-                    timeout=10,
-                )
-                if result.returncode == 0 and result.stdout.strip():
-                    # Extract API key from output (may have debug logs)
-                    output_lines = result.stdout.strip().split("\n")
-                    for line in reversed(output_lines):
-                        line = line.strip()
-                        # Skip empty lines and JSON log lines
-                        if not line or line.startswith("{") or "timestamp" in line.lower():
-                            continue
-                        # API keys are typically 40+ characters
-                        if len(line) >= 40:
-                            cleaned = line.replace("-", "").replace("_", "")
-                            if cleaned.isalnum() and len(cleaned) >= 40:
-                                return line
-            except Exception:
-                pass  # Script not available, try next method
-    except Exception:
-        pass
-
-    # Method 3: Try to create API key via Django shell in Docker Compose
-    try:
-        django_shell_script = """
-from hub.apps.tenants.models import Tenant
-from hub.apps.users.models import User, UserStatus, Role, UserRole
-from hub.apps.auth.models import APIKey
-import os
-
-tenant, _ = Tenant.objects.get_or_create(
-    slug='virtualization-sdk-test-tenant',
-    defaults={'name': 'Virtualization SDK Test Tenant'}
-)
-
-# Get or create DATA_PROVIDER role
-provider_role, _ = Role.objects.get_or_create(
-    tenant=tenant,
-    name='DATA_PROVIDER',
-    defaults={'description': 'Data Provider'}
-)
-
-user, _ = User.objects.get_or_create(
-    email='virtualization-sdk-test@example.com',
-    defaults={
-        'tenant': tenant,
-        'status': UserStatus.ACTIVE
-    }
-)
-if user.tenant != tenant:
-    user.tenant = tenant
-    user.status = UserStatus.ACTIVE
-    user.save()
-
-# Assign DATA_PROVIDER role to user
-UserRole.objects.get_or_create(user=user, role=provider_role)
-
-# Delete existing API key if it exists
-APIKey.objects.filter(user=user, name='virtualization-sdk-test-key').delete()
-
-# Create new API key with virtualization scopes
-api_key_value = APIKey.generate_key()
-api_key_hash = APIKey.hash_key(api_key_value)
-api_key_obj = APIKey.objects.create(
-    user=user,
-    tenant=tenant,
-    name='virtualization-sdk-test-key',
-    key_hash=api_key_hash,
-    scopes=['virtualization:write', 'virtualization:read']
-)
-print(api_key_value)
-"""
-        result = subprocess.run(
-            [
-                "docker",
-                "compose",
-                "exec",
-                "-T",
-                "api-service",
-                "bash",
-                "-c",
-                'cd /app/hub && python manage.py shell << "PYEOF"\n'
-                + django_shell_script
-                + "\nPYEOF",
-            ],
-            text=True,
-            capture_output=True,
-            timeout=30,
-            cwd="/home/ph/Desktop/DataInteroperabilityHub",
-            shell=True,
-        )
-        if result.returncode == 0:
-            output_lines = result.stdout.strip().split("\n")
-            # Look for line containing API key (long alphanumeric string)
-            # API keys are typically 40+ characters, alphanumeric with possible dashes/underscores
-            for line in reversed(output_lines):
-                line = line.strip()
-                # Skip empty lines and common Django shell output
-                if (
-                    not line
-                    or "imported" in line.lower()
-                    or "objects" in line.lower()
-                    or "use -v" in line.lower()
-                    or ">>>" in line
-                    or "..." in line
-                ):
-                    continue
-                # API keys are typically long strings (40+ characters)
-                if len(line) >= 40:
-                    # Additional validation: check if it looks like an API key
-                    # Remove common separators and check if remaining is alphanumeric
-                    cleaned = (
-                        line.replace("-", "").replace("_", "").replace(" ", "").replace(".", "")
-                    )
-                    # Check if it's mostly alphanumeric (allow some special chars)
-                    if cleaned.isalnum() and len(cleaned) >= 40:
-                        # Extract just the API key part (before any trailing text)
-                        # API keys don't contain spaces, so split and take first part
-                        api_key = line.split()[0] if " " in line else line
-                        # Remove any trailing punctuation
-                        api_key = api_key.rstrip(".,;:!?")
-                        if (
-                            len(api_key) >= 40
-                            and api_key.replace("-", "").replace("_", "").isalnum()
-                        ):
-                            return api_key
-    except Exception:
-        pass
-
-    return None
-
-
-def check_api_available(api_base_url: str) -> bool:
-    """Check if API service is available"""
-    try:
-        import requests
-
-        response = requests.get(f"{api_base_url}/", timeout=2)
-        return response.status_code < 600  # Any HTTP response means API is up
-    except Exception:
-        return False
+# Default SQL sources for tests requiring source-backed SQL queries.
+# The API now validates that non-SPARQL query types include at least one source.
+# Set VIRTUALIZATION_TEST_DB_HOST to override the default host for Docker
+# test environments (e.g. "hub-test-postgres").
+_DEFAULT_SQL_TEST_DB_HOST = os.environ.get("VIRTUALIZATION_TEST_DB_HOST", "localhost")
+_DEFAULT_SQL_TEST_DB_USER = os.environ.get("VIRTUALIZATION_TEST_DB_USER", "hub_test")
+_DEFAULT_SQL_TEST_DB_PASS = os.environ.get("VIRTUALIZATION_TEST_DB_PASS", "hub_test")
+_DEFAULT_SQL_TEST_DB_NAME = os.environ.get("VIRTUALIZATION_TEST_DB_NAME", "hub_test")
+_DEFAULT_SQL_SOURCES = [{
+    "type": "postgresql",
+    "host": _DEFAULT_SQL_TEST_DB_HOST,
+    "port": 5432,
+    "username": _DEFAULT_SQL_TEST_DB_USER,
+    "password": _DEFAULT_SQL_TEST_DB_PASS,
+    "database": _DEFAULT_SQL_TEST_DB_NAME,
+}]
 
 
 async def retry_on_rate_limit(func, max_retries: int = 3, initial_delay: float = 1.0):
@@ -291,24 +132,20 @@ def virtualization_api(client):
 @pytest.fixture
 def real_api_config():
     """Fixture for real API configuration"""
-    api_base_url = os.environ.get("API_BASE_URL", "http://localhost:8000/api/v1")
-
-    # Check if API is available
-    if not check_api_available(api_base_url):
+    if not is_api_available():
         pytest.skip("API service is not available. Ensure Docker Compose services are running.")
 
-    # Try to get API key from environment first
-    api_key = os.environ.get("TEST_API_KEY") or os.environ.get("DATAHUB_API_KEY")
-
-    # If not in environment, try to create one
-    if not api_key:
-        api_key = setup_authentication_for_sdk_tests(api_base_url)
-
+    api_key = get_api_key()
     if not api_key:
         pytest.skip(
             "No API key available. Set TEST_API_KEY or DATAHUB_API_KEY environment variable, "
             "or ensure Docker Compose api-service is accessible."
         )
+
+    api_base_url = os.environ.get(
+        "API_BASE_URL",
+        f"{default_api_base_url()}/api/v1"
+    )
 
     return DataHubClientConfig(
         base_url=api_base_url,
@@ -325,10 +162,6 @@ async def real_client(real_api_config):
     """Create SDK client with real API configuration"""
     async with DataHubClient(real_api_config) as client:
         yield client
-        # Delay to avoid rate limiting between tests
-        import asyncio
-
-        await asyncio.sleep(0.5)
 
 
 @pytest.fixture
@@ -380,8 +213,6 @@ async def test_virtualization_api_has_client_reference(config):
 
 def test_virtualization_api_module_structure():
     """Test that virtualization module has correct structure"""
-    import inspect
-
     from datahub_interoperability.virtualization import VirtualizationAPI
 
     # Check class exists
@@ -530,7 +361,7 @@ async def test_create_dataset_success(real_virtualization_api):
     dataset_name = f"test-dataset-{uuid.uuid4().hex[:8]}"
 
     result = await real_virtualization_api.create_dataset(
-        name=dataset_name, query="SELECT * FROM test_table WHERE id = :id", query_type="SQL"
+        name=dataset_name, query="SELECT * FROM test_table WHERE id = :id", query_type="SQL", sources=_DEFAULT_SQL_SOURCES
     )
 
     assert result is not None
@@ -544,8 +375,8 @@ async def test_create_dataset_success(real_virtualization_api):
     # Cleanup
     try:
         await real_virtualization_api.delete_dataset(result["id"])
-    except Exception:
-        pass
+    except (NotFoundError, ConnectionError, TimeoutError, OSError):
+        pass  # cleanup best-effort — ignore expected errors
 
 
 @pytest.mark.asyncio
@@ -560,7 +391,7 @@ async def test_create_dataset_with_all_fields(real_virtualization_api):
         query_type="SQL",
         description="Test Description",
         schema={"fields": [{"name": "id", "type": "string"}, {"name": "name", "type": "string"}]},
-        sources=[{"id": "source1", "type": "postgres"}],
+        sources=[{"id": "source1", "type": "postgresql", "host": "localhost", "database": "testdb"}],
         version="2.0.0",
         status="ACTIVE",
     )
@@ -571,15 +402,15 @@ async def test_create_dataset_with_all_fields(real_virtualization_api):
     assert result["schema"] == {
         "fields": [{"name": "id", "type": "string"}, {"name": "name", "type": "string"}]
     }
-    assert result["sources"] == [{"id": "source1", "type": "postgres"}]
+    assert result["sources"] == [{"id": "source1", "type": "postgresql", "host": "localhost", "database": "testdb"}]
     assert result["version"] == "2.0.0"
     assert result["status"] == "ACTIVE"
 
     # Cleanup
     try:
         await real_virtualization_api.delete_dataset(result["id"])
-    except Exception:
-        pass
+    except (NotFoundError, ConnectionError, TimeoutError, OSError):
+        pass  # cleanup best-effort — ignore expected errors
 
 
 @pytest.mark.asyncio
@@ -588,7 +419,7 @@ async def test_create_dataset_validation_error(real_virtualization_api):
     """Test dataset creation with validation error"""
     with pytest.raises(ValidationError):
         await real_virtualization_api.create_dataset(
-            name="", query="SELECT * FROM table", query_type="SQL"
+            name="", query="SELECT * FROM table", query_type="SQL", sources=_DEFAULT_SQL_SOURCES
         )
 
 
@@ -600,21 +431,21 @@ async def test_create_dataset_conflict_error(real_virtualization_api):
 
     # Create first dataset
     result1 = await real_virtualization_api.create_dataset(
-        name=dataset_name, query="SELECT * FROM table1", query_type="SQL"
+        name=dataset_name, query="SELECT * FROM table1", query_type="SQL", sources=_DEFAULT_SQL_SOURCES
     )
 
     # Try to create another with same name (should fail if name uniqueness is enforced)
     try:
         with pytest.raises((ConflictError, ValidationError)):
             await real_virtualization_api.create_dataset(
-                name=dataset_name, query="SELECT * FROM table2", query_type="SQL"
+                name=dataset_name, query="SELECT * FROM table2", query_type="SQL", sources=_DEFAULT_SQL_SOURCES
             )
     finally:
         # Cleanup
         try:
             await real_virtualization_api.delete_dataset(result1["id"])
-        except Exception:
-            pass
+        except (NotFoundError, ConnectionError, TimeoutError, OSError):
+            pass  # cleanup best-effort — ignore expected errors
 
 
 @pytest.mark.asyncio
@@ -624,7 +455,7 @@ async def test_list_datasets_success(real_virtualization_api):
     # Create a test dataset first
     dataset_name = f"test-dataset-list-{uuid.uuid4().hex[:8]}"
     created = await real_virtualization_api.create_dataset(
-        name=dataset_name, query="SELECT * FROM test_table", query_type="SQL"
+        name=dataset_name, query="SELECT * FROM test_table", query_type="SQL", sources=_DEFAULT_SQL_SOURCES
     )
 
     try:
@@ -641,8 +472,8 @@ async def test_list_datasets_success(real_virtualization_api):
         # Cleanup
         try:
             await real_virtualization_api.delete_dataset(created["id"])
-        except Exception:
-            pass
+        except (NotFoundError, ConnectionError, TimeoutError, OSError):
+            pass  # cleanup best-effort — ignore expected errors
 
 
 @pytest.mark.asyncio
@@ -654,7 +485,7 @@ async def test_list_datasets_with_filters(real_virtualization_api):
     dataset_name2 = f"test-dataset-filter-2-{uuid.uuid4().hex[:8]}"
 
     created1 = await real_virtualization_api.create_dataset(
-        name=dataset_name1, query="SELECT * FROM table1", query_type="SQL", status="ACTIVE"
+        name=dataset_name1, query="SELECT * FROM table1", query_type="SQL", status="ACTIVE", sources=_DEFAULT_SQL_SOURCES
     )
     created2 = await real_virtualization_api.create_dataset(
         name=dataset_name2, query="SELECT * FROM table2", query_type="SPARQL", status="DRAFT"
@@ -680,8 +511,8 @@ async def test_list_datasets_with_filters(real_virtualization_api):
         try:
             await real_virtualization_api.delete_dataset(created1["id"])
             await real_virtualization_api.delete_dataset(created2["id"])
-        except Exception:
-            pass
+        except (NotFoundError, ConnectionError, TimeoutError, OSError):
+            pass  # cleanup best-effort — ignore expected errors
 
 
 @pytest.mark.asyncio
@@ -697,7 +528,6 @@ async def test_list_datasets_pagination(real_virtualization_api):
     assert isinstance(result["count"], int)
 
 
-@pytest.mark.asyncio
 def test_list_datasets_invalid_pagination(virtualization_api):
     """Test dataset listing with invalid pagination (unit test - no API call)"""
     with pytest.raises(ValidationError):
@@ -721,6 +551,7 @@ async def test_get_dataset_success(real_virtualization_api):
         query="SELECT * FROM test_table",
         query_type="SQL",
         description="Test Description",
+        sources=_DEFAULT_SQL_SOURCES,
     )
 
     try:
@@ -736,8 +567,8 @@ async def test_get_dataset_success(real_virtualization_api):
         # Cleanup
         try:
             await real_virtualization_api.delete_dataset(created["id"])
-        except Exception:
-            pass
+        except (NotFoundError, ConnectionError, TimeoutError, OSError):
+            pass  # cleanup best-effort — ignore expected errors
 
 
 @pytest.mark.asyncio
@@ -750,7 +581,6 @@ async def test_get_dataset_not_found(real_virtualization_api):
         await real_virtualization_api.get_dataset(fake_id)
 
 
-@pytest.mark.asyncio
 def test_get_dataset_invalid_id(virtualization_api):
     """Test dataset retrieval with invalid ID (unit test - no API call)"""
     with pytest.raises(ValidationError):
@@ -767,7 +597,7 @@ async def test_update_dataset_success(real_virtualization_api):
     # Create a test dataset
     dataset_name = f"test-dataset-update-{uuid.uuid4().hex[:8]}"
     created = await real_virtualization_api.create_dataset(
-        name=dataset_name, query="SELECT * FROM test_table", query_type="SQL"
+        name=dataset_name, query="SELECT * FROM test_table", query_type="SQL", sources=_DEFAULT_SQL_SOURCES
     )
 
     try:
@@ -785,8 +615,8 @@ async def test_update_dataset_success(real_virtualization_api):
         # Cleanup
         try:
             await real_virtualization_api.delete_dataset(created["id"])
-        except Exception:
-            pass
+        except (NotFoundError, ConnectionError, TimeoutError, OSError):
+            pass  # cleanup best-effort — ignore expected errors
 
 
 @pytest.mark.asyncio
@@ -803,6 +633,7 @@ async def test_update_dataset_partial_update(real_virtualization_api):
             query="SELECT * FROM test_table",
             query_type="SQL",
             description="Original Description",
+            sources=_DEFAULT_SQL_SOURCES,
         )
     )
 
@@ -824,8 +655,8 @@ async def test_update_dataset_partial_update(real_virtualization_api):
             await retry_on_rate_limit(
                 lambda: real_virtualization_api.delete_dataset(created["id"])
             )
-        except Exception:
-            pass
+        except (NotFoundError, ConnectionError, TimeoutError, OSError):
+            pass  # cleanup best-effort — ignore expected errors
 
 
 @pytest.mark.asyncio
@@ -851,7 +682,7 @@ async def test_update_dataset_validation_error(real_virtualization_api):
     dataset_name = f"test-dataset-validation-{uuid.uuid4().hex[:8]}"
     created = await retry_on_rate_limit(
         lambda: real_virtualization_api.create_dataset(
-            name=dataset_name, query="SELECT * FROM test_table", query_type="SQL"
+            name=dataset_name, query="SELECT * FROM test_table", query_type="SQL", sources=_DEFAULT_SQL_SOURCES
         )
     )
 
@@ -866,8 +697,8 @@ async def test_update_dataset_validation_error(real_virtualization_api):
             await retry_on_rate_limit(
                 lambda: real_virtualization_api.delete_dataset(created["id"])
             )
-        except Exception:
-            pass
+        except (NotFoundError, ConnectionError, TimeoutError, OSError):
+            pass  # cleanup best-effort — ignore expected errors
 
 
 @pytest.mark.asyncio
@@ -880,7 +711,7 @@ async def test_delete_dataset_success(real_virtualization_api):
     dataset_name = f"test-dataset-delete-{uuid.uuid4().hex[:8]}"
     created = await retry_on_rate_limit(
         lambda: real_virtualization_api.create_dataset(
-            name=dataset_name, query="SELECT * FROM test_table", query_type="SQL"
+            name=dataset_name, query="SELECT * FROM test_table", query_type="SQL", sources=_DEFAULT_SQL_SOURCES
         )
     )
 
@@ -910,7 +741,6 @@ async def test_delete_dataset_not_found(real_virtualization_api):
         )
 
 
-@pytest.mark.asyncio
 def test_delete_dataset_invalid_id(virtualization_api):
     """Test dataset deletion with invalid ID (unit test - no API call)"""
     with pytest.raises(ValidationError):
@@ -1547,7 +1377,7 @@ async def test_execute_query_success_integration(real_virtualization_api):
             query="SELECT 1 as id, 'test' as name",
             query_type="SQL",
             status="ACTIVE",
-            sources=[{"type": "postgresql", "host": "localhost", "database": "testdb"}],
+            sources=_DEFAULT_SQL_SOURCES,
         )
         dataset_id = dataset["id"]
 
@@ -1577,8 +1407,8 @@ async def test_execute_query_success_integration(real_virtualization_api):
         # Cleanup
         try:
             await real_virtualization_api.delete_dataset(dataset_id)
-        except Exception:
-            pass
+        except (NotFoundError, ConnectionError, TimeoutError, OSError):
+            pass  # cleanup best-effort — ignore expected errors
 
 
 @pytest.mark.asyncio
@@ -1593,7 +1423,7 @@ async def test_execute_query_with_parameters_integration(real_virtualization_api
             query="SELECT :id as id, :name as name",
             query_type="SQL",
             status="ACTIVE",
-            sources=[{"type": "postgresql", "host": "localhost", "database": "testdb"}],
+            sources=_DEFAULT_SQL_SOURCES,
         )
         dataset_id = dataset["id"]
 
@@ -1617,8 +1447,8 @@ async def test_execute_query_with_parameters_integration(real_virtualization_api
         # Cleanup
         try:
             await real_virtualization_api.delete_dataset(dataset_id)
-        except Exception:
-            pass
+        except (NotFoundError, ConnectionError, TimeoutError, OSError):
+            pass  # cleanup best-effort — ignore expected errors
 
 
 @pytest.mark.asyncio
@@ -1633,7 +1463,7 @@ async def test_list_query_executions_success_integration(real_virtualization_api
             query="SELECT 1 as id",
             query_type="SQL",
             status="ACTIVE",
-            sources=[{"type": "postgresql", "host": "localhost", "database": "testdb"}],
+            sources=_DEFAULT_SQL_SOURCES,
         )
         dataset_id = dataset["id"]
 
@@ -1671,8 +1501,8 @@ async def test_list_query_executions_success_integration(real_virtualization_api
         # Cleanup
         try:
             await real_virtualization_api.delete_dataset(dataset_id)
-        except Exception:
-            pass
+        except (NotFoundError, ConnectionError, TimeoutError, OSError):
+            pass  # cleanup best-effort — ignore expected errors
 
 
 @pytest.mark.asyncio
@@ -1687,7 +1517,7 @@ async def test_list_query_executions_with_status_filter_integration(real_virtual
             query="SELECT 1 as id",
             query_type="SQL",
             status="ACTIVE",
-            sources=[{"type": "postgresql", "host": "localhost", "database": "testdb"}],
+            sources=_DEFAULT_SQL_SOURCES,
         )
         dataset_id = dataset["id"]
 
@@ -1719,8 +1549,8 @@ async def test_list_query_executions_with_status_filter_integration(real_virtual
         # Cleanup
         try:
             await real_virtualization_api.delete_dataset(dataset_id)
-        except Exception:
-            pass
+        except (NotFoundError, ConnectionError, TimeoutError, OSError):
+            pass  # cleanup best-effort — ignore expected errors
 
 
 @pytest.mark.asyncio
@@ -1735,7 +1565,7 @@ async def test_get_query_execution_success_integration(real_virtualization_api):
             query="SELECT 1 as id, 'test' as name",
             query_type="SQL",
             status="ACTIVE",
-            sources=[{"type": "postgresql", "host": "localhost", "database": "testdb"}],
+            sources=_DEFAULT_SQL_SOURCES,
         )
         dataset_id = dataset["id"]
 
@@ -1767,8 +1597,8 @@ async def test_get_query_execution_success_integration(real_virtualization_api):
         # Cleanup
         try:
             await real_virtualization_api.delete_dataset(dataset_id)
-        except Exception:
-            pass
+        except (NotFoundError, ConnectionError, TimeoutError, OSError):
+            pass  # cleanup best-effort — ignore expected errors
 
 
 @pytest.mark.asyncio
@@ -1793,7 +1623,7 @@ async def test_cancel_query_execution_success_integration(real_virtualization_ap
             query="SELECT pg_sleep(10)",  # Long-running query
             query_type="SQL",
             status="ACTIVE",
-            sources=[{"type": "postgresql", "host": "localhost", "database": "testdb"}],
+            sources=_DEFAULT_SQL_SOURCES,
         )
         dataset_id = dataset["id"]
 
@@ -1839,8 +1669,8 @@ async def test_cancel_query_execution_success_integration(real_virtualization_ap
         # Cleanup
         try:
             await real_virtualization_api.delete_dataset(dataset_id)
-        except Exception:
-            pass
+        except (NotFoundError, ConnectionError, TimeoutError, OSError):
+            pass  # cleanup best-effort — ignore expected errors
 
 
 @pytest.mark.asyncio
@@ -1855,7 +1685,7 @@ async def test_get_query_result_json_format_integration(real_virtualization_api)
             query="SELECT 1 as id, 'test' as name UNION SELECT 2 as id, 'test2' as name",
             query_type="SQL",
             status="ACTIVE",
-            sources=[{"type": "postgresql", "host": "localhost", "database": "testdb"}],
+            sources=_DEFAULT_SQL_SOURCES,
         )
         dataset_id = dataset["id"]
 
@@ -1912,8 +1742,8 @@ async def test_get_query_result_json_format_integration(real_virtualization_api)
         # Cleanup
         try:
             await real_virtualization_api.delete_dataset(dataset_id)
-        except Exception:
-            pass
+        except (NotFoundError, ConnectionError, TimeoutError, OSError):
+            pass  # cleanup best-effort — ignore expected errors
 
 
 @pytest.mark.asyncio
@@ -1928,7 +1758,7 @@ async def test_get_query_result_csv_format_integration(real_virtualization_api):
             query="SELECT 1 as id, 'test' as name",
             query_type="SQL",
             status="ACTIVE",
-            sources=[{"type": "postgresql", "host": "localhost", "database": "testdb"}],
+            sources=_DEFAULT_SQL_SOURCES,
         )
         dataset_id = dataset["id"]
 
@@ -1985,8 +1815,8 @@ async def test_get_query_result_csv_format_integration(real_virtualization_api):
         # Cleanup
         try:
             await real_virtualization_api.delete_dataset(dataset_id)
-        except Exception:
-            pass
+        except (NotFoundError, ConnectionError, TimeoutError, OSError):
+            pass  # cleanup best-effort — ignore expected errors
 
 
 @pytest.mark.asyncio
@@ -2003,7 +1833,7 @@ async def test_get_query_result_with_pagination_integration(real_virtualization_
             query=query,
             query_type="SQL",
             status="ACTIVE",
-            sources=[{"type": "postgresql", "host": "localhost", "database": "testdb"}],
+            sources=_DEFAULT_SQL_SOURCES,
         )
         dataset_id = dataset["id"]
 
@@ -2059,8 +1889,8 @@ async def test_get_query_result_with_pagination_integration(real_virtualization_
         # Cleanup
         try:
             await real_virtualization_api.delete_dataset(dataset_id)
-        except Exception:
-            pass
+        except (NotFoundError, ConnectionError, TimeoutError, OSError):
+            pass  # cleanup best-effort — ignore expected errors
 
 
 @pytest.mark.asyncio
@@ -2087,7 +1917,7 @@ async def test_get_query_result_execution_not_completed_integration(real_virtual
             query="SELECT pg_sleep(10)",  # Long-running query
             query_type="SQL",
             status="ACTIVE",
-            sources=[{"type": "postgresql", "host": "localhost", "database": "testdb"}],
+            sources=_DEFAULT_SQL_SOURCES,
         )
         dataset_id = dataset["id"]
 
@@ -2132,8 +1962,8 @@ async def test_get_query_result_execution_not_completed_integration(real_virtual
         # Cleanup
         try:
             await real_virtualization_api.delete_dataset(dataset_id)
-        except Exception:
-            pass
+        except (NotFoundError, ConnectionError, TimeoutError, OSError):
+            pass  # cleanup best-effort — ignore expected errors
 
 
 # Topology Methods - Integration Tests with Real API
@@ -2146,11 +1976,11 @@ async def test_get_topology_success_integration(real_virtualization_api):
 
     assert topology is not None
     assert isinstance(topology, dict)
-    # Topology should have nodes, edges, metadata, and summary
-    assert "nodes" in topology or "datasets" in topology
-    assert "edges" in topology or "relationships" in topology
-    assert "metadata" in topology
-    assert "summary" in topology or "statistics" in topology
+    # Topology must contain the canonical key names
+    assert "nodes" in topology, f"Missing 'nodes' key in topology: {list(topology.keys())}"
+    assert "edges" in topology, f"Missing 'edges' key in topology: {list(topology.keys())}"
+    assert "metadata" in topology, f"Missing 'metadata' key in topology: {list(topology.keys())}"
+    assert "summary" in topology, f"Missing 'summary' key in topology: {list(topology.keys())}"
 
 
 @pytest.mark.asyncio
@@ -2161,9 +1991,10 @@ async def test_get_topology_without_health_metrics_integration(real_virtualizati
 
     assert topology is not None
     assert isinstance(topology, dict)
-    # Should still have basic structure
-    assert "nodes" in topology or "datasets" in topology
-    assert "metadata" in topology
+    # Should still have basic structure with canonical keys
+    assert "nodes" in topology, f"Missing 'nodes' in topology: {list(topology.keys())}"
+    assert "edges" in topology, f"Missing 'edges' in topology: {list(topology.keys())}"
+    assert "metadata" in topology, f"Missing 'metadata' in topology: {list(topology.keys())}"
 
 
 @pytest.mark.asyncio
@@ -2178,7 +2009,8 @@ async def test_get_topology_with_datasets_integration(real_virtualization_api):
             name=dataset_name,
             query="SELECT 1 as id",
             query_type="SQL",
-            status="ACTIVE"
+            status="ACTIVE",
+            sources=_DEFAULT_SQL_SOURCES,
         )
         dataset_id = dataset["id"]
 
@@ -2189,23 +2021,25 @@ async def test_get_topology_with_datasets_integration(real_virtualization_api):
         topology = await real_virtualization_api.get_topology(include_health_metrics=True)
 
         assert topology is not None
-        assert "nodes" in topology or "datasets" in topology
+        assert "nodes" in topology, f"Missing 'nodes' in topology: {list(topology.keys())}"
+        assert "edges" in topology, f"Missing 'edges' in topology: {list(topology.keys())}"
+        assert "summary" in topology, f"Missing 'summary' in topology: {list(topology.keys())}"
 
         # Verify our dataset is in the topology
-        nodes = topology.get("nodes", topology.get("datasets", []))
+        nodes = topology.get("nodes", [])
         node_ids = [str(node.get("id", "")) for node in nodes]
-        assert dataset_id in node_ids or any(str(dataset_id) in str(node) for node in nodes)
+        assert dataset_id in node_ids, f"Dataset {dataset_id} not found in topology nodes"
 
-        # Verify summary/statistics
-        summary = topology.get("summary", topology.get("statistics", {}))
+        # Verify summary structure
+        summary = topology["summary"]
         assert isinstance(summary, dict)
 
     finally:
         # Cleanup
         try:
             await real_virtualization_api.delete_dataset(dataset_id)
-        except Exception:
-            pass
+        except (NotFoundError, ConnectionError, TimeoutError, OSError):
+            pass  # cleanup best-effort — ignore expected errors
 
 
 @pytest.mark.asyncio
@@ -2221,7 +2055,8 @@ async def test_get_dataset_topology_success_integration(real_virtualization_api)
             query="SELECT 1 as id, 'test' as name",
             query_type="SQL",
             status="ACTIVE",
-            description="Test dataset for topology"
+            description="Test dataset for topology",
+            sources=_DEFAULT_SQL_SOURCES,
         )
         dataset_id = dataset["id"]
 
@@ -2246,8 +2081,8 @@ async def test_get_dataset_topology_success_integration(real_virtualization_api)
         # Cleanup
         try:
             await real_virtualization_api.delete_dataset(dataset_id)
-        except Exception:
-            pass
+        except (NotFoundError, ConnectionError, TimeoutError, OSError):
+            pass  # cleanup best-effort — ignore expected errors
 
 
 @pytest.mark.asyncio
@@ -2309,7 +2144,8 @@ async def test_get_dataset_topology_with_relationships_integration(real_virtuali
             name=dataset1_name,
             query="SELECT 1 as id",
             query_type="SQL",
-            status="ACTIVE"
+            status="ACTIVE",
+            sources=_DEFAULT_SQL_SOURCES,
         )
         dataset1_id = dataset1["id"]
 
@@ -2317,7 +2153,8 @@ async def test_get_dataset_topology_with_relationships_integration(real_virtuali
             name=dataset2_name,
             query="SELECT 2 as id",
             query_type="SQL",
-            status="ACTIVE"
+            status="ACTIVE",
+            sources=_DEFAULT_SQL_SOURCES,
         )
         dataset2_id = dataset2["id"]
 
@@ -2340,5 +2177,5 @@ async def test_get_dataset_topology_with_relationships_integration(real_virtuali
                 await real_virtualization_api.delete_dataset(dataset1_id)
             if dataset2_id:
                 await real_virtualization_api.delete_dataset(dataset2_id)
-        except Exception:
-            pass
+        except (NotFoundError, ConnectionError, TimeoutError, OSError):
+            pass  # cleanup best-effort — ignore expected errors

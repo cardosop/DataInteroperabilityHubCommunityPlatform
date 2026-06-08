@@ -68,7 +68,7 @@ class SearchAPI:
             "sort_order": sort_order,
         }
         if type:
-            params["type"] = type
+            params["type"] = type.upper()
         if classification:
             params["classification"] = classification
         if owner:
@@ -103,7 +103,11 @@ class SearchAPI:
             "q": query,
             "limit": limit,
         }
-        return await self.client.get("search/suggestions/", params=params)
+        result = await self.client.get("search/suggestions/", params=params)
+        # API returns a bare list; wrap it in a dict for a stable interface.
+        if isinstance(result, list):
+            return {"suggestions": result}
+        return result
 
     async def get_analytics(
         self,

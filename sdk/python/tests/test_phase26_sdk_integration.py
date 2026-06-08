@@ -19,18 +19,26 @@ pytestmark = [
     pytest.mark.cli_sdk,
 ]
 
-# Test configuration
-HUB_BASE_URL = os.getenv("HUB_BASE_URL", "http://localhost:8000/api/v1")
-API_KEY = os.getenv("DATAHUB_API_KEY", "")
+# Test configuration — base URL honours API_BASE_URL for test Docker stack
+_HUB_BASE_URL = os.getenv(
+    "API_BASE_URL",
+    f"http://localhost:{os.getenv('API_TEST_PORT', '8001')}/api/v1",
+)
 
 
 @pytest.fixture(scope="module")
 def client():
-    """Create SDK client for testing"""
-    if not API_KEY:
+    """Create SDK client for testing.
+
+    Uses the canonical conftest helper which handles token validation,
+    auto-provisioning, and transparent refresh.
+    """
+    from tests.conftest import get_api_key
+    api_key = get_api_key()
+    if not api_key:
         pytest.skip("DATAHUB_API_KEY not set")
 
-    config = DataHubClientConfig(base_url=HUB_BASE_URL, api_token=API_KEY)
+    config = DataHubClientConfig(base_url=_HUB_BASE_URL, api_token=api_key)
     return DataHubClient(config)
 
 

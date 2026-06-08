@@ -10,15 +10,12 @@ import './App.css';
 import { AppProviders } from './app/providers/AppProviders';
 import { router } from './app/routes/routes';
 import { useAuthStore } from './features/auth/store/authStore';
-import { useCrossTabAuthSync } from './features/auth/hooks/useCrossTabAuthSync';
 import { ImpersonationBanner } from './features/admin/impersonation/ImpersonationBanner';
 import { APP_NAME } from './shared/constants/brand';
 import { ErrorBoundary } from './shared/components/ErrorBoundary';
 
 function App() {
   const { initialize } = useAuthStore();
-  // Phase 277.B.067 — sync auth tokens across browser tabs
-  useCrossTabAuthSync();
 
   useEffect(() => {
     document.title = APP_NAME;

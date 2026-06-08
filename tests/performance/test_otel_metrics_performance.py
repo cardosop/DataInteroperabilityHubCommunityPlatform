@@ -91,8 +91,8 @@ class MetricsOverheadPerformanceTest(TestCase):
         for i in range(1000):
             start_time = time.perf_counter()
             http_requests_total.labels(method='GET', route='/test/', status_class='2xx').inc()
-            jobs_started_total.labels(job_type='DQ_RUN', tenant_id=tenant_id).inc()
-            job_duration_seconds.labels(job_type='DQ_RUN', status='COMPLETED').observe(10.5)
+            jobs_started_total.labels(type='DQ_RUN', tenant_id=tenant_id).inc()
+            job_duration_seconds.labels(type='DQ_RUN', status='COMPLETED').observe(10.5)
             tenant_running_jobs.labels(tenant_id=tenant_id).set(5)
             end_time = time.perf_counter()
             times.append((end_time - start_time) * 1000000)  # Convert to microseconds
@@ -111,7 +111,7 @@ class MetricsOverheadPerformanceTest(TestCase):
         start_time = time.perf_counter()
         for i in range(10000):
             http_requests_total.labels(method='GET', route=f'/test{i%10}/', status_class='2xx').inc()
-            jobs_started_total.labels(job_type='DQ_RUN', tenant_id=tenant_id).inc()
+            jobs_started_total.labels(type='DQ_RUN', tenant_id=tenant_id).inc()
         end_time = time.perf_counter()
         
         duration = end_time - start_time
@@ -161,7 +161,7 @@ class MetricsMemoryPerformanceTest(TestCase):
         tenant_id = str(self.tenant.id)
         for i in range(1000):
             http_requests_total.labels(method='GET', route=f'/test{i}/', status_class='2xx').inc()
-            jobs_started_total.labels(job_type='DQ_RUN', tenant_id=tenant_id).inc()
+            jobs_started_total.labels(type='DQ_RUN', tenant_id=tenant_id).inc()
         
         # Get final memory
         gc.collect()
@@ -180,7 +180,7 @@ class MetricsMemoryPerformanceTest(TestCase):
         for iteration in range(10):
             for i in range(100):
                 http_requests_total.labels(method='GET', route=f'/test{i}/', status_class='2xx').inc()
-                jobs_started_total.labels(job_type='DQ_RUN', tenant_id=tenant_id).inc()
+                jobs_started_total.labels(type='DQ_RUN', tenant_id=tenant_id).inc()
             
             # Force garbage collection
             gc.collect()

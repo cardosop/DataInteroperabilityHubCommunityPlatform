@@ -90,8 +90,12 @@ def _seed_user(tenant, *, roles: list[str] | None = None):
         status=UserStatus.ACTIVE,
     )
     if roles is not None:
-        user.roles = roles
-        user.save(update_fields=["roles"])
+        from hub.apps.users.models import Role
+        for role_name in roles:
+            role = Role.objects.filter(tenant=tenant, name=role_name).first()
+            if not role:
+                role = Role.objects.create(tenant=tenant, name=role_name, description=f"{role_name} Role")
+            user.user_roles.create(role=role)
     return user
 
 

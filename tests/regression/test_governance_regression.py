@@ -26,7 +26,7 @@ class GovernanceRegressionTestBase(TestCase):
         super().setUp()
         self.client = APIClient()
         self.tenant = Tenant.objects.create(
-            name="Governance Regression Tenant",
+            name=f"Governance Regression Tenant {uuid.uuid4().hex[:8]}",
             slug="governance-regression",
         )
         self.user = User.objects.create_user(

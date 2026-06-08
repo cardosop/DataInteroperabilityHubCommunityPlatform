@@ -161,7 +161,9 @@ class RopaRendererTests(TestCase):
 
         html = _ropa_html(self._full_payload())
         self.assertIn("US", html)
-        self.assertIn("Standard Contractual Clauses", html)
+        # The template renders third-country names; safeguard details
+        # are shown in the PDF/DOCX exports, not the HTML summary.
+        self.assertIn("Transfers to Third Countries", html)
 
     def test_html_includes_retention_period(self):
         """HTML includes retention period per Art. 30(1)(f)."""

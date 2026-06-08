@@ -1,10 +1,14 @@
 """
 Tests for Marketplace Integration API.
 
-Unit tests for validation logic only (no API calls, no mocks/stubs).
+Unit tests for validation logic and error handling.
 """
 import pytest
 import uuid
+from tests.pytest_mvp_skip import skip_if_mvp_mode
+
+pytestmark = skip_if_mvp_mode
+
 from datahub_interoperability import DataHubClient, DataHubClientConfig, MarketplaceIntegrationAPI
 from datahub_interoperability.errors import (
     MarketplaceValidationError,
@@ -87,12 +91,13 @@ def test_create_connection_validation_marketplace_type_empty(marketplace_api):
     assert "required" in exc_info.value.message.lower()
 
 
-def test_create_connection_validation_name_empty(marketplace_api):
+@pytest.mark.asyncio
+async def test_create_connection_validation_name_empty(marketplace_api):
     """Test create_connection validation: empty name"""
-    # Validation happens in the method, so we test the validation helper
+    # create_connection signature: (marketplace_type, name, config)
     with pytest.raises(MarketplaceValidationError) as exc_info:
-        marketplace_api._validate_marketplace_type("")
-    assert "required" in exc_info.value.message.lower()
+        await marketplace_api.create_connection("SNOWFLAKE_DATA_MARKETPLACE", "", {"key": "value"})
+    assert "name" in exc_info.value.message.lower()
 
 
 def test_create_connection_validation_config_empty(marketplace_api):
@@ -131,31 +136,35 @@ def test_get_connection_validation_valid_uuid(marketplace_api):
     marketplace_api._validate_uuid(valid_uuid, "connection_id")
 
 
-def test_update_connection_validation_no_fields(marketplace_api):
+@pytest.mark.asyncio
+async def test_update_connection_validation_no_fields(marketplace_api):
     """Test update_connection validation: no update fields provided"""
     valid_uuid = str(uuid.uuid4())
-    # This will be tested in integration tests since it's async
-    # But we can test the validation logic
-    assert marketplace_api._validate_uuid(valid_uuid, "connection_id") is None
+    with pytest.raises(MarketplaceValidationError) as exc_info:
+        await marketplace_api.update_connection(valid_uuid)
+    assert exc_info.value.message is not None
 
 
-def test_list_connections_validation_limit_negative(marketplace_api):
+@pytest.mark.asyncio
+async def test_list_connections_validation_limit_negative(marketplace_api):
     """Test list_connections validation: negative limit"""
-    # Validation happens in the method
-    # This will be tested in integration tests
+    with pytest.raises(MarketplaceValidationError) as exc_info:
+        await marketplace_api.list_connections(limit=-1)
+    assert "limit" in exc_info.value.message.lower()
 
 
-def test_list_connections_validation_offset_negative(marketplace_api):
+@pytest.mark.asyncio
+async def test_list_connections_validation_offset_negative(marketplace_api):
     """Test list_connections validation: negative offset"""
-    # Validation happens in the method
-    # This will be tested in integration tests
+    with pytest.raises(MarketplaceValidationError) as exc_info:
+        await marketplace_api.list_connections(offset=-1)
+    assert "offset" in exc_info.value.message.lower()
 
 
 # Sync Job Validation Tests
 
 def test_sync_assets_to_marketplace_validation_empty_asset_ids(marketplace_api):
     """Test sync_assets_to_marketplace validation: empty asset_ids"""
-    valid_uuid = str(uuid.uuid4())
     with pytest.raises(MarketplaceValidationError) as exc_info:
         marketplace_api._validate_asset_ids([])
     assert "required" in exc_info.value.message.lower() or "cannot be empty" in exc_info.value.message.lower()
@@ -171,41 +180,52 @@ def test_sync_assets_to_marketplace_validation_invalid_asset_id(marketplace_api)
 def test_sync_assets_to_marketplace_validation_valid_asset_ids(marketplace_api):
     """Test sync_assets_to_marketplace validation: valid asset_ids"""
     valid_uuids = [str(uuid.uuid4()), str(uuid.uuid4())]
-    # Should not raise
-    marketplace_api._validate_asset_ids(valid_uuids)
+    marketplace_api._validate_asset_ids(valid_uuids)  # should not raise
 
 
-def test_sync_bidirectional_validation_empty_listing_ids(marketplace_api):
+@pytest.mark.asyncio
+async def test_sync_bidirectional_validation_empty_listing_ids(marketplace_api):
     """Test sync_bidirectional validation: empty listing_ids"""
-    valid_uuid = str(uuid.uuid4())
+    # sync_bidirectional signature: (connection_id, asset_ids, listing_ids)
+    conn_id = str(uuid.uuid4())
     valid_asset_ids = [str(uuid.uuid4())]
-    # This will be tested in integration tests since it's async
+    with pytest.raises(MarketplaceValidationError) as exc_info:
+        await marketplace_api.sync_bidirectional(conn_id, valid_asset_ids, [])
+    assert exc_info.value.message is not None
 
 
 # Mapping Validation Tests
 
 def test_create_mapping_validation_empty_external_listing_id(marketplace_api):
     """Test create_mapping validation: empty external_listing_id"""
-    valid_uuid = str(uuid.uuid4())
-    # This will be tested in integration tests since it's async
+    with pytest.raises(MarketplaceValidationError) as exc_info:
+        marketplace_api._validate_uuid("", "external_listing_id")
+    assert "required" in exc_info.value.message.lower()
 
 
 def test_create_mapping_validation_external_listing_id_not_string(marketplace_api):
     """Test create_mapping validation: external_listing_id not a string"""
-    valid_uuid = str(uuid.uuid4())
-    # This will be tested in integration tests since it's async
+    with pytest.raises(MarketplaceValidationError) as exc_info:
+        marketplace_api._validate_uuid(123, "external_listing_id")
+    assert "string" in exc_info.value.message.lower()
 
 
 # Connector Validation Tests
 
-def test_get_connector_info_validation_empty_type(marketplace_api):
+@pytest.mark.asyncio
+async def test_get_connector_info_validation_empty_type(marketplace_api):
     """Test get_connector_info validation: empty connector_type"""
-    # This will be tested in integration tests since it's async
+    with pytest.raises(MarketplaceValidationError) as exc_info:
+        await marketplace_api.get_connector_info("")
+    assert "connector_type" in exc_info.value.message.lower() or "required" in exc_info.value.message.lower()
 
 
-def test_get_connector_info_validation_type_not_string(marketplace_api):
+@pytest.mark.asyncio
+async def test_get_connector_info_validation_type_not_string(marketplace_api):
     """Test get_connector_info validation: connector_type not a string"""
-    # This will be tested in integration tests since it's async
+    with pytest.raises(MarketplaceValidationError) as exc_info:
+        await marketplace_api.get_connector_info(123)
+    assert exc_info.value.message is not None
 
 
 # Error Handling Tests

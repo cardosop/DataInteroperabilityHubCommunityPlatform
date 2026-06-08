@@ -8,7 +8,6 @@ from datetime import timedelta
 
 import pytest
 from django.contrib.auth import get_user_model
-from django.core.cache import cache
 from django.test import TestCase
 from django.utils import timezone
 from rest_framework import status
@@ -192,7 +191,7 @@ class AuthenticationFlowsTest(TestCase):
             "/api/v1/auth/refresh/", {"refresh_token": refresh_token_str}, format="json"
         )
 
-        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
 
     def test_logout(self):
         """Test logout"""

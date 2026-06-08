@@ -9,6 +9,7 @@ Uses real API client and backend; no mocks or stubs.
 """
 
 import pytest
+import uuid
 from django.test import TestCase
 from rest_framework import status
 from rest_framework.test import APIClient
@@ -28,13 +29,13 @@ class AISecurityTestBase(TestCase):
         self.client = APIClient()
         self.tenant_a = Tenant.objects.create(
             name="AI Security Tenant A",
-            slug="ai-security-tenant-a",
+            slug=f"ai-security-tenant-a-{uuid.uuid4().hex[:8]}",
             status=TenantStatus.ACTIVE,
             kyc_status=KYCStatus.VERIFIED,
         )
         self.tenant_b = Tenant.objects.create(
             name="AI Security Tenant B",
-            slug="ai-security-tenant-b",
+            slug=f"ai-security-tenant-b-{uuid.uuid4().hex[:8]}",
             status=TenantStatus.ACTIVE,
             kyc_status=KYCStatus.VERIFIED,
         )

@@ -25,12 +25,20 @@ from tests.use_cases._api_helpers import api_base_url
 # Helpers
 # ---------------------------------------------------------------------------
 
+def _e2e_token() -> str:
+    """Return the E2E shared secret for /test/ensure-e2e-* endpoints."""
+    import os as _os
+    return _os.environ.get("E2E_TEST_SECRET", "e2e-test-secret-for-local-dev")
+
+
 def _auth_headers(
-    token: str, tenant_id: str | None = None,
+    token: str, tenant_id: str | None = None, *, e2e: bool = False,
 ) -> dict:
     headers = {"Authorization": f"Bearer {token}"}
     if tenant_id:
         headers["X-Tenant-Id"] = str(tenant_id)
+    if e2e:
+        headers["X-E2E-Token"] = _e2e_token()
     return headers
 
 
@@ -39,42 +47,60 @@ def _setup_two_tenants(creds: PersonaCredentials):
 
     Returns (primary_tenant_id, secondary_tenant_id) or calls
     pytest.skip if multi-tenant setup is not available.
-    """
-    base = api_base_url()
-    resp = requests.post(
-        f"{base}/test/ensure-e2e-tenant-switch-setup/",
-        headers={"Authorization": f"Bearer {creds.api_key}"},
-        json={},
-        timeout=15,
-    )
 
-    if resp.status_code == 404:
-        pytest.skip(
-            "E2E tenant-switch-setup helper not available (404)"
+    When earlier tests have invalidated the persona's cached JWT
+    (token_version bump), the helper re-provisions fresh credentials
+    and retries once.
+    """
+    current_creds = creds
+
+    for attempt in range(2):
+        base = api_base_url()
+        resp = requests.post(
+            f"{base}/test/ensure-e2e-tenant-switch-setup/",
+            headers=_auth_headers(current_creds.api_key, e2e=True),
+            json={},
+            timeout=15,
         )
 
-    if resp.status_code != 200:
+        if resp.status_code == 200:
+            body = resp.json()
+            primary = body.get("primary_tenant_id")
+            secondary = body.get("secondary_tenant_id")
+
+            if not primary or not secondary:
+                pytest.skip(
+                    f"Tenant setup did not return two tenant IDs: {body}"
+                )
+            if primary == secondary:
+                pytest.skip(
+                    "Primary and secondary tenants are the same "
+                    "-- isolation test not possible"
+                )
+            return primary, secondary
+
+        if resp.status_code == 404:
+            pytest.skip(
+                "E2E tenant-switch-setup helper not available (404)"
+            )
+
+        # Any non-404, non-200 error — force fresh persona login
+        # (bypass cache) and retry once.
+        if attempt == 0:
+            from tests._persona_provisioning import _CACHE_DIR as _cdir
+            import glob as _glob, pathlib as _pl
+            role = current_creds.role
+            for _f in _glob.glob(str(_cdir / f"*{role}*.json")):
+                _pl.Path(_f).unlink(missing_ok=True)
+            current_creds = provision_persona(role)
+            continue
+
         pytest.skip(
             f"E2E tenant-switch-setup returned "
             f"{resp.status_code}: {resp.text[:200]}"
         )
 
-    body = resp.json()
-    primary = body.get("primary_tenant_id")
-    secondary = body.get("secondary_tenant_id")
-
-    if not primary or not secondary:
-        pytest.skip(
-            f"Tenant setup did not return two tenant IDs: {body}"
-        )
-
-    if primary == secondary:
-        pytest.skip(
-            "Primary and secondary tenants are the same "
-            "-- isolation test not possible"
-        )
-
-    return primary, secondary
+    pytest.skip("E2E tenant-switch-setup failed after retry")
 
 
 # ===========================================================================
@@ -86,7 +112,7 @@ def test_asset_invisible_across_tenants():
     """Create an asset in tenant A, then try to GET it from tenant B.
     Tenant B should receive 404 (or an empty result).
     """
-    creds = provision_persona("tenant_admin")
+    creds = provision_persona("tenant_admin")  # noqa: PHASE216-STATIC-ID
     tenant_a, tenant_b = _setup_two_tenants(creds)
     base = api_base_url()
 
@@ -130,7 +156,7 @@ def test_asset_list_does_not_leak_across_tenants():
     """List assets from tenant B and verify that an asset created in
     tenant A does not appear in the listing.
     """
-    creds = provision_persona("tenant_admin")
+    creds = provision_persona("tenant_admin")  # noqa: PHASE216-STATIC-ID
     tenant_a, tenant_b = _setup_two_tenants(creds)
     base = api_base_url()
 
@@ -179,18 +205,40 @@ def test_contract_invisible_across_tenants():
     """Create a contract in tenant A, then try to GET it from
     tenant B.  Tenant B should receive 404.
     """
-    creds = provision_persona("tenant_admin")
+    creds = provision_persona("tenant_admin")  # noqa: PHASE216-STATIC-ID
     tenant_a, tenant_b = _setup_two_tenants(creds)
     base = api_base_url()
 
-    # Create contract in tenant A
+    # Create contract in tenant A.  The ODCS normaliser requires a valid
+    # Open Data Contract Standard document with ``schema.fields[]`` so the
+    # structural-floor check passes.
+    import json as _json
     contract_name = fresh_id("iso-contract")
+    odcs_doc = {
+        "apiVersion": "odcs/v3",
+        "kind": "Contract",
+        "id": contract_name,
+        "name": contract_name,
+        "hub_contract_version": "1.0.0",
+        "info": {
+            "name": contract_name,
+            "description": "Cross-tenant isolation test contract",
+        },
+        "schema": {
+            "fields": [
+                {"name": "id", "type": "string", "description": "Primary key"},
+                {"name": "value", "type": "integer", "description": "Test value"},
+            ],
+        },
+    }
     create_resp = requests.post(
         f"{base}/contracts/",
         headers=_auth_headers(creds.api_key, tenant_a),
         json={
             "name": contract_name,
             "description": "Cross-tenant isolation test contract",
+            "original_raw": _json.dumps(odcs_doc),
+            "original_format": "JSON",
         },
         timeout=15,
     )
@@ -225,17 +273,37 @@ def test_compliance_run_invisible_across_tenants():
     """Create a compliance run in tenant A, then try to GET it from
     tenant B.  Tenant B should receive 404.
     """
-    creds = provision_persona("tenant_admin")
+    creds = provision_persona("tenant_admin")  # noqa: PHASE216-STATIC-ID
     tenant_a, tenant_b = _setup_two_tenants(creds)
     base = api_base_url()
+
+    # First create a test asset in tenant A so the compliance run has
+    # a resource to scan.  (ComplianceRunCreateSerializer requires at
+    # least one of asset_id / dataset_id / file_id.)
+    asset_key = fresh_id("iso-comp-asset")
+    asset_resp = requests.post(
+        f"{base}/assets/",
+        headers=_auth_headers(creds.api_key, tenant_a),
+        json={
+            "name": f"Compliance Asset {asset_key}",
+            "key": asset_key,
+            "description": "Asset for compliance isolation test",
+            "visibility": "INTERNAL",
+        },
+        timeout=15,
+    )
+    assert asset_resp.status_code in (200, 201), (
+        f"Asset creation for compliance test failed: "
+        f"{asset_resp.status_code}: {asset_resp.text[:200]}"
+    )
+    asset_id = asset_resp.json().get("id") or asset_resp.json().get("key")
 
     # Trigger a compliance run in tenant A
     run_resp = requests.post(
         f"{base}/compliance/runs/",
         headers=_auth_headers(creds.api_key, tenant_a),
         json={
-            "name": fresh_id("iso-compliance"),
-            "description": "Cross-tenant isolation compliance run",
+            "asset_id": asset_id,
         },
         timeout=15,
     )

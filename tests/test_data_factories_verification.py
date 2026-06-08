@@ -4,6 +4,7 @@ Verification tests for test data factories and management utilities.
 Tests that factories work correctly and can create test data.
 """
 import pytest
+import uuid
 from django.test import TestCase, TransactionTestCase
 from django.db import transaction
 
@@ -108,7 +109,7 @@ class TestDataManagementVerificationTest(TestCase):
 
         # Create tenant with complete data
         tenant = manager.create_complete_tenant_data(
-            tenant_name="Test Manager Tenant",
+            tenant_name=f"Test Manager Tenant {uuid.uuid4().hex[:8]}",
             asset_count=2,
             contract_count=2,
             dataset_count=1,

@@ -466,7 +466,7 @@ class TestClassificationPropagation(TestCase):
         """link_model_to_dataset calls propagate_classification for PII datasets."""
         from hub.apps.datasets.models import Dataset
         from hub.apps.assets.models import Asset
-        from hub.apps.ml.models import MLModel
+        from hub.apps.ml.models import MLModel, ModelDatasetLink
         from hub.apps.ml.services import ModelRegistryBridgeService
 
         dataset = Dataset.objects.create(
@@ -512,6 +512,18 @@ class TestClassificationPropagation(TestCase):
             dataset_id=str(dataset.id),
             role="TRAINING",
         )
+
+        # Verify the ModelDatasetLink was actually created
+        link = ModelDatasetLink.objects.filter(
+            model=model,
+            dataset=dataset,
+            role="TRAINING",
+        )
+        assert link.exists(), (
+            "Expected ModelDatasetLink row to be created with role=TRAINING"
+        )
+        assert link.first().model == model
+        assert link.first().dataset == dataset
 
         # Classification should have propagated from dataset to model's asset
         target_classification = DataClassification.objects.filter(

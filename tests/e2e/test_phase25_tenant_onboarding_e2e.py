@@ -13,6 +13,7 @@ Coverage:
 """
 
 import pytest
+import uuid
 
 pytestmark = pytest.mark.slow
 from django.test import TestCase
@@ -53,7 +54,7 @@ class Phase25TenantOnboardingE2ETest(TestCase):
         # Create a platform admin tenant + user for onboarding requests.
         # The onboarding endpoint requires IsAuthenticated + PLATFORM_ADMIN role.
         platform_tenant, _ = Tenant.objects.get_or_create(
-            slug="platform-admin-tenant",
+            slug=f"platform-admin-tenant-{uuid.uuid4().hex[:8]}",
             defaults={"name": "Platform Admin Tenant", "status": TenantStatus.ACTIVE},
         )
         self.platform_admin = User.objects.create_user(
@@ -146,7 +147,7 @@ class Phase25TenantOnboardingE2ETest(TestCase):
         """Test that duplicate tenant slug fails"""
         # Create existing tenant
         Tenant.objects.create(
-            name="Existing Tenant",
+            name=f"Existing Tenant {uuid.uuid4().hex[:8]}",
             slug="duplicate-e2e-slug",
             status=TenantStatus.ACTIVE,
         )

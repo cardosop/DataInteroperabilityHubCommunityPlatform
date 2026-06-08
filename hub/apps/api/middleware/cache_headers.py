@@ -379,14 +379,18 @@ class CacheHeadersMiddleware(MiddlewareMixin):
             '/api/v1/marketplace/search' in request.path
         )
 
-        # Add cache headers
-        if etag:
+        # Add cache headers (skip any the view already set — the view's
+        # author knows best for that endpoint).
+        if etag and not response.has_header("ETag"):
             response['ETag'] = etag
 
-        if last_modified:
+        if last_modified and not response.has_header("Last-Modified"):
             response['Last-Modified'] = http_date(last_modified.timestamp())
 
-        # Add Cache-Control header
+        # Add Cache-Control header (skip if view already set one explicitly).
+        if response.has_header("Cache-Control"):
+            return response
+
         cache_control = get_cache_control_for_path(request.path, is_public=is_public)
         if cache_control:
             response['Cache-Control'] = cache_control

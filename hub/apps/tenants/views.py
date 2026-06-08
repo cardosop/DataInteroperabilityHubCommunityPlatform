@@ -19,11 +19,12 @@ from hub.apps.audit import event_types as audit_event_types
 from hub.apps.audit.utils import create_audit_event, log_tenant_operation
 from hub.apps.compliance.models import RiskLevel
 from hub.apps.auth.permissions import HasRole
+from hub.apps.billing.serializers import TenantPlanAdminSerializer
 from hub.apps.billing.services import SubscriptionService
 from hub.apps.core.responses import handle_service_exception
 from hub.apps.core.services.base import ServiceError
 
-from .models import Tenant, TenantConfig, TenantStatus
+from .models import PlanCategory, Tenant, TenantConfig, TenantPlan, TenantStatus
 from .permissions import IsPlatformAdmin
 from .request_tenant import get_request_tenant_id
 from .serializers import (
@@ -315,15 +316,38 @@ class TenantViewSet(viewsets.ModelViewSet):
     def _hard_delete_tenant_cascade(self, request, tenant: Tenant):
         """E2E / operator hard-delete — DB CASCADE + storage purge callbacks (Phase 260.1.F).
 
-        Audit placement: ``tenant.delete()`` runs first so ``pre_delete`` emits every
-        ``FILE_TENANT_OFFBOARD_PURGE_SCHEDULED`` while the Tenant FK is still valid; the
-        operator summary row is appended after the row hard-delete completes.
+        Audit placement: per-file ``FILE_TENANT_OFFBOARD_PURGE_SCHEDULED`` audit
+        events are emitted BEFORE ``tenant.delete()`` so the Tenant FK is still valid;
+        the operator summary row is appended after the row hard-delete completes.
         """
+        from hub.apps.files.models import File
         from hub.apps.users.models import User
 
         tid = tenant.pk
         slug = getattr(tenant, "slug", None)
         tenant_id_str = str(tid)
+
+        # Emit per-file audit events before cascade delete
+        files = File.objects.filter(tenant_id=tid)
+        for f in files:
+            create_audit_event(
+                resource_type="FILE",
+                action=audit_event_types.FILE_TENANT_OFFBOARD_PURGE_SCHEDULED,
+                actor_user=request.user,
+                tenant=tenant,
+                resource_id=str(f.id),
+                details={
+                    "tenant_id": tenant_id_str,
+                    "file_id": str(f.id),
+                    "name": f.name,
+                    "size": f.size if f.size else 0,
+                    "content_sha256": getattr(f, "content_sha256", "") or "",
+                    "storage_path": getattr(f, "storage_path", "") or "",
+                    "reason": "tenant_hard_delete",
+                },
+                request=request,
+            )
+
         User.objects.filter(tenant_id=tid).delete()
         tenant.delete()
         create_audit_event(
@@ -1129,13 +1153,39 @@ class TenantConfigViewSet(viewsets.ViewSet):
             "plan_tier": plan.tier if plan else None,
         }
 
-        # D232.16 — commercial Compliance Pro packaging on the subscription plan (read-only here).
+        # D232.16 — commercial Compliance Pro packaging on the subscription plan.
         response_data["plan_compliance_pro_pack"] = (
             bool(plan.compliance_pro_pack) if plan else False
         )
 
+        # Phase 285.13.8 — threshold / overall status
+        if quota_warnings:
+            response_data["threshold_status"] = "warning"
+            response_data["overall_status"] = "warning"
+        else:
+            response_data["threshold_status"] = "ok"
+            response_data["overall_status"] = "ok"
+
+        # Phase 285.13.8 — upgrade recommendations
+        if plan:
+            current_order = getattr(plan, "order", 0) or 0
+            current_cat = getattr(plan, "category", "") or ""
+            from hub.apps.tenants.models import TenantPlan as _TP
+            upgrades = _TP.objects.filter(
+                is_active=True, category=current_cat, order__gt=current_order,
+            ).order_by("order").values_list("slug", flat=True)
+            response_data["upgrade_recommendation"] = list(upgrades)
+        else:
+            response_data["upgrade_recommendation"] = []
+
         serializer = TenantUsageSerializer(response_data)
-        return Response(serializer.data, status=status.HTTP_200_OK)
+        data = serializer.data
+
+        # Phase 285.13.8 — response-level caching
+        from django.core.cache import cache as _dj_cache
+        _dj_cache.set(f"tenant_usage_response:{tenant_id}", data, timeout=60)
+
+        return Response(data, status=status.HTTP_200_OK)
 
     # ------------------------------------------------------------------
     # Phase 278.B.2 — Seed sample data for empty-list activation
@@ -1223,6 +1273,206 @@ class TenantConfigViewSet(viewsets.ViewSet):
             },
             status=status.HTTP_201_CREATED if created_any else status.HTTP_200_OK,
         )
+
+    # ------------------------------------------------------------------
+    # Phase 285.13.8 — Self-serve plan management endpoints
+    # ------------------------------------------------------------------
+
+    def me_plan(self, request):
+        """GET /api/v1/tenants/me/plan/ — current plan info."""
+        tenant_id = get_request_tenant_id(request)
+        if not tenant_id:
+            return Response({"error": "Tenant context required"}, status=400)
+        tenant = Tenant.objects.get(id=tenant_id)
+        plan = tenant.plan
+        if not plan:
+            plan = TenantPlan.objects.filter(slug="free", is_active=True).first()
+        if not plan:
+            return Response({"error": "No plan assigned"}, status=404)
+        serializer = TenantPlanAdminSerializer(plan)
+        data = serializer.data
+        # Attach tier profile if present
+        if hasattr(plan, "tier_profile") and plan.tier_profile is not None:
+            tp = plan.tier_profile
+            data["tier_profile"] = {
+                "headline": tp.headline, "is_public": tp.is_public,
+                "self_serve": tp.self_serve, "sort_order": tp.sort_order,
+            }
+        # Nest under "plan" key per test expectations
+        return Response({"plan": data})
+
+    def me_plan_available_upgrades(self, request):
+        """GET /api/v1/tenants/me/plan/available-upgrades/ — upgradable plans."""
+        tenant_id = get_request_tenant_id(request)
+        if not tenant_id:
+            return Response({"error": "Tenant context required"}, status=400)
+        tenant = Tenant.objects.get(id=tenant_id)
+        current = tenant.plan
+        current_order = getattr(current, "order", 0) or 0
+        # Respect ?category= query param; default to current plan's category
+        requested_cat = request.query_params.get("category", "")
+        current_cat = requested_cat or getattr(current, "category", "") or ""
+
+        # Available: active plans in the chosen category with order > current
+        candidates = TenantPlan.objects.filter(
+            is_active=True, category=current_cat, order__gt=current_order,
+        ).select_related("tier_profile").order_by("order")
+
+        def _serialize(p):
+            d = TenantPlanAdminSerializer(p).data
+            d.pop("flsc_estimate_cents", None)
+            d.pop("markup_bps", None)
+            d.pop("stripe_product_id", None)
+            d.pop("stripe_price_id", None)
+            if hasattr(p, "tier_profile") and p.tier_profile is not None:
+                d["tier_profile"] = {
+                    "headline": p.tier_profile.headline,
+                    "is_public": p.tier_profile.is_public,
+                    "self_serve": p.tier_profile.self_serve,
+                    "sort_order": p.tier_profile.sort_order,
+                }
+            return d
+
+        return Response([_serialize(p) for p in candidates])
+
+    def me_plan_upgrade(self, request):
+        """POST /api/v1/tenants/me/plan/upgrade/ — upgrade to a plan."""
+        tenant_id = get_request_tenant_id(request)
+        if not tenant_id:
+            return Response({"error": "Tenant context required"}, status=400)
+        target_slug = request.data.get("plan_slug", "")
+        if not target_slug:
+            return Response({"error": "plan_slug required"}, status=400)
+        target = TenantPlan.objects.filter(slug=target_slug, is_active=True).first()
+        if not target:
+            return Response({"error": f"Plan '{target_slug}' not found"}, status=404)
+
+        tenant = Tenant.objects.get(id=tenant_id)
+        current = tenant.plan
+        if current and getattr(current, "order", 0) >= getattr(target, "order", 0):
+            return Response(
+                {"error": "Target plan must have higher order than current"},
+                status=400,
+            )
+
+        tenant.plan = target
+        tenant.save(update_fields=["plan"])
+        from hub.apps.audit.utils import create_audit_event
+        from hub.apps.audit.event_types import TENANT_PLAN_UPGRADED
+        create_audit_event(
+            resource_type="TENANT",
+            action=TENANT_PLAN_UPGRADED,
+            actor_user=request.user,
+            tenant=tenant,
+            resource_id=str(tenant.id),
+            details={"from_slug": getattr(current, "slug", None),
+                     "to_slug": target.slug},
+            request=request,
+        )
+        return Response({"plan_slug": target.slug, "message": "Plan upgraded"})
+
+    def me_plan_downgrade(self, request):
+        """POST /api/v1/tenants/me/plan/downgrade/ — downgrade with validation."""
+        tenant_id = get_request_tenant_id(request)
+        if not tenant_id:
+            return Response({"error": "Tenant context required"}, status=400)
+        target_slug = request.data.get("plan_slug", "")
+        if not target_slug:
+            return Response({"error": "plan_slug required"}, status=400)
+        target = TenantPlan.objects.filter(slug=target_slug, is_active=True).first()
+        if not target:
+            return Response({"error": f"Plan '{target_slug}' not found"}, status=404)
+
+        tenant = Tenant.objects.get(id=tenant_id)
+        # Validate downgrade
+        from hub.apps.billing.services import PlanLimitService as BillingPlanLimitService
+        result = BillingPlanLimitService.validate_downgrade(str(tenant.id), target)
+        if not result.is_valid:
+            return Response(
+                {"error": "Downgrade validation failed", "details": result.errors},
+                status=400,
+            )
+        if result.details:
+            # Include warnings in response
+            pass  # warnings are advisory
+
+        old_slug = getattr(tenant.plan, "slug", None)
+        tenant.plan = target
+        tenant.save(update_fields=["plan"])
+        from hub.apps.audit.utils import create_audit_event
+        from hub.apps.audit.event_types import TENANT_PLAN_DOWNGRADED
+        create_audit_event(
+            resource_type="TENANT",
+            action=TENANT_PLAN_DOWNGRADED,
+            actor_user=request.user,
+            tenant=tenant,
+            resource_id=str(tenant.id),
+            details={"from_slug": old_slug, "to_slug": target.slug},
+            request=request,
+        )
+        return Response({
+            "plan_slug": target.slug,
+            "message": "Plan downgraded",
+            "warnings": list(result.details.keys()) if result.details else [],
+        })
+
+    def me_plan_available_ml_addons(self, request):
+        """GET /api/v1/tenants/me/plan/available-ml-addons/ — ML add-on plans."""
+        from hub.apps.billing.models import Subscription, SubscriptionStatus
+
+        tenant_id = get_request_tenant_id(request)
+        if not tenant_id:
+            return Response({"error": "Tenant context required"}, status=400)
+        tenant = Tenant.objects.get(id=tenant_id)
+
+        # Check for existing ML subscription — return 409 Conflict
+        has_ml = Subscription.objects.filter(
+            tenant=tenant,
+            plan__category=PlanCategory.ML_AI,
+            status__in=[SubscriptionStatus.ACTIVE, SubscriptionStatus.TRIAL,
+                        SubscriptionStatus.PAST_DUE],
+        ).exists()
+        if has_ml:
+            return Response(
+                {"error": "Tenant already has an active ML add-on plan."},
+                status=409,
+            )
+
+        # Check if tenant has a qualifying base plan via subscription
+        base_sub = Subscription.objects.filter(
+            tenant=tenant,
+            plan__category=PlanCategory.BASE,
+            status__in=[SubscriptionStatus.ACTIVE, SubscriptionStatus.TRIAL,
+                        SubscriptionStatus.PAST_DUE],
+        ).select_related("plan").first()
+        base_order = getattr(base_sub.plan if base_sub else None, "order", 0) or 0
+        if base_order < 1:
+            return Response(
+                {"error": "ML/AI plans require at least a Starter plan."},
+                status=400,
+            )
+
+        ml_plans = TenantPlan.objects.filter(
+            is_active=True,
+            category=PlanCategory.ML_AI,
+        ).select_related("tier_profile").order_by("order")
+
+        def _serialize(p):
+            d = TenantPlanAdminSerializer(p).data
+            d.pop("flsc_estimate_cents", None)
+            d.pop("markup_bps", None)
+            d.pop("stripe_product_id", None)
+            d.pop("stripe_price_id", None)
+            if hasattr(p, "tier_profile") and p.tier_profile is not None:
+                d["tier_profile"] = {
+                    "headline": p.tier_profile.headline,
+                    "is_public": p.tier_profile.is_public,
+                    "self_serve": p.tier_profile.self_serve,
+                    "sort_order": p.tier_profile.sort_order,
+                }
+            return d
+
+        return Response([_serialize(p) for p in ml_plans])
 
     # ------------------------------------------------------------------
     # Phase 270.D.3 — Tax & Billing Identity surface

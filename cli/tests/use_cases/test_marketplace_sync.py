@@ -196,7 +196,7 @@ class TestMarketplaceSyncWorkflowsE2E(LiveServerTestCase):
         sync_data = {
             'connection_id': str(connection_id),
             'direction': SyncDirection.PUSH.value,
-            'asset_ids': []
+            'asset_ids': []  # noqa: PHASE216-STATIC-ID
         }
         response = requests.post(url, json=sync_data, headers=self._get_auth_headers())
         if response.status_code == 201:
@@ -287,7 +287,7 @@ class TestMarketplaceSyncWorkflowsE2E(LiveServerTestCase):
             sync_data = {
                 'connection_id': str(connection_id),
                 'direction': SyncDirection.PUSH.value,
-                'asset_ids': []
+                'asset_ids': []  # noqa: PHASE216-STATIC-ID
             }
             response = requests.post(url, json=sync_data, headers=self._get_auth_headers())
             if response.status_code == 201:
@@ -378,7 +378,7 @@ class TestMarketplaceSyncWorkflowsE2E(LiveServerTestCase):
         sync_data = {
             'connection_id': str(connection_id),
             'direction': SyncDirection.PUSH.value,
-            'asset_ids': []
+            'asset_ids': []  # noqa: PHASE216-STATIC-ID
         }
         response = requests.post(url, json=sync_data, headers=self._get_auth_headers())
         if response.status_code == 201:

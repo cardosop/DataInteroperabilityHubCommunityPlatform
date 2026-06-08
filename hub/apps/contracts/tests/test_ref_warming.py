@@ -68,20 +68,7 @@ from hub.apps.contracts.ref_warming import (
 )
 
 
-def get_real_redis_client_or_none():
-    """Get real Redis client or return None if unavailable."""
-    try:
-        redis_url = getattr(settings, "REDIS_URL", None) or "redis://redis-cache-test:6379/0"
-        client = redis.from_url(
-            redis_url,
-            decode_responses=False,  # Keep binary for JSON storage
-            socket_connect_timeout=2,
-            socket_timeout=2,
-        )
-        client.ping()
-        return client
-    except Exception:
-        return None
+from hub.apps.contracts.tests.test_base import get_real_redis_client_or_none
 
 
 class RefWarmingTestBase(TestCase):
@@ -89,7 +76,8 @@ class RefWarmingTestBase(TestCase):
 
     def setUp(self):
         """Set up test fixtures."""
-        self.tenant_id = "test-tenant-123"
+        import uuid as _uuid
+        self.tenant_id = f"test-tenant-{_uuid.uuid4().hex[:8]}"
         self.config = ODPSRefsConfig()
         self.config._config_data = {
             "url_allowlist": ["https://example.com", "https://test.com"],
@@ -115,7 +103,8 @@ class RefWarmingTestBaseWithRedis(TransactionTestCase):
     def setUp(self):
         """Set up test fixtures."""
         super().setUp()
-        self.tenant_id = "test-tenant-123"
+        import uuid as _uuid
+        self.tenant_id = f"test-tenant-{_uuid.uuid4().hex[:8]}"
         self.config = ODPSRefsConfig()
         self.config._config_data = {
             "url_allowlist": ["https://example.com", "https://test.com"],
@@ -127,20 +116,15 @@ class RefWarmingTestBaseWithRedis(TransactionTestCase):
         if self.redis_client is None:
             self.skipTest("Redis not available for integration tests")
 
-        # Clear cache before each test
+        # Clear cache + rate-limit keys before each test so ``--keepdb``
+        # Redis state from prior batch runs doesn't pollute this one.
         try:
-            keys = self.redis_client.keys(f"{REDIS_CACHE_PREFIX}*")
-            if keys:
-                self.redis_client.delete(*keys)
-            keys = self.redis_client.keys(f"{REDIS_CACHE_INDEX_PREFIX}*")
-            if keys:
-                self.redis_client.delete(*keys)
-            keys = self.redis_client.keys(f"{REDIS_CACHE_STATS_PREFIX}*")
-            if keys:
-                self.redis_client.delete(*keys)
-            keys = self.redis_client.keys(f"{REDIS_CACHE_ACCESS_PREFIX}*")
-            if keys:
-                self.redis_client.delete(*keys)
+            for prefix in (REDIS_CACHE_PREFIX, REDIS_CACHE_INDEX_PREFIX,
+                           REDIS_CACHE_STATS_PREFIX, REDIS_CACHE_ACCESS_PREFIX,
+                           "odps_ref_rate_limit:"):
+                keys = self.redis_client.keys(f"{prefix}*")
+                if keys:
+                    self.redis_client.delete(*keys)
         except Exception:
             pass
 
@@ -184,17 +168,10 @@ class GetFrequentlyAccessedRefsTest(RefWarmingTestBase):
     """Tests for getting frequently accessed refs."""
 
     def test_get_frequently_accessed_refs_no_redis(self):
-        """Test that function handles Redis unavailability gracefully."""
-        # Function should handle Redis unavailability gracefully
-        # If Redis is unavailable, it should return empty list
-        try:
-            refs = get_frequently_accessed_refs(limit=100)
-            # Should return empty list if Redis unavailable or no refs exist
-            self.assertIsInstance(refs, list)
-        except Exception:
-            # If function raises exception when Redis unavailable, that's also acceptable
-            # The important thing is that it handles gracefully
-            pass
+        """Function returns a list — handles both Redis-available and
+        Redis-unavailable paths without raising an exception."""
+        refs = get_frequently_accessed_refs(limit=100)
+        self.assertIsInstance(refs, list)
 
 
 @override_settings(REDIS_URL="redis://redis-cache-test:6379/0")
@@ -239,8 +216,11 @@ class GetFrequentlyAccessedRefsTestWithRedis(RefWarmingTestBaseWithRedis):
         # Get frequently accessed refs using real Redis
         refs = get_frequently_accessed_refs(limit=100)
 
-        # We seeded access data above, so refs should contain results
-        self.assertGreater(len(refs), 0)
+        # We seeded exactly 2 URLs above — both must be present
+        self.assertEqual(len(refs), 2,
+            f"Expected exactly 2 refs, got {len(refs)}: {refs}")
+        self.assertIn(url1, refs, "url1 must be in frequently accessed refs")
+        self.assertIn(url2, refs, "url2 must be in frequently accessed refs")
 
     def test_get_frequently_accessed_refs_min_access_count(self):
         """
@@ -270,8 +250,13 @@ class GetFrequentlyAccessedRefsTestWithRedis(RefWarmingTestBaseWithRedis):
         # Get frequently accessed refs with min_access_count using real Redis
         refs = get_frequently_accessed_refs(limit=100, min_access_count=5)
 
-        # We seeded url1 with count=10 (above threshold), so should have results
-        self.assertGreater(len(refs), 0)
+        # url1 has count=10 (>=5), url2 has count=3 (<5) — only url1 must be present
+        self.assertEqual(len(refs), 1,
+            f"Expected exactly 1 ref (min_access_count=5), got {len(refs)}: {refs}")
+        self.assertIn(url1, refs,
+            "url1 (count=10) must be present with min_access_count=5")
+        self.assertNotIn(url2, refs,
+            "url2 (count=3) must be excluded by min_access_count=5 filter")
 
     def test_get_frequently_accessed_refs_limit(self):
         """
@@ -294,9 +279,9 @@ class GetFrequentlyAccessedRefsTestWithRedis(RefWarmingTestBaseWithRedis):
         # Get frequently accessed refs with limit using real Redis
         refs = get_frequently_accessed_refs(limit=10)
 
-        # Verify limit is respected (may vary depending on implementation)
-        self.assertLessEqual(len(refs), 10)
-        # The important thing is that real Redis is used
+        # We created 20 refs — limit=10 must return exactly 10
+        self.assertEqual(len(refs), 10,
+            f"Expected exactly 10 refs (limit=10), got {len(refs)}")
 
 
 class WarmRefCacheTest(RefWarmingTestBase):
@@ -344,8 +329,8 @@ class WarmRefCacheTestWithRedis(RefWarmingTestBaseWithRedis):
         url_hash = hashlib.sha256(url.encode("utf-8")).hexdigest()[:16]
         content_hash = hashlib.sha256(b'{"type":"object"}').hexdigest()[:16]
 
-        # Store in real Redis
-        url_key = f"{REDIS_CACHE_PREFIX}{url_hash}:"
+        # Store in real Redis — key format must match _get_from_cache (no trailing colon).
+        url_key = f"{REDIS_CACHE_PREFIX}{url_hash}"
         data_key = f"{REDIS_CACHE_PREFIX}{url_hash}:{content_hash}"
         self.redis_client.set(url_key, content_hash.encode("utf-8"))
         self.redis_client.set(data_key, json.dumps({"type": "object"}).encode("utf-8"))
@@ -355,15 +340,34 @@ class WarmRefCacheTestWithRedis(RefWarmingTestBaseWithRedis):
         # Warm cache - should skip already cached refs
         result = warm_ref_cache(ref_urls, tenant_id=self.tenant_id)
 
-        # We passed 1 URL, so total should be 1
-        self.assertGreater(result["total"], 0)
+        # We passed 1 URL that was already cached — must show as skipped.
+        # skipped >= 0 is vacuously true; the contract is that a pre-cached
+        # URL is recognised and counted as skipped, not as warmed or failed.
+        self.assertEqual(result["total"], 1)
+        self.assertGreater(result.get("skipped", 0), 0,
+            "Pre-cached URL must be counted as skipped; got %s" % result)
 
     def test_warm_ref_cache_partial_failure(self):
-        """Test warming with some failures using MockTransport."""
-        # Use real check_rate_limit with Redis
+        """Test warming with some failures using MockTransport.
+
+        Uses real Redis via check_rate_limit but MockTransport for HTTP.
+        Uses a unique user_id so ``--keepdb`` Redis state from prior
+        rate-limit exhaustion tests doesn't block this test.
+        """
+        import uuid as _uuid
+
         redis_client = get_real_redis_client_or_none()
         if not redis_client:
             self.skipTest("Redis not available for cache warming tests")
+
+        user_id = f"test-user-pf-{_uuid.uuid4().hex[:8]}"
+        is_allowed, error = check_rate_limit(
+            tenant_id=self.tenant_id,
+            user_id=user_id,
+            redis_client=redis_client,
+        )
+        if not is_allowed:
+            self.skipTest("Rate limit exceeded — Redis state from prior run")
 
         # Use MockTransport to simulate partial failures
         call_count = [0]
@@ -382,7 +386,7 @@ class WarmRefCacheTestWithRedis(RefWarmingTestBaseWithRedis):
         resolver = RefResolver(
             config=self.config,
             tenant_id=self.tenant_id,
-            user_id="test-user",
+            user_id=user_id,
             enable_caching=True,
         )
 
@@ -394,7 +398,7 @@ class WarmRefCacheTestWithRedis(RefWarmingTestBaseWithRedis):
             # Use real check_rate_limit
             is_allowed, error = check_rate_limit(
                 tenant_id=self.tenant_id,
-                user_id="test-user",
+                user_id=user_id,
                 redis_client=redis_client,
             )
             if not is_allowed:
@@ -462,8 +466,10 @@ class WarmRefCacheTestWithRedis(RefWarmingTestBaseWithRedis):
             ref_urls = [f"https://example.com/schema{i}.json" for i in range(25)]
             result = warm_ref_cache(ref_urls, batch_size=10, resolver=resolver)
 
-            # Should process all refs
+            # Should process all 25 refs — some warmed, some may fail
             self.assertEqual(result["total"], 25)
+            self.assertGreater(result["warmed"], 0,
+                "Batch processing must warm at least some refs")
         finally:
             resolver.resolve_external = original_resolve
 
@@ -536,9 +542,11 @@ class WarmCacheManagementCommandTest(RefWarmingTestBaseWithRedis):
         )
         output = out.getvalue()
 
-        # Command should execute successfully (may find refs or not)
-        # The important thing is that real implementations are used
+        # Command executed and produced output — must contain "Filtered" or URL count
+        self.assertGreater(len(output), 0, "Command output must not be empty")
         self.assertIsInstance(output, str)
+        self.assertIn("Filtered", output,
+            "Command output must indicate pattern-based filtering")
 
     def test_command_no_refs_found(self):
         """
@@ -558,56 +566,37 @@ class AutomaticCacheWarmingTest(RefWarmingTestBaseWithRedis):
     """Tests for automatic cache warming using real implementations."""
 
     def test_warm_cache_on_startup_enabled(self):
-        """Test startup cache warming when enabled using real implementations."""
-        # Set up test data in real Redis
+        """Startup cache warming executes without errors when enabled.
+
+        Does NOT block the main thread — warming runs in a daemon thread.
+        The test verifies that the non-blocking call completes regardless
+        of Redis state."""
         import hashlib
 
         url1 = "https://example.com/schema1.json"
         url_hash1 = hashlib.sha256(url1.encode("utf-8")).hexdigest()[:16]
-
-        # Store URL mapping in real Redis
         self.redis_client.set(f"{REDIS_CACHE_ACCESS_PREFIX}url:{url_hash1}", url1.encode("utf-8"))
-
-        # Store access count in sorted set using real Redis
         access_set_key = f"{REDIS_CACHE_ACCESS_PREFIX}all"
         self.redis_client.zadd(access_set_key, {url_hash1.encode("utf-8"): 10.0})
 
-        # Use real settings (may need to override for test)
         from django.test import override_settings
-
         with override_settings(
             ODPS_CACHE_WARMING_ENABLED=True,
             ODPS_CACHE_WARMING_STARTUP_ENABLED=True,
             ODPS_CACHE_WARMING_STARTUP_LIMIT=100,
         ):
-            # Use real warm_cache_on_startup
+            # Must not raise — daemon thread starts and returns.
             warm_cache_on_startup()
 
-            # Wait a bit for thread to start
-            import time
-
-            time.sleep(0.2)  # INTENTIONAL: test-specific timing requirement
-
-            # Function should execute without errors
-            # The important thing is that real implementations are used
-
     def test_warm_cache_on_startup_disabled(self):
-        """Test startup cache warming when disabled using real implementations."""
+        """When cache warming is disabled, the function returns immediately."""
         from django.test import override_settings
-
         with override_settings(
             ODPS_CACHE_WARMING_ENABLED=False,
             ODPS_CACHE_WARMING_STARTUP_ENABLED=True,
         ):
-            # Use real warm_cache_on_startup
+            # Must not raise — disabled path is a no-op return.
             warm_cache_on_startup()
-
-            import time
-
-            time.sleep(0.2)  # INTENTIONAL: test-specific timing requirement
-
-            # Function should handle disabled state gracefully
-            # The important thing is that real implementations are used
 
 
 @override_settings(REDIS_URL="redis://redis-cache-test:6379/0")
@@ -630,8 +619,8 @@ class AutomaticCacheWarmingTestWithRedis(RefWarmingTestBaseWithRedis):
         url_hash = hashlib.sha256(url.encode("utf-8")).hexdigest()[:16]
         content_hash = hashlib.sha256(b'{"type":"object"}').hexdigest()[:16]
 
-        # Store in real Redis
-        url_key = f"{REDIS_CACHE_PREFIX}{url_hash}:"
+        # Store in real Redis — key format must match _get_from_cache (no trailing colon).
+        url_key = f"{REDIS_CACHE_PREFIX}{url_hash}"
         data_key = f"{REDIS_CACHE_PREFIX}{url_hash}:{content_hash}"
         self.redis_client.set(url_key, content_hash.encode("utf-8"))
         self.redis_client.set(data_key, json.dumps({"type": "object"}).encode("utf-8"))
@@ -680,7 +669,7 @@ class AutomaticCacheWarmingTestWithRedis(RefWarmingTestBaseWithRedis):
         import hashlib
 
         url_hash = hashlib.sha256(url.encode("utf-8")).hexdigest()[:16]
-        url_key = f"{REDIS_CACHE_PREFIX}{url_hash}:"
+        url_key = f"{REDIS_CACHE_PREFIX}{url_hash}"
         self.redis_client.delete(url_key)
 
         # Get from cache through public API (should track access even on miss) using real Redis
@@ -715,56 +704,61 @@ class AutomaticCacheWarmingTestWithRedis(RefWarmingTestBaseWithRedis):
 
     def test_track_ref_access_only_external(self):
         """
-        Test that only external refs are tracked using real Redis.
+        Access tracking records external ref URLs in Redis; internal refs are NOT tracked.
 
-        Uses real Redis client to verify that only external refs are tracked.
+        Uses ``httpx_transport`` constructor param so the real ``resolve_external()``
+        runs (URL validation + cache + _track_ref_access).  The internal
+        ``resolve_internal()`` is called directly and must NOT leave a Redis
+        access-set entry.
         """
-        resolver = RefResolver(config=self.config, tenant_id=self.tenant_id, enable_caching=True)
+        # Record internal ref hash so we can prove it was NOT tracked
+        import hashlib
 
-        # Use real Redis (no mock)
-        # Track access through public API - resolve operations track access internally
-        # Internal refs are resolved through resolve_internal() which doesn't track external access
+        internal_url = "#/definitions/Email"
+        internal_hash = hashlib.sha256(internal_url.encode("utf-8")).hexdigest()[:16]
+        internal_hash_bytes = internal_hash.encode("utf-8")
+
+        external_url = "https://example.com/schema.json"
+        external_hash = hashlib.sha256(external_url.encode("utf-8")).hexdigest()[:16]
+        external_hash_bytes = external_hash.encode("utf-8")
+
+        access_set_key = f"{REDIS_CACHE_ACCESS_PREFIX}all"
+
+        # Delete any prior access data for these hashes so we get clean baselines
+        try:
+            self.redis_client.zrem(access_set_key, internal_hash_bytes, external_hash_bytes)
+        except Exception:
+            pass
+
+        # Internal ref resolution must NOT track external access
         document = {"definitions": {"Email": {"type": "string"}}}
-        resolver.resolve_internal(
-            "#/definitions/Email", document
-        )  # Should not track external access
+        resolver = RefResolver(config=self.config, tenant_id=self.tenant_id)
+        resolver.resolve_internal("#/definitions/Email", document)
 
-        # External refs are resolved through resolve_external() which tracks access
+        internal_score = self.redis_client.zscore(access_set_key, internal_hash_bytes)
+        self.assertIsNone(internal_score,
+            f"Internal ref '{internal_url}' must NOT be tracked in '{access_set_key}'")
+
+        # External ref resolution MUST track access — use httpx_transport to exercise
+        # the real resolve_external which calls _track_ref_access internally.
         import httpx
 
-        # Use MockTransport to simulate external ref resolution
         def handler(request: httpx.Request) -> httpx.Response:
             return httpx.Response(200, json={"type": "object"}, request=request)
 
         transport = httpx.MockTransport(handler)
+        ext_resolver = RefResolver(
+            config=self.config,
+            tenant_id=self.tenant_id,
+            enable_caching=True,
+            httpx_transport=transport,
+        )
+        ext_resolver.resolve_external(external_url)
 
-        # Store original resolve_external
-        original_resolve = resolver.resolve_external
-
-        # Mock resolve_external to use MockTransport
-        def mock_resolve_external(ref_path: str):
-            with httpx.Client(transport=transport) as client:
-                response = client.get(ref_path, timeout=5)
-                response.raise_for_status()
-                return response.json()
-
-        resolver.resolve_external = mock_resolve_external
-
-        try:
-            # Resolve external ref through public API - should track access
-            resolver.resolve_external("https://example.com/schema.json")
-        finally:
-            resolver.resolve_external = original_resolve
-
-        # Verify access was tracked in real Redis
-        import hashlib
-
-        url = "https://example.com/schema.json"
-        url_hash = hashlib.sha256(url.encode("utf-8")).hexdigest()[:16]
-        access_set_key = f"{REDIS_CACHE_ACCESS_PREFIX}all"
-        score = self.redis_client.zscore(access_set_key, url_hash)
-        # Score may or may not exist depending on implementation
-        # The important thing is that real Redis is used
+        external_score = self.redis_client.zscore(access_set_key, external_hash_bytes)
+        self.assertIsNotNone(external_score,
+            f"External ref '{external_url}' must be tracked in '{access_set_key}'; "
+            f"url_hash={external_hash}")
 
 
 @override_settings(REDIS_URL="redis://redis-cache-test:6379/0")
@@ -861,14 +855,12 @@ class RefWarmingIntegrationTest(RefWarmingTestBaseWithRedis):
 
     # Edge cases and error handling tests
     def test_get_frequently_accessed_refs_with_none_limit(self):
-        """Test get_frequently_accessed_refs with None limit."""
-        try:
-            refs = get_frequently_accessed_refs(limit=None)  # type: ignore[misc]  # test: edge-case type exercise
-            # May raise exception or handle None gracefully
-            self.assertIsInstance(refs, list)
-        except (TypeError, ValueError):
-            # None limit should raise exception
-            pass
+        """get_frequently_accessed_refs with None limit returns empty list."""
+        refs = get_frequently_accessed_refs(limit=None)  # type: ignore[misc]  # test: edge-case type exercise
+        self.assertIsInstance(refs, list,
+            "get_frequently_accessed_refs must return a list for None limit")
+        self.assertEqual(len(refs), 0,
+            "get_frequently_accessed_refs must return empty list for None limit")
 
     def test_get_frequently_accessed_refs_with_zero_limit(self):
         """Test get_frequently_accessed_refs with zero limit."""
@@ -878,14 +870,12 @@ class RefWarmingIntegrationTest(RefWarmingTestBaseWithRedis):
         self.assertEqual(len(refs), 0)
 
     def test_get_frequently_accessed_refs_with_negative_limit(self):
-        """Test get_frequently_accessed_refs with negative limit."""
-        try:
-            refs = get_frequently_accessed_refs(limit=-1)
-            # May raise exception or handle negative gracefully
-            self.assertIsInstance(refs, list)
-        except (ValueError, TypeError):
-            # Negative limit should raise exception
-            pass
+        """get_frequently_accessed_refs with negative limit returns empty list."""
+        refs = get_frequently_accessed_refs(limit=-1)
+        self.assertIsInstance(refs, list,
+            "get_frequently_accessed_refs must return a list for negative limit")
+        self.assertEqual(len(refs), 0,
+            "get_frequently_accessed_refs must return empty list for negative limit")
 
     def test_get_frequently_accessed_refs_with_very_large_limit(self):
         """Test get_frequently_accessed_refs with very large limit."""
@@ -895,14 +885,9 @@ class RefWarmingIntegrationTest(RefWarmingTestBaseWithRedis):
         self.assertLessEqual(len(refs), 1000000)
 
     def test_warm_ref_cache_with_none_refs(self):
-        """Test warm_ref_cache with None refs."""
-        try:
-            result = warm_ref_cache(None)  # type: ignore[misc]  # test: edge-case type exercise
-            # May raise exception or handle None gracefully
-            self.assertIsInstance(result, dict)
-        except (TypeError, ValueError):
-            # None refs should raise exception
-            pass
+        """warm_ref_cache with None refs raises TypeError or ValueError."""
+        with self.assertRaises((TypeError, ValueError)):
+            warm_ref_cache(None)  # type: ignore[misc]  # test: edge-case type exercise
 
     def test_warm_ref_cache_with_invalid_urls(self):
         """Test warm_ref_cache with invalid URLs."""
@@ -953,28 +938,21 @@ class RefWarmingIntegrationTest(RefWarmingTestBaseWithRedis):
         self.assertIsInstance(result, dict)
 
     def test_warm_ref_cache_with_zero_batch_size(self):
-        """Test warm_ref_cache with zero batch size."""
-        try:
-            result = warm_ref_cache(
+        """warm_ref_cache with zero batch_size raises ValueError."""
+        with self.assertRaises(ValueError):
+            warm_ref_cache(
                 ["https://example.com/schema.json"], tenant_id=self.tenant_id, batch_size=0
             )
-            # May raise exception or handle zero gracefully
-            self.assertIsInstance(result, dict)
-        except (ValueError, TypeError):
-            # Zero batch size should raise exception
-            pass
 
     def test_warm_ref_cache_with_negative_batch_size(self):
-        """Test warm_ref_cache with negative batch size."""
-        try:
-            result = warm_ref_cache(
-                ["https://example.com/schema.json"], tenant_id=self.tenant_id, batch_size=-1
-            )
-            # May raise exception or handle negative gracefully
-            self.assertIsInstance(result, dict)
-        except (ValueError, TypeError):
-            # Negative batch size should raise exception
-            pass
+        """warm_ref_cache with negative batch_size clamps to default or returns empty result."""
+        result = warm_ref_cache(
+            ["https://example.com/schema.json"], tenant_id=self.tenant_id, batch_size=-1
+        )
+        self.assertIsInstance(result, dict,
+            "warm_ref_cache must return a dict for negative batch_size")
+        self.assertGreaterEqual(result.get("total", 0), 0,
+            "total must be non-negative")
 
     def test_warm_ref_cache_with_very_large_batch_size(self):
         """Test warm_ref_cache with very large batch size."""
@@ -985,16 +963,12 @@ class RefWarmingIntegrationTest(RefWarmingTestBaseWithRedis):
         self.assertIsInstance(result, dict)
 
     def test_warm_cache_on_startup_with_redis_unavailable(self):
-        """Test warm_cache_on_startup when Redis is unavailable."""
+        """warm_cache_on_startup must not crash when Redis is unavailable."""
         from django.test import override_settings
 
         with override_settings(REDIS_URL="redis://localhost:99999"):
-            try:
-                warm_cache_on_startup()
-                # Should handle Redis unavailability gracefully
-            except Exception:
-                # May raise exception if Redis required
-                pass
+            # Must not raise — handles Redis unavailability gracefully
+            warm_cache_on_startup()
 
     def test_get_frequently_accessed_refs_with_special_characters_in_urls(self):
         """Test get_frequently_accessed_refs with special characters in stored URLs."""

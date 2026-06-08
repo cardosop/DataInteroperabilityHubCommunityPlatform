@@ -17,7 +17,6 @@ import httpx
 import logging
 import time
 from typing import Dict, Any, List, Optional
-from django.utils import timezone
 from datetime import datetime, timezone
 
 from django.conf import settings
@@ -702,7 +701,7 @@ class DatabricksConnector(DataMarketplaceConnector):
 
             listings = []
             start_idx = offset or 0
-            end_idx = start_idx + limit if limit else len(shares_list)
+            end_idx = start_idx + limit if limit is not None else len(shares_list)
 
             for share_data in shares_list[start_idx:end_idx]:
                 try:
@@ -1717,7 +1716,7 @@ class DatabricksConnector(DataMarketplaceConnector):
             sync_options = options or {}
             limit = sync_options.get("limit")
             include_resources = sync_options.get("include_resources", True)
-            started_at = timezone.now()
+            started_at = datetime.now(timezone.utc)
 
             successful_items = 0
             failed_items = 0
@@ -1798,7 +1797,7 @@ class DatabricksConnector(DataMarketplaceConnector):
                     skipped_items=skipped_items,
                     errors=errors,
                     started_at=started_at,
-                    completed_at=timezone.now(),
+                    completed_at=datetime.now(timezone.utc),
                     metadata={
                         "mappings": [mapping.__dict__ for mapping in mappings],
                         "include_resources": include_resources,
@@ -1814,7 +1813,7 @@ class DatabricksConnector(DataMarketplaceConnector):
                     skipped_items=skipped_items,
                     errors=[str(e)],
                     started_at=started_at,
-                    completed_at=timezone.now(),
+                    completed_at=datetime.now(timezone.utc),
                 )
 
         return self._circuit_breaker.call(execute_sync_pull)

@@ -48,7 +48,7 @@ class EntitlementsE2ETest(E2ETestBase):
 
         # Create consumer tenant (must have active subscription for order creation)
         self.consumer_tenant = Tenant.objects.create(
-            name="Consumer Tenant", slug="consumer-tenant", kyc_status=KYCStatus.VERIFIED
+            name=f"Consumer Tenant {uuid.uuid4().hex[:8]}", slug=f"consumer-tenant-{uuid.uuid4().hex[:8]}", kyc_status=KYCStatus.VERIFIED
         )
         from hub.apps.testing.billing_support import ensure_e2e_tenant_ready
         from hub.apps.users.models import User

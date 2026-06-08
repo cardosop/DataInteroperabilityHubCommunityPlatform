@@ -331,9 +331,20 @@ class AuditEventViewSetTest(TestCase):
 
         response = self.client.get("/api/v1/audit/audit-events/")
         results = response.data["results"]
+        self.assertGreater(
+            len(results), 1, "Expected at least 2 events to verify ordering"
+        )
 
         # First event should be the newest
         self.assertEqual(results[0]["id"], str(newer_event.id))
+
+        # Verify full descending order: each timestamp must be >= the next
+        for i in range(len(results) - 1):
+            self.assertGreaterEqual(
+                results[i]["timestamp"], results[i + 1]["timestamp"],
+                f"Events at indices {i} and {i + 1} are not in descending "
+                f"order: {results[i]['timestamp']} < {results[i + 1]['timestamp']}",
+            )
 
     # ========== RETRIEVE TESTS ==========
 
@@ -469,8 +480,16 @@ class AuditEventViewSetTest(TestCase):
         )
 
         # Verify all returned events match the filter
-        if response.data:
-            self.assertEqual(response.data[0]["resource_type"], "ASSET")
+        self.assertGreater(
+            len(response.data), 0,
+            "Expected at least one result for ASSET resource_type filter",
+        )
+        for i, event in enumerate(response.data):
+            self.assertEqual(
+                event["resource_type"], "ASSET",
+                f"Event at index {i} has resource_type={event.get('resource_type')!r}, "
+                f"expected 'ASSET'",
+            )
 
     def test_export_audit_events_csv_returns_200(self):
         """Test exporting audit events as CSV returns 200."""
@@ -592,10 +611,19 @@ class AuditEventViewSetTest(TestCase):
         self.assertNotIn(str(self.event3.id), event_ids)
 
     def test_export_audit_events_platform_admin_sees_all(self):
-        """Test that platform admin export includes all events."""
+        """Test that platform admin export includes events from all tenants."""
         self.client.force_authenticate(user=self.platform_admin)
 
-        response = self.client.get("/api/v1/audit/audit-events/export/?format=json")
+        # Scope to a recent date range to avoid hitting the 10k export cap
+        # when running with --reuse-db accumulated data.
+        from django.utils import timezone
+        from datetime import timedelta
+
+        since = (timezone.now() - timedelta(hours=1)).isoformat()
+        response = self.client.get(
+            f"/api/v1/audit/audit-events/export/?format=json&start_date={since}"
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK, response.content)
         event_ids = [event["id"] for event in response.data]
 
         self.assertIn(str(self.event1.id), event_ids)

@@ -38,12 +38,13 @@ class FrontendIntegrationPointsTest(ContractsAPITestBase):
     def setUp(self):
         """Set up test fixtures"""
         super().setUp()
+        import uuid
         # Update tenant/user names for clarity
-        self.tenant.name = "Frontend Test Tenant"
-        self.tenant.slug = "frontend-test"
+        self.tenant.name = f"Frontend Test Tenant {uuid.uuid4().hex[:8]}"
+        self.tenant.slug = f"frontend-test-{uuid.uuid4().hex[:8]}"
         self.tenant.save()
 
-        self.user.email = "user@frontend.test"
+        self.user.email = f"user-{uuid.uuid4().hex[:8]}@frontend.test"
         self.user.save()
 
         # Create role
@@ -166,9 +167,15 @@ class FrontendIntegrationPointsTest(ContractsAPITestBase):
         if "id" in data:
             id_value = str(data["id"])
             # UUID format: 8-4-4-4-12 hex digits
-            if len(id_value) == 36 and id_value.count("-") == 4:
-                # Valid UUID format
-                pass
+            import re
+            uuid_regex = re.compile(
+                r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+            )
+            self.assertTrue(
+                uuid_regex.match(id_value),
+                f"ID value '{id_value}' must match canonical UUID format "
+                f"(e.g. 00000000-0000-0000-0000-000000000000)",
+            )
 
         # Verify dates are in ISO 8601 format (if present)
         date_fields = ["created_at", "updated_at", "deleted_at"]

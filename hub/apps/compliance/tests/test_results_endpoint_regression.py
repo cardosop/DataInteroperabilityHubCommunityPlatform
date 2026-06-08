@@ -209,8 +209,8 @@ class ResultsEndpointRegressionTest(TestCase):
         resp = self.client.get(f"/api/v1/compliance/runs/{run.id}/results/")
         recs = resp.data["risk_assessment"]["recommendations"]
         self.assertTrue(
-            any("policy" in r.lower() for r in recs),
-            f"Expected policy-related recommendation, got: {recs}"
+            any("policy violation" in r.lower() or "policy fail" in r.lower() for r in recs),
+            f"Expected policy-violation recommendation, got: {recs}"
         )
 
     # ----------------------------------------------------------------
@@ -239,6 +239,8 @@ class ResultsEndpointRegressionTest(TestCase):
         resp = self.client.get(f"/api/v1/compliance/runs/{run.id}/results/")
         suggestions = resp.data["remediation_suggestions"]
         self.assertGreater(len(suggestions), 0)
+        self.assertEqual(suggestions[0]["pii_type"], "PAYMENT_CARD",
+            "Remediation must identify the PII type as PAYMENT_CARD")
 
     def test_no_remediation_for_location(self):
         """No remediation for LOCATION_PRECISE (not in known remediation list)."""

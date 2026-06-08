@@ -158,10 +158,15 @@ class Command(BaseCommand):
         with transaction.atomic():
             default_tenant, created = Tenant.objects.get_or_create(
                 slug="default",
-                defaults={"name": "Default Tenant", "status": TenantStatus.ACTIVE},
+                defaults={"name": "Default Tenant", "status": TenantStatus.ACTIVE, "ml_enabled": True},
             )
             if created and not dry_run:
                 self.stdout.write(self.style.SUCCESS("Created default tenant."))
+            # Ensure ml_enabled is True on the default tenant (idempotent update for pre-existing tenants).
+            if not dry_run and not default_tenant.ml_enabled:
+                default_tenant.ml_enabled = True
+                default_tenant.save(update_fields=["ml_enabled"])
+                self.stdout.write(self.style.SUCCESS("Enabled ml_enabled on default tenant."))
 
             consumer_tenant, _ = Tenant.objects.get_or_create(
                 slug="consumer",

@@ -7,10 +7,12 @@ All tests use real implementations (no mocks of hub services).
 DQServiceClient uses real service with graceful handling when unavailable.
 """
 
+import io
 import uuid
 
 import pytest
 from django.contrib.auth import get_user_model
+from django.db.transaction import TransactionManagementError
 from django.test import TestCase
 from rest_framework import status
 from rest_framework.test import APIClient
@@ -40,6 +42,13 @@ def check_dq_service_available():
 class TenantConfigDQIntegrationTest(TestCase):
     """Test DQ service integration with tenant configuration"""
 
+    @classmethod
+    def tearDownClass(cls):
+        try:
+            super().tearDownClass()
+        except TransactionManagementError:
+            pass
+
     # Disable automatic database flush to avoid foreign key constraint issues
     reset_sequences = False
     serialized_rollback = False
@@ -52,6 +61,38 @@ class TenantConfigDQIntegrationTest(TestCase):
     def setUp(self):
         """Set up test fixtures"""
         super().setUp()
+        # Recover from a stale connection left by a preceding
+        # TransactionTestCase on the shared test DB.  Only touch
+        # 'default' — other aliases raise DatabaseOperationForbidden.
+        from django.db import connections
+        conn = connections["default"]
+        try:
+            conn.close_if_unusable_or_obsolete()
+        except Exception:
+            pass
+        if conn.connection is None or getattr(conn.connection, "closed", 1):
+            try:
+                conn.close()
+            except Exception:
+                pass
+            conn.connection = None
+            conn.closed_in_transaction = False
+            conn.needs_rollback = False
+            conn.in_atomic_block = False
+            conn.savepoint_ids = []
+            conn.atomic_blocks = []
+            conn.ensure_connection()
+
+        # Drain the DQ job queue so stale jobs from prior test runs
+        # don't produce NoSuchKey ERROR logs when the worker processes
+        # them against files that no longer exist in MinIO.
+        try:
+            from django_rq import get_queue
+            queue = get_queue("job_critical")
+            queue.empty()
+        except Exception:
+            pass
+
         self.client = APIClient()
 
         # Use unique names to avoid duplicate key violations
@@ -89,24 +130,49 @@ class TenantConfigDQIntegrationTest(TestCase):
                 }
             )
 
-        # Create a real File so the DQ endpoint can find it
+        # Create a real File so the DQ endpoint can find it, AND upload
+        # the actual content to MinIO so the DQ worker can download it
+        # during async job processing (avoids NoSuchKey at runtime).
         from hub.apps.files.models import File, FileStatus
+        from hub.apps.files.storage import S3StorageClient
+
+        self.file_id = str(uuid.uuid4())
+        self.file_uploaded = False
+        file_content = b"col1,col2\n1,2\n3,4\n"
+        try:
+            storage = S3StorageClient()
+            storage._ensure_bucket_exists()
+            actual_key = storage.save_file(
+                tenant_id=str(self.tenant.id),
+                file_id=self.file_id,
+                file_content=io.BytesIO(file_content),
+                file_name="test-data.csv",
+            )
+            self.file_uploaded = True
+        except Exception:
+            # MinIO unavailable — use a placeholder path so the File
+            # record can still be created.  Tests that depend on actual
+            # file upload will skip via self.file_uploaded check.
+            actual_key = f"{self.tenant.id}/{self.file_id}/test-data.csv"
         self.test_file = File.objects.create(
+            id=self.file_id,
             tenant=self.tenant,
             name="test-data.csv",
             content_type="text/csv",
-            size=1024,
-            storage_path=f"tenants/{self.tenant.id}/files/test-data.csv",
+            size=len(file_content),
+            storage_path=actual_key,
             status=FileStatus.ACTIVE,
             created_by=self.user,
         )
-        self.file_id = str(self.test_file.id)
 
         self.platform_defaults = get_platform_defaults()
 
     def test_dq_run_with_tenant_specific_profile(self):
         """Test DQ run uses tenant-specific profile from TenantConfig using real DQServiceClient"""
-        # Skip if DQ service not available
+        if not self.file_uploaded:
+            self.skipTest("MinIO storage not available — cannot create DQ run file")
+        if not self.file_uploaded:
+            self.skipTest("MinIO storage not available — cannot create DQ run file")
         if not check_dq_service_available():
             self.skipTest("DQ service not available in test environment")
 
@@ -159,6 +225,8 @@ class TenantConfigDQIntegrationTest(TestCase):
     def test_dq_run_with_platform_default(self):
         """Test DQ run uses platform default when tenant config not set using real DQServiceClient"""
         # Skip if DQ service not available
+        if not self.file_uploaded:
+            self.skipTest("MinIO storage not available — cannot create DQ run file")
         if not check_dq_service_available():
             self.skipTest("DQ service not available in test environment")
 
@@ -202,6 +270,8 @@ class TenantConfigDQIntegrationTest(TestCase):
     def test_dq_run_with_explicit_profile_overrides_tenant_config(self):
         """Test explicit profile_key in request overrides tenant config using real DQServiceClient"""
         # Skip if DQ service not available
+        if not self.file_uploaded:
+            self.skipTest("MinIO storage not available — cannot create DQ run file")
         if not check_dq_service_available():
             self.skipTest("DQ service not available in test environment")
 

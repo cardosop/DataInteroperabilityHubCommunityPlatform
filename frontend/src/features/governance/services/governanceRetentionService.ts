@@ -83,4 +83,41 @@ export const governanceRetentionService = {
   async deletePolicy(id: string): Promise<void> {
     await apiClient.getClient().delete(`${GOVERNANCE_RETENTION_POLICIES_PATH}/${id}/`);
   },
+
+  async getDashboard() {
+    const response = await apiClient
+      .getClient()
+      .get<RetentionDashboardResponse>(`${GOVERNANCE_RETENTION_POLICIES_PATH}/dashboard/`);
+    return response.data;
+  },
+
+  async getQuarterlyReport(period: string) {
+    const response = await apiClient
+      .getClient()
+      .get<RetentionQuarterlyReportResponse>(`${GOVERNANCE_RETENTION_POLICIES_PATH}/quarterly-report/?period=${period}`);
+    return response.data;
+  },
 };
+
+export interface RetentionDashboardResponse {
+  total_policies: number;
+  active_policies: number;
+  enabled_policies?: number;
+  expiring_soon: number;
+  compliance_score: number;
+  policies_under_legal_hold?: number;
+  awaiting_initial_tombstone?: number;
+  awaiting_hard_delete_after_grace?: number;
+  autosweep_hard_delete_grace_days?: number;
+  generated_at?: string;
+  last_updated: string;
+}
+
+export interface RetentionQuarterlyReportResponse {
+  period: string;
+  policies_reviewed: number;
+  policies_deleted: number;
+  tombstone_events_in_quarter?: number;
+  hard_delete_events_in_quarter?: number;
+  compliance_summary: Record<string, number>;
+}

@@ -70,7 +70,9 @@ class TestIdempotencyErrorHandling(TestCase):
             self.assertEqual(response_data['error']['code'], 'INVALID_IDEMPOTENCY_KEY')
             self.assertEqual(response_data['error']['http_status'], 400)
 
-        # Test empty key separately (might be skipped by middleware)
+        # Test empty key separately — the middleware skips empty keys
+        # (process_request returns None), then the request is processed
+        # normally by the view. Assert the response reflects normal processing.
         request = self.factory.post(
             "/api/v1/assets/",
             data=json.dumps({"name": "test"}),
@@ -78,23 +80,21 @@ class TestIdempotencyErrorHandling(TestCase):
             HTTP_IDEMPOTENCY_KEY=""
         )
         response = middleware(request)
-        # Empty key is skipped by middleware (returns None from process_request)
-        # Then process_response adds headers, so we get a 200 response
-        # This is expected behavior - empty keys are ignored
-        if response is not None:
-            # If middleware processes it, should return 400
-            # But empty keys are typically skipped (None from process_request)
-            # So response comes from get_response (200)
-            # This is acceptable - empty keys are treated as no idempotency key
-            pass
+        self.assertIsNotNone(response, "Empty key should still produce a response from get_response")
+        self.assertEqual(response.status_code, 200,
+                         "Empty key should be ignored, allowing normal request processing")
 
     def test_expired_idempotency_key_detection(self):
-        """Test expired idempotency key detection."""
+        """Test expired idempotency key detection via TTL expiry.
+
+        Uses a short TTL with polling to avoid a hard time.sleep() that
+        slows down the suite and is fragile under load.
+        """
         redis_client = get_redis_client()
         idempotency_key = str(uuid.uuid4())
         redis_key = build_idempotency_key(idempotency_key, "/api/v1/assets/", "POST")
 
-        # Store a record with very short TTL
+        # Store a record with very short TTL (1 second)
         request_hash = hash_request_body({"name": "test"})
         response_data = {
             'status_code': 201,
@@ -103,16 +103,19 @@ class TestIdempotencyErrorHandling(TestCase):
             'timestamp': datetime.now(timezone.utc).isoformat()
         }
 
-        # Store with 1 second TTL
         store_idempotency_record(redis_client, redis_key, request_hash, response_data, ttl=1)
 
-        # Wait for expiration
-        time.sleep(2)  # INTENTIONAL: test-specific timing requirement
+        # Poll for expiry instead of hard-sleeping 2 seconds
+        deadline = time.monotonic() + 3.0
+        record = None
+        while time.monotonic() < deadline:
+            record = get_idempotency_record(redis_client, redis_key)
+            if record is None:
+                break
+            time.sleep(0.05)
 
-        # Check if key is expired
-        # Note: Redis automatically deletes expired keys, so get_idempotency_record will return None
-        record = get_idempotency_record(redis_client, redis_key)
-        self.assertIsNone(record, "Expired key should be deleted by Redis")
+        self.assertIsNone(record,
+            "Expired key should be deleted by Redis after TTL expires")
 
     def test_redis_failure_during_retrieval_fails_open(self):
         """Test Redis failure during record retrieval fails open gracefully."""
@@ -209,13 +212,22 @@ class TestIdempotencyErrorHandling(TestCase):
 
         response = middleware(request)
 
-        # Should handle gracefully - invalid JSON is logged and returns None
-        # So should process as new request
+        # Should handle gracefully — invalid JSON in the Redis record is
+        # treated as a cache miss. The request is processed as new.
         self.assertIsNotNone(response)
-        # Should process normally (invalid record is ignored)
+        self.assertEqual(response.status_code, 201,
+                         "Corrupted Redis record should cause fail-open: process as new request")
+        response_data = json.loads(response.content)
+        self.assertEqual(response_data["id"], "123",
+                         "Response body should match the get_response handler output")
 
-    def test_redis_connection_error_during_lock_handled_gracefully(self):
-        """Test Redis connection error during lock acquisition is handled gracefully."""
+    def test_redis_connection_error_handled_gracefully(self):
+        """Test Redis connection failure is handled gracefully (fail-open).
+
+        Covers both retrieval failure and lock-acquisition failure, which
+        follow the same fail-open code path. Previously had two identical
+        tests that only varied by docstring — consolidated into one.
+        """
         def get_response(request):
             return JsonResponse({"id": "123"}, status=201)
 
@@ -237,7 +249,8 @@ class TestIdempotencyErrorHandling(TestCase):
 
             # process_request should return None (fail open)
             response_from_process_request = middleware.process_request(request)
-            self.assertIsNone(response_from_process_request, "Should fail open and return None from process_request")
+            self.assertIsNone(response_from_process_request,
+                              "Should fail open and return None from process_request")
 
             # process_response will still be called and add headers
             # but the request was processed normally

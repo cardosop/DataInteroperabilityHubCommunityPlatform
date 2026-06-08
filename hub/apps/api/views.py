@@ -15,13 +15,14 @@ from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import OpenApiResponse, extend_schema, inline_serializer
 from drf_spectacular.views import SpectacularAPIView, SpectacularRedocView, SpectacularSwaggerView
 from rest_framework import serializers, status
-from rest_framework.decorators import api_view, permission_classes
+from rest_framework.decorators import api_view, permission_classes, throttle_classes
 from rest_framework.exceptions import NotFound
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 
 from django.conf import settings
 
+from hub.apps.api.throttles import VersionDiscoveryRateThrottle
 from hub.apps.users.management.commands.ensure_e2e_user_roles import (
     PROFILE_ISOLATION_WORKER_COUNT,
 )
@@ -361,12 +362,33 @@ def api_info(request):
             "redoc": "/api-docs/redoc/",
         })
 
+    # Collect deprecated endpoints for the version discovery response.
+    deprecated = []
+    for key, dep in sorted(APIVersionManager.DEPRECATED_ENDPOINTS.items()):
+        deprecated.append({
+            "path": dep.path,
+            "method": dep.method,
+            "deprecated_since": dep.deprecated_since,
+            "sunset_date": dep.sunset_date,
+            "replacement": dep.replacement,
+            "migration_guide": dep.migration_guide,
+        })
+
     return Response(
         {
             "name": "Interoperable Data Hub API",
             "version": str(api_version),
+            "current_version": str(APIVersionManager.CURRENT_VERSION),
+            "supported_versions": [str(v) for v in APIVersionManager.SUPPORTED_VERSIONS],
             "base_url": "/api/v1",
             "documentation": docs,
+            "links": {
+                "openapi_schema": "/api/v1/openapi.yaml",
+                "openapi_json": "/api-docs/openapi.json",
+                "changelog": "/docs/api/changelog.md",
+                "versioning_policy": "/docs/api/versioning.md",
+            },
+            "deprecated_endpoints": deprecated,
             "endpoints": {
                 "auth": "/api/v1/auth/",
                 "tenants": "/api/v1/tenants/",
@@ -385,9 +407,19 @@ def api_info(request):
                 "analytics": "/api/v1/analytics/",
                 "scheduled-ingestions": "/api/v1/scheduled-ingestions/",
                 "scheduled-exports": "/api/v1/scheduled-exports/",
+                "governance": "/api/v1/governance/",
+                "billing": "/api/v1/billing/",
+                "notifications": "/api/v1/notifications/",
+                "capabilities": "/api/v1/capabilities/",
             },
         }
     )
+
+# Apply throttle class via the view_class so DRF's WrappedAPIView picks it up.
+# Setting throttle_classes on the handler directly does NOT propagate to the
+# WrappedAPIView class that @api_view creates internally — view_class is the
+# canonical attribute for this.
+api_info.view_class.throttle_classes = [VersionDiscoveryRateThrottle]
 
 
 @extend_schema(exclude=True, tags=["API"])  # Exclude from OpenAPI schema
@@ -450,6 +482,18 @@ def ensure_e2e_invitation_token(request):
     tenant = getattr(request.user, "tenant", None)
     if not tenant:
         return Response({"error": "no tenant"}, status=400)
+
+    # ── Self-cleanup: delete stale INVITED users matching this endpoint's ──
+    # ── email pattern to prevent unbounded orphan accumulation across     ──
+    # ── test runs.  Users older than 1 h that were never accepted are    ──
+    # ── safe to remove.                                                  ──
+    _stale_cutoff = timezone.now() - timedelta(hours=1)
+    User.objects.filter(
+        email__startswith="e2e-invited-",
+        email__endswith="@example.com",
+        status=UserStatus.INVITED,
+        date_joined__lt=_stale_cutoff,
+    ).delete()
 
     from hub.apps.auth.utils import sha256_hex
 
@@ -537,8 +581,6 @@ def ensure_e2e_tenant_switch_setup(request):
     UserTenantMembershipService().add_membership(
         request.user,
         primary,
-        actor_user=request.user,
-        reason="e2e_tenant_switch_setup_primary",
     )
     memberships = list(
         UserTenantMembership.objects.filter(user=request.user)
@@ -567,8 +609,6 @@ def ensure_e2e_tenant_switch_setup(request):
     UserTenantMembershipService().add_membership(
         request.user,
         secondary,
-        actor_user=request.user,
-        reason="e2e_tenant_switch_setup_secondary",
     )
     return Response(
         {
@@ -643,6 +683,10 @@ def ensure_e2e_users(request):
                 slug=slug,
                 defaults={"name": name, "status": TenantStatus.ACTIVE},
             )
+            # Ensure ml_enabled is True on the default tenant (idempotent update for pre-existing tenants).
+            if slug == "default" and not t.ml_enabled:
+                t.ml_enabled = True
+                t.save(update_fields=["ml_enabled"])
             tenant_cache[slug] = t
 
         for spec in users_to_ensure:
@@ -701,8 +745,6 @@ def ensure_e2e_users(request):
                 UserTenantMembershipService().add_membership(
                     user,
                     user_tenant,
-                    actor_user=user,
-                    reason="e2e_ensure_users_endpoint",
                 )
 
             # Ensure roles
@@ -813,4 +855,39 @@ def reset_e2e_auth_rate_limits(request):
     return Response(
         {"ok": True, "cleared": len(keys), "pattern": pattern},
         status=200,
+    )
+
+
+@permission_classes([AllowAny])
+@require_e2e_token
+def raise_500(request):
+    """
+    E2E-only: deliberately raise an unhandled exception to produce a 500.
+
+    GET /api/v1/test/raise-500/
+
+    Used by the ``test_500_errors_do_not_contain_stack_traces`` security
+    test to verify that 500 responses do not leak Python stack traces,
+    file paths, or Django internals to the client.
+
+    Safety guards (mirroring the other test/* endpoints):
+      1. ``@require_e2e_token`` — rejects requests without the correct
+         ``X-E2E-Token`` header (404 when secret is unset or mismatched).
+      2. ``[AllowAny]`` — auth is irrelevant; the whole point is to
+         exercise the 500 handler.
+      3. ENVIRONMENT must be ``test`` / ``staging`` / DEBUG — production
+         deployments return 404.
+    """
+    from django.conf import settings
+
+    if not (
+        getattr(settings, "ENVIRONMENT", "") in ("test", "staging")
+        or settings.DEBUG
+    ):
+        raise NotFound("Resource not found")
+
+    # Deliberate unhandled exception — this is the whole point of the
+    # endpoint.  The 500 handler must sanitise the response.
+    raise RuntimeError(
+        "Deliberate 500 raised by /test/raise-500/ for E2E error-redaction tests"
     )

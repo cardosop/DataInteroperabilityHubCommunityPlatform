@@ -25,6 +25,7 @@ from hub.apps.auth.models import APIKey
 from hub.apps.gdpr.models import ErasureRequest, ErasureRequestStatus
 from hub.apps.tenants.models import Tenant, TenantStatus
 from hub.apps.testing.billing_support import ensure_tenant_has_active_subscription
+from hub.apps.testing.role_support import ensure_user_has_data_provider_role
 from hub.apps.users.models import User, UserStatus
 import uuid
 
@@ -40,8 +41,8 @@ class ErasureWorkflowIntegrationTest(TestCase):
 
         # Create tenant
         self.tenant = Tenant.objects.create(
-            name="Erasure Test Tenant",
-            slug="erasure-test-tenant",
+            name=f"Erasure Test Tenant {uuid.uuid4().hex[:8]}",
+            slug=f"erasure-test-tenant-{uuid.uuid4().hex[:8]}",
             status=TenantStatus.ACTIVE,
         )
         ensure_tenant_has_active_subscription(self.tenant)
@@ -131,8 +132,8 @@ class ErasureWorkflowIntegrationTest(TestCase):
         """Test erasure request tenant isolation"""
         # Create another tenant and user
         tenant2 = Tenant.objects.create(
-            name="Other Tenant",
-            slug="other-tenant",
+            name=f"Other Tenant {uuid.uuid4().hex[:8]}",
+            slug=f"other-tenant-{uuid.uuid4().hex[:8]}",
             status=TenantStatus.ACTIVE,
         )
         user2 = User.objects.create_user(

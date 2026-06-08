@@ -20,6 +20,7 @@ from django.contrib.auth import get_user_model
 
 from hub.apps.tenants.models import Tenant
 from hub.apps.testing.billing_support import ensure_tenant_has_active_subscription
+from hub.apps.testing.role_support import ensure_user_has_data_provider_role
 from hub.apps.contracts.models import Contract, ContractStatus
 from hub.apps.scheduled_ingestion.models import (
     ScheduledIngestion, ScheduledIngestionStatus, SourceType, ScheduleType
@@ -55,6 +56,7 @@ class TestContractAPIEndpoints(TestCase):
         )
 
         self.client.force_authenticate(user=self.user)
+        ensure_user_has_data_provider_role(self.user)
 
     def test_create_contract_via_api(self):
         """Test creating contract via API (DE use case)"""
@@ -173,6 +175,7 @@ class TestScheduledIngestionAPIEndpoints(TestCase):
         )
 
         self.client.force_authenticate(user=self.user)
+        ensure_user_has_data_provider_role(self.user)
 
         # Create asset for ingestion
         self.asset = Asset.objects.create(
@@ -435,6 +438,7 @@ class TestComplianceAPIEndpoints(TestCase):
         )
 
         self.client.force_authenticate(user=self.user)
+        ensure_user_has_data_provider_role(self.user)
 
     def test_external_compliance_scan(self):
         """Test external compliance scan via API"""
@@ -494,6 +498,7 @@ class TestSchemaEvolutionAPIEndpoints(TestCase):
         )
 
         self.client.force_authenticate(user=self.user)
+        ensure_user_has_data_provider_role(self.user)
 
         # Create asset and dataset
         self.asset = Asset.objects.create(

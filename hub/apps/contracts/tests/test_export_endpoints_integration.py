@@ -186,7 +186,7 @@ class ExportEndpointsIntegrationTest(ContractsAPITestBase):
         if output_format == "yaml":
             return yaml.safe_load(response.content)
         else:  # json
-            return json.loads(response.content)
+            return response.data
 
     def _extract_core_data(self, data, format_type):
         """Extract core contract data from different format structures"""
@@ -270,7 +270,7 @@ class ExportEndpointsIntegrationTest(ContractsAPITestBase):
                 self.assertEqual(response.status_code, status.HTTP_200_OK)
                 self.assertEqual(response["Content-Type"], "application/json")
 
-                data = json.loads(response.content)
+                data = response.data
                 core_data = self._extract_core_data(data, format_type)
 
                 # Verify core data is preserved
@@ -330,7 +330,7 @@ class ExportEndpointsIntegrationTest(ContractsAPITestBase):
                 self.assertIn("Content-Disposition", response)
                 self.assertIn("attachment", response["Content-Disposition"])
 
-                data = json.loads(response.content)
+                data = response.data
                 core_data = self._extract_core_data(data, format_type)
 
                 # Verify core data is preserved
@@ -422,14 +422,14 @@ class ExportEndpointsIntegrationTest(ContractsAPITestBase):
             f"/api/v1/contracts/{self.contract.id}/export/",
             {"format": "hubcontract", "output_format": "json"},
         )
-        hubcontract_data = json.loads(hubcontract_response.content)
+        hubcontract_data = hubcontract_response.data
 
         # Export as ODPS
         odps_response = self.client.get(
             f"/api/v1/contracts/{self.contract.id}/export/",
             {"format": "odps", "output_format": "json"},
         )
-        odps_data = json.loads(odps_response.content)
+        odps_data = odps_response.data
 
         # Verify core data is preserved in conversion
         hubcontract_core = self._extract_core_data(hubcontract_data, "hubcontract")
@@ -448,14 +448,14 @@ class ExportEndpointsIntegrationTest(ContractsAPITestBase):
             f"/api/v1/contracts/{self.contract.id}/export/",
             {"format": "odcs", "output_format": "json"},
         )
-        odcs_data = json.loads(odcs_response.content)
+        odcs_data = odcs_response.data
 
         # Export as HubContract
         hubcontract_response = self.client.get(
             f"/api/v1/contracts/{self.contract.id}/export/",
             {"format": "hubcontract", "output_format": "json"},
         )
-        hubcontract_data = json.loads(hubcontract_response.content)
+        hubcontract_data = hubcontract_response.data
 
         # Verify core data is preserved in conversion
         odcs_core = self._extract_core_data(odcs_data, "odcs")
@@ -474,7 +474,7 @@ class ExportEndpointsIntegrationTest(ContractsAPITestBase):
             f"/api/v1/contracts/{self.contract.id}/export/",
             {"format": "hubcontract", "output_format": "json"},
         )
-        json_data = json.loads(json_response.content)
+        json_data = json_response.data
 
         # Export as YAML
         yaml_response = self.client.get(
@@ -502,14 +502,14 @@ class ExportEndpointsIntegrationTest(ContractsAPITestBase):
             f"/api/v1/contracts/{self.contract.id}/export/",
             {"format": "hubcontract", "output_format": "json"},
         )
-        export_data = json.loads(export_response.content)
+        export_data = export_response.data
 
         # Download
         download_response = self.client.get(
             f"/api/v1/contracts/{self.contract.id}/download/",
             {"format": "hubcontract", "output_format": "json"},
         )
-        download_data = json.loads(download_response.content)
+        download_data = download_response.data
 
         # Verify data is identical
         export_core = self._extract_core_data(export_data, "hubcontract")
@@ -528,7 +528,7 @@ class ExportEndpointsIntegrationTest(ContractsAPITestBase):
             f"/api/v1/contracts/{self.contract.id}/export/",
             {"format": "odps", "output_format": "json"},
         )
-        export_data = json.loads(export_response.content)
+        export_data = export_response.data
 
         # Download from marketplace endpoint (as consumer)
         self.client.force_authenticate(user=self.consumer_user)
@@ -556,14 +556,14 @@ class ExportEndpointsIntegrationTest(ContractsAPITestBase):
             f"/api/v1/contracts/{self.contract.id}/export/",
             {"format": "hubcontract", "output_format": "json"},
         )
-        export_data = json.loads(export_response.content)
+        export_data = export_response.data
 
         # Get data from contract download
         download_response = self.client.get(
             f"/api/v1/contracts/{self.contract.id}/download/",
             {"format": "hubcontract", "output_format": "json"},
         )
-        download_data = json.loads(download_response.content)
+        download_data = download_response.data
 
         # Get data from marketplace download (as consumer)
         self.client.force_authenticate(user=self.consumer_user)
@@ -620,7 +620,7 @@ class ExportEndpointsIntegrationTest(ContractsAPITestBase):
                         if output_format == "yaml":
                             data = yaml.safe_load(response.content)
                         else:
-                            data = json.loads(response.content)
+                            data = response.data
 
                         # Verify core data exists
                         core_data = self._extract_core_data(data, format_type)

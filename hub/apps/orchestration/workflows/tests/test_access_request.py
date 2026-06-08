@@ -4,7 +4,6 @@ Unit tests for Access Request Workflow
 import uuid
 from django.test import TestCase
 from django.utils import timezone
-import unittest
 from unittest.mock import patch, MagicMock
 from datetime import timedelta
 
@@ -686,20 +685,19 @@ class AccessRequestWorkflowUnitTest(TestCase):
         self.assertEqual(rejected.rejected_by_id, self.approver.id)
         self.assertEqual(rejected.rejection_reason, "Not authorized")
 
-    @unittest.skip("Skipping E2E test due to workflow engine limitation with nested step persistence")
     @patch('hub.apps.orchestration.workflows.access_request.send_email_async')
-    @patch('hub.apps.audit.utils.create_audit_event')
+    @patch('hub.apps.orchestration.workflows.access_request.create_audit_event')
     def test_access_request_workflow_execute_success(self, mock_audit, mock_email):
-        """
-        Test end-to-end workflow execution.
-        
-        NOTE: Currently skipped due to workflow engine limitation where nested steps
-        (in conditionals/loops) try to persist with the same step_index, causing unique
-        constraint violations. Individual unit tests provide comprehensive coverage.
+        """Test end-to-end workflow execution on the auto-approve path.
+
+        A PUBLIC classification triggers auto-approve — no approval
+        loop runs, so the only nested step is grant_access_task
+        (conditional.then). The compound-index formula in the engine
+        produces a unique step_index for it.
         """
         mock_audit.return_value = MagicMock(id="audit-123")
         mock_email.return_value = {"success": True, "delivery_id": "delivery-123"}
-        
+
         # Create classification for PUBLIC (auto-approve, no approval loop)
         DataClassification.objects.create(
             tenant=self.tenant,
@@ -707,7 +705,7 @@ class AccessRequestWorkflowUnitTest(TestCase):
             category=ClassificationCategory.PUBLIC,
             status="APPROVED"
         )
-        
+
         result = AccessRequestWorkflow.execute(
             tenant_id=str(self.tenant.id),
             requested_by_id=str(self.user.id),
@@ -715,15 +713,30 @@ class AccessRequestWorkflowUnitTest(TestCase):
             reason="Need access for analysis",
             requested_access_type="READ"
         )
-        
+
         self.assertTrue(result["success"])
         self.assertIn("workflow_instance_id", result)
         self.assertIn("output_data", result)
-        
-        # Verify access request was created
+
+        # Verify access request was created AND auto-approved.
         output_data = result["output_data"]
         access_request_id = output_data.get("access_request_id")
-        if access_request_id:
-            access_request = AccessRequest.objects.get(id=access_request_id)
-            self.assertIsNotNone(access_request)
+        self.assertIsNotNone(
+            access_request_id,
+            "output_data must contain access_request_id",
+        )
+        access_request = AccessRequest.objects.get(id=access_request_id)
+        self.assertEqual(
+            access_request.status,
+            AccessRequestStatus.APPROVED.value,
+            f"PUBLIC auto-approve path must set status=APPROVED, got "
+            f"{access_request.status!r}",
+        )
+        self.assertIsNotNone(
+            access_request.access_granted_at,
+            "auto-approve path must set access_granted_at",
+        )
+        # Verify side-effects: notification + audit were emitted.
+        mock_email.assert_called()
+        mock_audit.assert_called()
 

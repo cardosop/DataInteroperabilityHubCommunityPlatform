@@ -13,6 +13,7 @@ from .views import (
     list_connectors,
     get_connector_info,
 )
+from .federated_import_views import FederatedImportViewSet
 
 # Create router and register viewsets
 router = DefaultRouter()
@@ -30,6 +31,11 @@ router.register(
     r'marketplace/mappings',
     MarketplaceMappingViewSet,
     basename='marketplace-mapping'
+)
+router.register(
+    r'federated-import',
+    FederatedImportViewSet,
+    basename='federated-import'
 )
 
 urlpatterns = [

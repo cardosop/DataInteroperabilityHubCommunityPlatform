@@ -32,6 +32,7 @@ Migration from prometheus-client:
 """
 
 import os
+import threading
 from typing import Any, Dict, Optional
 
 from django.conf import settings
@@ -207,15 +208,25 @@ def _get_or_create_labeled(wrapper: Any, kwargs: Dict[str, Any]) -> Any:
     """
     Return a single _LabeledMetric per wrapper+labels so .inc() accumulates on ._value
     and get_contract_cache_metrics() reads non-zero hit counts.
+
+    Thread-safe: uses a per-wrapper lock to prevent duplicate _LabeledMetric
+    creation when concurrent threads call .labels() with identical kwargs.
     """
     cache = getattr(wrapper, "_labeled_metrics_cache", None)
     if cache is None:
         cache = {}
         setattr(wrapper, "_labeled_metrics_cache", cache)
+
+    lock = getattr(wrapper, "_labeled_metrics_lock", None)
+    if lock is None:
+        lock = threading.Lock()
+        setattr(wrapper, "_labeled_metrics_lock", lock)
+
     key = _labeled_metric_cache_key(kwargs)
-    if key not in cache:
-        cache[key] = _LabeledMetric(wrapper, dict(kwargs))
-    return cache[key]
+    with lock:
+        if key not in cache:
+            cache[key] = _LabeledMetric(wrapper, dict(kwargs))
+        return cache[key]
 
 
 class _LabeledMetric:

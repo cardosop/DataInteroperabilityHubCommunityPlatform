@@ -15,7 +15,10 @@ import structlog
 
 from hub.apps.orchestration.models import WorkflowInstance, WorkflowStatus
 from hub.apps.orchestration.registry import WorkflowRegistry
-from hub.apps.orchestration.workflow_engine import WorkflowEngine
+from hub.apps.orchestration.workflow_engine import (
+    ControlledWorkflowException,
+    WorkflowEngine,
+)
 from hub.apps.integrations.models import (
     MarketplaceConnection,
     MarketplaceSyncJob,
@@ -502,9 +505,38 @@ class MarketplaceSyncWorkflow:
             raise ValueError(f"Marketplace type {marketplace_type.value} is not supported")
 
         # Create connector using factory with connection config
-        connector = factory.create_connector(marketplace_type=marketplace_type, config=connection.get_config())
+        try:
+            connector = factory.create_connector(marketplace_type=marketplace_type, config=connection.get_config())
+        except Exception as e:
+            logger.warning(
+                "Failed to create connector for connection validation",
+                workflow_instance_id=str(instance.id),
+                connection_id=str(connection.id),
+                marketplace_type=marketplace_type.value,
+                error=str(e),
+            )
+            raise ControlledWorkflowException(
+                f"Failed to create connector: {e}"
+            ) from e
 
-        if not connector.test_connection():
+        try:
+            connection_ok = connector.test_connection()
+        except Exception as e:
+            # Missing / invalid credentials is a configuration issue,
+            # not a system fault — use ControlledWorkflowException so
+            # the engine logs at WARNING, not ERROR.
+            logger.warning(
+                "Connection test failed during validation",
+                workflow_instance_id=str(instance.id),
+                connection_id=str(connection.id),
+                marketplace_type=marketplace_type.value,
+                error=str(e),
+            )
+            raise ControlledWorkflowException(
+                f"Connection test failed - unable to connect to marketplace: {e}"
+            ) from e
+
+        if not connection_ok:
             raise ValueError("Connection test failed - unable to connect to marketplace")
 
         logger.info(
@@ -1068,10 +1100,19 @@ class MarketplaceSyncWorkflow:
         connection_id = instance.state_data.get("connection_id")
         tenant_id = input_data.get("tenant_id") or instance.tenant_id
 
-        if not discovered_listings:
-            raise ValueError("discovered_listings is required (from previous step)")
         if not connection_id:
             raise ValueError("connection_id is required (from previous step)")
+
+        if not discovered_listings:
+            logger.info(
+                "No listings discovered — nothing to map",
+                workflow_instance_id=str(instance.id),
+            )
+            MarketplaceSyncWorkflow._update_progress(instance, 40, "map_listings_to_assets")
+            return {
+                "mapped_assets": [],
+                "state": {"mapped_assets": []}
+            }
 
         tenant = Tenant.objects.get(id=tenant_id)
         connection = MarketplaceConnection.objects.get(id=connection_id, tenant=tenant)
@@ -1161,12 +1202,21 @@ class MarketplaceSyncWorkflow:
         tenant_id = input_data.get("tenant_id") or instance.tenant_id
         user_id = input_data.get("user_id") or instance.created_by_id
 
-        if not mapped_assets:
-            raise ValueError("mapped_assets is required (from previous step)")
         if not connection_id:
             raise ValueError("connection_id is required (from previous step)")
         if not tenant_id:
             raise ValueError("tenant_id is required")
+
+        if not mapped_assets:
+            logger.info(
+                "No assets to create — nothing to federate",
+                workflow_instance_id=str(instance.id),
+            )
+            MarketplaceSyncWorkflow._update_progress(instance, 60, "create_federated_assets")
+            return {
+                "created_assets": [],
+                "state": {"created_assets": []}
+            }
 
         # Get options from input_data
         options = input_data.get("options", {})
@@ -1424,8 +1474,6 @@ class MarketplaceSyncWorkflow:
         connection_id = instance.state_data.get("connection_id")
         tenant_id = input_data.get("tenant_id") or instance.tenant_id
 
-        if not mapped_assets:
-            raise ValueError("mapped_assets is required (from previous step)")
         if not connection_id:
             raise ValueError("connection_id is required (from previous step)")
 

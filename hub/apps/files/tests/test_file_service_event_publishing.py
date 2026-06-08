@@ -209,29 +209,27 @@ class FileServiceEventPublishingTest(FilesTestBase):
         self.assertEqual(event.data["reason"], "User requested deletion")
         self.assertIn("deleted_at", event.data)
 
-    def test_get_file_succeeds_with_event_publisher_initialized(self):
-        """Verify file retrieval works when event publisher is properly initialized.
-
-        Note: Testing actual event-publisher failure requires patching the publisher
-        to raise; without infrastructure failure injection we verify that retrieval
-        itself does not propagate any internal event-bus errors.
-        """
+    def test_get_file_retrieves_correct_file(self):
+        """File retrieval returns the expected file object."""
         file_obj = self.service.get_file(file_id=str(self.test_file.id))
-
         self.assertEqual(file_obj.id, self.test_file.id)
         self.assertEqual(file_obj.name, self.test_file.name)
 
-    def test_validate_file_active_succeeds_with_event_publisher_initialized(self):
-        """Verify file validation works when event publisher is properly initialized.
-
-        Note: Testing actual event-publisher failure requires patching the publisher
-        to raise; without infrastructure failure injection we verify that validation
-        itself does not propagate any internal event-bus errors.
-        """
+    def test_validate_file_active_returns_correct_file(self):
+        """File active-status validation returns the expected file object."""
         file_obj = self.service.validate_file_active(file_id=str(self.test_file.id))
-
         self.assertEqual(file_obj.id, self.test_file.id)
         self.assertEqual(file_obj.name, self.test_file.name)
+
+    def test_get_file_survives_event_publisher_failure(self):
+        """File retrieval MUST succeed even when the event publisher raises."""
+        from unittest.mock import patch
+        with patch.object(
+            self.service._event_publisher, "publish",
+            side_effect=RuntimeError("simulated bus failure"),
+        ):
+            file_obj = self.service.get_file(file_id=str(self.test_file.id))
+        self.assertEqual(file_obj.id, self.test_file.id)
         self.assertTrue(file_obj.is_active())
 
     def test_event_source_includes_tenant_and_user(self):

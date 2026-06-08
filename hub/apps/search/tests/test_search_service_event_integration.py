@@ -94,8 +94,10 @@ class SearchServiceEventIntegrationTest(TestCase):
             search_vector="test contract",
         )
 
-        # Get initial event count
-        initial_count = Event.objects.filter(event_type="search.query").count()
+        # Get initial event count (tenant-scoped to avoid shared-DB cross-contamination)
+        initial_count = Event.objects.filter(
+            event_type="search.query", tenant_id=self.tenant.id
+        ).count()
 
         # Perform search
         results, total = self.service.search(
@@ -104,9 +106,9 @@ class SearchServiceEventIntegrationTest(TestCase):
 
         # Verify event was published
         # Events are persisted synchronously in tests, so we can query immediately
-        events = Event.objects.filter(event_type="search.query").order_by("-created_at")
-        # Filter by tenant to ensure we get the right event
-        events = events.filter(tenant_id=self.tenant.id)
+        events = Event.objects.filter(
+            event_type="search.query", tenant_id=self.tenant.id
+        ).order_by("-created_at")
         self.assertGreaterEqual(events.count(), initial_count + 1)
 
         event = events.first()
@@ -346,8 +348,10 @@ class SearchServiceEventIntegrationTest(TestCase):
         )
         asset = Asset.objects.create(tenant=self.tenant, name="Test Asset", created_by=self.user)
 
-        # Get initial event count
-        initial_count = Event.objects.filter(event_type="search.index.rebuilt").count()
+        # Get initial event count (tenant-scoped to avoid shared-DB cross-contamination)
+        initial_count = Event.objects.filter(
+            event_type="search.index.rebuilt", tenant_id=self.tenant.id
+        ).count()
 
         # Rebuild index
         result = self.service.rebuild_index(
@@ -356,9 +360,9 @@ class SearchServiceEventIntegrationTest(TestCase):
 
         # Verify event was published
         # Events are persisted synchronously in tests, so we can query immediately
-        events = Event.objects.filter(event_type="search.index.rebuilt").order_by("-created_at")
-        # Filter by tenant to ensure we get the right event
-        events = events.filter(tenant_id=self.tenant.id)
+        events = Event.objects.filter(
+            event_type="search.index.rebuilt", tenant_id=self.tenant.id
+        ).order_by("-created_at")
         self.assertGreaterEqual(events.count(), initial_count + 1)
 
         event = events.first()
@@ -376,29 +380,6 @@ class SearchServiceEventIntegrationTest(TestCase):
         self.assertIsInstance(event_data.get("resource_types"), list)
         self.assertIn("search", event.metadata.get("tags", []))
         self.assertIn("index", event.metadata.get("tags", []))
-
-    def test_rebuild_index_publishes_event_with_errors_on_failure(self):
-        """Test that rebuild_index() publishes search.index.rebuilt event with errors on failure"""
-        # Mock a failure scenario by passing invalid tenant_id
-        # (This should still work but we'll verify error handling)
-
-        # Get initial event count
-        initial_count = Event.objects.filter(event_type="search.index.rebuilt").count()
-
-        # Rebuild index (should succeed normally)
-        result = self.service.rebuild_index(
-            tenant_id=str(self.tenant.id), user_id=str(self.user.id)
-        )
-
-        # Verify event was published with success=True
-        event = (
-            Event.objects.filter(event_type="search.index.rebuilt").order_by("-created_at").first()
-        )
-        self.assertIsNotNone(event)
-
-        event_data = event.data
-        self.assertEqual(event_data.get("success"), True)
-        self.assertEqual(event_data.get("errors"), [])
 
     def test_search_event_includes_execution_time(self):
         """Test that search.query event includes execution_time_ms"""

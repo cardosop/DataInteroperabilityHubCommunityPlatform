@@ -1,4 +1,6 @@
 """
+
+import uuid
 10.5.5: ODPS Version Migration Tests
 
 Tests ODPS version migration scenarios:

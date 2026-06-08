@@ -21,11 +21,11 @@ def two_tenant_setup(db):
     """Create two tenants with one active user each. Returns (tenant_a, tenant_b, user_a, user_b)."""
     tenant_a = Tenant.objects.create(
         name="Security Test Tenant A",
-        slug="security-tenant-a",
+        slug=f"security-tenant-a-{uuid.uuid4().hex[:8]}",
     )
     tenant_b = Tenant.objects.create(
         name="Security Test Tenant B",
-        slug="security-tenant-b",
+        slug=f"security-tenant-b-{uuid.uuid4().hex[:8]}",
     )
     user_a = User.objects.create_user(
         email=f"security-a-{uuid.uuid4().hex[:8]}@example.com",

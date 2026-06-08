@@ -52,14 +52,17 @@ async def test_get_request(client):
     mock_response = MagicMock()
     mock_response.json.return_value = {"id": "123", "name": "Test Asset"}
     mock_response.is_error = False
-    
+
     with patch.object(client.client, "request", new_callable=AsyncMock) as mock_request:
         mock_request.return_value = mock_response
-        
+
         result = await client.get("/assets/123/")
-        
+
         assert result == {"id": "123", "name": "Test Asset"}
         mock_request.assert_called_once()
+        call_method, call_url = mock_request.call_args[0]
+        assert call_method == "GET"
+        assert call_url == "/assets/123/"
 
 
 @pytest.mark.asyncio
@@ -68,14 +71,19 @@ async def test_post_request(client):
     mock_response = MagicMock()
     mock_response.json.return_value = {"id": "123", "name": "New Asset"}
     mock_response.is_error = False
-    
+
     with patch.object(client.client, "request", new_callable=AsyncMock) as mock_request:
         mock_request.return_value = mock_response
-        
-        result = await client.post("/assets/", {"name": "New Asset"})
-        
+
+        result = await client.post("/assets/", data={"name": "New Asset"})
+
         assert result == {"id": "123", "name": "New Asset"}
         mock_request.assert_called_once()
+        call_method, call_url = mock_request.call_args[0]
+        assert call_method == "POST"
+        assert call_url == "/assets/"
+        # Payload is sent as json; verify it reaches the request
+        assert mock_request.call_args[1]["json"] == {"name": "New Asset"}
 
 
 @pytest.mark.asyncio
@@ -167,12 +175,17 @@ async def test_token_refresh(client):
     
     with patch.object(client.client, "request", new_callable=AsyncMock) as mock_request:
         mock_request.side_effect = [error_401, mock_response_200]
-        
+
         result = await client.get("/assets/123/")
-        
+
         assert result == {"id": "123"}
         assert client.config.api_token == "new-token"
         assert mock_request.call_count == 2
+        # Both calls target the same URL; second succeeds after token refresh
+        assert mock_request.call_args_list[0][0][0] == "GET"
+        assert mock_request.call_args_list[0][0][1] == "/assets/123/"
+        assert mock_request.call_args_list[1][0][0] == "GET"
+        assert mock_request.call_args_list[1][0][1] == "/assets/123/"
 
 
 @pytest.mark.asyncio

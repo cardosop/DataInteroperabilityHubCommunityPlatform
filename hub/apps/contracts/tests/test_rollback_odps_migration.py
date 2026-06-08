@@ -172,8 +172,8 @@ class RemoveODPSLinksTest(RollbackODPSMigrationTestBase):
         x_odps = extensions.get("x_odps", {})
         self.assertIsNone(x_odps.get("odps_link"))
 
-    def test_remove_odcs_link_from_odps_contract(self):
-        """Test removing ODCS link from ODPS contract through public API."""
+    def test_full_rollback_deletes_odps_contract(self):
+        """Test full rollback deletes the ODPS contract through public API."""
         odcs_contract, odps_contract = self._create_linked_odcs_odps_contracts()
 
         # Verify link exists
@@ -295,7 +295,6 @@ class RestorePreviousStateTest(RollbackODPSMigrationTestBase):
         previous_odps_link = str(x_odps.get("odps_link"))
 
         # Store previous link in x_odps.previous_odps_link to simulate migration scenario
-        # where a previous link existed before migration
         if not odcs_contract.hub_contract_json:
             odcs_contract.hub_contract_json = {}
         if "extensions" not in odcs_contract.hub_contract_json:
@@ -307,8 +306,7 @@ class RestorePreviousStateTest(RollbackODPSMigrationTestBase):
         ] = previous_odps_link
         odcs_contract.save(update_fields=["hub_contract_json"])
 
-        # Perform rollback through public API - call_command() internally calls _restore_previous_odps_link()
-        # if previous_odps_link exists in x_odps
+        # Perform rollback through public API
         out = StringIO()
         call_command(
             "rollback_odps_migration",
@@ -317,15 +315,22 @@ class RestorePreviousStateTest(RollbackODPSMigrationTestBase):
             stdout=out,
         )
 
-        # Verify link restored (if restoration logic is triggered)
+        # Verify rollback completed
+        output = out.getvalue()
+        self.assertIn("Rollback completed", output, f"Expected rollback completion, got: {output}")
+
+        # Verify ODPS contract was deleted (full rollback)
+        self.assertFalse(
+            Contract.objects.filter(id=odps_contract.id).exists(),
+            "ODPS contract should be deleted after full rollback",
+        )
+
+        # Verify ODCS link was removed
         odcs_contract.refresh_from_db()
         hub_contract = odcs_contract.hub_contract_json
         extensions = hub_contract.get("extensions", {})
         x_odps = extensions.get("x_odps", {})
-        # Link may be restored if previous_odps_link was stored
-        # Note: Actual restoration behavior depends on command implementation
-        output = out.getvalue()
-        self.assertIsNotNone(output)
+        self.assertIsNone(x_odps.get("odps_link"))
 
     def test_restore_previous_state_handles_missing_contract(self):
         """Test restoring previous state when ODPS contract doesn't exist through public API."""
@@ -352,8 +357,7 @@ class RestorePreviousStateTest(RollbackODPSMigrationTestBase):
         # Delete ODPS contract
         odps_contract.delete()
 
-        # Perform rollback through public API - call_command() internally calls _restore_previous_odps_link()
-        # which should handle gracefully when contract doesn't exist
+        # Perform rollback through public API
         out = StringIO()
         call_command(
             "rollback_odps_migration",
@@ -362,9 +366,18 @@ class RestorePreviousStateTest(RollbackODPSMigrationTestBase):
             stdout=out,
         )
 
-        # Should handle gracefully (contract doesn't exist, so can't restore)
+        # Should handle gracefully — command should complete even though ODPS contract is gone
         output = out.getvalue()
-        self.assertIsNotNone(output)
+        self.assertTrue(
+            "Rollback completed" in output or "not found" in output,
+            f"Expected graceful handling, got: {output}",
+        )
+
+        # Verify ODCS contract state after rollback with missing ODPS contract.
+        odcs_contract.refresh_from_db()
+        hub_contract = odcs_contract.hub_contract_json
+        self.assertIsNotNone(hub_contract,
+                             "ODCS contract hub_contract_json must persist after rollback")
 
 
 class RollbackValidationTest(RollbackODPSMigrationTestBase):
@@ -743,46 +756,51 @@ class RollbackIntegrationTest(RollbackODPSMigrationTestBase):
 
         fake_odcs_id = str(uuid.uuid4())
 
-        # Test through public API - call_command() internally calls _validate_rollback()
         # Should handle gracefully when contract doesn't exist
         out = StringIO()
-        try:
-            call_command(
-                "rollback_odps_migration",
-                "--contract-id",
-                fake_odcs_id,
-                stdout=out,
-            )
-            # May return error or handle gracefully
-            output = out.getvalue()
-            self.assertIsNotNone(output)
-        except Exception:
-            # If it raises exception, that's acceptable
-            pass
+        call_command(
+            "rollback_odps_migration",
+            "--contract-id",
+            fake_odcs_id,
+            stdout=out,
+        )
+        output = out.getvalue()
+        self.assertIn(
+            "not found",
+            output,
+            f"Expected 'not found' in output for nonexistent contract, got: {output}",
+        )
 
     def test_rollback_with_nonexistent_odps_contract(self):
         """Test rollback with nonexistent ODPS contract."""
-        odcs_contract, _ = self._create_linked_odcs_odps_contracts()
-        import uuid
+        odcs_contract, odps_contract = self._create_linked_odcs_odps_contracts()
 
-        fake_odps_id = str(uuid.uuid4())
+        # Delete ODPS contract before rollback
+        odps_contract.delete()
 
-        # Test through public API - call_command() internally calls _validate_rollback()
-        # Should handle gracefully when ODPS contract doesn't exist
+        # Should handle gracefully when ODPS contract doesn't exist.
         out = StringIO()
-        try:
-            call_command(
-                "rollback_odps_migration",
-                "--contract-id",
-                str(odcs_contract.id),
-                stdout=out,
-            )
-            # May return error or handle gracefully
-            output = out.getvalue()
-            self.assertIsNotNone(output)
-        except Exception:
-            # If it raises exception, that's acceptable
-            pass
+        call_command(
+            "rollback_odps_migration",
+            "--contract-id",
+            str(odcs_contract.id),
+            stdout=out,
+        )
+        output = out.getvalue()
+        self.assertTrue(
+            "Rollback completed" in output or "not found or not eligible" in output,
+            f"Expected graceful handling when ODPS contract missing, got: {output}",
+        )
+
+        # Verify ODCS link state after rollback
+        odcs_contract.refresh_from_db()
+        hub_contract = odcs_contract.hub_contract_json
+        extensions = hub_contract.get("extensions", {})
+        x_odps = extensions.get("x_odps", {})
+        # The ODCS contract should persist; link removal behavior depends on
+        # the rollback command implementation.
+        self.assertIsNotNone(hub_contract,
+                             "ODCS contract hub_contract_json must persist")
 
     def test_rollback_with_missing_extensions(self):
         """Test rollback with contract missing extensions."""
@@ -888,10 +906,11 @@ class RollbackIntegrationTest(RollbackODPSMigrationTestBase):
             pass
 
     def test_rollback_with_invalid_contract_id_format(self):
-        """Test rollback with invalid contract ID format."""
-        # Test through public API - call_command() internally calls _validate_rollback()
-        # Should handle invalid format gracefully
+        """Test rollback with invalid contract ID format raises CommandError."""
         out = StringIO()
+        # An invalid UUID format should cause the command to raise an error.
+        # The exact error type depends on the implementation (CommandError,
+        # ValueError, or SystemExit from argparse).
         try:
             call_command(
                 "rollback_odps_migration",
@@ -899,11 +918,14 @@ class RollbackIntegrationTest(RollbackODPSMigrationTestBase):
                 "invalid-id-format",
                 stdout=out,
             )
-            # May return error or handle gracefully
+            # If no exception, output should indicate the problem.
             output = out.getvalue()
-            self.assertIsNotNone(output)
-        except Exception:
-            # If it raises exception, that's acceptable
+            self.assertTrue(
+                "not found" in output or "invalid" in output.lower(),
+                f"Expected error indicator for invalid contract ID, got: {output}",
+            )
+        except (ValueError, SystemExit, Exception):
+            # Raising an exception for invalid format is also acceptable.
             pass
 
     def test_rollback_with_very_large_batch_size(self):
@@ -916,21 +938,32 @@ class RollbackIntegrationTest(RollbackODPSMigrationTestBase):
 
         # Run command with very large batch size
         out = StringIO()
-        try:
-            call_command(
-                "rollback_odps_migration",
-                "--tenant-id",
-                str(self.tenant.id),
-                "--batch-size",
-                "10000",
-                stdout=out,
+        call_command(
+            "rollback_odps_migration",
+            "--tenant-id",
+            str(self.tenant.id),
+            "--batch-size",
+            "10000",
+            stdout=out,
+        )
+        output = out.getvalue()
+        self.assertIn(
+            "Rollback completed",
+            output,
+            f"Expected 'Rollback completed' for large batch, got: {output}",
+        )
+
+        # Verify all contracts rolled back
+        for odcs_contract, odps_contract in contracts:
+            odcs_contract.refresh_from_db()
+            hub_contract = odcs_contract.hub_contract_json
+            extensions = hub_contract.get("extensions", {})
+            x_odps = extensions.get("x_odps", {})
+            self.assertIsNone(x_odps.get("odps_link"))
+            self.assertFalse(
+                Contract.objects.filter(id=odps_contract.id).exists(),
+                "ODPS contract should be deleted after rollback",
             )
-            # Should handle large batch size
-            output = out.getvalue()
-            self.assertIsNotNone(output)
-        except Exception:
-            # If it raises exception, that's acceptable
-            pass
 
     def test_rollback_with_zero_batch_size(self):
         """Test rollback with zero batch size."""
@@ -938,21 +971,30 @@ class RollbackIntegrationTest(RollbackODPSMigrationTestBase):
 
         # Run command with zero batch size
         out = StringIO()
-        try:
-            call_command(
-                "rollback_odps_migration",
-                "--tenant-id",
-                str(self.tenant.id),
-                "--batch-size",
-                "0",
-                stdout=out,
-            )
-            # May handle zero batch size or raise error
-            output = out.getvalue()
-            self.assertIsNotNone(output)
-        except Exception:
-            # If it raises exception, that's acceptable
-            pass
+        call_command(
+            "rollback_odps_migration",
+            "--tenant-id",
+            str(self.tenant.id),
+            "--batch-size",
+            "0",
+            stdout=out,
+        )
+        output = out.getvalue()
+        self.assertTrue(
+            "Rollback completed" in output or "0" in output,
+            f"Expected graceful handling with zero batch size, got: {output}",
+        )
+
+        # Verify contract still exists (no rollback with batch-size 0 should occur)
+        odcs_contract.refresh_from_db()
+        hub_contract = odcs_contract.hub_contract_json
+        extensions = hub_contract.get("extensions", {})
+        x_odps = extensions.get("x_odps", {})
+        # The command may or may not process contracts when batch-size is 0,
+        # depending on implementation. Verify the ODCS contract still exists.
+        odcs_contract.refresh_from_db()
+        self.assertIsNotNone(odcs_contract.hub_contract_json,
+                             "ODCS contract must still exist after rollback")
 
     def test_rollback_cross_tenant_isolation(self):
         """Test rollback respects tenant isolation."""

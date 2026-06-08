@@ -27,6 +27,8 @@ class TestDatabricksConnectorListListings(TestCase):
 
     def setUp(self):
         """Set up test fixtures"""
+        from hub.apps.core.resilience.circuit_breaker import reset_circuit_breaker_by_name
+        reset_circuit_breaker_by_name('databricks-connector')
         self.connector = DatabricksConnector(
             host='https://test-workspace.cloud.databricks.com',
             token='dapi1234567890abcdef'
@@ -97,7 +99,8 @@ class TestDatabricksConnectorListListings(TestCase):
                 listings = self.connector.list_listings(limit=5)
 
                 self.assertEqual(len(listings), 5)
-                mock_get_details.assert_called_once()
+                # _get_share_details is called once per listing returned
+                self.assertTrue(mock_get_details.called)
 
     def test_list_listings_with_offset(self):
         """Test list_listings with offset parameter"""
@@ -119,9 +122,11 @@ class TestDatabricksConnectorListListings(TestCase):
 
                 listings = self.connector.list_listings(offset=5)
 
-                # Should skip first 5 and return remaining
-                self.assertGreaterEqual(len(listings), 0)
-                mock_get_details.assert_called_once()
+                # Should skip first 5 and return remaining (10 total - 5 offset = 5)
+                self.assertEqual(len(listings), 5,
+                                 "offset=5 with 10 total shares should return 5 listings")
+                # _get_share_details is called once per listing returned
+                self.assertTrue(mock_get_details.called)
 
     def test_list_listings_empty_result(self):
         """Test list_listings when no shares exist"""
@@ -152,6 +157,8 @@ class TestDatabricksConnectorGetListing(TestCase):
 
     def setUp(self):
         """Set up test fixtures"""
+        from hub.apps.core.resilience.circuit_breaker import reset_circuit_breaker_by_name
+        reset_circuit_breaker_by_name('databricks-connector')
         self.connector = DatabricksConnector(
             host='https://test-workspace.cloud.databricks.com',
             token='dapi1234567890abcdef'
@@ -205,6 +212,8 @@ class TestDatabricksConnectorListResources(TestCase):
 
     def setUp(self):
         """Set up test fixtures"""
+        from hub.apps.core.resilience.circuit_breaker import reset_circuit_breaker_by_name
+        reset_circuit_breaker_by_name('databricks-connector')
         self.connector = DatabricksConnector(
             host='https://test-workspace.cloud.databricks.com',
             token='dapi1234567890abcdef'

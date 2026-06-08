@@ -1,43 +1,30 @@
-# Warehouse Connectivity Runbook (Phase 275)
+# Warehouse Connectivity — Operational Runbook
 
-## Trivy Scan Budget (275.A.11)
+**Phase 275.E** — Connection troubleshooting for warehouse connectivity.
 
-New SDKs add transitive deps to the Hub image:
-- `snowflake-connector-python` — pure Python, no new C deps
-- `google-cloud-bigquery` — gRPC, protobuf
-- `databricks-sql-connector` — thrift, sqlalchemy (~15 new packages)
-- `pyathena` — boto3 (already vendored)
-- `dlt` — pyarrow + sqlalchemy (already vendored)
-- `delta-sharing` — requests + pandas (already vendored)
+## 1. Symptom
+`POST /api/v1/warehouses/connections/{id}/test/` returns failure.
 
-Budget: `.trivyignore` expected to grow ~30 lines for new CVE entries.
-If growth exceeds 60 lines, split warehouse connectors into a separate
-Docker image to isolate scan surface.
+## 2. Impact
+LIVE_QUERY assets cannot serve data. Warehouse-native DQ/Compliance scans fail.
 
-## TLS Pinning (275.A.20)
+## 3. Diagnosis
+```bash
+curl -X POST /api/v1/warehouses/connections/{id}/test/ -H "Authorization: Bearer $TOKEN"
+```
 
-Every driver MUST:
-1. `verify_ssl=True` (or equivalent driver-level setting)
-2. Min TLS 1.2
-3. Cipher allow-list (defaults are acceptable for cloud warehouses)
+## 4. Common Causes
+| Cause | Fix |
+|-------|-----|
+| Credential expired | Rotate AWS Secrets Manager secret, update credential_ref |
+| Network blocked | Verify NetworkPolicy allows egress 443 to warehouse host |
+| Warehouse paused | Resume in provider console |
 
-CI check: `grep -r "verify=False\|verify_ssl=False\|ssl_verify=False" hub/apps/warehouses/` must return empty.
+## 5. Recovery
+1. Test connection via API. 2. Fix root cause. 3. Re-test.
 
-## KMS Key Policy (275.A.20)
+## 6. Prevention
+Monitor `warehouse_credential_age_days` metric. Set credential rotation alerts at 80 days.
 
-Only Hub api-service + worker pods can decrypt `WarehouseConnection.config`.
-KMS key alias: `alias/meshant-warehouse-credentials`.
-Documented in `infrastructure/terraform/modules/warehouse-iam/`.
-
-## CI Sandbox Accounts (275.A.12)
-
-Provision in Snowflake/BigQuery/Databricks/Athena. Rotate via ExternalSecrets.
-Per-CI-run cost-budget cap: $5/run. Finance sign-off required.
-
-## Rolling Deploy Order (Phase 275.17)
-
-1. Deploy migration (additive — no backfill)
-2. Deploy api-service with warehouse app
-3. Flip `Tenant.warehouse_connectivity_enabled` per-tenant after 14d stability
-4. Connector-specific flags: `warehouse_snowflake_enabled`, etc.
-EOF
+## 7. Escalation
+If multiple tenants affected, check warehouse provider status page.

@@ -88,14 +88,10 @@ class TestDockerComposeIntegration:
         application_services = [
             "api-service",
             "worker-service",
-            "workflow-engine-service",
-            "workflow-registry-service",
                                     "semantic-service",
             "dq-service",
             "compliance-service",
             "datacontract-service",
-            "search-service",
-            "webhook-service",
         ]
         for service_name in application_services:
             assert (
@@ -139,15 +135,6 @@ class TestDockerComposeIntegration:
         """Test that service dependencies are properly configured (redis-cache in docker-compose.yml)."""
         services = docker_compose_config.get("services", {})
 
-        # Test that workflow-engine-service depends on postgres and redis-cache
-        workflow_engine = services.get("workflow-engine-service", {})
-        depends_on = workflow_engine.get("depends_on", {})
-        wf_dep_list = (
-            list(depends_on.keys()) if isinstance(depends_on, dict) else (depends_on or [])
-        )
-        assert "postgres" in wf_dep_list, "workflow-engine-service must depend on postgres"
-        assert "redis-cache" in wf_dep_list, "workflow-engine-service must depend on redis-cache"
-
         # Test that api-service depends on postgres, redis-cache, and minio
         api_service = services.get("api-service", {})
         api_depends_on = api_service.get("depends_on", {})
@@ -166,8 +153,6 @@ class TestDockerComposeIntegration:
 
         # Services that should have OpenTelemetry configuration
         services_with_tracing = [
-            "workflow-engine-service",
-            "workflow-registry-service",
                                     "api-service",
             "worker-service",
         ]
@@ -208,8 +193,6 @@ class TestDockerComposeIntegration:
 
         # Check for key services
         required_jobs = [
-            "workflow-engine-service",
-            "workflow-registry-service",
                                 ]
 
         for job_name in required_jobs:

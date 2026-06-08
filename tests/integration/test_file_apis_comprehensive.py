@@ -31,6 +31,7 @@ from hub.apps.files.models import File, FileStatus
 from hub.apps.files.storage import S3StorageClient
 from hub.apps.tenants.models import KYCStatus, TenantStatus
 from hub.apps.testing.billing_support import ensure_tenant_has_active_subscription
+from hub.apps.testing.role_support import ensure_user_has_data_provider_role
 from hub.apps.users.models import UserStatus
 from tests.fixtures.test_data_factories import TenantFactory
 
@@ -63,6 +64,7 @@ class TestFileInitUploadAPI(TestCase):
         ensure_tenant_has_active_subscription(self.tenant)
         # Authenticate
         self.client.force_authenticate(user=self.user)
+        ensure_user_has_data_provider_role(self.user)
 
     def tearDown(self):
         """Clean up after each test"""
@@ -450,6 +452,7 @@ class TestFileCompleteUploadAPI(TestCase):
         )
         ensure_tenant_has_active_subscription(self.tenant)
         self.client.force_authenticate(user=self.user)
+        ensure_user_has_data_provider_role(self.user)
 
         # Create a file in PENDING status for testing
         self.file_obj = File.objects.create(
@@ -693,6 +696,7 @@ class TestFileGetInfoAPI(TestCase):
             status=UserStatus.ACTIVE.value,
         )
         self.client.force_authenticate(user=self.user)
+        ensure_user_has_data_provider_role(self.user)
 
         self.file_obj = File.objects.create(
             tenant=self.tenant,
@@ -738,7 +742,7 @@ class TestFileGetInfoAPI(TestCase):
     def test_get_file_info_tenant_isolation(self):
         """Test tenant isolation - user cannot access other tenant's files"""
         other_tenant = TenantFactory.create_tenant(
-            name="Other Tenant",
+            name=f"Other Tenant {uuid.uuid4().hex[:8]}",
             slug=f"other-tenant-{uuid.uuid4().hex[:8]}",
             status=TenantStatus.ACTIVE.value,
         )
@@ -791,6 +795,7 @@ class TestFileDownloadAPI(TestCase):
             status=UserStatus.ACTIVE.value,
         )
         self.client.force_authenticate(user=self.user)
+        ensure_user_has_data_provider_role(self.user)
 
         self.file_obj = File.objects.create(
             tenant=self.tenant,
@@ -838,7 +843,7 @@ class TestFileDownloadAPI(TestCase):
     def test_download_file_tenant_isolation(self):
         """Test tenant isolation for downloads"""
         other_tenant = TenantFactory.create_tenant(
-            name="Other Tenant",
+            name=f"Other Tenant {uuid.uuid4().hex[:8]}",
             slug=f"other-tenant-{uuid.uuid4().hex[:8]}",
             status=TenantStatus.ACTIVE.value,
         )
@@ -944,6 +949,7 @@ class TestFileDeleteAPI(TestCase):
         )
         ensure_tenant_has_active_subscription(self.tenant)
         self.client.force_authenticate(user=self.user)
+        ensure_user_has_data_provider_role(self.user)
 
         self.file_obj = File.objects.create(
             tenant=self.tenant,
@@ -1005,7 +1011,7 @@ class TestFileDeleteAPI(TestCase):
     def test_delete_file_tenant_isolation(self):
         """Test tenant isolation for deletion"""
         other_tenant = TenantFactory.create_tenant(
-            name="Other Tenant",
+            name=f"Other Tenant {uuid.uuid4().hex[:8]}",
             slug=f"other-tenant-{uuid.uuid4().hex[:8]}",
             status=TenantStatus.ACTIVE.value,
         )

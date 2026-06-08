@@ -106,12 +106,14 @@ export function useCrossTabAuthSync(): void {
         apiClient.setAccessToken(newAccessToken);
 
         // Trigger auth re-initialization to refresh user, tenants, etc.
-        authService.initializeAuth().catch(() => {
+        try {
+          authService.initializeAuth();
+        } catch {
           // If initialization fails (e.g. token already expired by the
           // time we tried), clear and redirect.
           apiClient.clearTokens();
           navigate('/login', { replace: true });
-        });
+        }
       } else {
         // ── Logout in another tab ─────────────────────────────
         apiClient.clearTokens();

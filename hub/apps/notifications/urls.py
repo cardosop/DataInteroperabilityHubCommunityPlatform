@@ -3,7 +3,7 @@ from django.urls import include, path
 from rest_framework.routers import DefaultRouter
 
 from .stream_views import NotificationStreamView
-from .views import UserNotificationViewSet
+from .views import UserNotificationViewSet, marketing_unsubscribe
 
 router = DefaultRouter()
 router.register(
@@ -19,5 +19,20 @@ urlpatterns = [
         "stream/",
         NotificationStreamView.as_view(),
         name="notification-stream",
+    ),
+    # Phase 277.B.097 — 1-click marketing unsubscribe.
+    # The empty-token catch-all ensures short / missing tokens still
+    # reach the view (always-200 contract prevents enumeration).
+    path(
+        "unsubscribe/<str:token>/",
+        marketing_unsubscribe,
+        name="marketing-unsubscribe",
+    ),
+    # Catch empty token with trailing slash (// → token="")
+    path(
+        "unsubscribe//",
+        marketing_unsubscribe,
+        kwargs={"token": ""},
+        name="marketing-unsubscribe-empty-token",
     ),
 ]

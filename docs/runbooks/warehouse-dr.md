@@ -1,16 +1,27 @@
-# Warehouse Connectivity DR Runbook (Phase 275.E.3j)
+# Warehouse Connectivity — Disaster Recovery
 
-## SLO Numbers
-- Live-query p95: ≤ 5s (cached), ≤ 30s (fresh)
-- Success rate: ≥ 99.5%
-- Export cron: ≥ 99% on-time delivery
+**Phase 275.E** — DR procedures for warehouse connectivity.
 
-## RPO / RTO
-- Cached rows: best-effort (regenerable from warehouse)
-- Audit + creds: matches Hub-DB RPO (15 min)
-- RTO: < 1 hour for warehouse credential rotation
+## 1. Scope
+Covers Snowflake, BigQuery, Databricks, and Athena connector recovery.
 
-## DR Procedure
-1. Detect: Grafana warehouse_query_error_rate panel fires
-2. Diagnose: check warehouse circuit-breaker state, credential age
-3. Recover: rotate credentials via ExternalSecrets, re-enable circuit
+## 2. RTO/RPO
+RTO: 1 hour. RPO: 0 (warehouse-native path doesn't store customer data).
+
+## 3. Failover Procedure
+1. Verify credential availability in AWS Secrets Manager secondary region.
+2. Update WarehouseConnection config with failover warehouse/region.
+3. Re-test connections via API.
+4. Verify LIVE_QUERY assets resolve via new warehouse.
+
+## 4. Rollback
+Revert config to primary warehouse. Re-test connections.
+
+## 5. Test Schedule
+Quarterly DR test via `scripts/smoke_tests_warehouse.sh`.
+
+## 6. Known Limitations
+Athena is regional-only (no cross-region failover). Delta Sharing requires re-provisioning.
+
+## 7. Contacts
+Platform engineering on-call rotation.

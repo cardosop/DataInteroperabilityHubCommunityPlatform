@@ -155,7 +155,8 @@ class MarketplacePurchaseSagaTest(TestCase):
         entitlement = Entitlement.objects.get(id=result.output["entitlement_id"])
         self.assertEqual(entitlement.order_id, order.id)
         self.assertEqual(entitlement.listing, self.listing)
-        self.assertEqual(entitlement.user_id, self.buyer.id)
+        self.assertEqual(entitlement.tenant_id, self.tenant.id)
+        self.assertEqual(entitlement.asset, self.asset)
         self.assertEqual(entitlement.status, EntitlementStatus.ACTIVE)
 
     def test_create_entitlement_missing_fields(self):
@@ -181,7 +182,7 @@ class MarketplacePurchaseSagaTest(TestCase):
         entitlement = Entitlement.objects.create(
             order=order,
             listing=self.listing,
-            user_id=self.buyer.id,
+            asset=self.asset,
             tenant_id=self.tenant.id,
             status=EntitlementStatus.ACTIVE
         )
@@ -213,7 +214,7 @@ class MarketplacePurchaseSagaTest(TestCase):
         entitlement = Entitlement.objects.create(
             order=order,
             listing=self.listing,
-            user_id=self.buyer.id,
+            asset=self.asset,
             tenant_id=self.tenant.id,
             status=EntitlementStatus.ACTIVE
         )
@@ -230,7 +231,12 @@ class MarketplacePurchaseSagaTest(TestCase):
         self.assertTrue(result.output["notified"])
 
     def test_send_notification_failure_non_critical(self):
-        """Test notification failure doesn't fail the saga."""
+        """Test notification failure doesn't fail the saga.
+
+        The notification step is now implemented via ``logger.info()``
+        (no external Notification model).  A logger failure is caught
+        and the step still succeeds with ``notified=False``.
+        """
         order = Order.objects.create(
             listing=self.listing,
             tenant_id=self.tenant.id,
@@ -238,9 +244,8 @@ class MarketplacePurchaseSagaTest(TestCase):
             status=OrderStatus.REQUESTED
         )
 
-        # Mock notification creation to fail
-        with patch('hub.apps.orchestration.workflows.marketplace_purchase_saga.Notification.objects.create') as mock_create:
-            mock_create.side_effect = Exception("Notification service unavailable")
+        with patch('hub.apps.orchestration.workflows.marketplace_purchase_saga.logger.info') as mock_log:
+            mock_log.side_effect = Exception("Notification service unavailable")
 
             result = send_notification({
                 "order_id": str(order.id),
@@ -248,7 +253,7 @@ class MarketplacePurchaseSagaTest(TestCase):
                 "tenant_id": str(self.tenant.id)
             })
 
-            # Notification failure is non-critical
+            # Notification failure is non-critical — the step succeeds anyway.
             self.assertTrue(result.success)
             self.assertFalse(result.output["notified"])
             self.assertIn("warning", result.output)
@@ -307,7 +312,7 @@ class MarketplacePurchaseSagaTest(TestCase):
             self.assertEqual(result["status"], "COMPENSATED")
 
             # Verify order was cancelled (compensated)
-            orders = Order.objects.filter(listing=self.listing, buyer_id=self.buyer.id)
+            orders = Order.objects.filter(listing=self.listing, created_by_id=self.buyer.id)
             if orders.exists():
                 order = orders.first()
                 self.assertEqual(order.status, OrderStatus.CANCELLED)

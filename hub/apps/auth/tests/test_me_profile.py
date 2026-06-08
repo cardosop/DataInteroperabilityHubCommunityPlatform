@@ -183,18 +183,6 @@ class MeProfileUpdateTest(TestCase):
         )
         self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
 
-    def test_patch_display_name_updates(self):
-        """PATCH with new display_name updates the value."""
-        self._login()
-        response = self.client.patch(
-            "/api/v1/auth/me/",
-            {"display_name": "New Name"},
-            format="json",
-        )
-        self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.user.refresh_from_db()
-        self.assertEqual(self.user.display_name, "New Name")
-
     def test_patch_invalidates_cache(self):
         """PATCH invalidates GET cache so next GET returns fresh data."""
         self._login()

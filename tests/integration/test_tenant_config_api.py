@@ -4,6 +4,7 @@ Integration tests for TenantConfig API endpoints.
 Tests the full API integration including authentication, authorization,
 validation, and error handling.
 """
+from hub.apps.testing.role_support import ensure_user_has_data_provider_role
 import pytest
 from datetime import timedelta
 

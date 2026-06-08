@@ -126,6 +126,20 @@ class MarketplaceConnectionViewSet(viewsets.ModelViewSet):
     serializer_class = MarketplaceConnectionSerializer
     permission_classes = [permissions.IsAuthenticated]
     lookup_field = "id"
+
+    def initial(self, request, *args, **kwargs):
+        # Run DRF auth/permission/throttle checks FIRST so unauthenticated
+        # requests receive 401 (NotAuthenticated) instead of 403 from the
+        # feature-flag gate below. The feature flag is only meaningful for
+        # authenticated tenants.
+        super().initial(request, *args, **kwargs)
+
+        from hub.apps.tenants.feature_flag_gates import check_marketplace_integrations_enabled
+        from rest_framework.exceptions import PermissionDenied
+        result = check_marketplace_integrations_enabled(request)
+        if isinstance(result, Response):
+            raise PermissionDenied(detail=result.data)
+
     filter_backends = [OrderingFilter, SearchFilter]
     ordering_fields = ['name', 'marketplace_type', 'is_active', 'created_at', 'updated_at']
     ordering = ['-created_at']  # Default ordering

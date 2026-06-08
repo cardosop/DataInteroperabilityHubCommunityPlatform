@@ -1594,7 +1594,11 @@ class QueryServiceMixin:
         for pos, length, key in filtered:
             result_parts.append(query[prev_end:pos])
             result_parts.append("%s")
-            ordered_values.append(parameters[key])
+            value = parameters[key]
+            if isinstance(value, dict):
+                import json
+                value = json.dumps(value)
+            ordered_values.append(value)
             prev_end = pos + length
         result_parts.append(query[prev_end:])
 

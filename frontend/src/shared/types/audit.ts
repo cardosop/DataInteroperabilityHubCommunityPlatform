@@ -59,3 +59,19 @@ export interface ResourceActivityResponse {
 }
 
 export type ResourceType = 'ASSET' | 'CONTRACT' | 'ORDER' | 'ACCESS_REQUEST' | string;
+
+export interface AuditEventRetentionPolicy {
+  id: string;
+  event_type: string;
+  retention_days: number;
+  enabled?: boolean;
+  regulation_keys: string[];
+  created_at: string;
+  updated_at: string;
+}
+
+export interface AuditEventRetentionPolicyInput {
+  event_type: string;
+  retention_days?: number;
+  regulation_keys?: string[];
+}

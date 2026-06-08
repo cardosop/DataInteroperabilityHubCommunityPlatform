@@ -661,7 +661,7 @@ class MarketplaceMultiTenantIsolationE2ETest(E2ETestBase):
         # Create second tenant
         self.tenant2 = Tenant.objects.create(
             name="E2E Test Tenant 2",
-            slug="e2e-test-tenant-2",
+            slug=f"e2e-test-tenant-2-{uuid.uuid4().hex[:8]}",
             kyc_status=KYCStatus.VERIFIED
         )
 

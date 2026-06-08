@@ -182,7 +182,7 @@ def create_entitlement(input_data: Dict[str, Any]) -> SagaStepResult:
         entitlement = Entitlement.objects.create(
             order_id=order_id,
             listing=listing,
-            user_id=buyer_id,
+            asset=listing.asset,
             tenant_id=tenant_id,
             status=EntitlementStatus.ACTIVE,
             expires_at=None  # Can be set based on listing configuration
@@ -298,7 +298,7 @@ def send_notification(input_data: Dict[str, Any]) -> SagaStepResult:
                 "entitlement_id": str(entitlement_id) if entitlement_id else None,
                 "buyer_id": str(buyer_id),
                 "tenant_id": str(tenant_id),
-                "message": f"Purchase completed for Order #{order_id[:8]}"
+                "detail": f"Purchase completed for Order #{order_id[:8]}"
             }
         )
 

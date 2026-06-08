@@ -176,6 +176,114 @@ def process_file_for_run(
             raise ServiceValidationError(str(e), code="DQ_ERROR", details={})
         logger.warning("DQ check failed (non-strict), continuing: %s", e)
 
+    # 4. Schema inference + compat check (outside transaction so audits
+    #    survive even when a ServiceValidationError rolls back the
+    #    File/Dataset atomic block below).
+    created_by = scheduled_ingestion.created_by
+    from hub.apps.assets.models import Asset, AssetStatus
+    from hub.apps.datasets.models import Dataset
+    from hub.apps.datasets.schema_inference import (
+        extract_sample_data,
+        infer_schema_from_csv,
+        infer_schema_from_json,
+        infer_schema_from_parquet,
+    )
+
+    schema_json = {}
+    try:
+        if file_format == "CSV":
+            schema_json = infer_schema_from_csv(file_content)
+        elif file_format == "JSON":
+            schema_json = infer_schema_from_json(file_content)
+        elif file_format == "PARQUET":
+            schema_json = infer_schema_from_parquet(file_content)
+        elif file_format in ("XLSX", "XLS"):
+            try:
+                from hub.apps.datasets.schema_inference import infer_schema_from_excel
+                schema_json = infer_schema_from_excel(file_content)
+            except (ImportError, ValueError, AttributeError) as e:
+                logger.debug(
+                    "Excel schema inference not available",
+                    extra={"error_type": type(e).__name__},
+                )
+    except (ValueError, AttributeError, TypeError) as e:
+        logger.warning(
+            "Schema inference failed",
+            extra={"file_format": file_format, "error_type": type(e).__name__},
+        )
+    except Exception as e:
+        logger.warning(
+            "Unexpected error during schema inference",
+            extra={"file_format": file_format, "error_type": type(e).__name__},
+            exc_info=True,
+        )
+    try:
+        sample_data_json = extract_sample_data(file_content, file_format)
+    except (ValueError, AttributeError, TypeError) as e:
+        logger.debug(
+            "Sample data extraction failed",
+            extra={"file_format": file_format, "error_type": type(e).__name__},
+        )
+        sample_data_json = []
+    except Exception as e:
+        logger.warning(
+            "Unexpected error during sample data extraction",
+            extra={"file_format": file_format, "error_type": type(e).__name__},
+        )
+        sample_data_json = []
+
+    # Resolve parent_version outside the transaction so the schema-
+    # compatibility check can emit an audit that survives rollback.
+    version = 1
+    parent_version = None
+    asset = scheduled_ingestion.asset
+    if asset_id:
+        try:
+            asset = Asset.objects.get(id=asset_id, tenant=tenant)
+        except Asset.DoesNotExist:
+            pass
+    if asset:
+        latest = Dataset.objects.filter(tenant=tenant, asset=asset).order_by("-version").first()
+        if latest:
+            version = latest.version + 1
+            parent_version = latest
+
+    # Schema-compatibility check: if a prior version exists, verify that
+    # the new schema does not remove fields that were present before.
+    if parent_version is not None and parent_version.schema_json:
+        new_fields = set(
+            (f.get("name") or f.get("field"))
+            for f in (schema_json.get("fields") or [])
+        )
+        old_fields = set(
+            (f.get("name") or f.get("field"))
+            for f in (parent_version.schema_json.get("fields") or [])
+        )
+        missing_fields = old_fields - new_fields
+        if missing_fields:
+            from hub.apps.audit.utils import create_audit_event
+
+            create_audit_event(
+                resource_type="scheduled_ingestion",
+                action="SCHEDULED_INGESTION_SCHEMA_INCOMPATIBLE_REJECTED",
+                actor_user=created_by,
+                tenant=tenant,
+                resource_id=str(scheduled_ingestion.id),
+                result="FAILURE",
+                details={
+                    "missing_fields": sorted(missing_fields),
+                    "prior_version": parent_version.version,
+                    "prior_dataset_id": str(parent_version.id),
+                    "audience": "TENANT_ADMIN",
+                },
+            )
+            raise ServiceValidationError(
+                "Schema incompatible: the following fields were removed "
+                f"from the prior version: {', '.join(sorted(missing_fields))}",
+                code="SCHEMA_INCOMPATIBLE",
+                details={"missing_fields": sorted(missing_fields)},
+            )
+
     # 4. Create File + Dataset (same as workflow _create_dataset_version_task)
     with transaction.atomic():
         content_type = CONTENT_TYPE_MAP.get(file_format, "application/octet-stream")
@@ -209,50 +317,6 @@ def process_file_for_run(
         )
         file_obj.storage_path = storage_path
         file_obj.save(update_fields=["storage_path"])
-
-        schema_json = {}
-        try:
-            if file_format == "CSV":
-                schema_json = infer_schema_from_csv(file_content)
-            elif file_format == "JSON":
-                schema_json = infer_schema_from_json(file_content)
-            elif file_format == "PARQUET":
-                schema_json = infer_schema_from_parquet(file_content)
-            elif file_format in ("XLSX", "XLS"):
-                try:
-                    from hub.apps.datasets.schema_inference import infer_schema_from_excel
-
-                    schema_json = infer_schema_from_excel(file_content)
-                except (ImportError, ValueError, AttributeError) as e:
-                    logger.debug(
-                        "Excel schema inference not available",
-                        extra={"error_type": type(e).__name__},
-                    )
-        except (ValueError, AttributeError, TypeError) as e:
-            logger.warning(
-                "Schema inference failed",
-                extra={"file_format": file_format, "error_type": type(e).__name__},
-            )
-        except Exception as e:
-            logger.warning(
-                "Unexpected error during schema inference",
-                extra={"file_format": file_format, "error_type": type(e).__name__},
-                exc_info=True,
-            )
-        try:
-            sample_data_json = extract_sample_data(file_content, file_format)
-        except (ValueError, AttributeError, TypeError) as e:
-            logger.debug(
-                "Sample data extraction failed",
-                extra={"file_format": file_format, "error_type": type(e).__name__},
-            )
-            sample_data_json = []
-        except Exception as e:
-            logger.warning(
-                "Unexpected error during sample data extraction",
-                extra={"file_format": file_format, "error_type": type(e).__name__},
-            )
-            sample_data_json = []
 
         asset = scheduled_ingestion.asset
         if asset_id:
@@ -363,14 +427,6 @@ def process_file_for_run(
             scheduled_ingestion.asset = asset
             scheduled_ingestion.save(update_fields=["asset"])
 
-        version = 1
-        parent_version = None
-        if asset:
-            latest = Dataset.objects.filter(tenant=tenant, asset=asset).order_by("-version").first()
-            if latest:
-                version = latest.version + 1
-                parent_version = latest
-
         snapshot_metadata = {}
         if dq_result:
             snapshot_metadata["pre_ingestion_dq"] = {
@@ -396,6 +452,27 @@ def process_file_for_run(
         VersionHistoryManager.create_version(
             dataset=dataset, parent_version=parent_version, is_current=True
         )
+
+        # 260.7.F — empty-data warning: emit audit when row_count is 0
+        # (e.g., header-only CSV). The dataset IS created; the warning
+        # is informational so ops can spot empty-snapshot feeds.
+        if (schema_json.get("row_count_estimated") or 0) == 0:
+            from hub.apps.audit.utils import create_audit_event as _ce
+
+            _ce(
+                resource_type="scheduled_ingestion",
+                action="SCHEDULED_INGESTION_EMPTY_DATA_WARN",
+                actor_user=created_by,
+                tenant=tenant,
+                resource_id=str(dataset.id),
+                result="WARNING",
+                details={
+                    "dataset_id": str(dataset.id),
+                    "row_count": 0,
+                    "audience": "TENANT_ADMIN",
+                },
+            )
+
         if asset and scheduled_ingestion.auto_activate:
             asset.status = AssetStatus.ACTIVE
             asset.save(update_fields=["status"])

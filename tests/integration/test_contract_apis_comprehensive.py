@@ -50,6 +50,7 @@ from hub.apps.contracts.models import (
     OriginalFormat
 )
 from hub.apps.testing.billing_support import ensure_tenant_has_active_subscription
+from hub.apps.testing.role_support import ensure_user_has_data_provider_role
 from hub.apps.users.models import UserStatus
 from hub.apps.tenants.models import Tenant, TenantStatus, KYCStatus
 from hub.apps.contracts.tests.factories import ContractFactoryEnhanced
@@ -70,13 +71,13 @@ class TestContractListAPI(TestCase):
 
         # Create tenants
         self.tenant_a = TenantFactory.create_tenant(
-            name="Tenant A",
+            name=f"Tenant A {uuid.uuid4().hex[:8]}",
             slug=f"tenant-a-{uuid.uuid4().hex[:8]}",
             status=TenantStatus.ACTIVE.value,
             kyc_status=KYCStatus.VERIFIED.value
         )
         self.tenant_b = TenantFactory.create_tenant(
-            name="Tenant B",
+            name=f"Tenant B {uuid.uuid4().hex[:8]}",
             slug=f"tenant-b-{uuid.uuid4().hex[:8]}",
             status=TenantStatus.ACTIVE.value,
             kyc_status=KYCStatus.VERIFIED.value
@@ -626,7 +627,7 @@ class TestContractListAPI(TestCase):
         """Test listing contracts when no contracts exist"""
         # Create new tenant with no contracts
         empty_tenant = TenantFactory.create_tenant(
-            name="Empty Tenant",
+            name=f"Empty Tenant {uuid.uuid4().hex[:8]}",
             slug=f"empty-tenant-{uuid.uuid4().hex[:8]}",
             status=TenantStatus.ACTIVE.value,
             kyc_status=KYCStatus.VERIFIED.value
@@ -678,6 +679,7 @@ class TestContractCreateAPI(TestCase):
     def test_create_contract_success_json(self):
         """Test successful contract creation with JSON format"""
         self.client.force_authenticate(user=self.user)
+        ensure_user_has_data_provider_role(self.user)
 
         contract_data = {
             "id": "test-contract-1",
@@ -712,6 +714,7 @@ class TestContractCreateAPI(TestCase):
     def test_create_contract_success_yaml(self):
         """Test successful contract creation with YAML format"""
         self.client.force_authenticate(user=self.user)
+        ensure_user_has_data_provider_role(self.user)
 
         yaml_content = """
 id: test-contract-2
@@ -738,6 +741,7 @@ schema:
     def test_create_contract_with_schema_validation(self):
         """Test contract creation with schema validation"""
         self.client.force_authenticate(user=self.user)
+        ensure_user_has_data_provider_role(self.user)
 
         contract_data = {
             "id": "test-contract-3",
@@ -783,6 +787,7 @@ schema:
     def test_create_contract_with_normalization(self):
         """Test contract creation triggers normalization"""
         self.client.force_authenticate(user=self.user)
+        ensure_user_has_data_provider_role(self.user)
 
         contract_data = {
             "id": "test-contract-4",
@@ -815,6 +820,7 @@ schema:
     def test_create_contract_with_asset_id(self):
         """Test contract creation with asset_id"""
         self.client.force_authenticate(user=self.user)
+        ensure_user_has_data_provider_role(self.user)
 
         # Create an asset first
         from hub.apps.assets.models import Asset, AssetStatus
@@ -848,6 +854,7 @@ schema:
     def test_create_contract_missing_original_raw(self):
         """Test contract creation with missing original_raw"""
         self.client.force_authenticate(user=self.user)
+        ensure_user_has_data_provider_role(self.user)
 
         data = {
             "original_format": OriginalFormat.JSON
@@ -860,6 +867,7 @@ schema:
     def test_create_contract_missing_original_format(self):
         """Test contract creation with missing original_format"""
         self.client.force_authenticate(user=self.user)
+        ensure_user_has_data_provider_role(self.user)
 
         data = {
             "original_raw": json.dumps({"id": "test"})
@@ -872,6 +880,7 @@ schema:
     def test_create_contract_invalid_json(self):
         """Test contract creation with invalid JSON"""
         self.client.force_authenticate(user=self.user)
+        ensure_user_has_data_provider_role(self.user)
 
         data = {
             "original_raw": "{ invalid json }",
@@ -886,6 +895,7 @@ schema:
     def test_create_contract_invalid_schema(self):
         """Test contract creation with invalid schema"""
         self.client.force_authenticate(user=self.user)
+        ensure_user_has_data_provider_role(self.user)
 
         contract_data = {
             "id": "test-contract-invalid",
@@ -905,6 +915,7 @@ schema:
     def test_create_contract_empty_original_raw(self):
         """Test contract creation with empty original_raw"""
         self.client.force_authenticate(user=self.user)
+        ensure_user_has_data_provider_role(self.user)
 
         data = {
             "original_raw": "",
@@ -920,6 +931,7 @@ schema:
     def test_create_contract_integration_data_contract_service(self):
         """Test contract creation integrates with DataContract service"""
         self.client.force_authenticate(user=self.user)
+        ensure_user_has_data_provider_role(self.user)
 
         contract_data = {
             "id": "test-contract-integration",
@@ -952,6 +964,7 @@ schema:
     def test_create_contract_integration_schema_validation(self):
         """Test contract creation integrates with schema validation"""
         self.client.force_authenticate(user=self.user)
+        ensure_user_has_data_provider_role(self.user)
 
         contract_data = {
             "id": "test-contract-schema-validation",
@@ -987,6 +1000,7 @@ schema:
     def test_create_contract_integration_normalization(self):
         """Test contract creation integrates with normalization service"""
         self.client.force_authenticate(user=self.user)
+        ensure_user_has_data_provider_role(self.user)
 
         contract_data = {
             "id": "test-contract-normalization",
@@ -1029,6 +1043,7 @@ schema:
     def test_create_contract_performance_p95(self):
         """Test contract creation performance (p95 < 1000ms)"""
         self.client.force_authenticate(user=self.user)
+        ensure_user_has_data_provider_role(self.user)
 
         contract_data = {
             "id": "test-contract-perf",
@@ -1065,6 +1080,7 @@ schema:
     def test_create_contract_with_complex_schema(self):
         """Test creating contract with complex schema"""
         self.client.force_authenticate(user=self.user)
+        ensure_user_has_data_provider_role(self.user)
 
         contract_data = {
             "id": "complex-contract",
@@ -1101,6 +1117,7 @@ schema:
     def test_create_contract_with_all_sections(self):
         """Test creating contract with all HubContract sections"""
         self.client.force_authenticate(user=self.user)
+        ensure_user_has_data_provider_role(self.user)
 
         contract_data = {
             "id": "full-contract",
@@ -1154,6 +1171,7 @@ schema:
     def test_create_contract_with_original_spec_type(self):
         """Test creating contract with explicit original_spec_type"""
         self.client.force_authenticate(user=self.user)
+        ensure_user_has_data_provider_role(self.user)
 
         contract_data = {
             "id": "spec-type-contract",
@@ -1228,6 +1246,7 @@ schema:
     def test_create_contract_very_large_payload(self):
         """Test creating contract with very large payload"""
         self.client.force_authenticate(user=self.user)
+        ensure_user_has_data_provider_role(self.user)
 
         # Create contract with many fields
         fields = [{"name": f"field_{i}", "data_type": "string", "nullable": True} for i in range(100)]
@@ -1250,6 +1269,7 @@ schema:
     def test_create_contract_special_characters_in_name(self):
         """Test creating contract with special characters in name"""
         self.client.force_authenticate(user=self.user)
+        ensure_user_has_data_provider_role(self.user)
 
         contract_data = {
             "id": "special-chars-contract",
@@ -1269,6 +1289,7 @@ schema:
     def test_create_contract_duplicate_id_same_tenant(self):
         """Test creating contract with duplicate ID in same tenant"""
         self.client.force_authenticate(user=self.user)
+        ensure_user_has_data_provider_role(self.user)
 
         contract_data = {
             "id": "duplicate-id",
@@ -1303,13 +1324,13 @@ class TestContractRetrieveAPI(TestCase):
         self.client = APIClient()
 
         self.tenant_a = TenantFactory.create_tenant(
-            name="Tenant A",
+            name=f"Tenant A {uuid.uuid4().hex[:8]}",
             slug=f"tenant-a-{uuid.uuid4().hex[:8]}",
             status=TenantStatus.ACTIVE.value,
             kyc_status=KYCStatus.VERIFIED.value
         )
         self.tenant_b = TenantFactory.create_tenant(
-            name="Tenant B",
+            name=f"Tenant B {uuid.uuid4().hex[:8]}",
             slug=f"tenant-b-{uuid.uuid4().hex[:8]}",
             status=TenantStatus.ACTIVE.value,
             kyc_status=KYCStatus.VERIFIED.value
@@ -1548,6 +1569,7 @@ class TestContractUpdateAPI(TestCase):
     def test_update_contract_patch_success(self):
         """Test successful contract update with PATCH"""
         self.client.force_authenticate(user=self.user)
+        ensure_user_has_data_provider_role(self.user)
 
         updated_contract_data = {
             "id": "updated-contract",
@@ -1582,6 +1604,7 @@ class TestContractUpdateAPI(TestCase):
     def test_update_contract_status(self):
         """Test updating contract status"""
         self.client.force_authenticate(user=self.user)
+        ensure_user_has_data_provider_role(self.user)
 
         data = {
             "status": ContractStatus.ACTIVE
@@ -1600,6 +1623,7 @@ class TestContractUpdateAPI(TestCase):
     def test_update_contract_schema_changes(self):
         """Test updating contract with schema changes"""
         self.client.force_authenticate(user=self.user)
+        ensure_user_has_data_provider_role(self.user)
 
         # Get contract data from original_raw if hub_contract_json is None
         self.contract.refresh_from_db()
@@ -1645,6 +1669,7 @@ class TestContractUpdateAPI(TestCase):
     def test_update_contract_versioning(self):
         """Test contract update triggers versioning"""
         self.client.force_authenticate(user=self.user)
+        ensure_user_has_data_provider_role(self.user)
 
         original_version = self.contract.version
 
@@ -1677,6 +1702,7 @@ class TestContractUpdateAPI(TestCase):
     def test_update_contract_invalid_schema(self):
         """Test updating contract with invalid schema"""
         self.client.force_authenticate(user=self.user)
+        ensure_user_has_data_provider_role(self.user)
 
         invalid_data = {
             "original_raw": "{ invalid json }",
@@ -1695,6 +1721,7 @@ class TestContractUpdateAPI(TestCase):
     def test_update_contract_breaking_changes(self):
         """Test updating contract with breaking changes"""
         self.client.force_authenticate(user=self.user)
+        ensure_user_has_data_provider_role(self.user)
 
         # Try to remove a required field
         updated_contract_data = {
@@ -1724,6 +1751,7 @@ class TestContractUpdateAPI(TestCase):
     def test_update_contract_integration_validation_service(self):
         """Test contract update integrates with validation service"""
         self.client.force_authenticate(user=self.user)
+        ensure_user_has_data_provider_role(self.user)
 
         # Get contract data from original_raw if hub_contract_json is None
         self.contract.refresh_from_db()
@@ -1769,6 +1797,7 @@ class TestContractUpdateAPI(TestCase):
     def test_update_contract_integration_versioning(self):
         """Test contract update integrates with versioning service"""
         self.client.force_authenticate(user=self.user)
+        ensure_user_has_data_provider_role(self.user)
 
         original_version = self.contract.version
 
@@ -1799,6 +1828,7 @@ class TestContractUpdateAPI(TestCase):
     def test_update_contract_integration_impact_analysis(self):
         """Test contract update integrates with impact analysis"""
         self.client.force_authenticate(user=self.user)
+        ensure_user_has_data_provider_role(self.user)
 
         updated_contract_data = {
             "id": str(self.contract.hub_contract_json.get('id', 'test')),
@@ -1829,6 +1859,7 @@ class TestContractUpdateAPI(TestCase):
     def test_update_contract_put_method(self):
         """Test updating contract with PUT method"""
         self.client.force_authenticate(user=self.user)
+        ensure_user_has_data_provider_role(self.user)
 
         updated_contract_data = {
             "id": str(self.contract.hub_contract_json.get('id', 'test')),
@@ -1861,6 +1892,7 @@ class TestContractUpdateAPI(TestCase):
     def test_update_contract_partial_fields_only(self):
         """Test updating contract with only some fields"""
         self.client.force_authenticate(user=self.user)
+        ensure_user_has_data_provider_role(self.user)
 
         # Only update status
         data = {
@@ -1894,7 +1926,7 @@ class TestContractUpdateAPI(TestCase):
     def test_update_contract_other_tenant(self):
         """Test updating contract from other tenant"""
         other_tenant = TenantFactory.create_tenant(
-            name="Other Tenant",
+            name=f"Other Tenant {uuid.uuid4().hex[:8]}",
             slug=f"other-tenant-{uuid.uuid4().hex[:8]}",
             status=TenantStatus.ACTIVE.value,
             kyc_status=KYCStatus.VERIFIED.value
@@ -1925,6 +1957,7 @@ class TestContractUpdateAPI(TestCase):
     def test_update_contract_status_transitions(self):
         """Test contract status transitions"""
         self.client.force_authenticate(user=self.user)
+        ensure_user_has_data_provider_role(self.user)
 
         # DRAFT -> ACTIVE
         data = {"status": ContractStatus.ACTIVE}
@@ -1953,6 +1986,7 @@ class TestContractUpdateAPI(TestCase):
     def test_update_contract_preserves_other_fields(self):
         """Test updating contract preserves fields not in update"""
         self.client.force_authenticate(user=self.user)
+        ensure_user_has_data_provider_role(self.user)
 
         original_name = self.contract.hub_contract_json.get('info', {}).get('name')
 
@@ -1973,6 +2007,7 @@ class TestContractUpdateAPI(TestCase):
     def test_update_contract_empty_payload(self):
         """Test updating contract with empty payload"""
         self.client.force_authenticate(user=self.user)
+        ensure_user_has_data_provider_role(self.user)
 
         response = self.client.patch(
             f'/api/v1/contracts/{self.contract.id}/',
@@ -1986,6 +2021,7 @@ class TestContractUpdateAPI(TestCase):
     def test_update_contract_invalid_status(self):
         """Test updating contract with invalid status"""
         self.client.force_authenticate(user=self.user)
+        ensure_user_has_data_provider_role(self.user)
 
         data = {"status": "INVALID_STATUS"}
 
@@ -2038,6 +2074,7 @@ class TestContractValidateAPI(TestCase):
     def test_validate_contract_success(self):
         """Test successful contract validation"""
         self.client.force_authenticate(user=self.user)
+        ensure_user_has_data_provider_role(self.user)
         response = self.client.post(
             f'/api/v1/contracts/{self.contract.id}/validate/',
             {},
@@ -2055,6 +2092,7 @@ class TestContractValidateAPI(TestCase):
     def test_validate_contract_validation_warnings(self):
         """Test contract validation with warnings"""
         self.client.force_authenticate(user=self.user)
+        ensure_user_has_data_provider_role(self.user)
 
         # Create contract with potential warnings
         contract_with_warnings = ContractFactoryEnhanced.create_contract(
@@ -2078,6 +2116,7 @@ class TestContractValidateAPI(TestCase):
     def test_validate_contract_validation_errors(self):
         """Test contract validation with errors"""
         self.client.force_authenticate(user=self.user)
+        ensure_user_has_data_provider_role(self.user)
 
         # Create contract with invalid schema
         invalid_contract_data = {
@@ -2122,6 +2161,7 @@ class TestContractValidateAPI(TestCase):
     def test_validate_contract_integration_data_contract_service(self):
         """Test contract validation integrates with DataContract service"""
         self.client.force_authenticate(user=self.user)
+        ensure_user_has_data_provider_role(self.user)
         response = self.client.post(
             f'/api/v1/contracts/{self.contract.id}/validate/',
             {},
@@ -2138,6 +2178,7 @@ class TestContractValidateAPI(TestCase):
     def test_validate_contract_integration_validation_rules(self):
         """Test contract validation integrates with validation rules"""
         self.client.force_authenticate(user=self.user)
+        ensure_user_has_data_provider_role(self.user)
 
         contract_with_rules = ContractFactoryEnhanced.create_contract(
             tenant=self.tenant,
@@ -2168,6 +2209,7 @@ class TestContractValidateAPI(TestCase):
     def test_validate_contract_performance_p95(self):
         """Test contract validation performance (p95 < 1000ms)"""
         self.client.force_authenticate(user=self.user)
+        ensure_user_has_data_provider_role(self.user)
 
         times = []
         for _ in range(10):
@@ -2218,7 +2260,7 @@ class TestContractValidateAPI(TestCase):
     def test_validate_contract_other_tenant(self):
         """Test validating contract from other tenant"""
         other_tenant = TenantFactory.create_tenant(
-            name="Other Tenant",
+            name=f"Other Tenant {uuid.uuid4().hex[:8]}",
             slug=f"other-tenant-{uuid.uuid4().hex[:8]}",
             status=TenantStatus.ACTIVE.value,
             kyc_status=KYCStatus.VERIFIED.value
@@ -2245,6 +2287,7 @@ class TestContractValidateAPI(TestCase):
     def test_validate_contract_async_mode(self):
         """Test validating contract in async mode"""
         self.client.force_authenticate(user=self.user)
+        ensure_user_has_data_provider_role(self.user)
 
         response = self.client.post(
             f'/api/v1/contracts/{self.contract.id}/validate/',
@@ -2261,6 +2304,7 @@ class TestContractValidateAPI(TestCase):
     def test_validate_contract_sync_mode(self):
         """Test validating contract in sync mode"""
         self.client.force_authenticate(user=self.user)
+        ensure_user_has_data_provider_role(self.user)
 
         response = self.client.post(
             f'/api/v1/contracts/{self.contract.id}/validate/',
@@ -2277,6 +2321,7 @@ class TestContractValidateAPI(TestCase):
     def test_validate_contract_not_found(self):
         """Test validating non-existent contract"""
         self.client.force_authenticate(user=self.user)
+        ensure_user_has_data_provider_role(self.user)
         fake_id = uuid.uuid4()
 
         response = self.client.post(
@@ -2290,6 +2335,7 @@ class TestContractValidateAPI(TestCase):
     def test_validate_contract_response_structure(self):
         """Test validation response structure"""
         self.client.force_authenticate(user=self.user)
+        ensure_user_has_data_provider_role(self.user)
         response = self.client.post(
             f'/api/v1/contracts/{self.contract.id}/validate/',
             {},
@@ -2308,6 +2354,7 @@ class TestContractValidateAPI(TestCase):
     def test_validate_contract_updates_last_validated_at(self):
         """Test validation updates last_validated_at timestamp"""
         self.client.force_authenticate(user=self.user)
+        ensure_user_has_data_provider_role(self.user)
 
         # Clear last_validated_at
         self.contract.last_validated_at = None
@@ -2333,6 +2380,7 @@ class TestContractValidateAPI(TestCase):
     def test_validate_contract_large_contract(self):
         """Test validating large contract"""
         self.client.force_authenticate(user=self.user)
+        ensure_user_has_data_provider_role(self.user)
 
         # Create large contract
         large_fields = [{"name": f"field_{i}", "data_type": "string", "nullable": True} for i in range(50)]
@@ -2370,6 +2418,7 @@ class TestContractValidateAPI(TestCase):
     def test_validate_contract_multiple_times(self):
         """Test validating contract multiple times"""
         self.client.force_authenticate(user=self.user)
+        ensure_user_has_data_provider_role(self.user)
 
         # Validate multiple times
         for _ in range(3):
@@ -2386,6 +2435,7 @@ class TestContractValidateAPI(TestCase):
     def test_validate_contract_with_validation_errors_response(self):
         """Test validation response includes errors when present"""
         self.client.force_authenticate(user=self.user)
+        ensure_user_has_data_provider_role(self.user)
 
         # Create contract with known issues
         invalid_contract = Contract.objects.create(
@@ -2415,6 +2465,7 @@ class TestContractValidateAPI(TestCase):
     def test_validate_contract_with_validation_warnings_response(self):
         """Test validation response includes warnings when present"""
         self.client.force_authenticate(user=self.user)
+        ensure_user_has_data_provider_role(self.user)
 
         contract_with_warnings = ContractFactoryEnhanced.create_contract(
             tenant=self.tenant,
@@ -2437,6 +2488,7 @@ class TestContractValidateAPI(TestCase):
     def test_list_contracts_filter_by_validation_status(self):
         """Test filtering contracts by validation status"""
         self.client.force_authenticate(user=self.user)
+        ensure_user_has_data_provider_role(self.user)
 
         # Create contract with specific validation status
         validated_contract = ContractFactoryEnhanced.create_contract(
@@ -2454,6 +2506,7 @@ class TestContractValidateAPI(TestCase):
     def test_list_contracts_filter_by_original_format(self):
         """Test filtering contracts by original format"""
         self.client.force_authenticate(user=self.user)
+        ensure_user_has_data_provider_role(self.user)
 
         response = self.client.get('/api/v1/contracts/', {'original_format': OriginalFormat.JSON})
 
@@ -2463,6 +2516,7 @@ class TestContractValidateAPI(TestCase):
     def test_list_contracts_filter_by_original_spec_type(self):
         """Test filtering contracts by original spec type"""
         self.client.force_authenticate(user=self.user)
+        ensure_user_has_data_provider_role(self.user)
 
         response = self.client.get('/api/v1/contracts/', {'original_spec_type': OriginalSpecType.ODCS})
 
@@ -2472,6 +2526,7 @@ class TestContractValidateAPI(TestCase):
     def test_create_contract_with_yaml_complex(self):
         """Test creating contract with complex YAML structure"""
         self.client.force_authenticate(user=self.user)
+        ensure_user_has_data_provider_role(self.user)
 
         yaml_content = """
 id: complex-yaml-contract
@@ -2538,6 +2593,7 @@ marketplace:
     def test_create_contract_minimal_valid(self):
         """Test creating contract with minimal valid structure"""
         self.client.force_authenticate(user=self.user)
+        ensure_user_has_data_provider_role(self.user)
 
         minimal_contract = {
             "id": "minimal-contract",
@@ -2559,6 +2615,7 @@ marketplace:
     def test_update_contract_yaml_to_json(self):
         """Test updating contract format from YAML to JSON"""
         self.client.force_authenticate(user=self.user)
+        ensure_user_has_data_provider_role(self.user)
 
         # Create YAML contract
         yaml_contract = ContractFactoryEnhanced.create_contract(
@@ -2593,6 +2650,7 @@ marketplace:
     def test_retrieve_contract_with_lineage(self):
         """Test retrieving contract includes lineage information"""
         self.client.force_authenticate(user=self.user)
+        ensure_user_has_data_provider_role(self.user)
 
         response = self.client.get(f'/api/v1/contracts/{self.contract.id}/')
 
@@ -2603,6 +2661,7 @@ marketplace:
     def test_list_contracts_with_relationships_prefetch(self):
         """Test list contracts efficiently prefetches relationships"""
         self.client.force_authenticate(user=self.user)
+        ensure_user_has_data_provider_role(self.user)
 
         response = self.client.get('/api/v1/contracts/')
 
@@ -2613,6 +2672,7 @@ marketplace:
     def test_create_contract_with_unicode_characters(self):
         """Test creating contract with unicode characters"""
         self.client.force_authenticate(user=self.user)
+        ensure_user_has_data_provider_role(self.user)
 
         contract_data = {
             "id": "unicode-contract",
@@ -2644,6 +2704,7 @@ marketplace:
     def test_update_contract_preserves_created_by(self):
         """Test updating contract preserves created_by field"""
         self.client.force_authenticate(user=self.user)
+        ensure_user_has_data_provider_role(self.user)
 
         original_created_by = self.contract.created_by
 
@@ -2664,6 +2725,7 @@ marketplace:
     def test_validate_contract_returns_validation_timestamp(self):
         """Test validation response includes validation timestamp"""
         self.client.force_authenticate(user=self.user)
+        ensure_user_has_data_provider_role(self.user)
 
         response = self.client.post(
             f'/api/v1/contracts/{self.contract.id}/validate/',

@@ -9,10 +9,33 @@ logic in one place (13.6).
 """
 from __future__ import annotations
 
+from typing import Callable, Optional, TypeVar
+
 import structlog
 from django_rq import job
 
 logger = structlog.get_logger(__name__)
+
+_T = TypeVar("_T")
+
+
+def _run_with_tenant_context(
+    tenant_id: Optional[str],
+    func: Callable[[], _T],
+) -> _T:
+    """Run *func* inside ``tenant_context(tenant_id)`` when *tenant_id*
+    is provided, or directly when it is ``None``.
+
+    Worker/signal code that touches tenant-scoped models MUST use this
+    helper so that RLS policies (which reference
+    ``current_setting('app.current_tenant_id')``) can resolve rows.
+    """
+    if tenant_id is None:
+        return func()
+    from hub.apps.tenants.request_tenant import tenant_context
+
+    with tenant_context(tenant_id):
+        return func()
 
 
 @job("default", timeout=120)

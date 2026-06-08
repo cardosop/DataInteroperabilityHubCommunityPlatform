@@ -76,3 +76,15 @@ export interface DatasetVersion {
   row_count?: number;
   size_bytes: number;
 }
+
+export interface DatasetSchemaEvolutionChange {
+  field_name?: string;
+  old_type?: string;
+  new_type?: string;
+  type?: string;
+  is_breaking?: boolean;
+  description?: string;
+  old_value?: unknown;
+  new_value?: unknown;
+  breaking?: boolean;
+}

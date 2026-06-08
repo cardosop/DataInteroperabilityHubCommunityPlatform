@@ -131,10 +131,9 @@ class ValidateDraftEndpointTest(ContractsAPITestBase):
         )
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         data = response.data
-        # May detect as UNKNOWN or attempt normalization and fail
-        self.assertIn(
-            data["detected_spec_type"], ("UNKNOWN", "ODCS", "ODPS", "HUB")
-        )
+        # Unrecognized spec must be detected as UNKNOWN
+        self.assertEqual(data["detected_spec_type"], "UNKNOWN",
+            "detected_spec_type must be 'UNKNOWN' for unrecognized spec input")
         self.assertIsInstance(data["normalization_errors"], list)
 
     def test_validate_draft_requires_auth(self):

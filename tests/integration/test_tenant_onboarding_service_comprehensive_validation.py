@@ -12,6 +12,7 @@ Coverage:
 - FREE subscription creation
 - Tenant isolation verification
 """
+from hub.apps.testing.role_support import ensure_user_has_data_provider_role
 
 import pytest
 
@@ -124,7 +125,7 @@ class TenantOnboardingServiceComprehensiveValidationTest(TestCase):
         """Test tenant onboarding with duplicate slug fails"""
         # Create existing tenant
         Tenant.objects.create(
-            name="Existing Tenant",
+            name=f"Existing Tenant {uuid.uuid4().hex[:8]}",
             slug="duplicate-slug",
             status=TenantStatus.ACTIVE,
         )
@@ -148,8 +149,8 @@ class TenantOnboardingServiceComprehensiveValidationTest(TestCase):
         """Test tenant onboarding with duplicate email fails"""
         # Create existing user
         existing_tenant = Tenant.objects.create(
-            name="Existing Tenant",
-            slug="existing-tenant",
+            name=f"Existing Tenant {uuid.uuid4().hex[:8]}",
+            slug=f"existing-tenant-{uuid.uuid4().hex[:8]}",
             status=TenantStatus.ACTIVE,
         )
         User.objects.create_user(

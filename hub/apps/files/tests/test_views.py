@@ -114,9 +114,9 @@ class FileViewSetTest(FilesAPITestBase):
         """Test initializing simple file upload."""
         if not self.storage_available:
             self.skipTest("S3/MinIO storage not available")
-
+        import uuid
         data = {
-            "name": "test.csv",
+            "name": f"vu-{uuid.uuid4().hex[:8]}.csv",
             "content_type": "text/csv",
             "size": 1024,  # Small file, no multipart
             "upload_method": "browser",
@@ -225,7 +225,7 @@ class FileViewSetTest(FilesAPITestBase):
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         pending_file.refresh_from_db()
-        self.assertEqual(pending_file.status, FileStatus.COMPLETED)
+        self.assertEqual(pending_file.status, FileStatus.ACTIVE)
         self.assertEqual(pending_file.content_sha256, content_sha256)
 
     def test_complete_upload_invalid_sha256_format(self):
@@ -247,11 +247,12 @@ class FileViewSetTest(FilesAPITestBase):
         )
 
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
-        # Verify error references the hash issue
-        error_text = str(response.data).lower()
-        self.assertTrue(
-            "sha" in error_text or "hash" in error_text or "hex" in error_text,
-            f"Expected error about invalid hash, got: {response.data}",
+        # Verify error message precisely identifies the hash format issue
+        error_msg = response.data.get("error", "")
+        self.assertIn(
+            "Invalid SHA-256 hash format",
+            error_msg,
+            f"Expected 'Invalid SHA-256 hash format' in error, got: {response.data}",
         )
 
     def test_complete_upload_file_not_found(self):
@@ -267,6 +268,128 @@ class FileViewSetTest(FilesAPITestBase):
         )
 
         self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
+
+    def test_complete_upload_hash_mismatch_returns_400(self):
+        """Provably-wrong SHA-256 must return 400 and keep file PENDING."""
+        if not self.storage_available:
+            self.skipTest("S3/MinIO storage not available")
+
+        import uuid
+        from django.core.files.base import ContentFile
+
+        fid = uuid.uuid4()
+        test_content = b"hash-mismatch-test-body"
+        pending_file = File.objects.create(
+            id=fid,
+            tenant=self.tenant,
+            name="hash-mismatch.csv",
+            content_type="text/csv",
+            size=len(test_content),
+            status=FileStatus.PENDING,
+            storage_path=f"{self.tenant.id}/{fid}/hash-mismatch.csv",
+            created_by=self.user,
+        )
+        # Upload real content to S3
+        storage_client = S3StorageClient()
+        storage_client.save_file(
+            tenant_id=str(self.tenant.id),
+            file_id=str(pending_file.id),
+            file_content=ContentFile(test_content),
+            file_name=pending_file.name,
+        )
+
+        # Submit a provably-wrong hash
+        wrong_hash = hashlib.sha256(b"completely different content").hexdigest()
+        data = {"content_sha256": wrong_hash}
+        response = self.client.post(
+            f"/api/v1/files/{pending_file.id}/complete/", data, format="json"
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        error_msg = response.data.get("error", "")
+        self.assertIn("mismatch", error_msg.lower(),
+            f"Expected 'mismatch' in error, got: {response.data}")
+        # File status must remain PENDING (not ACTIVATED with wrong hash)
+        pending_file.refresh_from_db()
+        self.assertEqual(pending_file.status, FileStatus.PENDING,
+            "File must stay PENDING after hash mismatch")
+
+    def test_complete_upload_already_completed_returns_409(self):
+        """Second completion attempt must return 409 CONFLICT."""
+        if not self.storage_available:
+            self.skipTest("S3/MinIO storage not available")
+
+        import uuid
+        from django.core.files.base import ContentFile
+
+        fid = uuid.uuid4()
+        test_content = b"idempotent-complete"
+        pending_file = File.objects.create(
+            id=fid,
+            tenant=self.tenant,
+            name="idempotent.csv",
+            content_type="text/csv",
+            size=len(test_content),
+            status=FileStatus.PENDING,
+            storage_path=f"{self.tenant.id}/{fid}/idempotent.csv",
+            created_by=self.user,
+        )
+        storage_client = S3StorageClient()
+        storage_client.save_file(
+            tenant_id=str(self.tenant.id),
+            file_id=str(pending_file.id),
+            file_content=ContentFile(test_content),
+            file_name=pending_file.name,
+        )
+        content_sha256 = hashlib.sha256(test_content).hexdigest()
+        data = {"content_sha256": content_sha256}
+
+        # First call → 200 + ACTIVE
+        resp1 = self.client.post(
+            f"/api/v1/files/{pending_file.id}/complete/", data, format="json")
+        self.assertEqual(resp1.status_code, status.HTTP_200_OK)
+
+        # Second call → 409 CONFLICT (already completed)
+        resp2 = self.client.post(
+            f"/api/v1/files/{pending_file.id}/complete/", data, format="json")
+        self.assertEqual(resp2.status_code, status.HTTP_409_CONFLICT)
+        self.assertIn("already completed", str(resp2.data.get("error", "")).lower())
+
+    def test_complete_upload_graceful_degradation_when_storage_check_fails(self):
+        """Upload still completes when the storage-existence check fails
+        (silent degradation path in views.py:339-368)."""
+        # Use an unreachable endpoint to trigger the storage-check fallback.
+        from django.test import override_settings
+
+        import uuid
+        fid = uuid.uuid4()
+        test_content = b"graceful-degradation"
+        correct_hash = hashlib.sha256(test_content).hexdigest()
+        pending_file = File.objects.create(
+            id=fid,
+            tenant=self.tenant,
+            name="graceful.csv",
+            content_type="text/csv",
+            size=len(test_content),
+            status=FileStatus.PENDING,
+            storage_path=f"{self.tenant.id}/{fid}/graceful.csv",
+            created_by=self.user,
+        )
+        data = {"content_sha256": correct_hash}
+
+        with override_settings(
+            AWS_S3_ENDPOINT_URL="http://192.0.2.1:9999",
+            AWS_STORAGE_BUCKET_NAME="unreachable-bucket",
+        ):
+            response = self.client.post(
+                f"/api/v1/files/{pending_file.id}/complete/", data, format="json")
+
+        # The view must still return 200 — silent degradation path
+        self.assertEqual(response.status_code, status.HTTP_200_OK,
+            f"Graceful degradation must return 200; got {response.status_code}: {response.data}")
+        pending_file.refresh_from_db()
+        self.assertEqual(pending_file.status, FileStatus.ACTIVE)
+        self.assertEqual(pending_file.content_sha256, correct_hash)
 
     def test_download_file_success(self):
         """Test downloading file successfully."""
@@ -399,7 +522,7 @@ class FileViewSetTest(FilesAPITestBase):
 
         self.assertEqual(response.status_code, status.HTTP_204_NO_CONTENT)
         active_file.refresh_from_db()
-        self.assertEqual(active_file.status, FileStatus.DELETED)
+        self.assertEqual(active_file.status, FileStatus.DELETING)
 
     def test_delete_file_not_found(self):
         """Test deleting non-existent file returns 404."""

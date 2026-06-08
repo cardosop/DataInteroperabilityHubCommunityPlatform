@@ -28,8 +28,8 @@ class AuditAPIsComprehensiveIntegrationTest:
     def _setup(self, db):
         self.client = APIClient()
         self.tenant = Tenant.objects.create(
-            name="Audit Integration Tenant",
-            slug="audit-integration-tenant",
+            name=f"Audit Integration Tenant {uuid.uuid4().hex[:8]}",
+            slug=f"audit-integration-tenant-{uuid.uuid4().hex[:8]}",
         )
         from django.contrib.auth import get_user_model
 

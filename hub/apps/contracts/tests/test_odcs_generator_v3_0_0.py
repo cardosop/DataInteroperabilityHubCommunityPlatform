@@ -442,16 +442,14 @@ class ODCSGeneratorV3_0_0RoundTripTest(TestCase):
             "schema": {"fields": [{"name": "id", "data_type": "string"}]},
         }
 
-        # Should handle large documents gracefully
-        try:
-            result = self.generator.generate_odcs_from_hubcontract(hub_contract)
-            # If generation succeeds, verify structure
-            self.assertIn("name", result)
-        except Exception as e:
-            # If generation fails, it should fail gracefully
-            self.assertIsInstance(
-                e, ODCSGenerationError, "Should raise ODCSGenerationError for very large documents"
-            )
+        # Valid data (large description) must succeed — verify structure
+        result = self.generator.generate_odcs_from_hubcontract(hub_contract)
+        self.assertIn("name", result)
+        self.assertEqual(result["name"], "Test Product")
+        self.assertIn("description", result,
+            "Large description must be present in output")
+        self.assertEqual(result["description"], large_description,
+            "Large description value must be preserved exactly")
 
     def test_generation_handles_none_values(self):
         """Test that generation handles None values correctly."""
@@ -461,16 +459,13 @@ class ODCSGeneratorV3_0_0RoundTripTest(TestCase):
             "schema": {"fields": [{"name": "id", "data_type": "string"}]},
         }
 
-        # Should handle None values gracefully
-        try:
-            result = self.generator.generate_odcs_from_hubcontract(hub_contract)
-            # If generation succeeds, None values may be omitted or handled
-            self.assertIsNotNone(result)
-        except Exception as e:
-            # If generation fails, it should fail gracefully
-            self.assertIsInstance(
-                e, ODCSGenerationError, "Should raise ODCSGenerationError for None values"
-            )
+        # None values should be omitted or handled gracefully
+        result = self.generator.generate_odcs_from_hubcontract(hub_contract)
+        self.assertIsNotNone(result)
+        self.assertIn("name", result)
+        self.assertEqual(result["name"], "Test Product")
+        self.assertNotIn("description", result,
+            "None description field must be omitted from output")
 
     def test_generation_handles_nested_structures(self):
         """Test that generation handles nested structures correctly."""
@@ -485,6 +480,11 @@ class ODCSGeneratorV3_0_0RoundTripTest(TestCase):
 
         result = self.generator.generate_odcs_from_hubcontract(hub_contract)
 
-        # Verify nested structure is preserved
-        self.assertIn("name", result)
+        # Verify the generator doesn't crash and preserves known fields.
         self.assertIsNotNone(result)
+        self.assertIn("name", result)
+        self.assertEqual(result["name"], "Test Product",
+            "Name must be correctly extracted from deeply nested hub_contract info")
+        self.assertIn("apiVersion", result)
+        self.assertIn("kind", result)
+        self.assertEqual(result["kind"], "DataContract")

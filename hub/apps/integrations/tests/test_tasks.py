@@ -400,7 +400,7 @@ class MarketplaceSyncTaskUnitTest(TestCase):
             self.assertEqual(sync_job.items_synced, 2)
             self.assertEqual(sync_job.items_failed, 1)
             # Errors are added from sync_result.errors list
-            self.assertGreaterEqual(len(sync_job.errors), 0)  # May be 0 if errors weren't added
+            self.assertEqual(len(sync_job.errors), 0, "Partial sync without errors should have empty error list")
         finally:
             try:
                 MarketplaceConnectorFactory.unregister_connector(
@@ -451,7 +451,7 @@ class MarketplaceSyncTaskUnitTest(TestCase):
             self.assertEqual(sync_job.status, SyncStatus.FAILED.value)
             self.assertEqual(sync_job.items_synced, 0)
             self.assertEqual(sync_job.items_failed, 2)
-            self.assertGreaterEqual(len(sync_job.errors), 0)
+            self.assertGreater(len(sync_job.errors), 0, "Complete failure should record at least one error")
         finally:
             try:
                 MarketplaceConnectorFactory.unregister_connector(
@@ -513,12 +513,11 @@ class MarketplaceSyncTaskUnitTest(TestCase):
                 # Expected - ConnectionError should be raised for retry
                 pass
 
-            # Verify sync job state: ConnectionError is re-raised for retry, job may stay RUNNING
+            # ConnectionError → mark_failed at tasks.py:362 → FAILED
+            # (note: TRANSIENT re-raise goes to catch-all, job is already FAILED)
             sync_job.refresh_from_db()
-            self.assertIn(
-                sync_job.status,
-                [SyncStatus.FAILED.value, SyncStatus.PENDING.value, SyncStatus.RUNNING.value],
-            )
+            self.assertEqual(sync_job.status, SyncStatus.FAILED.value,
+                             f"Expected FAILED after ConnectionError, got {sync_job.status}")
         finally:
             # Unregister test connector
             MarketplaceConnectorFactory.unregister_connector(
@@ -882,12 +881,9 @@ class MarketplaceSyncTaskErrorHandlingTest(TestCase):
             with self.assertRaises(ServiceError) as cm:
                 execute_marketplace_sync(str(sync_job.id), retry_count=0)
 
-            # Task may raise ServiceError with "no result" or AttributeError for None.status
-            exc_str = str(cm.exception).lower()
-            self.assertTrue(
-                "no result" in exc_str or "nonetype" in exc_str or "none" in exc_str,
-                msg=f"Expected 'no result' or None-related error, got: {cm.exception}",
-            )
+            # ServiceError("Sync operation returned no result") — exact message
+            self.assertIn("no result", str(cm.exception).lower(),
+                          msg=f"Expected 'no result' in error, got: {cm.exception}")
 
             # Verify sync job was marked as failed
             sync_job.refresh_from_db()

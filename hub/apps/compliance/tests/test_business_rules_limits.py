@@ -121,7 +121,8 @@ class BusinessRulesLimitsTest(TestCase):
     # ----------------------------------------------------------------
 
     def test_concurrent_limit_not_exceeded(self):
-        """5 PENDING runs (under default limit of 10) passes validation."""
+        """5 PENDING runs (under default limit of 10) passes validation
+        with no warnings and no errors."""
         for _ in range(5):
             self._create_run(status=ComplianceRunStatus.PENDING)
 
@@ -140,7 +141,17 @@ class BusinessRulesLimitsTest(TestCase):
             user=self.user,
             validation_type="compliance_run",
         )
-        self.assertTrue(result.is_valid, f"Unexpected errors: {result.errors}")
+        self.assertTrue(result.is_valid,
+            f"Expected valid result; got errors: {result.errors}")
+        # Under the concurrent limit: no warnings, no errors, no
+        # concurrent-limit detail flag should be set.
+        self.assertEqual(len(result.warnings), 0,
+            f"Unexpected warnings: {result.warnings}")
+        self.assertEqual(len(result.errors), 0,
+            f"Unexpected errors: {result.errors}")
+        self.assertFalse(
+            result.details.get("concurrent_limit_exceeded", False),
+            "concurrent_limit_exceeded must be False when under limit")
 
     # ----------------------------------------------------------------
     # 3. Recent failures warning
@@ -247,14 +258,14 @@ class BusinessRulesLimitsTest(TestCase):
             validation_type="compliance_run",
         )
         # The business rules should detect the tenant mismatch between
-        # the run's tenant and the asset's tenant, or the run's resource
-        # not belonging to the same tenant context.
-        has_tenant_error = (
-            not result.is_valid
-            or any("tenant" in e.lower() for e in result.errors)
-            or any("tenant" in w.lower() for w in result.warnings)
+        # the run's tenant and the asset's tenant.
+        self.assertFalse(
+            result.is_valid,
+            f"Expected cross-tenant validation error. Errors: {result.errors}",
         )
-        self.assertTrue(
-            has_tenant_error,
-            f"Expected cross-tenant error/warning. Errors: {result.errors}, Warnings: {result.warnings}",
+        error_text = " ".join(result.errors).lower()
+        self.assertIn(
+            "tenant",
+            error_text,
+            f"Expected tenant-related error. Errors: {result.errors}",
         )

@@ -9,11 +9,9 @@ Tests the GCPMarketplaceConnector implementation including:
 - Circuit breaker integration
 """
 
-import unittest
 from typing import Any, Dict
 from unittest.mock import MagicMock, Mock, patch
 
-import pytest
 
 # Optional Google Cloud imports - skip tests if not available
 try:
@@ -42,6 +40,7 @@ from hub.apps.integrations.base import (
     MarketplaceType,
     SyncDirection,
 )
+from hub.apps.core.resilience.circuit_breaker import reset_circuit_breaker_by_name
 from hub.apps.integrations.connectors.gcp_marketplace_connector import GCPMarketplaceConnector
 
 
@@ -470,10 +469,15 @@ class TestGCPMarketplaceConnectorConnectionTest(TestCase):
 
     def setUp(self):
         """Set up test fixtures"""
+        reset_circuit_breaker_by_name("gcp-marketplace-connector")
         self.credentials_json = {
             "type": "service_account",
             "project_id": "test-project",
         }
+
+    def tearDown(self):
+        """Clean up circuit breaker state to prevent cross-test pollution."""
+        reset_circuit_breaker_by_name("gcp-marketplace-connector")
 
     @patch("hub.apps.integrations.connectors.gcp_marketplace_connector.bigquery.Client")
     @patch(
@@ -626,6 +630,7 @@ class TestGCPMarketplaceConnectorNotImplementedMethods(TestCase):
 
     def setUp(self):
         """Set up test fixtures"""
+        reset_circuit_breaker_by_name("gcp-marketplace-connector")
         self.connector = GCPMarketplaceConnector(project_id="test-project", use_adc=True)
 
     # Note: list_listings(), get_listing(), and list_resources() are now implemented
@@ -643,6 +648,7 @@ class TestGCPMarketplaceConnectorPushOperations(TestCase):
 
     def setUp(self):
         """Set up test fixtures"""
+        reset_circuit_breaker_by_name("gcp-marketplace-connector")
         self.connector = GCPMarketplaceConnector(project_id="test-project", use_adc=True)
 
     def test_create_listing_not_implemented(self):

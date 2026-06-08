@@ -1,4 +1,6 @@
 """
+
+import uuid
 Comprehensive Billing API Integration Tests (Phase 25)
 
 Tests all billing API endpoints with real DB and real services.
@@ -24,6 +26,7 @@ from hub.apps.billing.models import Invoice, Subscription, SubscriptionStatus
 from hub.apps.tenants.models import Tenant, TenantPlan, TenantStatus
 from hub.apps.users.models import Role, User, UserRole, UserStatus
 from hub.apps.testing.billing_support import ensure_tenant_has_active_subscription
+from hub.apps.testing.role_support import ensure_user_has_data_provider_role
 
 pytestmark = [
     pytest.mark.django_db,

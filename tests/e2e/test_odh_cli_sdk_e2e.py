@@ -86,7 +86,7 @@ unique_id = '{unique_id}'
 
 # Get or create tenant
 tenant, _ = Tenant.objects.get_or_create(
-    slug='odh-e2e-test-tenant-' + unique_id,
+    slug=f"odh-e2e-test-tenant--{uuid.uuid4().hex[:8]}" + unique_id,
     defaults={{'name': 'ODH E2E Test Tenant ' + unique_id}}
 )
 

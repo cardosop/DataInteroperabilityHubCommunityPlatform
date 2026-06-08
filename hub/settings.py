@@ -6,6 +6,7 @@ Generated with configuration for Interoperable Data Hub MVP.
 
 import os
 import sys
+import warnings
 from pathlib import Path
 
 import environ
@@ -147,6 +148,7 @@ INSTALLED_APPS = [
     "hub.apps.rate_limiting",
     "hub.apps.scheduled_ingestion",
     "hub.apps.scheduled_export",
+    "hub.data_movement",
     "hub.apps.search",
     "hub.apps.webhooks.apps.WebhooksConfig",
     "hub.apps.api.analytics",
@@ -161,7 +163,7 @@ INSTALLED_APPS = [
     "hub.apps.baas",  # BaaS Platform (API Gateway, usage tracking, developer portal)
     "hub.apps.transformation",  # Data transformation pipelines (Phase 115A)
     "hub.apps.versioning",  # Versioning API (list/get/compare versions for contracts and datasets)
-    "hub.apps.warehouses",  # Phase 275.A — WarehouseConnection (referenced by assets.Asset.warehouse_connection for LIVE_QUERY)
+    "hub.apps.warehouses.apps.WarehousesConfig",  # Phase 275.A — WarehouseConnection
     "hub.apps.security",   # CSP violation reporting + security metrics
 ]
 
@@ -236,7 +238,7 @@ MIDDLEWARE = [
     "hub.apps.observability.middleware.span_middleware.SpanMiddleware",  # OpenTelemetry span instrumentation
     # Standard Django middlewares
     "django.contrib.sessions.middleware.SessionMiddleware",
-    "django.middleware.common.CommonMiddleware",
+    "hub.apps.core.middleware.ContentLengthSafeCommonMiddleware",
     "hub.apps.assets.middleware.DataFirstBodyCapMiddleware",  # 250.1.A.11 — CL/chunked vs body cap BEFORE auth
     "hub.apps.api.middleware.mvp_mode_gate.MvpModeApiGateMiddleware",
     "hub.apps.api.middleware.csrf_exempt.APIEndpointCSRFExemptMiddleware",  # CSRF exemption for API endpoints
@@ -320,6 +322,55 @@ ASGI_APPLICATION = "hub.asgi.application"
 # For tests, use PostgreSQL if available, otherwise SQLite
 # PostgreSQL is preferred for tests as it handles threading properly
 import sys
+
+# ── Silence drf-spectacular view-introspection stderr noise ──────────
+# drf-spectacular writes "Error [ViewName]: unable to guess serializer"
+# to stderr via print(msg, file=sys.stderr) for every plain APIView
+# encountered during URL conf loading.  These are OpenAPI schema-generation
+# diagnostics, not application errors.  Drop them at the stderr level so
+# they don't pollute test output.  (Batch tests use Django's manage.py
+# test runner, not pytest, so this must live in settings, not conftest.)
+class _FilteredStderr:
+    def __init__(self, real):
+        self._real = real
+
+    def write(self, s):
+        if "unable to guess serializer" in s:
+            return len(s)
+        if "Warning: operationId" in s and "has collisions" in s:
+            return len(s)
+        return self._real.write(s)
+
+    def flush(self):
+        self._real.flush()
+
+    def __getattr__(self, name):
+        return getattr(self._real, name)
+
+sys.stderr = _FilteredStderr(sys.stderr)
+
+# ── Silence drf-spectacular schema-introspection warnings during tests ───
+# drf-spectacular introspects every view/serializer when Django loads URL
+# configs, emitting ~80 Warning lines per test session about untyped path
+# parameters, missing SerializerMethodField return hints, duplicate
+# operationIds, and unresolved authenticators.  These are OpenAPI schema
+# generation diagnostics, not application errors — they have no bearing on
+# test correctness and clutter output across ALL test batches.
+#
+# Schema correctness is verified by dedicated contract tests
+# (e.g. test_api_surface_285_13_8.py); suppressing these warnings during
+# generic test execution prevents noise without hiding real issues.
+#
+# We gate on the same signals the rest of the test infrastructure uses
+# (PYTEST_CURRENT_TEST env var, pytest in sys.modules, manage.py test in
+# argv).  The filter is applied at settings-import time, before Django
+# loads URL confs, so it covers the full test session.
+if (
+    os.environ.get("PYTEST_CURRENT_TEST")
+    or "pytest" in sys.modules
+    or "test" in sys.argv
+):
+    warnings.filterwarnings("ignore", module="drf_spectacular")
 
 
 # Helper function to detect staging environment for tests
@@ -664,7 +715,13 @@ if "test" in sys.argv or "pytest" in sys.modules:
                 "CREATE_DB": not (use_production_db or use_shared_test_db),  # Don't create if using existing
             },
             "CONN_MAX_AGE": 0,  # Don't reuse connections in tests
+            "CONN_HEALTH_CHECKS": True,  # Detect stale connections
             "OPTIONS": {
+                # TCP keepalive — prevents server-side idle-timeout
+                # from killing connections during long test suites.
+                "keepalives_idle": 30,
+                "keepalives_interval": 10,
+                "keepalives_count": 3,
                 # Disable thread validation for tests (pytest-django uses multiple threads)
                 # This is safe in test environment where we control thread usage
                 "connect_timeout": 120,  # Allow time for postgres under Docker load during migrations
@@ -676,9 +733,10 @@ if "test" in sys.argv or "pytest" in sys.modules:
                 # 60s cap plus hub/conftest per-test SET caused QueryCanceled under xdist
                 # when statements waited on locks. Override: TEST_POSTGRES_STATEMENT_TIMEOUT_MS.
                 "options": (
-                    "-c statement_timeout={st} -c idle_in_transaction_session_timeout=300000"
+                    "-c statement_timeout={st} -c idle_in_transaction_session_timeout={itst}"
                 ).format(
                     st=env.int("TEST_POSTGRES_STATEMENT_TIMEOUT_MS", default=120000),
+                    itst=env.int("TEST_IDLE_IN_TRANSACTION_TIMEOUT_MS", default=120000),
                 ),
             },
         }
@@ -713,10 +771,11 @@ else:
         "keepalives_idle": 30,  # Start sending keepalives after 30 seconds of inactivity
         "keepalives_interval": 10,  # Interval between keepalive packets
         "keepalives_count": 5,  # Number of keepalive packets before considering connection dead
-        "options": "-c statement_timeout={st} -c idle_in_transaction_session_timeout=300000".format(
+        "options": "-c statement_timeout={st} -c idle_in_transaction_session_timeout={itst}".format(
             # E2E/test: 4 parallel Playwright workers overload the DB — queries that take <5s
             # in isolation can hit 60s under contention.  120s prevents cascading 500s.
             st=120000 if ENVIRONMENT == "test" else 60000,
+            itst=env.int("TEST_IDLE_IN_TRANSACTION_TIMEOUT_MS", default=120000) if ENVIRONMENT == "test" else 300000,
         ),
     }
     if ENVIRONMENT == "production":
@@ -768,6 +827,13 @@ elif "test" in sys.argv or "pytest" in sys.modules:
     # the ConnectionHandler (which causes _remove_databases_failures crashes
     # in Django 6.0's TestCase/TransactionTestCase teardown).
     DATABASES["baas"] = dict(DATABASES["default"])
+    # Mark baas as a mirror of default so TransactionTestCase._fixture_teardown
+    # does not flush it separately.  Without MIRROR, every TransactionTestCase
+    # flushes both aliases via two connections to the same physical DB,
+    # causing TRUNCATE (AccessExclusiveLock) deadlocks between the two
+    # connections when the suite is large enough (>150 tests).
+    DATABASES["baas"].setdefault("TEST", {})
+    DATABASES["baas"]["TEST"]["MIRROR"] = "default"
 
 # DATABASE_ROUTERS: BaaS router first (handles BaaSUsageRecord exclusively),
 # then ManagementCommandAdminRouter (B-RLS-0.5: manage.py → admin / BYPASSRLS when
@@ -827,6 +893,12 @@ DATABASES["admin"] = {
 }
 if "TEST" in DATABASES["default"]:
     DATABASES["admin"]["TEST"] = dict(DATABASES["default"]["TEST"])
+    # In test mode, admin points to the same physical DB as default
+    # (same USER via _admin_user_default).  Mark it as a mirror so
+    # TransactionTestCase._fixture_teardown does not flush it separately,
+    # preventing TRUNCATE deadlocks from duplicate connections.
+    if ENVIRONMENT == "test":
+        DATABASES["admin"]["TEST"]["MIRROR"] = "default"
 
 # Marketplace: KYC required for orders/entitlements (feat1 2.4). Optional allowlist of tenant IDs
 # (UUID strings) exempt from KYC for orders/entitlements. Default empty. See RUNBOOKS.md.
@@ -1038,6 +1110,12 @@ if "pytest" in sys.modules or "unittest" in sys.modules or os.getenv("TESTING"):
 # Use in-memory channel layer for tests, Redis for production
 is_test_env = "test" in sys.argv or "pytest" in sys.modules or os.getenv("PYTEST_CURRENT_TEST")
 if is_test_env:
+    # Suppress PyJWT InsecureKeyLengthWarning — test keys may be shorter
+    # than the 256-bit (32-byte) recommendation for HS256.  The warning is
+    # emitted by PyJWT at encode time, not under our control.
+    import warnings as _warnings
+    _warnings.filterwarnings("ignore", message=".*key is.*bytes long.*")
+
     # Use in-memory channel layer for tests (faster, no Redis dependency)
     CHANNEL_LAYERS = {
         "default": {
@@ -1497,16 +1575,37 @@ else:
 # without needing a live Redis/RQ worker.  Production defaults to True.
 if "pytest" in sys.modules or "unittest" in sys.modules or os.getenv("TESTING"):
     WEBHOOK_ASYNC_DELIVERY = env.bool("WEBHOOK_ASYNC_DELIVERY", default=False)
+    # Test-mode webhook delivery tuning: most webhook tests point at
+    # unresolvable hostnames (example.com, subscriber.example.com).
+    # Without these overrides, every failing delivery retries 3 times
+    # with 30 s timeouts → ~18 s per delivery → ~25 min per batch run.
+    # Shorter timeouts + zero retries drop this to ~3 s per delivery
+    # with no loss in coverage (the tests already expect failures).
+    WEBHOOK_REQUEST_TIMEOUT = env.int("WEBHOOK_REQUEST_TIMEOUT", default=3)
+    WEBHOOK_DELIVERY_MAX_RETRIES = env.int("WEBHOOK_DELIVERY_MAX_RETRIES", default=0)
 else:
     WEBHOOK_ASYNC_DELIVERY = env.bool("WEBHOOK_ASYNC_DELIVERY", default=True)
+    WEBHOOK_DELIVERY_MAX_RETRIES = env.int("WEBHOOK_DELIVERY_MAX_RETRIES", default=2)
 
 # Phase 231.4 — Optional public base path for signed compliance webhook report summaries
 # (``GET …/webhooks/completed/report/?token=``). Empty = ``report_presigned_url`` is null.
 COMPLIANCE_WEBHOOK_REPORT_BASE_URL = env("COMPLIANCE_WEBHOOK_REPORT_BASE_URL", default="")
 
 # Email Service Configuration
-# EMAIL_BACKEND: 'sendgrid', 'ses', or 'smtp'
-EMAIL_BACKEND = env("EMAIL_BACKEND", default="smtp")
+# EMAIL_PROVIDER: 'sendgrid', 'ses', or 'smtp'
+# (Renamed from EMAIL_BACKEND to avoid shadowing Django's built-in
+# ``EMAIL_BACKEND`` setting — which the test runner sets to locmem.)
+EMAIL_PROVIDER = env("EMAIL_PROVIDER", default=env("EMAIL_BACKEND", default="smtp"))
+
+# When running under the Django test runner, ensure Django's own
+# ``EMAIL_BACKEND`` uses locmem so no real SMTP connections are
+# attempted.  The env var ``EMAIL_BACKEND`` (set by docker-compose)
+# shadows Django's default for the *provider* selector above but
+# does NOT affect this line — it's Django's built-in setting.
+import sys as _sys
+import os as _os
+if "test" in _sys.argv or _os.environ.get("TEST_DB_SUFFIX"):
+    EMAIL_BACKEND = "django.core.mail.backends.locmem.EmailBackend"
 
 # Brand (Phase 28.7.5 Meshant)
 APP_NAME = env("APP_NAME", default="Meshant")
@@ -1633,6 +1732,9 @@ REST_FRAMEWORK = {
         # because UserRateThrottle.scope == "user".
         "user": "60/minute",
         "semantic_export": "5/min",
+        # 284.A.1 — per-tenant throttle for FederatedImportViewSet
+        # (30/min for provider discovery, import job submission).
+        "federated_import": "30/minute",
         # Phase 230.13 (REQ-SEM-GQL-001) — per-user 60 q/min throttle on
         # the GraphQL-LD endpoint.  Read by
         # ``hub.apps.graphql_ld.views.SemanticGraphQLThrottle``.
@@ -1656,6 +1758,16 @@ REST_FRAMEWORK = {
         # DoS caps. Classes: :mod:`hub.apps.files.throttles`.
         "file_init_user": "60/minute",
         "file_init_tenant": "600/minute",
+        # Phase 285.14.3.10 — per-tenant social throttle.
+        "social": "30/minute",
+        # BaaS API key management endpoints (defence-in-depth beneath API Gateway).
+        "baas_api_key": "60/minute",
+        # Phase 285.9b.M.3 — ML model registry per-tenant throttle (30/min).
+        "ml": "30/minute",
+        # Phase 285.9b.M.3 — ML inference per-tenant throttle (600/hour = 10/min).
+        "ml_inference": "600/hour",
+        # Phase 285.9b.AI — AI per-tenant throttle (30/min).
+        "ai": "30/minute",
         # Phase 260.3.D (pass-2 S2-3) — ``GET /files/{id}/scan-status/`` polling.
         "file_scan_status_user": "30/minute",
         "file_scan_status_tenant": "300/minute",
@@ -1674,6 +1786,18 @@ REST_FRAMEWORK = {
         "warehouse-query-share": "30/minute",
         "warehouse-export": "10/minute",
         "warehouse-connection-test": "5/minute",
+        "scheduled_export": "30/minute",
+        # 277.B.110 — per-IP rate limit on the public version discovery
+        # endpoint (GET /api/v1/). 30/min per IP is the production default;
+        # tests override to 3/min for faster assertions.
+        "version_discovery": "30/minute",
+        # Phase 283 — Governance app per-tenant throttle scopes.
+        "breach_tenant": "60/minute",
+        "dpia_tenant": "60/minute",
+        "consent_user": "60/minute",
+        "consent_dashboard": "30/minute",
+        "processor_agreement_user": "60/minute",
+        "ropa_user": "60/minute",
     },
 }
 
@@ -1718,6 +1842,17 @@ SPECTACULAR_SETTINGS = {
     "POSTPROCESSING_HOOKS": [
         "hub.apps.api.openapi_mvp.postprocess_drop_mvp_gated_paths",
     ],
+    # During test runs, suppress drf-spectacular schema-introspection
+    # warnings.  These are OpenAPI schema diagnostics written directly to
+    # stderr (not via Python's ``warnings`` module), so the standard
+    # ``warnings.filterwarnings`` approach cannot intercept them.
+    # Setting this to True tells drf-spectacular's ``GeneratorStats.emit()``
+    # to skip the ``print(msg, file=sys.stderr)`` call.
+    "DISABLE_ERRORS_AND_WARNINGS": (
+        os.environ.get("PYTEST_CURRENT_TEST") is not None
+        or "pytest" in sys.modules
+        or "test" in sys.argv
+    ),
 }
 
 # CORS Configuration
@@ -2119,6 +2254,21 @@ LOGGING = {
             "level": env("LOG_LEVEL", default="INFO"),
             "propagate": False,
         },
+        # django.request logs 5xx responses at ERROR via Django's
+        # built-in log_response().  In non-production environments
+        # (dev / test / CI) where 5xx responses are routinely
+        # triggered by test scenarios, this generates noise that
+        # masks real faults.  Suppress to CRITICAL so the only
+        # ERROR-level output comes from application code.
+        "django.request": {
+            "handlers": ["console"],
+            "level": (
+                "CRITICAL"
+                if ENVIRONMENT in ("development", "test")
+                else "ERROR"
+            ),
+            "propagate": False,
+        },
         "hub": {
             "handlers": ["console"],
             "level": env("LOG_LEVEL", default="INFO"),
@@ -2129,6 +2279,19 @@ LOGGING = {
 
 # Structlog Configuration
 # Import and configure structlog with enhanced processors
+# django_structlog logs 5xx responses at ERROR by default.  In
+# non-production environments (dev, test, CI) a 5xx is often an
+# intentionally-triggered test scenario — not an infrastructure
+# incident.  Log them at WARNING so they don't pollute ERROR-rate
+# dashboards or mask real production faults.
+import logging as _logging
+
+DJANGO_STRUCTLOG_STATUS_5XX_LOG_LEVEL = (
+    _logging.WARNING
+    if ENVIRONMENT in ("development", "test")
+    else _logging.ERROR
+)
+
 from hub.apps.observability.logging import configure_structlog
 
 configure_structlog()
@@ -2299,6 +2462,8 @@ else:
 ODH_INFERENCE_SCHEDULER_URL = env("ODH_INFERENCE_SCHEDULER_URL", default=_default_odh_inference_url)
 COMPLIANCE_SERVICE_URL = env("COMPLIANCE_SERVICE_URL", default="http://compliance-service:8082")
 COMPLIANCE_SERVICE_TIMEOUT = env.int("COMPLIANCE_SERVICE_TIMEOUT", default=1800)  # 30 minutes
+COMPLIANCE_SERVICE_MAX_RETRIES = env.int("COMPLIANCE_SERVICE_MAX_RETRIES", default=2)
+COMPLIANCE_SERVICE_BACKOFF_FACTOR = env.int("COMPLIANCE_SERVICE_BACKOFF_FACTOR", default=1)
 
 # Semantic Service Configuration
 SEMANTIC_SERVICE_URL = env("SEMANTIC_SERVICE_URL", default="http://semantic-service:8081")
@@ -2567,8 +2732,10 @@ if is_test_env:
 # Disable rate limiting in test mode to prevent test failures
 if is_test_env:
     RATE_LIMIT_ENABLED = False
+    HIBP_VALIDATOR_ENABLED = False  # no external API calls in tests
 else:
     RATE_LIMIT_ENABLED = env.bool("RATE_LIMIT_ENABLED", default=True)
+    HIBP_VALIDATOR_ENABLED = env.bool("HIBP_VALIDATOR_ENABLED", default=True)
 
 # When running E2E against this API (Playwright, real backend), relax auth rate limit
 # so many login attempts in sequence do not hit 429. Uses platform max for AUTH (20/min).

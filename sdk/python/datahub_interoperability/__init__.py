@@ -17,6 +17,8 @@ from .errors import (
     ForbiddenError,
     NotFoundError,
     MVPGatedFeatureError,
+    FeatureNotEnabledError,
+    UnprocessableEntityError,
     ConflictError,
     RateLimitError,
     ServerError,
@@ -69,6 +71,23 @@ from .versioning import VersioningAPI
 from .virtualization import VirtualizationAPI
 from .webhooks import WebhooksAPI
 from .workflows import WorkflowsAPI
+
+# Phase 5 / 279 APIs — re-exported for top-level access
+from .admin import AdminAPI
+from .capabilities import CapabilitiesAPI
+from .developer import DeveloperAPI
+from .dpia import DpiaAPI
+from .drafts import DraftsAPI
+from .events import EventsAPI
+from .integrations import IntegrationsAPI
+from .lineage_subscriptions import LineageSubscriptionsAPI
+from .notifications import NotificationAPI
+from .openlineage import OpenLineageAPI
+from .platform import PlatformAPI
+from .public_dsar import PublicDsarAPI
+from .ropa import RopaAPI
+from .security import SecurityAPI
+
 from .errors import (
     BillingError,
     BillingValidationError,
@@ -99,6 +118,8 @@ __all__ = [
     "ForbiddenError",
     "NotFoundError",
     "MVPGatedFeatureError",
+    "FeatureNotEnabledError",
+    "UnprocessableEntityError",
     "MVP_GATED_PREFIXES",
     "ConflictError",
     "RateLimitError",
@@ -172,5 +193,20 @@ __all__ = [
     "TransformationAPI",
     "UsersAPI",
     "WorkflowsAPI",
+    # Phase 5 / 279 API modules
+    "AdminAPI",
+    "CapabilitiesAPI",
+    "DeveloperAPI",
+    "DpiaAPI",
+    "DraftsAPI",
+    "EventsAPI",
+    "IntegrationsAPI",
+    "LineageSubscriptionsAPI",
+    "NotificationAPI",
+    "OpenLineageAPI",
+    "PlatformAPI",
+    "PublicDsarAPI",
+    "RopaAPI",
+    "SecurityAPI",
 ]
 

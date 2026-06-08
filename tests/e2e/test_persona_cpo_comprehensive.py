@@ -917,7 +917,7 @@ class JourneyCPO005AuditAccessLogsTests(E2ETestBase):
                 if timestamp_str:
                     event_timestamp = datetime.fromisoformat(timestamp_str.replace('Z', '+00:00'))
                     if event_timestamp.tzinfo is None:
-                        event_timestamp = timezone.make_aware(event_timestamp, timezone.utc)
+                        event_timestamp = timezone.make_aware(event_timestamp, datetime.timezone.utc)
                     self.assertGreaterEqual(event_timestamp, start_date)
                     self.assertLessEqual(event_timestamp, end_date)
 

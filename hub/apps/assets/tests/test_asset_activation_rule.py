@@ -26,11 +26,17 @@ pytestmark = pytest.mark.django_db(transaction=True)
 
 def _mk_tenant(**kwargs):
     uid = uuid.uuid4().hex[:8]
-    return Tenant.objects.create(
+    tenant = Tenant.objects.create(
         name=f"AAR-{uid}", slug=f"aar-{uid}",
         status="ACTIVE", kyc_status="VERIFIED",
-        compliance_risk_threshold=kwargs.get("threshold", RiskLevel.MEDIUM.value),
     )
+    from hub.apps.tenants.models import TenantConfig
+    threshold = kwargs.get("threshold", RiskLevel.MEDIUM.value)
+    TenantConfig.objects.update_or_create(
+        tenant=tenant,
+        defaults={"compliance_risk_threshold": threshold},
+    )
+    return tenant
 
 
 def _mk_user(tenant):

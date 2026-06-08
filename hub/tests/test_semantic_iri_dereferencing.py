@@ -164,14 +164,15 @@ class TestDereferenceResourceJsonFallback(TestCase):
             "@id": f"{_SEMANTIC_BASE_IRI}/id/asset/{_SAMPLE_UUID}",
             "@type": "hub:DataAsset",
         }
+        # Patch the resolution service — the view delegates to
+        # SemanticURIResolutionService.resolve() in the non-RDF path.
         with patch(
-            "hub.apps.semantic.views.SemanticServiceClient"
-        ) as MockClient, patch(
-            "hub.apps.semantic.views._resolve_uri_impl"
+            "hub.apps.semantic.services.SemanticURIResolutionService.resolve"
         ) as mock_resolve:
-            mock_resolve.return_value = DrfResponse(mock_result, status=200)
-            instance = MockClient.return_value
-            instance.resolve_uri.return_value = mock_result
+            from hub.apps.semantic.services import UriResolutionOutcome
+            mock_resolve.return_value = UriResolutionOutcome(
+                status_code=200, data=mock_result
+            )
             resp = _api_client(user).get(url, HTTP_ACCEPT="application/json")
         # Must NOT be a redirect.
         self.assertNotEqual(resp.status_code, 303)
@@ -183,22 +184,30 @@ class TestDereferenceResourceJsonFallback(TestCase):
 
 class TestSparqlServiceDescriptionDedicatedEndpoint(TestCase):
     """
-    The dedicated /semantic/sparql/description endpoint is public and
-    returns the Turtle Service Description.
+    The dedicated /semantic/sparql/description endpoint requires
+    authentication (Phase 219.2) and returns the Turtle Service Description.
     """
 
     def test_returns_turtle_service_description(self):
+        user, _tenant = _make_user("sd-desc@test.example.com")
         url = reverse("sparql-service-description")
-        resp = _api_client().get(url)
+        resp = _api_client(user).get(url)
         self.assertEqual(resp.status_code, 200)
         self.assertIn("text/turtle", resp.get("Content-Type", ""))
         self.assertIn("sd:Service", resp.content.decode())
 
-    def test_endpoint_is_public_no_auth_required(self):
-        """Service description endpoint must be accessible without auth."""
+    def test_authenticated_request_accepted(self):
+        """An authenticated request must not receive 401 or 403."""
+        user, _tenant = _make_user("sd-auth@test.example.com")
+        url = reverse("sparql-service-description")
+        resp = _api_client(user).get(url)
+        self.assertNotIn(resp.status_code, (401, 403))
+
+    def test_unauthenticated_request_rejected(self):
+        """An unauthenticated request must be rejected with 401 or 403."""
         url = reverse("sparql-service-description")
         resp = _api_client().get(url)
-        self.assertNotIn(resp.status_code, (401, 403))
+        self.assertIn(resp.status_code, (401, 403))
 
 
 class TestSparqlQueryBareGetReturnsSD(TestCase):

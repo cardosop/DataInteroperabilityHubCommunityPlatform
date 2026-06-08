@@ -174,6 +174,28 @@ class TestPrefectFullFlowIntegration(LiveServerTestCase):
                 f"Expected directory: {prefect_integration}"
             )
 
+        # Verify prefect is importable in the subprocess environment before
+        # launching the flow — the subprocess imports prefect at runtime and
+        # will fail with ModuleNotFoundError if it's not installed.
+        try:
+            subprocess.run(
+                [sys.executable, "-c", "import prefect"],
+                capture_output=True,
+                timeout=30,  # Prefect 3.x server client init can be slow
+                env={**os.environ, "PYTHONPATH": prefect_integration
+                     + os.pathsep + os.environ.get("PYTHONPATH", "")},
+            ).check_returncode()
+        except (subprocess.CalledProcessError, FileNotFoundError):
+            raise unittest.SkipTest(
+                "prefect is not installed in the subprocess Python environment. "
+                "Ensure prefect>=3.6.15 is installed."
+            )
+        except subprocess.TimeoutExpired:
+            raise unittest.SkipTest(
+                "prefect import timed out — Prefect server may be slow to initialise. "
+                "Ensure prefect>=3.6.15 is installed and PREFECT_API_URL is reachable."
+            )
+
         env = {
             **os.environ,
             "HUB_BASE_URL": self.live_server_url,

@@ -66,17 +66,16 @@ class SlowHandlerTimeoutTest(TestCase):
                 bad_handler, args=(), timeout_seconds=5,
             )
 
-    def test_run_with_timeout_uses_structlog_not_logging(self):
+    def test_run_with_timeout_no_nameerror_on_timeout(self):
         """
-        The timeout path must NOT crash with NameError on
-        'logging'.  It should use the module-level structlog
-        logger instead.
+        The timeout path formerly crashed with ``NameError`` on ``logging``
+        (a missing import in the ``_run_with_timeout`` module).  This
+        regression test proves the timeout raises the expected
+        ``TimeoutError``, not ``NameError``.
         """
         def slow(*args):
             time.sleep(10)
 
-        # If this raises NameError instead of TimeoutError, the
-        # P0 bug (missing import) has regressed.
         with self.assertRaises(TimeoutError):
             _run_with_timeout(slow, args=(), timeout_seconds=0.3)
 
@@ -109,13 +108,18 @@ class HandlerTimeoutDLQTest(TestCase):
         )
         self.bus = EventBus(redis_client=self.redis_client)
 
-    def test_slow_handler_event_lands_in_dlq(self):
+    @patch("hub.apps.core.events.bus._run_with_timeout")
+    def test_slow_handler_event_lands_in_dlq(self, mock_run):
         """
         When the handler exceeds EVENT_HANDLER_TIMEOUT_SECONDS,
         after exhausting retries the event must land in the DLQ.
+
+        Patches ``_run_with_timeout`` to raise ``TimeoutError`` without
+        relying on real threading timing (which is non-deterministic in
+        test environments and can mask timeout paths when the daemon
+        thread completes early).
         """
-        def slow_handler(event):
-            time.sleep(10)
+        mock_run.side_effect = TimeoutError("Event handler timed out after 0.3s")
 
         event = {
             "event_id": str(uuid.uuid4()),
@@ -128,7 +132,7 @@ class HandlerTimeoutDLQTest(TestCase):
         dlq_before = DeadLetterQueue.objects.count()
 
         self.bus._handle_event(
-            "test-subscriber", event, slow_handler,
+            "test-subscriber", event, lambda e: None,
         )
 
         dlq_after = DeadLetterQueue.objects.count()

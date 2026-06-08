@@ -36,7 +36,7 @@ class FilePathTraversalTest(TestCase):
     def test_empty_filename_gets_default(self):
         """Empty filename should become 'unnamed'."""
         for name in ["", "   ", None]:
-            safe_name = os.path.basename(name or "") or "unnamed"
+            safe_name = os.path.basename((name or "").strip()) or "unnamed"
             self.assertEqual(safe_name, "unnamed")
 
     def test_backslash_traversal_stripped(self):

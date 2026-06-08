@@ -348,7 +348,7 @@ class DataMeshAuditLoggingTest(TestCase):
         ).order_by("timestamp")
 
         # Should have DOMAIN_CREATED, UPDATED (x2), OWNERSHIP_TRANSFERRED, DELETED
-        self.assertGreaterEqual(audit_events.count(), 5, "Should have at least 5 audit events")
+        self.assertEqual(audit_events.count(), 5, "Should have exactly 5 audit events")
 
         actions = [event.action for event in audit_events]
         self.assertIn("DOMAIN_CREATED", actions)
@@ -462,7 +462,7 @@ class DataMeshAuditLoggingIntegrationTest(TestCase):
             resource_type="DATA_MESH_DOMAIN",
             action="DOMAIN_CREATED"
         )
-        self.assertGreaterEqual(queried_events.count(), 1)
+        self.assertEqual(queried_events.count(), 1)
 
     def test_audit_event_immutability(self):
         """Test that audit events are immutable (cannot be updated or deleted)"""

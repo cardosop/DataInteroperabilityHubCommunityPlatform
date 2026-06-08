@@ -54,6 +54,7 @@ from hub.apps.dq.models import (
 )
 from hub.apps.dq.tests.test_base import DQAPITestBase
 from hub.apps.files.models import File, FileStatus
+from hub.apps.jobs.models import Job, JobStatus, JobType
 from hub.apps.tenants.models import Tenant
 from hub.apps.testing.billing_support import ensure_tenant_has_active_subscription
 from hub.apps.users.models import Role, UserRole, UserStatus
@@ -253,9 +254,9 @@ class DQQualityAnomaliesEndpointTest(DQQualityEndpointsBase):
         ``plan_limit_exceeded`` code."""
         # Force tenant plan to a tiny daily cap: 1 query.
         plan = self.tenant.plan
-        plan.limits = dict(plan.limits or {})
-        plan.limits["max_quality_queries_per_day"] = 1
-        plan.save(update_fields=["limits"])
+        plan.limits_json = dict(plan.limits_json or {})
+        plan.limits_json["max_quality_queries_per_day"] = 1
+        plan.save(update_fields=["limits_json"])
 
         # Pre-seed one DQ_QUALITY_QUERY audit event today so the
         # counter sees current_usage=1 already; the next call would
@@ -479,10 +480,20 @@ class DQQualityRootCauseEndpointTest(DQQualityEndpointsBase):
             storage_path="other/path/file.csv",
             created_by=self.other_user,
         )
+        other_job = Job.objects.create(
+            tenant=self.other_tenant,
+            type=JobType.DQ_RUN,
+            status=JobStatus.PENDING,
+            resource_type="DQ_RUN",
+            resource_id=uuid.uuid4(),
+            created_by=self.other_user,
+            timeout_seconds=1800,
+        )
         other_run = DQRun.objects.create(
             tenant=self.other_tenant,
             asset=self.other_asset,
             file=other_file,
+            job=other_job,
             profile_key="intake_basic_gx",
             engine=DQEngine.GREAT_EXPECTATIONS,
             status=DQRunStatus.SUCCEEDED,

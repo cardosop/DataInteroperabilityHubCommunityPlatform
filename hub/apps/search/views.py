@@ -626,6 +626,23 @@ class UnifiedSearchView(APIView):
     throttle_classes = [SearchUserThrottle]
     permission_classes = [IsAuthenticated]
 
+    def throttled(self, request, wait):
+        """Dispatch to each throttle's ``throttled()`` if it exists.
+
+        DRF 3.16 ``check_throttles`` only calls the *view's* ``throttled``,
+        not each throttle's.  We forward the call so that
+        ``_AuditableThrottle.throttled()`` can emit rate-limit audit
+        events, metrics, and ``RateLimit-*`` response headers on 429.
+        """
+        for throttle in self.get_throttles():
+            throttled_method = getattr(throttle, "throttled", None)
+            if throttled_method is not None:
+                try:
+                    throttled_method(request, wait)
+                except Exception:
+                    pass
+        super().throttled(request, wait)
+
     @staticmethod
     def _fts_query(
         *,
@@ -722,15 +739,27 @@ class UnifiedSearchView(APIView):
 
         q = request.query_params.get("q", "").strip()
 
+        # Reject NUL bytes early — they cannot appear in PostgreSQL string
+        # literals and would cause a ValueError at the cursor level (500).
+        # Returning 400 here matches the "input rejected" contract that
+        # test_null_byte_rejected expects.
+        if "\x00" in q:
+            from hub.apps.api.standards.response_formats import format_error_response
+            return format_error_response(
+                error_code="INVALID_INPUT",
+                message="Query contains invalid characters.",
+                http_status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        # Phase 53: guard against arbitrarily long queries.
+        # Phase 54.5: reject empty q with 400 (both search views must reject empty q).
         if not q:
             from hub.apps.api.standards.response_formats import format_error_response
             return format_error_response(
                 error_code="QUERY_REQUIRED",
-                message="The 'q' query parameter is required.",
+                message="q parameter is required.",
                 http_status=status.HTTP_400_BAD_REQUEST,
             )
-
-        # Phase 53: guard against arbitrarily long queries
         from django.conf import settings as _settings
         max_len = getattr(_settings, "MAX_SEARCH_QUERY_LENGTH", 512)
         if q and len(q) > max_len:
@@ -846,7 +875,7 @@ class UnifiedSearchView(APIView):
                 resource_id=None,
                 result="SUCCESS",
                 details={
-                    "query_truncated": term[:256],
+                    "query_truncated": q[:256],
                     "types": ",".join(sorted(requested_types)) if requested_types else "",
                     "result_count": len(results),
                     "tenant_id": str(tenant.id),
@@ -864,7 +893,7 @@ class UnifiedSearchView(APIView):
                 outcome="empty" if len(results) == 0 else "success",
                 duration_s=0.0,  # instrumented by OTel middleware
                 result_count=len(results),
-                query_length=len(term.encode("utf-8")),
+                query_length=len(q.encode("utf-8")),
             )
         except Exception:
             pass  # metric-backend outage MUST NOT block search response

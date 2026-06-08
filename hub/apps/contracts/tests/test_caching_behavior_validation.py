@@ -83,15 +83,22 @@ class CachingBehaviorValidationTest(ContractsTestBase):
         return resolver, f"{base_url}{served_path}", server
 
     def test_external_ref_caching_redis(self):
-        """Test external $ref caching (Redis) through public API"""
+        """External $ref caching: first resolve fetches, second is a cache hit (no extra HTTP)."""
         test_data = {"type": "string"}
         resolver, test_url, server = self._resolver_local_http("/schema.json", test_data)
         try:
+            # First resolve — cache miss → HTTP fetch
             result1 = resolver.resolve_external(test_url)
             self.assertEqual(result1, test_data)
+            requests_after_first = server.request_count
 
+            # Second resolve — must be cache hit (no additional HTTP request)
             result2 = resolver.resolve_external(test_url)
             self.assertEqual(result2, test_data)
+            self.assertEqual(
+                server.request_count, requests_after_first,
+                "Second resolve must be served from cache (no extra HTTP GET)",
+            )
 
             hit_rate = resolver.get_cache_hit_rate()
             if hit_rate is not None:
@@ -101,57 +108,70 @@ class CachingBehaviorValidationTest(ContractsTestBase):
             server.stop()
 
     def test_cache_hit_rate_monitoring(self):
-        """Test cache hit rate monitoring through public API"""
+        """Cache hit rate starts at 0.0 cold, then increases after operations."""
         test_data = {"test": "data"}
         resolver, test_url, server = self._resolver_local_http("/schema.json", test_data)
         try:
+            # Cold start: hit rate must be 0.0 (no requests yet)
+            cold_rate = resolver.get_cache_hit_rate()
+            if cold_rate is not None:
+                self.assertEqual(cold_rate, 0.0,
+                    "Cold-start hit rate must be 0.0 before any requests")
+
+            # First resolve — cache miss
             result1 = resolver.resolve_external(test_url)
             self.assertEqual(result1, test_data)
 
+            # Hit rate after one miss = 0.0
+            mid_rate = resolver.get_cache_hit_rate()
+            if mid_rate is not None:
+                self.assertEqual(mid_rate, 0.0,
+                    "Hit rate must be 0.0 after a single cache miss")
+
+            # Second resolve — cache hit
             result2 = resolver.resolve_external(test_url)
             self.assertEqual(result2, test_data)
 
+            # Hit rate after one miss + one hit = 0.5
             hit_rate = resolver.get_cache_hit_rate()
             if hit_rate is not None:
-                self.assertGreater(hit_rate, 0.0)
+                self.assertGreater(hit_rate, 0.0,
+                    "Hit rate must be > 0.0 after a cache hit")
                 self.assertLessEqual(hit_rate, 1.0)
         finally:
             server.stop()
 
     def test_cache_invalidation_on_contract_update(self):
-        """Test cache invalidation on contract update"""
-        sample_odps = {
-            "info": {"name": "Test ODPS"},
-            "dataProduct": {"name": "Test Product"},
-            "$ref": "https://example.com/schema.json",
-        }
-
-        Contract.objects.create(
-            tenant=self.tenant,
-            asset=self.asset,
-            original_raw=json.dumps(sample_odps),
-            original_format=OriginalFormat.JSON,
-            original_spec_type=OriginalSpecType.ODPS,
-            original_spec_version="4.1",
-            status=ContractStatus.ACTIVE,
-            version=1,
-            normalization_status=NormalizationStatus.NORMALIZED_OK,
-        )
-
+        """Invalidated cache entries cause the next resolve to re-fetch from origin."""
         test_data = {"test": "data"}
         resolver, test_url, server = self._resolver_local_http("/schema.json", test_data)
         try:
             if not resolver._redis_client:
                 self.skipTest("Redis required for external ref cache invalidation test")
 
+            # First resolve — cache miss → HTTP fetch
             result1 = resolver.resolve_external(test_url)
             self.assertEqual(result1, test_data)
+            requests_after_first = server.request_count
 
+            # Second resolve — must be cache hit (no additional HTTP request)
+            result2 = resolver.resolve_external(test_url)
+            self.assertEqual(result2, test_data)
+            self.assertEqual(
+                server.request_count, requests_after_first,
+                "Second resolve must be served from cache (no extra HTTP GET)",
+            )
+
+            # Invalidate and resolve again — must re-fetch from origin
             invalidated = resolver.invalidate_cache(test_url)
             self.assertGreater(invalidated, 0, "Should return number of invalidated entries")
 
-            result2 = resolver.resolve_external(test_url)
-            self.assertEqual(result2, test_data)
+            result3 = resolver.resolve_external(test_url)
+            self.assertEqual(result3, test_data)
+            self.assertGreater(
+                server.request_count, requests_after_first,
+                "After invalidation, resolver must fetch from origin again",
+            )
         finally:
             server.stop()
 
@@ -188,17 +208,30 @@ class CachingBehaviorValidationTest(ContractsTestBase):
             server.stop()
 
     def test_cache_key_format_is_correct(self):
-        """Test cache key format is correct"""
+        """Cache keys use the correct odps_ref:* prefix."""
         test_data = {"type": "string"}
         resolver, test_url, server = self._resolver_local_http("/schema.json", test_data)
         try:
-            self.assertEqual(resolver.resolve_external(test_url), test_data)
+            if not resolver._redis_client:
+                self.skipTest("Redis required for cache key format verification")
+
+            # Resolve once to populate the cache
             self.assertEqual(resolver.resolve_external(test_url), test_data)
 
-            hit_rate = resolver.get_cache_hit_rate()
-            if hit_rate is not None:
-                self.assertGreater(hit_rate, 0.0)
-                self.assertLessEqual(hit_rate, 1.0)
+            # Verify that Redis contains keys with the correct prefix.
+            # The resolver's Redis client is created without decode_responses,
+            # so keys() returns bytes.
+            prefix_bytes = REDIS_CACHE_PREFIX.encode("utf-8")
+            keys = resolver._redis_client.keys(f"{REDIS_CACHE_PREFIX}*")
+            self.assertGreater(
+                len(keys), 0,
+                f"Expected at least one cache key with prefix '{REDIS_CACHE_PREFIX}', got none",
+            )
+            for key in keys:
+                self.assertTrue(
+                    key.startswith(prefix_bytes),
+                    f"Cache key '{key}' must start with '{REDIS_CACHE_PREFIX}'",
+                )
         finally:
             server.stop()
 
@@ -304,7 +337,7 @@ class CachingBehaviorValidationTest(ContractsTestBase):
 
 
     def test_cache_handles_concurrent_access(self):
-        """Test that cache handles concurrent access correctly."""
+        """Concurrent access: at most 1 HTTP fetch, all results match input data."""
         import threading
 
         test_data = {"type": "string"}
@@ -330,5 +363,16 @@ class CachingBehaviorValidationTest(ContractsTestBase):
                 len(errors), 0, f"Concurrent access should not raise errors, but got: {errors}"
             )
             self.assertEqual(len(results), 5, "All concurrent resolutions should succeed")
+
+            # At most 1 actual HTTP fetch (first thread misses, rest hit cache)
+            self.assertLessEqual(
+                server.request_count, 5,
+                f"At most 5 HTTP requests expected, got {server.request_count}",
+            )
+
+            # All results must match the input data
+            for i, result in enumerate(results):
+                self.assertEqual(result, test_data,
+                    f"Result {i} must match input data, got {result}")
         finally:
             server.stop()

@@ -13,43 +13,15 @@ from hub.apps.tenants.models import Tenant
 from hub.apps.dq.contract_integration import ContractQualityRulesExtractor
 from hub.apps.dq.service_client import DQServiceClient
 
-# Import DQ profile types - handle import path with hyphen
-import sys
-import os
 import uuid
-dq_service_path = os.path.join(os.path.dirname(__file__), '../../../services/dq-service')
-if dq_service_path not in sys.path:
-    sys.path.insert(0, dq_service_path)
-try:
-    from dq_profile import DQCheck, DQCategory, DQSeverity
-except ImportError:
-    # Fallback: define minimal types for testing
-    from enum import Enum
-    
-    class DQCategory(Enum):
-        COMPLETENESS = "COMPLETENESS"
-        ACCURACY = "ACCURACY"
-        CONSISTENCY = "CONSISTENCY"
-        TIMELINESS = "TIMELINESS"
-        VALIDITY = "VALIDITY"
-        UNIQUENESS = "UNIQUENESS"
-    
-    class DQSeverity(Enum):
-        ERROR = "ERROR"
-        WARNING = "WARNING"
-        INFO = "INFO"
-    
-    class DQCheck:
-        def __init__(self, check_id, name, category, severity, expectation_type, params, target_level, target_column=None, target_pattern=None):
-            self.check_id = check_id
-            self.name = name
-            self.category = category
-            self.severity = severity
-            self.expectation_type = expectation_type
-            self.params = params
-            self.target_level = target_level
-            self.target_column = target_column
-            self.target_pattern = target_pattern
+
+# Always import DQ types from the production module.  When dq-service IS
+# installed, both the test and the production code resolve the real types
+# from dq_profile.  When it is NOT installed, both resolve the same
+# fallback types from hub.apps.dq.contract_integration — eliminating the
+# cross-module enum mismatch that caused Enum.__eq__ to fall through to
+# identity comparison (C3).
+from hub.apps.dq.contract_integration import DQCategory, DQCheck, DQSeverity
 
 
 pytestmark = pytest.mark.django_db(transaction=True)
@@ -284,8 +256,12 @@ class DQServiceContractIntegrationTest(TestCase):
         
         self.client = DQServiceClient()
     
-    def test_run_dq_with_contract_quality_rules(self):
-        """Test running DQ with contract quality rules (GAP-8.2.1)"""
+    def test_extract_quality_rules_and_checks_from_contract(self):
+        """Test extracting quality rules and checks from a contract (GAP-8.2.1).
+
+        Verifies ContractQualityRulesExtractor extracts rules, checks, and
+        profile key. Does NOT call the DQ service — DQServiceClient is
+        instantiated but run_dq is never invoked."""
         # This test verifies that the service client correctly extracts and uses contract quality rules
         # Note: This requires the DQ service to be running or mocked at a higher level
         
@@ -306,8 +282,11 @@ class DQServiceContractIntegrationTest(TestCase):
         )
         self.assertEqual(profile_key, 'custom_profile')
     
-    def test_custom_rules_executed(self):
-        """Test that custom rules from contract are executed (GAP-8.2.1)"""
+    def test_custom_rules_properly_formatted_for_dq_service(self):
+        """Test custom contract rules are properly formatted for the DQ service (GAP-8.2.1).
+
+        Verifies that extracted checks have all required fields and can be
+        serialized. Does NOT call the DQ service — no run_dq invocation."""
         # Extract custom checks
         checks = ContractQualityRulesExtractor.get_contract_quality_checks(self.contract)
         
@@ -343,8 +322,12 @@ class DQServiceContractIntegrationTest(TestCase):
         self.assertIn('severity', check_dict)
         self.assertIn('expectation_type', check_dict)
     
-    def test_default_profile_used(self):
-        """Test that default profile from contract is used (GAP-8.2.1)"""
+    def test_contract_profile_key_with_fallback(self):
+        """Test contract profile key extraction with fallback (GAP-8.2.1).
+
+        Verifies ContractQualityRulesExtractor.get_contract_profile_key returns
+        the contract's default when present or the fallback when absent. Does
+        NOT call the DQ service."""
         # Get profile key from contract
         profile_key = ContractQualityRulesExtractor.get_contract_profile_key(
             self.contract,

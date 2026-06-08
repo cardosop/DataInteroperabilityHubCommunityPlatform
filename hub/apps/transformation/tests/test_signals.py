@@ -27,21 +27,16 @@ User = get_user_model()
 class DatasetVersionSignalTest(TestCase):
     """Test that dataset version creation triggers transformation."""
 
-    @classmethod
-    def setUpTestData(cls):
-        """Create Tenant and User once for the whole test class (read-only)."""
+    def setUp(self):
         uid = uuid.uuid4().hex[:8]
-        cls.tenant = Tenant.objects.create(
+        self.tenant = Tenant.objects.create(
             name=f"T-{uid}", slug=f"t-{uid}",
             kyc_status=KYCStatus.VERIFIED,
         )
-        cls.user = User.objects.create_user(
+        self.user = User.objects.create_user(
             email=f"u-{uid}@test.com", password="pass",
-            tenant=cls.tenant,
+            tenant=self.tenant,
         )
-
-    def setUp(self):
-        uid = uuid.uuid4().hex[:8]
         self.asset = Asset.objects.create(
             tenant=self.tenant, key=f"a-{uid}",
             name="Test Asset", status=AssetStatus.DRAFT,

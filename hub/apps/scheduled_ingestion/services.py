@@ -72,7 +72,14 @@ class IngestionService(BaseService, IngestionEventPublisher):
 
     def _execute_ingestion_impl(self, scheduled_ingestion: ScheduledIngestion) -> Dict[str, Any]:
         """Internal implementation of ingestion execution."""
-        # Execute workflow
+        # Phase 285.6 — when the dlt engine feature flag is enabled, use
+        # the unified DataMovementPipeline instead of the legacy connector path.
+        if getattr(scheduled_ingestion.tenant, "data_movement_enabled", False):
+            from hub.data_movement.ingestion_execution import execute_dlt_ingestion
+
+            return execute_dlt_ingestion(str(scheduled_ingestion.id))
+
+        # Execute workflow (legacy connector path)
         workflow_result = ScheduledIngestionWorkflow.execute(
             scheduled_ingestion_id=str(scheduled_ingestion.id)
         )

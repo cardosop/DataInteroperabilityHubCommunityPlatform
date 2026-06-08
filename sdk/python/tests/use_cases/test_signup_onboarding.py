@@ -155,7 +155,7 @@ def test_create_first_asset_after_signup():
         headers=_auth_headers(access_token),
         json={
             "name": asset_name,
-            "key": fresh_id("asset-key"),
+            "key": fresh_id("asset-key"),  # noqa: PHASE216-STATIC-ID
             "description": "First asset created during onboarding test",
         },
         timeout=15,
@@ -206,9 +206,9 @@ def test_onboarding_creates_default_tenant():
     me_body = me_resp.json()
     # The user should have at least one tenant associated
     tenant_id = (
-        me_body.get("tenant_id")
+        me_body.get("tenant_id")  # noqa: PHASE216-STATIC-ID
         or (me_body.get("tenants", [{}])[0].get("id") if me_body.get("tenants") else None)
-        or tokens.get("tenant_id")
+        or tokens.get("tenant_id")  # noqa: PHASE216-STATIC-ID
     )
     assert tenant_id, (
         f"New user has no tenant_id. /auth/me/ body: {me_body}, "

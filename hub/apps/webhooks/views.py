@@ -4,9 +4,12 @@ Webhook Views
 REST API views for webhook management.
 """
 
+import logging
 import requests
 from django.db import transaction
 from django.utils import timezone
+
+logger = logging.getLogger(__name__)
 from rest_framework import permissions, status, viewsets
 from rest_framework.decorators import action
 from rest_framework.exceptions import ValidationError
@@ -156,29 +159,120 @@ class WebhookViewSet(viewsets.ModelViewSet):
     @action(detail=True, methods=["post"], url_path="test")
     def test_webhook(self, request, id=None):
         """
-        Test webhook delivery.
+        Test webhook delivery (Phase 233.4).
 
         POST /api/v1/webhooks/{id}/test/
+
+        Delivers a synthetic ``webhook.test`` event that bypasses the
+        normal subscription filter — every active webhook receives test
+        events regardless of its ``event_types`` list (universal
+        subscription).
         """
         webhook = self.get_object()
 
-        # Create test event
-        test_event_data = {
-            "test": True,
-            "message": "Test webhook delivery",
-            "timestamp": timezone.now().isoformat(),
-        }
+        delivery = WebhookDeliveryService.deliver_test_event(webhook)
 
-        # Trigger test delivery
-        WebhookDeliveryService.trigger_webhook(
-            tenant_id=str(webhook.tenant.id),
-            event_type="asset.created",  # Use a generic event type for testing
-            resource_type="WEBHOOK",
-            resource_id=str(webhook.id),
-            event_data=test_event_data,
+        if delivery is None:
+            return Response(
+                {"status": "test event could not be delivered"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        return Response(
+            {
+                "status": "test webhook triggered",
+                "delivery_id": str(delivery.id),
+            },
+            status=status.HTTP_200_OK,
         )
 
-        return Response({"status": "test webhook triggered"}, status=status.HTTP_200_OK)
+    @action(detail=True, methods=["post"], url_path="rotate_secret")
+    def rotate_secret(self, request, id=None):
+        """
+        Rotate the webhook signing secret (Phase 233.1).
+
+        POST /api/v1/webhooks/{id}/rotate_secret/
+
+        Creates a new ACTIVE ``WebhookSigningKey``, retires the previous
+        ACTIVE key, and evicts the oldest RETIRING key when the 3-key
+        window is full.  Also rotates the legacy ``webhook.secret`` so
+        pre-backfill subscribers continue to work.
+        """
+        import secrets
+
+        from .encryption import encrypt_secret
+        from .models import WebhookSigningKey, WebhookSigningKeyStatus
+
+        webhook = self.get_object()
+
+        # ── Tenant-scoping guard ──────────────────────────────────
+        user_tenant_id = _resolve_tenant_id(request)
+        if user_tenant_id and str(webhook.tenant_id) != user_tenant_id:
+            return Response(
+                {"detail": "Not found."},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        # ── 1. Retire the current ACTIVE signing key ──────────────
+        previous_key = WebhookSigningKey.active_for(webhook)
+        if previous_key is not None:
+            previous_key.status = WebhookSigningKeyStatus.RETIRING
+            previous_key.retired_at = timezone.now() + timezone.timedelta(hours=24)
+            previous_key.save(update_fields=["status", "retired_at"])
+
+        # ── 2. Evict oldest RETIRING key if window full ───────────
+        retiring_keys = list(
+            WebhookSigningKey.objects.filter(
+                webhook=webhook,
+                status=WebhookSigningKeyStatus.RETIRING,
+            ).order_by("retired_at")
+        )
+        # Keep at most 2 RETIRING keys (3-key window: 1 ACTIVE + 2 RETIRING)
+        while len(retiring_keys) > 2:
+            oldest = retiring_keys.pop(0)
+            oldest.status = WebhookSigningKeyStatus.RETIRED
+            oldest.save(update_fields=["status"])
+
+        # ── 3. Create a new ACTIVE signing key ────────────────────
+        new_secret = secrets.token_hex(32)
+        new_key = WebhookSigningKey.objects.create(
+            webhook=webhook,
+            secret_encrypted=encrypt_secret(new_secret),
+            status=WebhookSigningKeyStatus.ACTIVE,
+        )
+
+        # ── 4. Also rotate the legacy webhook.secret ──────────────
+        webhook.secret = encrypt_secret(secrets.token_hex(32))
+        webhook.save(update_fields=["secret"])
+
+        # ── 5. Audit ──────────────────────────────────────────────
+        try:
+            create_audit_event(
+                resource_type="WEBHOOK",
+                action="WEBHOOK_KEY_ROTATED",
+                tenant=webhook.tenant,
+                resource_id=str(webhook.id),
+                details={
+                    "webhook_id": str(webhook.id),
+                    "new_key_id": str(new_key.key_id),
+                    "previous_key_id": str(previous_key.key_id) if previous_key else None,
+                },
+            )
+        except Exception:
+            logger.warning(
+                "rotate_secret_audit_failed",
+                webhook_id=str(webhook.id),
+                exc_info=True,
+            )
+
+        return Response(
+            {
+                "key_id": str(new_key.key_id),
+                "previous_key_id": str(previous_key.key_id) if previous_key else None,
+                "secret": new_secret,
+            },
+            status=status.HTTP_200_OK,
+        )
 
     @action(detail=True, methods=["get"], url_path="deliveries")
     def deliveries(self, request, id=None):

@@ -6,18 +6,21 @@ import type { ApiError } from '../types/api';
 import './ErrorDisplay.css';
 
 interface ErrorDisplayProps {
-  error: ApiError | Error | unknown;
+  error?: ApiError | Error | unknown;
+  message?: string;
   title?: string;
   onRetry?: () => void;
 }
 
-export function ErrorDisplay({ error, title = 'An error occurred', onRetry }: ErrorDisplayProps) {
+export function ErrorDisplay({ error, message, title = 'An error occurred', onRetry }: ErrorDisplayProps) {
+  // Backward-compatible: accept either `error` or `message` prop.
+  const resolvedError = error ?? message;
   let errorMessage = 'An unexpected error occurred';
   let errorCode: string | undefined;
   let requestId: string | undefined;
 
-  if (error && typeof error === 'object' && 'error' in error) {
-    const apiError = error as ApiError;
+  if (resolvedError && typeof resolvedError === 'object' && 'error' in resolvedError) {
+    const apiError = resolvedError as ApiError;
     errorMessage = apiError.error.message || errorMessage;
     errorCode = apiError.error.code;
     requestId = apiError.error.request_id;
@@ -28,8 +31,8 @@ export function ErrorDisplay({ error, title = 'An error occurred', onRetry }: Er
         correlationId: requestId,
       });
     });
-  } else if (error instanceof Error) {
-    errorMessage = error.message;
+  } else if (resolvedError instanceof Error) {
+    errorMessage = resolvedError.message;
 
     // Report JavaScript error
     import('../services/errorReporting').then(({ errorReportingService }) => {

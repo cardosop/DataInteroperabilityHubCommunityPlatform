@@ -305,7 +305,7 @@ class TenantConfigModelTest(TestCase):
         self.assertEqual(str(config), f"Config for {self.tenant.name}")
         
         # Test with different tenant name
-        tenant2 = Tenant.objects.create(name="Another Tenant", slug="another-tenant")
+        tenant2 = Tenant.objects.create(name=f"Another Tenant {uuid.uuid4().hex[:8]}", slug=f"another-tenant-{uuid.uuid4().hex[:8]}")
         config2 = TenantConfig.objects.create(tenant=tenant2)
         self.assertEqual(str(config2), "Config for Another Tenant")
     

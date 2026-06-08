@@ -83,7 +83,10 @@ def _seed_workflow_instance(
     wf_def = WorkflowDefinition.objects.create(
         name="asset_creation_test",
         version="2.0.0",
-        dsl_json={"version": "2.0.0", "steps": []},
+        dsl_json={
+            "version": "2.0.0",
+            "steps": [{"name": "validate_contract", "type": "validation"}],
+        },
         is_active=True,
         created_by=user,
     )

@@ -618,6 +618,10 @@ class MarketplaceMappingViewSetSecurityTest(TestCase):
         self.assertEqual(response.data["count"], 1)
         self.assertEqual(response.data["results"][0]["id"], str(self.mapping1.id))
         self.assertEqual(response.data["results"][0]["tenant"], str(self.tenant1.id))
+        # Verify cross-tenant mapping is NOT leaked in results
+        result_ids = [r["id"] for r in response.data["results"]]
+        self.assertNotIn(str(self.mapping2.id), result_ids,
+                         "Cross-tenant mapping must not appear in list results")
 
     def test_tenant_isolation_retrieve(self):
         """Test that users cannot retrieve mappings from other tenants"""

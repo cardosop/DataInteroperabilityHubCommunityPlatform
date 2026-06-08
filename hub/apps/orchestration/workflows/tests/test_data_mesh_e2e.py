@@ -127,7 +127,7 @@ class DataMeshWorkflowE2ETest(TestCase):
 
         # Verify progress tracking
         self.assertEqual(workflow_instance.state_data["progress_percentage"], 100)
-        self.assertEqual(workflow_instance.state_data["current_step_name"], "complete")
+        self.assertEqual(workflow_instance.state_data["current_step_name"], "completed")
 
         # Verify workflow state contains event-related data
         # Events are published but may fail validation if event schema registry isn't updated

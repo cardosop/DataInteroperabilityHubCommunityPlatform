@@ -1,4 +1,6 @@
 """
+
+import uuid
 Comprehensive E2E tests for file operations.
 
 Covers:

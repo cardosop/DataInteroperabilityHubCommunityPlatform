@@ -22,34 +22,33 @@ def handle_auth_failure(e: Exception) -> None:
     """
     Handle authentication failures by skipping tests with clear message.
 
-    Uses ``pytest.skip(...)`` (which raises ``_pytest.outcomes.Skipped`` —
-    a ``BaseException`` subclass) rather than ``unittest.SkipTest`` so
-    the surrounding tests' broad ``except Exception:`` blocks do not
-    accidentally swallow the skip and turn it into a hard failure.
+    Uses ``unittest.SkipTest`` which is an ``Exception`` subclass.
+    Since this function is always called from inside ``except Exception:``
+    blocks in test methods, the ``SkipTest`` raised here propagates
+    *out* of the except block (Python does not re-catch exceptions
+    raised within an except clause) and reaches Django's test runner,
+    which correctly marks the test as skipped.
 
     Args:
         e: Exception that may indicate authentication failure
     """
+    # Never skip on assertion failures — those are real test bugs.
+    if isinstance(e, (AssertionError, unittest.SkipTest)):
+        raise
+
     error_str = str(e).lower()
     if (
         "authentication failed" in error_str
-        or "signin" in error_str
-        or "login" in error_str
         or "jwt token" in error_str
         or "redirected to signin" in error_str
         # ``dados.gov.br`` returns a bare HTTP 401 (no descriptive body)
-        # when the JWT token is missing/expired/revoked. The string-based
-        # detection above misses this; without it the test fails as
-        # ``ConnectionError: ... '401 Unauthorized' ...`` and reads as a
-        # regression even though it is purely an externally-rotated
-        # credential. Match 401 / "unauthorized" too so CI without a
-        # live token degrades to skips, not failures.
+        # when the JWT token is missing/expired/revoked.
         or "401" in error_str
         or "unauthorized" in error_str
-        or "403" in error_str
-        or "forbidden" in error_str
     ):
-        pytest.skip(f"JWT token authentication failed (token may be expired or invalid): {e}")
+        raise unittest.SkipTest(
+            f"JWT token authentication failed (token may be expired or invalid): {e}"
+        )
 
 
 @pytest.mark.integration
@@ -64,17 +63,18 @@ class TestDadosGovBrConnectorIntegration(TestCase):
     @classmethod
     def setUpClass(cls):
         """Set up test class with real dados.gov.br connector."""
-        super().setUpClass()
-
-        # Get JWT token from environment (check new name first, then deprecated name for backward compatibility)
+        # Check skip conditions BEFORE super().setUpClass() so that if we
+        # raise SkipTest, no class-level atomics are opened and the PG
+        # connection is not left in a stale transaction for the next class.
         cls.jwt_token = os.getenv("DADOS_GOV_BR_API_KEY") or os.getenv("CKAN_DADOS_GOV_BR_API_KEY")
         if not cls.jwt_token:
             raise unittest.SkipTest("CKAN_DADOS_GOV_BR_API_KEY not set - skipping integration tests")
 
-        # Get instance configuration
         cls.instance_config = get_marketplace_instance_config("dados.gov.br")
         if not cls.instance_config:
             raise unittest.SkipTest("dados.gov.br instance configuration not found")
+
+        super().setUpClass()
 
         # Create connector
         assert cls.instance_config is not None
@@ -357,14 +357,16 @@ class TestDadosGovBrAPIClientIntegration(TestCase):
     @classmethod
     def setUpClass(cls):
         """Set up test class with real API client."""
-        super().setUpClass()
-
-        # Get JWT token from environment (check new name first, then deprecated name for backward compatibility)
+        # Check skip conditions BEFORE super().setUpClass() so that if we
+        # raise SkipTest, no class-level atomics are opened and the PG
+        # connection is not left in a stale transaction for the next class.
         cls.jwt_token = os.getenv("DADOS_GOV_BR_API_KEY") or os.getenv("CKAN_DADOS_GOV_BR_API_KEY")
         if not cls.jwt_token:
             raise unittest.SkipTest(
                 "DADOS_GOV_BR_API_KEY or CKAN_DADOS_GOV_BR_API_KEY not set - skipping integration tests"
             )
+
+        super().setUpClass()
 
         # Create API client (use api_client to avoid conflict with Django TestCase.client)
         assert cls.jwt_token is not None

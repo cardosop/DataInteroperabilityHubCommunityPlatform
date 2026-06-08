@@ -89,6 +89,7 @@ def _build_asset_mapping(*, key: str, name: str, marketplace_type: str = "CKAN")
     )
 
     return MarketplaceAssetMapping(
+        source_type=AssetSourceType.FEDERATED,
         asset_data={
             "key": key,
             "name": name,
@@ -185,8 +186,12 @@ class FederatedImportGateOnTenantFlagTest(TestCase):
         after = AuditEvent.objects.filter(
             action=audit_event_types.FEDERATED_IMPORT_REJECTED,
             tenant=tenant,
-        ).order_by("-created_at")
-        assert after.count() - before == 1
+        ).order_by("-timestamp")
+        after_count = after.count()
+        self.assertEqual(
+            after_count - before, 1,
+            msg=f"before={before}, after={after_count}, first event: {after.first()}"
+        )
         ev = after.first()
         assert ev.details_json["code"] == "FEDERATED_IMPORT_DISABLED"
         assert ev.details_json["connection_id"] == str(connection.id)
@@ -252,7 +257,10 @@ class CrossRegionFederatedImportConsentTest(TestCase):
             action=audit_event_types.FEDERATED_IMPORT_CROSS_REGION_BLOCKED,
             tenant=consumer_tenant,
         ).count()
-        assert after - before == 1
+        self.assertEqual(
+            after - before, 1,
+            msg=f"before={before}, after={after}"
+        )
 
     def test_different_region_with_explicit_consent_proceeds(self):
         from hub.apps.integrations.services import MarketplaceIntegrationService as IntegrationService
@@ -429,8 +437,12 @@ class CrossTenantFederatedAssetReadProtectionTest(TestCase):
         tenant_b, user_b = _seed_tenant(slug_prefix="b")
         # Promote so user_b at least has a role; the 404 must fire
         # even for users with broad scopes.
-        user_b.roles = ["TENANT_ADMIN", "DATA_PROVIDER"]
-        user_b.save(update_fields=["roles"])
+        from hub.apps.users.models import Role
+        for role_name in ("TENANT_ADMIN", "DATA_PROVIDER"):
+            role, _ = Role.objects.get_or_create(
+                tenant=tenant_b, name=role_name, defaults={"description": f"{role_name} Role"}
+            )
+            user_b.user_roles.create(role=role)
 
         federated_asset = Asset.objects.create(
             tenant=tenant_a,
@@ -457,8 +469,12 @@ class AuditorReadAccessTest(TestCase):
         from rest_framework.test import APIClient
 
         tenant, user = _seed_tenant(slug_prefix="t")
-        user.roles = ["AUDITOR"]
-        user.save(update_fields=["roles"])
+        # Assign AUDITOR role via the UserRole through model (roles is not a concrete DB field).
+        from hub.apps.users.models import Role
+        auditor_role, _ = Role.objects.get_or_create(
+            tenant=tenant, name="AUDITOR", defaults={"description": "Auditor Role"}
+        )
+        user.user_roles.create(role=auditor_role)
 
         federated_asset = Asset.objects.create(
             tenant=tenant,
@@ -478,8 +494,12 @@ class AuditorReadAccessTest(TestCase):
         from rest_framework.test import APIClient
 
         tenant, user = _seed_tenant(slug_prefix="t")
-        user.roles = ["AUDITOR"]
-        user.save(update_fields=["roles"])
+        # Assign AUDITOR role via the UserRole through model (roles is not a concrete DB field).
+        from hub.apps.users.models import Role
+        auditor_role, _ = Role.objects.get_or_create(
+            tenant=tenant, name="AUDITOR", defaults={"description": "Auditor Role"}
+        )
+        user.user_roles.create(role=auditor_role)
 
         federated_asset = Asset.objects.create(
             tenant=tenant,

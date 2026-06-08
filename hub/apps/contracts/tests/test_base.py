@@ -73,15 +73,18 @@ class ContractsTransactionTestBase(TransactionTestCase):
     def setUp(self):
         """Set up common test fixtures."""
         super().setUp()
-        # Close stale thread connections that may hold locks from prior tests.
-        connections.close_all()
+        from django.db import connection as _conn
+        # TransactionTestCase truncates tables in super().setUp(), which can
+        # close the server-side TCP connection.  ``connect()`` forces a fresh
+        # psycopg2 connection so Tenant.objects.create() doesn't hit
+        # "connection already closed" from a dead pooled connection.
+        _conn.connect()
         # The hub_test_test_shared database has lock_timeout=5s (production
         # setting).  In tests, each contract save triggers synchronous Redis
         # operations (cache invalidation + RQ enqueue) that can take 1-3s,
         # so a 5s lock_timeout causes spurious LockNotAvailable when tests
         # run back-to-back.  Raise to 30s (matching pytest-timeout) on this
         # connection so locks are released naturally rather than aborting.
-        from django.db import connection as _conn
         try:
             _conn.ensure_connection()
             with _conn.cursor() as cur:
@@ -133,6 +136,46 @@ class ContractsAPITestBase(ContractsTestBase):
         ensure_tenant_has_active_subscription(self.tenant)
         self.client = APIClient()
         self.client.force_authenticate(user=self.user)
+
+
+def get_real_redis_client_or_none():
+    """Get real Redis client or return None if unavailable.
+
+    Shared across test files to avoid duplication.
+    Used by test_ref_warming.py, test_odps_rate_limiting.py,
+    test_odps_metrics.py, and test_caching_enhanced.py.
+    """
+    import redis as _redis
+    from django.conf import settings
+
+    try:
+        redis_url = getattr(settings, "REDIS_URL", None) or "redis://redis-cache-test:6379/0"
+        client = _redis.from_url(
+            redis_url, decode_responses=False, socket_connect_timeout=2, socket_timeout=2
+        )
+        client.ping()
+        return client
+    except Exception:
+        return None
+
+
+def check_datacontract_cli_available():
+    """Check if DataContract CLI service is available.
+
+    Only catches transport exceptions — import errors and programming
+    mistakes bubble up instead of being silently masked.
+
+    Canonical definition; import from here in test files.
+    """
+    import httpx as _httpx
+    from hub.apps.contracts.cli_client import DataContractCLIClient as _CLIClient
+
+    try:
+        client = _CLIClient()
+        health = client.health_check()
+        return isinstance(health, dict) and health.get("status") == "healthy"
+    except (_httpx.ConnectError, _httpx.TimeoutException, ConnectionError, TimeoutError, OSError):
+        return False
 
 
 class ContractsAPITransactionTestBase(ContractsTransactionTestBase):

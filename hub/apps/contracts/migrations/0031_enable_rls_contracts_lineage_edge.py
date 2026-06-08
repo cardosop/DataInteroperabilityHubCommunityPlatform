@@ -9,7 +9,7 @@ from django.db import migrations
 
 class Migration(migrations.Migration):
     dependencies = [
-        ("contracts", "0030"),
+        ("contracts", "0030_enable_rls_contracts"),
     ]
 
     operations = [

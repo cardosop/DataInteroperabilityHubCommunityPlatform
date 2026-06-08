@@ -1,6 +1,7 @@
 """
 Phase 277.B.080 — webhook signing-key rotation drill tests.
 """
+import uuid
 from io import StringIO
 
 import pytest
@@ -18,16 +19,16 @@ pytestmark = pytest.mark.django_db(transaction=True)
 
 
 class KeyRotationDrillTests(TestCase):
-    @classmethod
-    def setUpTestData(cls):
-        cls.tenant = Tenant.objects.create(
-            name="Drill Tenant", slug="drill-tenant", status=TenantStatus.ACTIVE,
+    def setUp(self):
+        self.tenant = Tenant.objects.create(
+            name="Drill Tenant", slug=f"drill-{uuid.uuid4().hex[:8]}", status=TenantStatus.ACTIVE,
         )
-        cls.webhook = Webhook.objects.create(
-            tenant=cls.tenant,
+        self.webhook = Webhook.objects.create(
+            tenant=self.tenant,
             name="Drill Webhook",
             url="https://example.com/webhook",
             event_types=["asset.created"],
+            secret=str(uuid.uuid4().hex[:16]),
         )
 
     def test_dry_run_reports_no_mutations(self):
@@ -126,10 +127,16 @@ class KeyRotationDrillTests(TestCase):
         from hub.apps.audit.models import AuditEvent
 
         before = AuditEvent.objects.filter(
-            action="WEBHOOK_KEY_ROTATION_DRILL"
+            action="WEBHOOK_KEY_ROTATION_DRILL",
+            resource_id=str(self.webhook.id),
         ).count()
-        call_command("drill_webhook_key_rotation", stdout=StringIO())
+        call_command(
+            "drill_webhook_key_rotation",
+            f"--webhook-id={self.webhook.id}",
+            stdout=StringIO(),
+        )
         after = AuditEvent.objects.filter(
-            action="WEBHOOK_KEY_ROTATION_DRILL"
+            action="WEBHOOK_KEY_ROTATION_DRILL",
+            resource_id=str(self.webhook.id),
         ).count()
         self.assertEqual(after - before, 1)

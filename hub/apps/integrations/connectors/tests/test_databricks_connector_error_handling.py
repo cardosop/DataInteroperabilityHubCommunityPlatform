@@ -22,6 +22,8 @@ class TestDatabricksConnectorErrorHandling(TestCase):
 
     def setUp(self):
         """Set up test fixtures"""
+        from hub.apps.core.resilience.circuit_breaker import reset_circuit_breaker_by_name
+        reset_circuit_breaker_by_name('databricks-connector')
         self.connector = DatabricksConnector(
             host='https://test-workspace.cloud.databricks.com',
             token='dapi1234567890abcdef'
@@ -192,6 +194,8 @@ class TestDatabricksConnectorRetryLogic(TestCase):
 
     def setUp(self):
         """Set up test fixtures"""
+        from hub.apps.core.resilience.circuit_breaker import reset_circuit_breaker_by_name
+        reset_circuit_breaker_by_name('databricks-connector')
         self.connector = DatabricksConnector(
             host='https://test-workspace.cloud.databricks.com',
             token='dapi1234567890abcdef'
@@ -389,6 +393,8 @@ class TestDatabricksConnectorCircuitBreaker(TestCase):
 
     def setUp(self):
         """Set up test fixtures"""
+        from hub.apps.core.resilience.circuit_breaker import reset_circuit_breaker_by_name
+        reset_circuit_breaker_by_name('databricks-connector')
         self.connector = DatabricksConnector(
             host='https://test-workspace.cloud.databricks.com',
             token='dapi1234567890abcdef'
@@ -428,6 +434,8 @@ class TestDatabricksConnectorDistributedTracing(TestCase):
 
     def setUp(self):
         """Set up test fixtures"""
+        from hub.apps.core.resilience.circuit_breaker import reset_circuit_breaker_by_name
+        reset_circuit_breaker_by_name('databricks-connector')
         self.connector = DatabricksConnector(
             host='https://test-workspace.cloud.databricks.com',
             token='dapi1234567890abcdef'

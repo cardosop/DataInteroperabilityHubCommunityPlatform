@@ -294,20 +294,13 @@ class AssetSerializerTest(TestCase):
             f"Extra fields should be ignored: {serializer.errors}",
         )
 
-    def test_asset_update_serializer_nonexistent_instance_raises(self):
-        """Saving AssetUpdateSerializer with unsaved instance raises."""
-        import uuid
-
-        fake_asset = Asset(
-            id=uuid.uuid4(), tenant=self.tenant, key="fake",
-        )
-        serializer = AssetUpdateSerializer(
-            instance=fake_asset, data={"name": "Updated"},
-        )
-
-        if serializer.is_valid():
-            with self.assertRaises(Exception):
-                serializer.save()
+    def test_asset_update_serializer_missing_instance_raises(self):
+        """Saving AssetUpdateSerializer without an instance raises ValueError."""
+        serializer = AssetUpdateSerializer(data={"name": "Updated"})
+        self.assertTrue(serializer.is_valid())
+        with self.assertRaises(ValueError) as ctx:
+            serializer.save()
+        self.assertIn("Instance is required", str(ctx.exception))
 
     # ----- Phase 226 G7a — canonical_iri SerializerMethodField -----------
 
@@ -332,7 +325,7 @@ class AssetSerializerTest(TestCase):
         with override_settings(SEMANTIC_BASE_IRI="https://meshant.io/"):
             serializer = AssetSerializer(self.asset)
             iri = dict(serializer.data).get("canonical_iri")
-            assert isinstance(iri, str)
+            self.assertIsInstance(iri, str)
             self.assertNotIn("//id/", iri)
             self.assertEqual(iri, f"https://meshant.io/id/asset/{self.asset.id}")
 
@@ -348,11 +341,14 @@ class AssetSerializerTest(TestCase):
         )
         # Validation passes (read-only fields are silently dropped, not errored)
         # and the original value remains unchanged on the instance.
-        if serializer.is_valid():
-            instance = serializer.save() if serializer.instance is not None else None
-            if instance is not None:
-                # The persisted IRI is computed from the instance's id,
-                # not the inbound payload — attacker-controlled IRIs cannot
-                # land in the database.
-                refreshed = dict(AssetSerializer(instance).data)
-                self.assertNotIn("attacker.example", str(refreshed.get("canonical_iri", "")))
+        self.assertTrue(serializer.is_valid(),
+            f"Serializer must be valid when only read-only fields are sent; "
+            f"errors: {serializer.errors}")
+        instance = serializer.save()
+        self.assertIsNotNone(instance,
+            "Serializer save must return the instance when valid")
+        # The persisted IRI is computed from the instance's id,
+        # not the inbound payload — attacker-controlled IRIs cannot
+        # land in the database.
+        refreshed = dict(AssetSerializer(instance).data)
+        self.assertNotIn("attacker.example", str(refreshed.get("canonical_iri", "")))

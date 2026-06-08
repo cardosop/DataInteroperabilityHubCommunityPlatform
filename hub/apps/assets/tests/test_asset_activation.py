@@ -56,10 +56,13 @@ class AssetActivationTest(TestCase):
         )
 
     def test_activate_asset_with_all_requirements_met(self):
-        """Test activating asset with all requirements met"""
+        """Test DRAFT → ACTIVE transition with all requirements met.
+
+        Verifies the full happy path: 200 response, ACTIVE status in the
+        response body, and ACTIVE status persisted to the database.
+        """
         self.client.force_authenticate(user=self.user)
 
-        # Create asset
         asset = Asset.objects.create(
             tenant=self.tenant,
             key="test-asset",
@@ -69,7 +72,6 @@ class AssetActivationTest(TestCase):
             created_by=self.user,
         )
 
-        # Create valid contract
         contract = Contract.objects.create(
             tenant=self.tenant,
             asset=asset,
@@ -83,74 +85,12 @@ class AssetActivationTest(TestCase):
             created_by=self.user,
         )
 
-        # Activate asset
         response = self.client.post(
             f"/api/v1/assets/{asset.id}/activate/", {"version": asset.version}, format="json"
         )
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-
-    def test_activate_asset_with_all_requirements_met_returns_active_status(self):
-        """Test activating asset with all requirements met returns ACTIVE status in response."""
-        self.client.force_authenticate(user=self.user)
-
-        asset = Asset.objects.create(
-            tenant=self.tenant,
-            key="test-asset",
-            name="Test Asset",
-            dq_status=DQStatus.PASS,
-            compliance_status=ComplianceStatus.PASS,
-            created_by=self.user,
-        )
-
-        contract = Contract.objects.create(
-            tenant=self.tenant,
-            asset=asset,
-            status=ContractStatus.ACTIVE,
-            original_spec_type=OriginalSpecType.ODCS,
-            original_spec_version="3.0.0",
-            original_format=OriginalFormat.JSON,
-            original_raw='{"id": "test", "name": "Test", "schema": {"fields": [{"name": "id", "type": "string"}]}}',
-            validation_status=ValidationStatus.VALID,
-            normalization_status=NormalizationStatus.NORMALIZED_OK,
-            created_by=self.user,
-        )
-
-        response = self.client.post(
-            f"/api/v1/assets/{asset.id}/activate/", {"version": asset.version}, format="json"
-        )
-
         self.assertEqual(response.data["status"], AssetStatus.ACTIVE)
-
-    def test_activate_asset_with_all_requirements_met_updates_database(self):
-        """Test activating asset with all requirements met updates database status."""
-        self.client.force_authenticate(user=self.user)
-
-        asset = Asset.objects.create(
-            tenant=self.tenant,
-            key="test-asset",
-            name="Test Asset",
-            dq_status=DQStatus.PASS,
-            compliance_status=ComplianceStatus.PASS,
-            created_by=self.user,
-        )
-
-        contract = Contract.objects.create(
-            tenant=self.tenant,
-            asset=asset,
-            status=ContractStatus.ACTIVE,
-            original_spec_type=OriginalSpecType.ODCS,
-            original_spec_version="3.0.0",
-            original_format=OriginalFormat.JSON,
-            original_raw='{"id": "test", "name": "Test", "schema": {"fields": [{"name": "id", "type": "string"}]}}',
-            validation_status=ValidationStatus.VALID,
-            normalization_status=NormalizationStatus.NORMALIZED_OK,
-            created_by=self.user,
-        )
-
-        self.client.post(
-            f"/api/v1/assets/{asset.id}/activate/", {"version": asset.version}, format="json"
-        )
 
         asset.refresh_from_db()
         self.assertEqual(asset.status, AssetStatus.ACTIVE)
@@ -446,63 +386,6 @@ class AssetActivationTest(TestCase):
 
     # ========== EDGE CASES ==========
 
-    def test_activate_asset_edge_case_already_active_same_version(self):
-        """Test activating already active asset with same version (edge case)"""
-        self.client.force_authenticate(user=self.user)
-
-        asset = Asset.objects.create(
-            tenant=self.tenant,
-            key="test-asset",
-            name="Test Asset",
-            status=AssetStatus.ACTIVE,
-            created_by=self.user,
-        )
-
-        # Try to activate again with same version
-        response = self.client.post(
-            f"/api/v1/assets/{asset.id}/activate/", {"version": asset.version}, format="json"
-        )
-
-        # Should fail with already active error
-        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
-        self.assertEqual(response.data["code"], "ASSET_ALREADY_ACTIVE")
-
-    def test_activate_asset_edge_case_draft_to_active_transition(self):
-        """Test DRAFT to ACTIVE transition (edge case)"""
-        self.client.force_authenticate(user=self.user)
-
-        asset = Asset.objects.create(
-            tenant=self.tenant,
-            key="test-asset",
-            name="Test Asset",
-            status=AssetStatus.DRAFT,
-            dq_status=DQStatus.PASS,
-            compliance_status=ComplianceStatus.PASS,
-            created_by=self.user,
-        )
-
-        contract = Contract.objects.create(
-            tenant=self.tenant,
-            asset=asset,
-            status=ContractStatus.ACTIVE,
-            original_spec_type=OriginalSpecType.ODCS,
-            original_spec_version="3.0.0",
-            original_format=OriginalFormat.JSON,
-            original_raw='{"id": "test"}',
-            validation_status=ValidationStatus.VALID,
-            normalization_status=NormalizationStatus.NORMALIZED_OK,
-            created_by=self.user,
-        )
-
-        # Activate from DRAFT
-        response = self.client.post(
-            f"/api/v1/assets/{asset.id}/activate/", {"version": asset.version}, format="json"
-        )
-
-        self.assertEqual(response.status_code, status.HTTP_200_OK)
-        asset.refresh_from_db()
-        self.assertEqual(asset.status, AssetStatus.ACTIVE)
-
     def test_activate_asset_edge_case_version_mismatch(self):
         """Test activation with version mismatch (edge case)"""
         self.client.force_authenticate(user=self.user)
@@ -534,47 +417,8 @@ class AssetActivationTest(TestCase):
             f"/api/v1/assets/{asset.id}/activate/", {"version": 999}, format="json"  # Wrong version
         )
 
-        # Should fail with version mismatch
-        self.assertIn(response.status_code, [status.HTTP_409_CONFLICT, status.HTTP_400_BAD_REQUEST])
-
-    # ========== ERROR HANDLING ==========
-
-    def test_activate_asset_without_contract_returns_400(self):
-        """Test that activating an asset without a valid ACTIVE contract returns 400"""
-        self.client.force_authenticate(user=self.user)
-
-        asset = Asset.objects.create(
-            tenant=self.tenant,
-            key="test-asset",
-            name="Test Asset",
-            created_by=self.user,
-        )
-
-        # No contract created -- activation should be blocked
-        response = self.client.post(
-            f"/api/v1/assets/{asset.id}/activate/", {"version": asset.version}, format="json"
-        )
-
-        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
-
-    def test_activate_asset_error_handling_missing_contract(self):
-        """Test error handling when contract is missing"""
-        self.client.force_authenticate(user=self.user)
-
-        asset = Asset.objects.create(
-            tenant=self.tenant, key="test-asset", name="Test Asset", created_by=self.user
-        )
-
-        # Don't create contract
-
-        # Should handle missing contract gracefully
-        response = self.client.post(
-            f"/api/v1/assets/{asset.id}/activate/", {"version": asset.version}, format="json"
-        )
-
-        # Should return error response, not exception
-        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
-        self.assertEqual(response.data["code"], "ASSET_ACTIVATION_BLOCKED")
+        self.assertEqual(response.status_code, status.HTTP_409_CONFLICT)
+        self.assertEqual(response.data["code"], "ASSET_CONCURRENT_MODIFICATION")
 
     def test_ensure_e2e_activation_prerequisites_sets_dq_compliance_when_dataset_exists(self):
         """

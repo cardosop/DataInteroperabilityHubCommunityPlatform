@@ -26,15 +26,16 @@ class TestDatabricksConnectorIntegration(TestCase):
     @classmethod
     def setUpClass(cls):
         """Set up test class with real Databricks connector."""
-        super().setUpClass()
-
-        # Get credentials from environment
+        # Check credentials BEFORE super().setUpClass() to avoid
+        # _fixture_teardown() closing connections on the skip path.
         cls.host = os.getenv('DATABRICKS_HOST')
         cls.token = os.getenv('DATABRICKS_TOKEN')
         cls.cluster_id = os.getenv('DATABRICKS_CLUSTER_ID')  # Optional
 
         if not cls.host or not cls.token:
             raise unittest.SkipTest("DATABRICKS_HOST and DATABRICKS_TOKEN not set - skipping integration tests")
+
+        super().setUpClass()
 
         # Create connector
         assert cls.host is not None
@@ -45,16 +46,9 @@ class TestDatabricksConnectorIntegration(TestCase):
             cluster_id=cls.cluster_id
         )
 
-    def setUp(self):
-        """Set up test fixtures"""
-        if not self.host or not self.token:
-            self.skipTest("DATABRICKS_HOST and DATABRICKS_TOKEN not set - skipping integration tests")
-
     def test_connector_initialization(self):
         """Test that connector initializes correctly."""
         assert self.connector is not None
-        assert self.host is not None
-        assert self.token is not None
         assert self.connector.host == self.host.rstrip('/')
         assert self.connector.token == self.token
         assert self.connector.client is not None

@@ -366,7 +366,7 @@ class APIKeyAuthenticationTest(TestCase):
             data = response.data
         else:
             import json
-            data = json.loads(response.content)
+            data = response.data
 
         self.assertEqual(data["page"], 2)
 
@@ -415,7 +415,7 @@ class APIKeyAuthenticationTest(TestCase):
             data = response.data
         else:
             import json
-            data = json.loads(response.content)
+            data = response.data
 
         self.assertLessEqual(data["page_size"], 100)
 

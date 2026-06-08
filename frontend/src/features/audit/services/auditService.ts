@@ -9,9 +9,12 @@ import type {
   AuditEventExportFormat,
   AuditEventListFilters,
   AuditEventListResponse,
+  AuditEventRetentionPolicy,
+  AuditEventRetentionPolicyInput,
   ResourceActivityResponse,
   ResourceType,
 } from '../../../shared/types/audit';
+import type { PaginatedResponse } from '../../../shared/types/api';
 
 const AUDIT_EVENTS_PATH = 'audit/audit-events';
 
@@ -79,5 +82,45 @@ export const auditService = {
     const url = `${AUDIT_EVENTS_PATH}/resource-activity/?${params.toString()}`;
     const response = await apiClient.getClient().get<ResourceActivityResponse>(url);
     return response.data;
+  },
+
+  // ── Phase 234.5 — Audit Event Retention Policies ──────────────────────
+
+  /**
+   * List audit event retention policies for the current tenant.
+   */
+  async listRetentionPolicies(): Promise<PaginatedResponse<AuditEventRetentionPolicy>> {
+    const url = `${AUDIT_EVENTS_PATH}/retention-policies/`;
+    const response = await apiClient.getClient().get<PaginatedResponse<AuditEventRetentionPolicy>>(url);
+    return response.data;
+  },
+
+  /**
+   * Create an audit event retention policy override.
+   */
+  async createRetentionPolicy(input: AuditEventRetentionPolicyInput): Promise<AuditEventRetentionPolicy> {
+    const url = `${AUDIT_EVENTS_PATH}/retention-policies/`;
+    const response = await apiClient.getClient().post<AuditEventRetentionPolicy>(url, input);
+    return response.data;
+  },
+
+  /**
+   * Update (partial) an audit event retention policy override.
+   */
+  async updateRetentionPolicy(
+    id: string,
+    input: Partial<AuditEventRetentionPolicyInput> & { enabled?: boolean },
+  ): Promise<AuditEventRetentionPolicy> {
+    const url = `${AUDIT_EVENTS_PATH}/retention-policies/${id}/`;
+    const response = await apiClient.getClient().patch<AuditEventRetentionPolicy>(url, input);
+    return response.data;
+  },
+
+  /**
+   * Delete an audit event retention policy override.
+   */
+  async deleteRetentionPolicy(id: string): Promise<void> {
+    const url = `${AUDIT_EVENTS_PATH}/retention-policies/${id}/`;
+    await apiClient.getClient().delete(url);
   },
 };

@@ -190,7 +190,7 @@ class ScheduledIngestionProcessor:
         except ConnectorNotAvailableError:
             raise
         except Exception as e:
-            logger.error(
+            logger.warning(
                 "Failed to discover files",
                 scheduled_ingestion_id=str(self.scheduled_ingestion.id),
                 source_type=self.source_type,
@@ -531,7 +531,7 @@ class ScheduledIngestionProcessor:
             return dq_result
 
         except Exception as e:
-            logger.error(
+            logger.warning(
                 "DQ check failed",
                 scheduled_ingestion_id=str(self.scheduled_ingestion.id),
                 error=str(e),

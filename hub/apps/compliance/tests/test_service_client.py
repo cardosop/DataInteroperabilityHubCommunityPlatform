@@ -26,12 +26,14 @@ class ComplianceServiceClientTest(TestCase):
 
     def setUp(self):
         """Set up test fixtures"""
+        from hub.apps.core.resilience.service_breakers import (
+            reset_shared_circuit_breakers_for_service,
+        )
+        # Reset the module-level shared circuit breaker BEFORE creating
+        # the client.  Other tests in the suite can open the breaker;
+        # the health-check test must always start with CLOSED state.
+        reset_shared_circuit_breakers_for_service("compliance-service")
         self.client = ComplianceServiceClient()
-        # Reset circuit breaker so each test starts with CLOSED state.
-        # Without this, 401 responses from a real service (when INTERNAL_API_KEY
-        # is absent) open the circuit and break MockTransport-based tests that
-        # never intend to hit the real service.
-        self.client._circuit_breaker.reset()
 
     def tearDown(self):
         """Clean up test fixtures"""
@@ -44,7 +46,7 @@ class ComplianceServiceClientTest(TestCase):
         """Test successful health check with real service"""
         try:
             is_healthy, service_name = self.client.health_check()
-        except Exception as e:
+        except (ConnectionError, OSError, httpx.RequestError) as e:
             self.skipTest(f"Compliance service not available: {e}")
         self.assertTrue(is_healthy)
         self.assertIsInstance(service_name, str)
@@ -106,7 +108,7 @@ class ComplianceServiceClientTest(TestCase):
             is_healthy, _ = self.client.health_check()
             if not is_healthy:
                 self.skipTest("Compliance service not available - skipping test")
-        except Exception:
+        except (ConnectionError, OSError, httpx.RequestError):
             self.skipTest("Compliance service not available - skipping test")
 
         # Test with simple CSV content
@@ -119,25 +121,22 @@ class ComplianceServiceClientTest(TestCase):
             self.assertIsInstance(result, dict)
             self.assertIn("overall_status", result)
             self.assertIn("risk_level", result)
-        except Exception as e:
+        except (ConnectionError, OSError, httpx.RequestError) as e:
             # Service may not be fully configured - that's OK
             self.skipTest(f"Compliance service scan failed: {e}")
 
     def test_scan_file_with_applicable_regulations(self):
-        """Test scan_file with applicable regulations"""
+        """Test scan_file forwards applicable_regulations in the multipart request body"""
         recorded_requests = []
 
         def handler(request: httpx.Request) -> httpx.Response:
-            """Record request and return mock response"""
             recorded_requests.append(request)
-            # Verify regulations were sent in request
             return httpx.Response(
                 200,
                 json={
                     "overall_status": "PASS",
                     "risk_level": "LOW",
                     "allowed_to_store": True,
-                    "applicable_regulations": ["GDPR", "HIPAA"],
                 },
                 request=request,
             )
@@ -145,37 +144,51 @@ class ComplianceServiceClientTest(TestCase):
         transport = httpx.MockTransport(handler)
         self.client.client = httpx.Client(transport=transport, base_url=self.client.base_url)
 
-        result = self.client.scan_file(
+        self.client.scan_file(
             file_content=b"id,name\n1,Test",
             file_format="csv",
             scan_mode="internal",
             applicable_regulations=["GDPR", "HIPAA"],
         )
 
-        # Verify regulations were included in request
         self.assertEqual(len(recorded_requests), 1)
         request = recorded_requests[0]
-        # Request body should contain applicable_regulations
-        self.assertIsNotNone(result)
+        # Multipart body should contain the JSON-encoded regulations
+        body_bytes = request.read()
+        self.assertIn(b"applicable_regulations", body_bytes)
+        self.assertIn(b"GDPR", body_bytes)
+        self.assertIn(b"HIPAA", body_bytes)
 
     # ========== ERROR HANDLING TESTS ==========
 
     def test_scan_file_handles_service_unavailable(self):
-        """Test scan_file handles service unavailability gracefully"""
-        # Use invalid endpoint to simulate service unavailable
+        """Test scan_file handles service unavailability gracefully —
+        either by raising an exception or by returning a fail-closed fallback response."""
+        original_client = self.client.client
         original_base_url = self.client.base_url
-        self.client.base_url = "http://localhost:99999"  # Invalid port
+        self.client.base_url = "http://127.0.0.1:1"  # Invalid port
+        # Replace the httpx client so base_url change takes effect.
+        self.client.client = httpx.Client(
+            base_url=self.client.base_url,
+            timeout=self.client.client.timeout,
+        )
 
         try:
             result = self.client.scan_file(
                 file_content=b"id,name\n1,Test", file_format="csv", scan_mode="internal"
             )
-            # Should handle error via circuit breaker
-            self.fail("Should have raised exception or returned error")
-        except Exception:
-            # Expected - service unavailable
+            # The circuit breaker may return a fallback error dict instead of
+            # raising.  Either behaviour is valid graceful handling.
+            self.assertIsInstance(result, dict)
+            self.assertFalse(
+                result.get("allowed_to_store", True),
+                "Fallback response must be fail-closed (allowed_to_store=False)",
+            )
+        except (ConnectionError, OSError, httpx.RequestError):
+            # Raising on connection failure is also valid graceful handling
             pass
         finally:
+            self.client.client = original_client
             self.client.base_url = original_base_url
 
     def test_scan_file_handles_invalid_file_format(self):
@@ -184,7 +197,7 @@ class ComplianceServiceClientTest(TestCase):
             is_healthy, _ = self.client.health_check()
             if not is_healthy:
                 self.skipTest("Compliance service not available - skipping test")
-        except Exception:
+        except (ConnectionError, OSError, httpx.RequestError):
             self.skipTest("Compliance service not available - skipping test")
 
         # Test with invalid format
@@ -194,8 +207,8 @@ class ComplianceServiceClientTest(TestCase):
             )
             # Service may accept or reject - both are valid
             self.assertIsInstance(result, dict)
-        except Exception:
-            # Expected if format not supported
+        except httpx.HTTPStatusError:
+            # Expected if format not supported — the service may 400/422
             pass
 
     # ========== EDGE CASES ==========
@@ -228,7 +241,7 @@ class ComplianceServiceClientTest(TestCase):
             is_healthy, _ = self.client.health_check()
             if not is_healthy:
                 self.skipTest("Compliance service not available - skipping test")
-        except Exception:
+        except (ConnectionError, OSError, httpx.RequestError):
             self.skipTest("Compliance service not available - skipping test")
 
         try:
@@ -237,7 +250,7 @@ class ComplianceServiceClientTest(TestCase):
             )
             # Should handle large content
             self.assertIsInstance(result, dict)
-        except Exception as e:
+        except (ConnectionError, OSError, httpx.RequestError) as e:
             # May timeout or fail with large content - that's OK
             self.skipTest(f"Large content test failed: {e}")
 

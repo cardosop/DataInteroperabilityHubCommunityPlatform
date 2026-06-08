@@ -74,22 +74,6 @@ class TestAPIHandlersUnitTests(TestCase):
     with real DB and real service layer; no mocks of Files, Datasets, DQ, Search, DLQ.
     """
 
-    # Disable automatic database flush to avoid foreign key constraint issues
-    reset_sequences = False
-    serialized_rollback = False
-
-    @classmethod
-    def _fixture_teardown(cls):
-        """Skip TRUNCATE flush (times out on complex FK graphs).
-
-        Close DB connections instead to release all locks and
-        poisoned transactions.  Data isolation relies on UUID-based
-        unique names in setUp.
-        """
-        from django.db import connections
-        for db_name in cls._databases_names(include_mirrors=False):
-            connections[db_name].close()
-
     def setUp(self):
         self.client = APIClient()
         unique_id = uuid4().hex[:8]
@@ -223,17 +207,6 @@ class TestNoMocksVerification(TestCase):
     hub Worker API, or Prefect; migrated tests (Phase 3.4, 3.5) are the source of truth.
     """
 
-    # Disable automatic database flush to avoid foreign key constraint issues
-    reset_sequences = False
-    serialized_rollback = False
-
-    @classmethod
-    def _fixture_teardown(cls):
-        """Skip TRUNCATE flush; close connections to release locks."""
-        from django.db import connections
-        for db_name in cls._databases_names(include_mirrors=False):
-            connections[db_name].close()
-
     def setUp(self):
         unique_id = uuid4().hex[:8]
         self.tenant = Tenant.objects.create(
@@ -300,17 +273,6 @@ class TestFullPathIntegration(TestCase):
     hub APIs called → run completed, dataset/file exist; real DQ, Redis, Postgres;
     idempotency and explicit waits to fix flakiness.
     """
-
-    # Disable automatic database flush to avoid foreign key constraint issues
-    reset_sequences = False
-    serialized_rollback = False
-
-    @classmethod
-    def _fixture_teardown(cls):
-        """Skip TRUNCATE flush; close connections to release locks."""
-        from django.db import connections
-        for db_name in cls._databases_names(include_mirrors=False):
-            connections[db_name].close()
 
     def setUp(self):
         self.client = APIClient()

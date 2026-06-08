@@ -271,8 +271,8 @@ class APIKeyManagementWorkflowStepExecutionTest(TestCase):
 
     def test_store_key_task_success(self):
         """Test store_key task stores API key in database"""
-        plaintext_key = APIKey.generate_key()
-        key_hash = APIKey.hash_key(plaintext_key)
+        plaintext_key = AuthAPIKey.generate_key()
+        key_hash = AuthAPIKey.hash_key(plaintext_key)
 
         # Register workflow first
         APIKeyManagementWorkflow.register_workflow(self.registry)
@@ -317,7 +317,7 @@ class APIKeyManagementWorkflowStepExecutionTest(TestCase):
     def test_validate_revocation_task_success(self):
         """Test validate_revocation task with valid API key (auth APIKey — D2)"""
         # Create auth API key first
-        api_key = AuthAuthAPIKey.objects.create(
+        api_key = AuthAPIKey.objects.create(
             tenant=self.tenant,
             user=self.user,
             tier=self.tier,
@@ -360,7 +360,7 @@ class APIKeyManagementWorkflowStepExecutionTest(TestCase):
     def test_revoke_key_task_success(self):
         """Test revoke_key task revokes API key (auth APIKey — D2)"""
         # Create auth API key first
-        api_key = AuthAuthAPIKey.objects.create(
+        api_key = AuthAPIKey.objects.create(
             tenant=self.tenant,
             user=self.user,
             tier=self.tier,
@@ -479,7 +479,7 @@ class APIKeyManagementWorkflowCompensationTest(TestCase):
         self.assertTrue(result.get("rolled_back"))
 
         # Verify API key was deleted
-        self.assertFalse(APIKey.objects.filter(id=api_key.id).exists())
+        self.assertFalse(AuthAPIKey.objects.filter(id=api_key.id).exists())
 
     def test_rollback_key_revocation_restores_key(self):
         """Test rollback_key_revocation restores revoked key"""

@@ -4,6 +4,7 @@ Unit tests for email template rendering.
 Tests user invitation, password reset, job completion, and job failure templates.
 """
 import pytest
+import uuid
 from django.test import TestCase
 from django.contrib.auth import get_user_model
 from django.utils import timezone
@@ -28,8 +29,8 @@ class EmailTemplateRenderingTest(TestCase):
     def setUp(self):
         """Set up test fixtures"""
         self.tenant = Tenant.objects.create(
-            name='Test Tenant',
-            slug='test-tenant'
+            name=f"Test Tenant {uuid.uuid4().hex[:8]}",
+            slug=f"test-tenant-{uuid.uuid4().hex[:8]}"
         )
         self.user = User.objects.create_user(
             email='test@example.com',
@@ -271,8 +272,8 @@ class EmailTemplateContentTest(TestCase):
     def setUp(self):
         """Set up test fixtures"""
         self.tenant = Tenant.objects.create(
-            name='Test Tenant',
-            slug='test-tenant'
+            name=f"Test Tenant {uuid.uuid4().hex[:8]}",
+            slug=f"test-tenant-{uuid.uuid4().hex[:8]}"
         )
         self.user = User.objects.create_user(
             email='test@example.com',

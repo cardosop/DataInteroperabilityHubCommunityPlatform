@@ -1239,6 +1239,12 @@ def pytest_addoption(parser):
         default=False,
         help="Run tests that require Docker Compose runtime (services must be started)",
     )
+    parser.addoption(
+        "--database",
+        action="store",
+        default="default",
+        help="Database role to use for RLS tests (default or meshant_app)",
+    )
 
 
 # Use pytest hooks to ensure migrations run before database setup
@@ -1340,6 +1346,7 @@ def pytest_configure(config):
                     django.core.management.call_command = original_call_command_global
 
             creation_module.BaseDatabaseCreation.create_test_db = _patched_create_test_db
+            creation_module.BaseDatabaseCreation.create_test_db._patched = True
             _patch_logger.info("✓ create_test_db patch applied in pytest_configure")
     except Exception as e:
         _patch_logger.warning(f"✗ Could not apply create_test_db patch in pytest_configure: {e}")
@@ -1467,8 +1474,11 @@ def pytest_configure(config):
                 )
 
                 # Use the same patched function we created earlier
-                # Import it from the outer scope
-                from tests.conftest import _patched_create_test_db as outer_patched_create_test_db
+                # Access the module-level function directly via globals() to avoid
+                # self-import that hard-registers tests.conftest in sys.modules,
+                # which causes ImportPathMismatchError when app-specific conftest
+                # files (e.g. hub/apps/webhooks/tests/conftest.py) are collected.
+                outer_patched_create_test_db = globals()['_patched_create_test_db']
 
                 # Re-apply the patch
                 creation_module.BaseDatabaseCreation.create_test_db = outer_patched_create_test_db
@@ -1707,6 +1717,104 @@ def pytest_sessionstart(session):
                 _ensure_sync_apps_patched()
         except Exception as e:
             _patch_logger.warning(f"✗ Failed to verify patches after Django setup: {e}")
+
+
+def pytest_runtest_setup(item):
+    """
+    Ensure all Django database connections are alive before each test.
+
+    Preceding tests (especially TransactionTestCase subclasses) can leave
+    connections in a half-dead state: the psycopg2 ``connection.closed``
+    flag is 0 but the underlying socket is dead.  The next test that tries
+    to use the connection hits ``InterfaceError: connection already closed``
+    at the fixture/setUp stage and errors out before its test body runs.
+
+    This hook probes every connection alias with ``SELECT 1`` and, on
+    failure, performs a hard recovery: close → ensure with retries →
+    psycopg2-level reset as a last resort.  The cost is ~1 ms per
+    healthy connection (local SELECT 1), negligible compared to the
+    test body run-time.
+    """
+    import time
+
+    from django.db import connections
+
+    for alias in connections:
+        conn = connections[alias]
+        if conn.connection is None:
+            # Clear flags even on connections without an active psycopg2
+            # object — a prior TransactionTestCase may have set them.
+            try:
+                conn.closed_in_transaction = False
+            except Exception:
+                pass
+            continue
+
+        # Probe the connection with a lightweight query.
+        healthy = False
+        try:
+            with conn.cursor() as c:
+                c.execute("SELECT 1")
+            healthy = True
+        except Exception:
+            healthy = False
+
+        if healthy:
+            # Connection is alive, but clear stale flags from a prior
+            # TransactionTestCase teardown that may have marked the wrapper
+            # as closed-in-transaction.  The psycopg2 level is fine, so
+            # these flags serve no purpose and will only cause
+            # ``ProgrammingError`` on the next ensure_connection() call.
+            try:
+                conn.closed_in_transaction = False
+            except Exception:
+                pass
+            continue
+
+        # -- Recovery ----------------------------------------------------------
+        # 1. Close Django's wrapper (which also calls psycopg2.close()).
+        try:
+            conn.close()
+        except Exception:
+            pass
+
+        # 2. Re-establish with retries (3 attempts, 100 ms back-off).
+        recovered = False
+        for attempt in range(1, 4):
+            try:
+                conn.ensure_connection()
+                recovered = True
+                break
+            except Exception:
+                if attempt < 3:
+                    time.sleep(0.1)
+
+        # 3. Last resort: psycopg2-level reset (nuke the underlying object
+        #    and let Django create a fresh one on next access).
+        if not recovered:
+            try:
+                conn.connection = None
+                conn.ensure_connection()
+            except Exception:
+                pass
+
+        # 4. Clear Django's internal bookkeeping flags after recovery.
+        try:
+            conn.closed_in_transaction = False
+        except Exception:
+            pass
+
+    # Reset circuit breakers between tests so a transient failure in one
+    # test does not OPEN a breaker and cascade into unrelated tests.
+    try:
+        from hub.apps.core.resilience.circuit_breaker import get_all_circuit_breakers
+        for breaker in get_all_circuit_breakers().values():
+            try:
+                breaker.reset()
+            except Exception:
+                pass
+    except Exception:
+        pass  # Django / circuit_breaker module may not be available
 
 
 # Hook into pytest-django's database setup to manually run migrations

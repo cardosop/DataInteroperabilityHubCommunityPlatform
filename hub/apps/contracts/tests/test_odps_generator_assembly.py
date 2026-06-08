@@ -9,7 +9,7 @@ Tests verify:
 5. JSON output formatting
 """
 
-from django.test import SimpleTestCase, TestCase
+from django.test import SimpleTestCase
 
 from hub.apps.contracts.odps_errors import ODPSExportError
 from hub.apps.contracts.odps_generator import (
@@ -647,16 +647,9 @@ class ODPSGeneratorAssemblyIntegrationTest(SimpleTestCase):
             "schema": {"fields": []},
         }
 
-        # Should handle large documents gracefully
-        try:
-            result = generate_odps_from_hubcontract(hub_contract)
-            # If generation succeeds, verify structure
-            self.assertIn("product", result)
-        except Exception as e:
-            # If generation fails, it should fail gracefully
-            self.assertIsInstance(
-                e, ODPSExportError, "Should raise ODPSExportError for very large documents"
-            )
+        # Valid data (large description) must succeed — must include "product"
+        result = generate_odps_from_hubcontract(hub_contract)
+        self.assertIn("product", result)
 
     def test_document_assembly_handles_none_values(self):
         """Test that document assembly handles None values correctly."""
@@ -666,16 +659,10 @@ class ODPSGeneratorAssemblyIntegrationTest(SimpleTestCase):
             "schema": {"fields": []},
         }
 
-        # Should handle None values gracefully
-        try:
-            result = generate_odps_from_hubcontract(hub_contract)
-            # If generation succeeds, None values may be omitted or handled
-            self.assertIsNotNone(result)
-        except Exception as e:
-            # If generation fails, it should fail gracefully
-            self.assertIsInstance(
-                e, ODPSExportError, "Should raise ODPSExportError for None values"
-            )
+        # None values should be omitted or handled gracefully
+        result = generate_odps_from_hubcontract(hub_contract)
+        self.assertIsNotNone(result)
+        self.assertIn("product", result)
 
     def test_document_assembly_handles_nested_structures(self):
         """Test that document assembly handles nested structures correctly."""
@@ -761,19 +748,11 @@ class ODPSGeneratorAssemblyIntegrationTest(SimpleTestCase):
             },
         }
 
-        # Should handle large documents gracefully
-        try:
-            result = format_odps_as_json(odps_doc)
-            # If formatting succeeds, verify it's valid JSON
-            import json
-
-            parsed = json.loads(result)
-            self.assertIn("product", parsed)
-        except Exception as e:
-            # If formatting fails, it should fail gracefully
-            self.assertIsInstance(
-                e, ODPSExportError, "Should raise ODPSExportError for very large documents"
-            )
+        # Valid data (large content) must succeed — verify parseable JSON
+        result = format_odps_as_json(odps_doc)
+        import json
+        parsed = json.loads(result)
+        self.assertIn("product", parsed)
 
     def test_format_odps_as_yaml_handles_very_large_documents(self):
         """Test that YAML formatting handles very large documents correctly."""
@@ -792,16 +771,10 @@ class ODPSGeneratorAssemblyIntegrationTest(SimpleTestCase):
         }
 
         # Should handle large documents gracefully
-        try:
-            result = format_odps_as_yaml(odps_doc)
-            # If formatting succeeds, verify it's valid YAML
-            parsed = yaml.safe_load(result)
-            self.assertIn("product", parsed)
-        except Exception as e:
-            # If formatting fails, it should fail gracefully
-            self.assertIsInstance(
-                e, ODPSExportError, "Should raise ODPSExportError for very large documents"
-            )
+        # Valid data (large content) must succeed — verify parseable YAML
+        result = format_odps_as_yaml(odps_doc)
+        parsed = yaml.safe_load(result)
+        self.assertIn("product", parsed)
 
     def test_format_odps_as_json_handles_nested_structures(self):
         """Test that JSON formatting handles nested structures correctly."""

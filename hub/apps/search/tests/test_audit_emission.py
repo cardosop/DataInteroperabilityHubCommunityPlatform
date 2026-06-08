@@ -61,8 +61,8 @@ class TestSearchAuditEmission(TestCase):
             tenant_id=self.tenant.pk,
         ).first()
         assert audit is not None, "SEARCH_PERFORMED audit must be emitted"
-        assert "query_truncated" in (audit.details or {})
-        assert audit.details["query_truncated"] == "test"
+        assert "query_truncated" in (audit.details_json or {})
+        assert audit.details_json["query_truncated"] == "test"
 
     @patch("hub.apps.search.views.UnifiedSearchView._fts_query")
     def test_query_truncated_to_256_chars(self, mock_fts):
@@ -75,7 +75,7 @@ class TestSearchAuditEmission(TestCase):
             tenant_id=self.tenant.pk,
         ).first()
         assert audit is not None
-        assert len(audit.details["query_truncated"]) <= 256
+        assert len(audit.details_json["query_truncated"]) <= 256
 
 
 @override_settings(SEARCH_RATE_LIMIT_PER_MIN="3/min")
@@ -129,5 +129,5 @@ class TestSearchAuditTenantScoping(TestCase):
         )
         assert audits_a.count() == 1
         assert audits_b.count() == 1
-        assert audits_a.first().details["query_truncated"] == "alpha"
-        assert audits_b.first().details["query_truncated"] == "beta"
+        assert audits_a.first().details_json["query_truncated"] == "alpha"
+        assert audits_b.first().details_json["query_truncated"] == "beta"

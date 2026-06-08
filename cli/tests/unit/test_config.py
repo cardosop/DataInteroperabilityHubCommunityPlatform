@@ -11,10 +11,15 @@ class TestConfig:
     """Tests for Config class"""
     
     def test_config_initialization(self, temp_config_dir):
-        """Test config initialization"""
+        """Test that Config.__init__ loads from the config file on disk."""
         config_dir, config_file = temp_config_dir
+        config_data = {'api_base_url': 'http://custom.example.com/api/v1'}
+        with open(config_file, 'w') as f:
+            yaml.dump(config_data, f)
+
         config = Config()
-        assert config._config == {}
+        assert config.get('api_base_url') == 'http://custom.example.com/api/v1'
+        assert config.get_api_base_url() == 'http://custom.example.com/api/v1'
     
     def test_config_load_existing(self, temp_config_dir):
         """Test loading existing config file"""
@@ -62,14 +67,28 @@ class TestConfig:
         assert mock_config.get_refresh_token() == 'refresh-123'
     
     def test_config_clear_auth(self, mock_config):
-        """Test clearing authentication tokens"""
+        """Test clearing authentication tokens while preserving API key.
+
+        Verifies the contract documented in ``Config.clear_auth()``:
+        tokens are removed but the API key survives.
+        """
         mock_config.set_access_token('token-123')
         mock_config.set_refresh_token('refresh-123')
+        mock_config.set_api_key('api-key-123')
         mock_config.clear_auth()
         assert mock_config.get_access_token() is None
         assert mock_config.get_refresh_token() is None
         assert mock_config.get('access_token') is None
         assert mock_config.get('refresh_token') is None
+        assert mock_config.get_api_key() == 'api-key-123', (
+            "API key must survive clear_auth()"
+        )
+
+    def test_config_api_base_url_env_override(self, mock_config, monkeypatch):
+        """Test that env vars override the config value for API base URL."""
+        mock_config.set_api_base_url('http://config.example.com/api/v1')
+        monkeypatch.setenv('DATAHUB_BASE_URL', 'http://env.example.com/api/v1')
+        assert mock_config.get_api_base_url() == 'http://env.example.com/api/v1'
     
     def test_config_save(self, temp_config_dir):
         """Test saving config to file"""

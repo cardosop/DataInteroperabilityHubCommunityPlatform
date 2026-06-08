@@ -66,3 +66,21 @@ export function useDeleteRetentionPolicy() {
     },
   });
 }
+
+// ── Dashboard + quarterly report ─────────────────────────────
+
+export function useRetentionDashboard(options?: { enabled?: boolean }) {
+  return useQuery({
+    queryKey: ['governance', 'retention', 'dashboard'],
+    queryFn: () => governanceRetentionService.getDashboard(),
+    enabled: options?.enabled !== false,
+  });
+}
+
+export function useRetentionQuarterlyReport(period: string | null) {
+  return useQuery({
+    queryKey: ['governance', 'retention', 'quarterly-report', period],
+    queryFn: () => governanceRetentionService.getQuarterlyReport(period!),
+    enabled: !!period,
+  });
+}

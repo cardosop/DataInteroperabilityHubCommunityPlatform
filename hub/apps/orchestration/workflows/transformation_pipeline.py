@@ -6,6 +6,7 @@ Steps: validate → create_execution → run_pipeline → store_results → audi
 """
 
 import logging
+import uuid
 from typing import Any, Dict, Optional
 
 from django.db import transaction
@@ -128,26 +129,21 @@ class TransformationPipelineWorkflow:
         )
         asset = Asset.objects.get(id=asset_id, tenant_id=tenant_id)
 
-        # Determine execution mode
-        mode = ExecutionMode.SYNC
-        if execution_mode:
-            mode = getattr(
-                ExecutionMode, execution_mode, ExecutionMode.SYNC,
+        # All transformation execution is now async (Phase 285.9 dbt-native).
+        # SYNC mode was removed; DuckDB/Polars in-worker execution is deprecated.
+        mode = ExecutionMode.ASYNC
+        if execution_mode and execution_mode != "ASYNC":
+            logger.warning(
+                "transformation_sync_mode_ignored",
+                pipeline_id=str(pipeline_id),
+                requested_mode=execution_mode,
             )
 
-        # Create execution record
-        # Async executions start as PENDING (worker picks them up later)
-        # Sync executions start as RUNNING (executed immediately)
-        initial_status = (
-            ExecutionStatus.PENDING if mode == ExecutionMode.ASYNC
-            else ExecutionStatus.RUNNING
-        )
         execution = PipelineExecution.objects.create(
             pipeline=pipeline,
             asset=asset,
             execution_mode=mode,
-            status=initial_status,
-            started_at=timezone.now() if mode != ExecutionMode.ASYNC else None,
+            status=ExecutionStatus.PENDING,
         )
 
         # Create job for tracking
@@ -178,7 +174,16 @@ class TransformationPipelineWorkflow:
         )
 
         execution.job = job
-        execution.save(update_fields=["job", "updated_at"])
+        # Assign a unique flow-trace identifier.  When Prefect integration is
+        # wired, this will be replaced by the actual Prefect flow run ID
+        # returned by the Prefect API.
+        execution.prefect_flow_run_id = uuid.uuid4()
+        execution.save(update_fields=["job", "prefect_flow_run_id", "updated_at"])
+
+        logger.info(
+            "transformation_execution_created pipeline_id=%s execution_id=%s prefect_flow_run_id=%s",
+            pipeline_id, str(execution.id), str(execution.prefect_flow_run_id),
+        )
 
         # Create WorkflowInstance for execution tracking
         workflow_def, _ = WorkflowDefinition.objects.get_or_create(
@@ -198,18 +203,13 @@ class TransformationPipelineWorkflow:
                 "is_active": True,
             },
         )
-        # Async workflows start as DRAFT (queued); sync start as RUNNING
-        wf_status = (
-            WorkflowStatus.DRAFT if mode == ExecutionMode.ASYNC
-            else WorkflowStatus.RUNNING
-        )
+        # All workflows start as DRAFT (queued for async execution).
         workflow_instance = WorkflowInstance.objects.create(
             workflow_definition=workflow_def,
             workflow_name=cls.WORKFLOW_NAME,
             workflow_version="1.0.0",
             tenant_id=tenant_id,
-            status=wf_status,
-            started_at=timezone.now() if mode != ExecutionMode.ASYNC else None,
+            status=WorkflowStatus.DRAFT,
             input_data={
                 "pipeline_id": str(pipeline_id),
                 "asset_id": str(asset_id),

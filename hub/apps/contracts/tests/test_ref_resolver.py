@@ -163,22 +163,40 @@ class RefResolverInitializationTest(TestCase):
             shutil.rmtree(parent_dir, ignore_errors=True)
 
     def test_ref_resolver_detect_mode_external(self):
-        """Test that external $ref mode is detected correctly through public API"""
-        resolver = RefResolver()
+        """External $ref mode detection routes to resolve_external via MockTransport.
 
-        # Test through public API - resolve() should route to resolve_external()
-        # Note: These will fail if URLs don't exist, but the routing to external mode is verified
-        try:
-            resolver.resolve("https://example.com/schema.json")
-        except ODPSRefResolutionError:
-            # Expected - URL doesn't exist, but mode detection routed to external resolution
-            pass
+        Uses ``httpx_transport`` constructor param so the real resolve_external()
+        runs (URL validation + allowlist check + rate limiting + transport call).
+        The mock records the request, proving the call reached the HTTP layer.
+        """
+        import httpx
 
-        try:
-            resolver.resolve("http://example.com/schema.json")
-        except ODPSRefResolutionError:
-            # Expected - URL doesn't exist, but mode detection routed to external resolution
-            pass
+        recorded_requests = []
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            recorded_requests.append(request)
+            return httpx.Response(200, json={"type": "string"}, request=request)
+
+        transport = httpx.MockTransport(handler)
+        config = ODPSRefsConfig()
+        config._config_data = {"url_allowlist": ["https://example.com"], "url_denylist": []}
+
+        resolver = RefResolver(
+            config=config,
+            tenant_id="test-tenant",
+            user_id="test-user",
+            enable_caching=False,
+            httpx_transport=transport,
+        )
+
+        # resolve() auto-detects external mode → calls resolve_external()
+        result = resolver.resolve("https://example.com/schema.json")
+
+        self.assertEqual(len(recorded_requests), 1,
+            "resolve() must route HTTPS URLs to resolve_external()")
+        self.assertEqual(recorded_requests[0].url.host, "example.com")
+        self.assertEqual(recorded_requests[0].method, "GET")
+        self.assertEqual(result, {"type": "string"})
 
     def test_ref_resolver_detect_mode_empty_path(self):
         """Test that empty $ref path raises error through public API"""
@@ -785,7 +803,7 @@ class RefResolverExternalRefTest(TestCase):
                 pass
 
     def test_resolve_external_endpoint_construction(self):
-        """Test that resolve_external constructs endpoint correctly using MockTransport"""
+        """resolve_external constructs endpoint correctly — uses httpx_transport param."""
         recorded_requests = []
 
         def handler(request: httpx.Request) -> httpx.Response:
@@ -799,48 +817,24 @@ class RefResolverExternalRefTest(TestCase):
 
         transport = httpx.MockTransport(handler)
 
-        # Create resolver with caching disabled
+        # Create resolver with MockTransport via the constructor — no monkey-patching.
+        # The url_allowlist must include the test URL for security validation to pass.
         resolver = RefResolver(
             config=self.resolver.config,
             tenant_id=self.resolver.tenant_id,
             user_id=self.resolver.user_id,
             enable_caching=False,
+            httpx_transport=transport,
         )
 
-        # Temporarily replace httpx.Client to use MockTransport
-        original_resolve = resolver.resolve_external
+        result = resolver.resolve_external("https://example.com/schema.json")
 
-        def mock_resolve_external(url: str):
-            """Mock resolve_external to use MockTransport"""
-            # Use real check_rate_limit with Redis
-            if self.redis_client:
-                is_allowed, error = check_rate_limit(
-                    tenant_id=self.resolver.tenant_id,
-                    user_id=self.resolver.user_id,
-                    redis_client=self.redis_client,
-                )
-                if not is_allowed:
-                    raise error
-
-            # Use MockTransport for HTTP request
-            with httpx.Client(transport=transport) as client:
-                response = client.get(url, timeout=5)
-                response.raise_for_status()
-                return response.json()
-
-        resolver.resolve_external = mock_resolve_external
-
-        try:
-            result = resolver.resolve_external("https://example.com/schema.json")
-
-            # Verify endpoint construction
-            self.assertEqual(len(recorded_requests), 1)
-            request = recorded_requests[0]
-            self.assertEqual(request.url.host, "example.com")
-            self.assertEqual(request.method, "GET")
-            self.assertEqual(result, {"type": "string", "format": "email"})
-        finally:
-            resolver.resolve_external = original_resolve
+        # Verify endpoint construction
+        self.assertEqual(len(recorded_requests), 1)
+        request = recorded_requests[0]
+        self.assertEqual(request.url.host, "example.com")
+        self.assertEqual(request.method, "GET")
+        self.assertEqual(result, {"type": "string", "format": "email"})
 
     def test_resolve_external_rate_limit_exceeded(self):
         """Test that rate limit exceeded raises error using real Redis"""
@@ -895,70 +889,36 @@ class RefResolverExternalRefTest(TestCase):
         )
 
     def test_resolve_external_timeout(self):
-        """Test that external $ref timeout raises error using MockTransport"""
-        # Create resolver with very short timeout
+        """External $ref timeout raises error — uses httpx_transport constructor param."""
+        # Use MockTransport to simulate timeout
+        def handler(request: httpx.Request) -> httpx.Response:
+            """Simulate timeout"""
+            import time
+
+            time.sleep(0.01)  # INTENTIONAL: test-specific delay (> timeout)
+            raise httpx.TimeoutException("Request timed out", request=request)
+
+        transport = httpx.MockTransport(handler)
+
+        # Create resolver with MockTransport via constructor — no monkey-patching
         resolver = RefResolver(
             config=self.resolver.config,
             tenant_id=self.resolver.tenant_id,
             user_id=self.resolver.user_id,
             enable_caching=False,
             timeout_per_ref=0.001,  # Very short timeout
+            httpx_transport=transport,
         )
 
-        # Use MockTransport to simulate timeout
-        def handler(request: httpx.Request) -> httpx.Response:
-            """Simulate timeout"""
-            import time
-
-            time.sleep(0.01)  # INTENTIONAL: test-specific delay  # Longer than timeout
-            raise httpx.TimeoutException("Request timed out", request=request)
-
-        transport = httpx.MockTransport(handler)
-
-        # Temporarily replace httpx.Client to use MockTransport
-        original_resolve = resolver.resolve_external
-
-        def mock_resolve_external(url: str):
-            """Mock resolve_external to use MockTransport"""
-            if self.redis_client:
-                is_allowed, error = check_rate_limit(
-                    tenant_id=self.resolver.tenant_id,
-                    user_id=self.resolver.user_id,
-                    redis_client=self.redis_client,
-                )
-                if not is_allowed:
-                    raise error
-
-            with httpx.Client(transport=transport, timeout=0.001) as client:
-                response = client.get(url)
-                response.raise_for_status()
-                return response.json()
-
-        resolver.resolve_external = mock_resolve_external
-
-        try:
-            with self.assertRaises(
-                (ODPSRefResolutionError, httpx.TimeoutException),
-            ):
-                resolver.resolve_external(
-                    "https://example.com/schema.json",
-                )
-        finally:
-            resolver.resolve_external = original_resolve
+        with self.assertRaises(
+            (ODPSRefResolutionError, httpx.TimeoutException),
+        ):
+            resolver.resolve_external("https://example.com/schema.json")
 
     def test_resolve_external_size_limit(self):
-        """Test that external $ref size limit is enforced using MockTransport"""
-        # Create resolver with small size limit
-        resolver = RefResolver(
-            max_ref_size=1000,  # Small limit
-            config=self.resolver.config,
-            tenant_id=self.resolver.tenant_id,
-            user_id=self.resolver.user_id,
-            enable_caching=False,
-        )
-
-        # Use MockTransport to simulate large response
-        large_content = b"x" * (1000 + 1)  # Exceeds limit
+        """External $ref size limit enforced — uses httpx_transport constructor param."""
+        # Use MockTransport to simulate large response (exceeds limit)
+        large_content = b"x" * (1000 + 1)  # Exceeds max_ref_size=1000
 
         def handler(request: httpx.Request) -> httpx.Response:
             """Return large response"""
@@ -966,41 +926,25 @@ class RefResolverExternalRefTest(TestCase):
 
         transport = httpx.MockTransport(handler)
 
-        # Temporarily replace httpx.Client to use MockTransport
-        original_resolve = resolver.resolve_external
+        # Create resolver with MockTransport via constructor — no monkey-patching.
+        # The real resolve_external checks content length against max_ref_size internally.
+        resolver = RefResolver(
+            max_ref_size=1000,  # Small limit
+            config=self.resolver.config,
+            tenant_id=self.resolver.tenant_id,
+            user_id=self.resolver.user_id,
+            enable_caching=False,
+            httpx_transport=transport,
+        )
 
-        def mock_resolve_external(url: str):
-            """Mock resolve_external to use MockTransport"""
-            if self.redis_client:
-                is_allowed, error = check_rate_limit(
-                    tenant_id=self.resolver.tenant_id,
-                    user_id=self.resolver.user_id,
-                    redis_client=self.redis_client,
-                )
-                if not is_allowed:
-                    raise error
-
-            with httpx.Client(transport=transport) as client:
-                response = client.get(url, timeout=5)
-                response.raise_for_status()
-                # Check size limit
-                if len(response.content) > resolver.max_ref_size:
-                    raise ODPSRefResolutionError(
-                        message=f"Ref size {len(response.content)} exceeds limit {resolver.max_ref_size}",
-                        error_code=ODPSRefResolutionError.ERROR_CODE_RESOLUTION_FAILED,
-                    )
-                return response.json()
-
-        resolver.resolve_external = mock_resolve_external
-
-        try:
-            with self.assertRaises(ODPSRefResolutionError) as cm:
-                resolver.resolve_external("https://example.com/schema.json")
-            self.assertEqual(
-                cm.exception.error_code, ODPSRefResolutionError.ERROR_CODE_RESOLUTION_FAILED
-            )
-        finally:
-            resolver.resolve_external = original_resolve
+        # resolve_external checks size internally → ERROR_CODE_RESOLUTION_FAILED on overflow
+        with self.assertRaises(ODPSRefResolutionError) as cm:
+            resolver.resolve_external("https://example.com/schema.json")
+        self.assertIn(
+            cm.exception.error_code,
+            [ODPSRefResolutionError.ERROR_CODE_RESOLUTION_FAILED,
+             ODPSRefResolutionError.ERROR_CODE_SIZE_LIMIT_EXCEEDED],
+        )
 
 
 class RefResolverCachingTest(TestCase):

@@ -32,7 +32,9 @@ import pytest
 
 CLI_TESTS_DIR = Path(__file__).resolve().parent
 FORBIDDEN_RE = re.compile(
-    r"^(asset|contract|tenant|webhook|user)[_-][A-Za-z0-9_-]+$"
+    r"^(asset|contract|tenant|webhook|user"
+    r"|Asset|Contract|Tenant|Webhook|User"
+    r")[_-][A-Za-z0-9_-]+$"
 )
 
 # Files allowed to retain pre-Phase-216 static ids while the migration
@@ -44,11 +46,6 @@ ALLOWLIST: frozenset[str] = frozenset({
     # static-id rule existed; clearing one entry = one PR that migrates
     # that file's static literals to ``fresh_id``. New tests MUST NOT
     # be added here.
-    "e2e/test_asset_management_use_cases.py",
-    "e2e/test_compliance_use_cases.py",
-    "e2e/test_contract_management_use_cases.py",
-    "e2e/test_data_quality_use_cases.py",
-    "e2e/test_marketplace_sync_workflows.py",
     "e2e/test_ml_training_workflows.py",
     "integration/test_cli_assets_odps.py",
     "integration/test_cli_marketplace_odps.py",
@@ -126,6 +123,27 @@ def _scan_file(path: Path) -> list[tuple[int, str]]:
 def _python_test_files() -> list[Path]:
     """Return every ``test_*.py`` under ``cli/tests/`` (recursive)."""
     return sorted(p for p in CLI_TESTS_DIR.rglob("test_*.py") if p.is_file())
+
+
+def test_allowlist_has_no_stale_entries() -> None:
+    """Every ALLOWLIST entry MUST reference an existing test file.
+
+    When a test file is deleted or renamed its ALLOWLIST entry must be
+    removed at the same time.  Stale entries mask missing coverage by
+    silently ignoring files that no longer exist.
+    """
+    existing = {str(p.relative_to(CLI_TESTS_DIR)) for p in _python_test_files()}
+    stale = sorted(ALLOWLIST - existing)
+    if stale:
+        message = (
+            f"ALLOWLIST contains {len(stale)} stale entr{'y' if len(stale) == 1 else 'ies'} "
+            f"that reference non-existent test file(s).  "
+            "Remove the stale entries from ALLOWLIST in "
+            "cli/tests/test_static_id_guard.py:\n"
+        )
+        for entry in stale:
+            message += f"  {entry}\n"
+        pytest.fail(message)
 
 
 @pytest.mark.parametrize("path", _python_test_files(), ids=lambda p: str(p.relative_to(CLI_TESTS_DIR)))

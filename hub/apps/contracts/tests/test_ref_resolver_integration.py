@@ -332,21 +332,32 @@ class RefResolverExternalRefIntegrationTest(RefResolverIntegrationTestBase):
             resolver.resolve_external("not-a-valid-url")
 
     def test_resolve_external_nonexistent_url(self):
-        """Test that nonexistent external URL raises error."""
+        """Nonexistent URL raises ODPSRefResolutionError via MockTransport 404.
+
+        Uses MockTransport rather than real DNS to avoid network-dependency
+        flakes. The mock returns a 404, which the resolver translates to
+        ODPSRefResolutionError.
+        """
+        import httpx
+
         config = ODPSRefsConfig()
         config._config_data = {
             "allowed_base_dirs": [],
-            "url_allowlist": [],  # Allow all for this test
+            "url_allowlist": ["https://example.com"],
             "url_denylist": [],
         }
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            return httpx.Response(404, text="Not Found", request=request)
+
+        transport = httpx.MockTransport(handler)
         resolver = RefResolver(
             config=config, enable_caching=False,
-            timeout_per_ref=2, tenant_id="system",
+            httpx_transport=transport, tenant_id="system",
         )
 
-        # Test URL that doesn't exist (should timeout or fail)
         with self.assertRaises(ODPSRefResolutionError):
-            resolver.resolve_external("https://nonexistent-domain-12345.com/schema.json")
+            resolver.resolve_external("https://example.com/nonexistent.json")
 
 
 class RefResolverRecursiveRefIntegrationTest(RefResolverIntegrationTestBase):

@@ -242,7 +242,7 @@ class DatasetViewSet(viewsets.ModelViewSet):
         # the same file. Defaults to ``primary`` so existing callers
         # that don't pass the field keep the previous one-File →
         # one-Dataset semantics.
-        file_handle_purpose = validated.get("file_handle_purpose", "primary")
+        file_handle_purpose = validated.get("file_handle_purpose", "PRIMARY")
 
         # Phase 16: use central helper
         _, tenant = get_request_tenant(request)
@@ -277,7 +277,13 @@ class DatasetViewSet(viewsets.ModelViewSet):
             # ordering; the ``code`` field distinguishes the two
             # so consumers can act on either.
             err_str = str(exc)
-            if "unique_dataset_file_purpose_per_tenant" in err_str:
+            # Migration 0110 removed the unique partial index on
+            # (tenant, file, file_handle_purpose).  This branch is
+            # currently unreachable but retained as a forward-compat
+            # guard — when application-level enforcement is re-added
+            # (per the migration's stated intent) the handler is
+            # already wired and won't need to be re-discovered.
+            if "unique_dataset_file_purpose_per_tenant" in err_str:  # pragma: no cover
                 return api_error_response(
                     message=(
                         "A dataset already exists for this file with the same "
@@ -1605,7 +1611,7 @@ class DatasetViewSet(viewsets.ModelViewSet):
 
         try:
             connector.connect()
-            table_name = dataset.name or asset.key
+            table_name = getattr(dataset, "name", None) or asset.key
             sql = f"SELECT * FROM {table_name}"
             if cursor_value:
                 sql += f" WHERE id > '{cursor_value}'"
@@ -1749,7 +1755,7 @@ class DatasetViewSet(viewsets.ModelViewSet):
         # Delta Sharing protocol response shape.
         return Response({
             "share": {
-                "name": dataset.name or str(dataset.id),
+                "name": getattr(dataset, "name", None) or str(dataset.id),
                 "id": str(dataset.id),
                 "format": "delta",
             },

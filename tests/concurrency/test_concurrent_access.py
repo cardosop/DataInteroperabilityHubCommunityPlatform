@@ -5,6 +5,7 @@ resources, tenant isolation. Real APIClient and DB; no mocks.
 
 import json
 import threading
+import uuid
 from typing import List, Tuple
 
 from rest_framework.test import APIClient
@@ -136,8 +137,8 @@ class ConcurrentAccessTest(ConcurrencyTestBase):
 
         User = get_user_model()
         other_tenant = Tenant.objects.create(
-            name="Other Tenant",
-            slug="other-tenant-iso",
+            name=f"Other Tenant {uuid.uuid4().hex[:8]}",
+            slug=f"other-tenant-iso-{uuid.uuid4().hex[:8]}",
             status=TenantStatus.ACTIVE,
             kyc_status=KYCStatus.VERIFIED,
         )

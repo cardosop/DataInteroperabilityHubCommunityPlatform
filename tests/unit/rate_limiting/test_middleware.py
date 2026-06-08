@@ -3,11 +3,11 @@ Unit tests for rate limiting middleware.
 
 Tests rate limit application, headers, 429 responses, and Retry-After.
 """
+import uuid
+
 from django.test import TestCase, RequestFactory
-from django.http import JsonResponse
+from rest_framework.response import Response
 from unittest.mock import patch, Mock
-import json
-import time
 
 from hub.apps.rate_limiting.middleware import RateLimitMiddleware
 from hub.apps.rate_limiting.service import RateLimitResult
@@ -24,8 +24,8 @@ class RateLimitMiddlewareTest(TestCase):
         self.factory = RequestFactory()
         self.middleware = RateLimitMiddleware(lambda request: None)
         self.tenant = Tenant.objects.create(
-            name='Test Tenant',
-            slug='test-tenant'
+            name=f"Test Tenant {uuid.uuid4().hex[:8]}",
+            slug=f"test-tenant-{uuid.uuid4().hex[:8]}"
         )
         self.user = User.objects.create_user(
             email='test@example.com',
@@ -132,11 +132,11 @@ class RateLimitMiddlewareTest(TestCase):
         response = self.middleware.process_request(request)
         
         self.assertIsNotNone(response)
-        self.assertIsInstance(response, JsonResponse)
+        self.assertIsInstance(response, Response)
         self.assertEqual(response.status_code, 429)
-        
-        # Check response content
-        data = json.loads(response.content)
+
+        # Check response content — DRF Response.data returns the parsed dict
+        data = response.data
         self.assertEqual(data['error']['code'], 'RATE_LIMIT_EXCEEDED')
         self.assertEqual(data['error']['http_status'], 429)
         self.assertEqual(data['error']['details']['limit_type'], 'tenant')
@@ -266,7 +266,7 @@ class RateLimitMiddlewareTest(TestCase):
         
         # Should generate request ID
         self.assertIsNotNone(getattr(request, 'id', None))
-        data = json.loads(response.content)
+        data = response.data
         self.assertIn('request_id', data['error'])
     
     @patch('hub.apps.rate_limiting.middleware.check_rate_limit')
@@ -295,7 +295,7 @@ class RateLimitMiddlewareTest(TestCase):
         response = self.middleware.process_request(request)
         
         # Should use existing request ID
-        data = json.loads(response.content)
+        data = response.data
         self.assertEqual(data['error']['request_id'], 'existing-request-id')
     
     @patch('hub.apps.rate_limiting.middleware.check_rate_limit')
@@ -321,7 +321,7 @@ class RateLimitMiddlewareTest(TestCase):
         request.tenant = self.tenant
         response = self.middleware.process_request(request)
         
-        data = json.loads(response.content)
+        data = response.data
         
         # Should have standard error format
         self.assertIn('error', data)
@@ -348,7 +348,7 @@ class RateLimitMiddlewareTest(TestCase):
         # Should still return 429
         self.assertIsNotNone(response)
         self.assertEqual(response.status_code, 429)
-        data = json.loads(response.content)
+        data = response.data
         self.assertEqual(data['error']['code'], 'RATE_LIMIT_EXCEEDED')
     
     @patch('hub.apps.rate_limiting.middleware.check_rate_limit')
@@ -375,6 +375,6 @@ class RateLimitMiddlewareTest(TestCase):
         response = self.middleware.process_request(request)
         
         # Retry-After should be at least 1
-        data = json.loads(response.content)
+        data = response.data
         self.assertGreaterEqual(data['error']['details']['retry_after'], 1)
 

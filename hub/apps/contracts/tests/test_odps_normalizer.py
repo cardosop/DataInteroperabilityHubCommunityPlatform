@@ -20,6 +20,7 @@ from hub.apps.contracts.models import NormalizationStatus, OriginalSpecType
 from hub.apps.contracts.normalization import NormalizationResult, SpecNormalizer
 from hub.apps.contracts.normalization.odps_normalizer import ODPSNormalizer
 from hub.apps.contracts.odps_errors import ODPSNormalizationError
+from hub.apps.contracts.tests.normalizer_edge_case_mixin import ODPSEdgeCaseMixin
 
 
 class ODPSNormalizerSupportsTest(TestCase):
@@ -118,11 +119,9 @@ class ODPSNormalizerNormalizeTest(TestCase):
         # Use real detect_odps_version implementation - it will return "unknown" or None
         # The normalizer should handle this gracefully
         result = self.normalizer.normalize(contract_data)
-        # detect_odps_version returns "unknown" (not None) when version cannot be detected
-        # The normalizer uses "unknown" or "4.1" as fallback
-        # Accept either "unknown" or "4.1" depending on implementation
-        self.assertIn(result.spec_version, ["4.1", "unknown"])
-        # May have warnings about version detection
+        # Version detection failure must return "unknown" — NOT fallback to "4.1"
+        self.assertEqual(result.spec_version, "unknown",
+            "Version detection failure must return 'unknown', not fallback '4.1'")
         self.assertIsNotNone(result.spec_version)
 
     def test_normalize_initializes_hub_contract(self):
@@ -1312,9 +1311,8 @@ class ODPSNormalizerLifecycleMappingTest(TestCase):
         self.assertIsNotNone(result.hub_contract)
         self.assertIn("lifecycle", result.hub_contract)
         self.assertIn("x_odps", result.hub_contract["lifecycle"])
-        if "status" in result.hub_contract["lifecycle"]["x_odps"]:
-            # If status was set despite invalid type, that's also acceptable behavior
-            pass
+        self.assertNotIn("status", result.hub_contract["lifecycle"]["x_odps"],
+            "Invalid status type must NOT set status on the output")
         self.assertTrue(len(result.warnings) > 0)
         warning_msg = " ".join(result.warnings)
         self.assertIn("status", warning_msg)
@@ -1342,9 +1340,8 @@ class ODPSNormalizerLifecycleMappingTest(TestCase):
         self.assertIsNotNone(result.hub_contract)
         self.assertIn("lifecycle", result.hub_contract)
         self.assertIn("x_odps", result.hub_contract["lifecycle"])
-        if "visibility" in result.hub_contract["lifecycle"]["x_odps"]:
-            # If visibility was set despite invalid type, that's also acceptable behavior
-            pass
+        self.assertNotIn("visibility", result.hub_contract["lifecycle"]["x_odps"],
+            "Invalid visibility type must NOT set visibility on the output")
         self.assertTrue(len(result.warnings) > 0)
         warning_msg = " ".join(result.warnings)
         self.assertIn("visibility", warning_msg)
@@ -1366,9 +1363,8 @@ class ODPSNormalizerLifecycleMappingTest(TestCase):
         # Should not process SLA, but should log warning
         self.assertIsNotNone(result.hub_contract)
         self.assertIn("lifecycle", result.hub_contract)
-        if "slas" in result.hub_contract["lifecycle"]:
-            # If slas was set despite invalid type, that's also acceptable behavior
-            pass
+        self.assertNotIn("slas", result.hub_contract["lifecycle"],
+            "Invalid SLA type must NOT set slas on the output")
         self.assertTrue(len(result.warnings) > 0)
         warning_msg = " ".join(result.warnings)
         self.assertIn("SLA", warning_msg)
@@ -1394,9 +1390,8 @@ class ODPSNormalizerLifecycleMappingTest(TestCase):
         # Should not create dimensions, but should log warning
         self.assertIsNotNone(result.hub_contract)
         self.assertIn("lifecycle", result.hub_contract)
-        if "slas" in result.hub_contract["lifecycle"]:
-            # If slas was set despite invalid type, that's also acceptable behavior
-            pass
+        self.assertNotIn("slas", result.hub_contract["lifecycle"],
+            "Invalid SLA type must NOT set slas on the output")
         self.assertTrue(len(result.warnings) > 0)
         warning_msg = " ".join(result.warnings)
         self.assertIn("availability", warning_msg)
@@ -2310,9 +2305,8 @@ class ODPSNormalizerContractExtractionTest(SimpleTestCase):
         self.assertIsNotNone(result.hub_contract)
         extensions = result.hub_contract.get("extensions", {})
         x_odps = extensions.get("x_odps", {})
-        if "contract_url" in x_odps:
-            # If contract_url was set despite invalid type, that's also acceptable behavior
-            pass
+        self.assertNotIn("contract_url", x_odps,
+            "Invalid contract_url type must NOT set contract_url on the output")
         self.assertTrue(len(result.warnings) > 0)
         warning_msg = " ".join(result.warnings)
         self.assertIn("contractURL", warning_msg)
@@ -2336,9 +2330,8 @@ class ODPSNormalizerContractExtractionTest(SimpleTestCase):
         self.assertIsNotNone(result.hub_contract)
         extensions = result.hub_contract.get("extensions", {})
         x_odps = extensions.get("x_odps", {})
-        if "contract" in x_odps:
-            # If contract was set despite invalid type, that's also acceptable behavior
-            pass
+        self.assertNotIn("contract", x_odps,
+            "Invalid type must NOT set contract on the output")
         self.assertTrue(len(result.warnings) > 0)
         warning_msg = " ".join(result.warnings)
         self.assertIn("$ref", warning_msg)
@@ -2362,9 +2355,8 @@ class ODPSNormalizerContractExtractionTest(SimpleTestCase):
         self.assertIsNotNone(result.hub_contract)
         extensions = result.hub_contract.get("extensions", {})
         x_odps = extensions.get("x_odps", {})
-        if "contract" in x_odps:
-            # If contract was set despite invalid type, that's also acceptable behavior
-            pass
+        self.assertNotIn("contract", x_odps,
+            "Invalid type must NOT set contract on the output")
         self.assertTrue(len(result.warnings) > 0)
         warning_msg = " ".join(result.warnings)
         self.assertIn("spec", warning_msg)
@@ -2857,121 +2849,17 @@ class ODPSNormalizerMarketplaceTest(TestCase):
             f"Expected NORMALIZED_WITH_WARNINGS but got {result.status}. Errors: {result.errors}, Warnings: {result.warnings}",
         )
 
-    def test_normalization_handles_unicode_characters(self):
-        """Test that normalization handles unicode characters correctly."""
-        contract_data = {
-            "schema": "https://opendataproducts.org/schema/v4.1",
-            "version": "4.1",
-            "product": {
-                "details": {
-                    "en": {
-                        "productID": "test-unicode",
-                        "name": "测试产品",
-                        "description": "测试描述",
-                    }
-                },
-                "dataSchema": {"fields": [{"name": "字段名称", "type": "string"}]},
-            },
-        }
 
-        result = self.normalizer.normalize(contract_data)
+class ODPSNormalizerEdgeCaseTest(ODPSEdgeCaseMixin, TestCase):
+    """Standard edge-case tests for ODPS normalizer (via shared mixin).
 
-        # Should handle unicode characters
-        self.assertIsNotNone(result.hub_contract)
-        if result.hub_contract and "info" in result.hub_contract:
-            self.assertIsNotNone(result.hub_contract["info"])
+    These tests validate normalization behavior for unicode, special characters,
+    large documents, None values, and nested structures — verifying general
+    normalization robustness independent of marketplace-specific mapping.
+    """
 
-    def test_normalization_handles_special_characters(self):
-        """Test that normalization handles special characters correctly."""
-        contract_data = {
-            "schema": "https://opendataproducts.org/schema/v4.1",
-            "version": "4.1",
-            "product": {
-                "details": {
-                    "en": {
-                        "productID": "test-special",
-                        "name": "Test & Co. (Special)",
-                        "description": "Test <description> & more",
-                    }
-                },
-                "dataSchema": {"fields": [{"name": "field-name", "type": "string"}]},
-            },
-        }
+    normalizer_class = ODPSNormalizer
+    spec_version = "4.1"
 
-        result = self.normalizer.normalize(contract_data)
-
-        # Should handle special characters
-        self.assertIsNotNone(result.hub_contract)
-        if result.hub_contract and "info" in result.hub_contract:
-            self.assertIsNotNone(result.hub_contract["info"])
-
-    def test_normalization_handles_very_large_documents(self):
-        """Test that normalization handles very large documents correctly."""
-        large_description = "A" * 100000  # 100KB string
-        contract_data = {
-            "schema": "https://opendataproducts.org/schema/v4.1",
-            "version": "4.1",
-            "product": {
-                "details": {
-                    "en": {
-                        "productID": "test-large",
-                        "name": "Test Product",
-                        "description": large_description,
-                    }
-                },
-                "dataSchema": {"fields": [{"name": "id", "type": "string"}]},
-            },
-        }
-
-        result = self.normalizer.normalize(contract_data)
-
-        # Should handle very large documents
-        self.assertIsNotNone(result.hub_contract)
-
-    def test_normalization_handles_none_values(self):
-        """Test that normalization handles None values correctly."""
-        contract_data = {
-            "schema": "https://opendataproducts.org/schema/v4.1",
-            "version": "4.1",
-            "product": {
-                "details": {
-                    "en": {
-                        "productID": "test-none",
-                        "name": "Test Product",
-                        "description": None,  # None value
-                    }
-                },
-                "dataSchema": {"fields": [{"name": "id", "type": "string"}]},
-            },
-        }
-
-        result = self.normalizer.normalize(contract_data)
-
-        # Should handle None values gracefully
-        self.assertIsNotNone(result.hub_contract)
-
-    def test_normalization_handles_nested_structures(self):
-        """Test that normalization handles nested structures correctly."""
-        contract_data = {
-            "schema": "https://opendataproducts.org/schema/v4.1",
-            "version": "4.1",
-            "product": {
-                "details": {"en": {"productID": "test-nested", "name": "Test Product"}},
-                "dataSchema": {
-                    "fields": [
-                        {
-                            "name": "id",
-                            "type": "string",
-                            "nested": {"level1": {"level2": {"level3": {"value": "deep"}}}},
-                        }
-                    ]
-                },
-            },
-        }
-
-        result = self.normalizer.normalize(contract_data)
-
-        # Should handle nested structures
-        self.assertIsNotNone(result.hub_contract)
-        if result.hub_contract and "schema" in result.hub_contract:
-            self.assertIsNotNone(result.hub_contract["schema"])
+    def setUp(self):
+        self.normalizer = self.normalizer_class()

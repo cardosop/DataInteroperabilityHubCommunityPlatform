@@ -8,6 +8,7 @@ export interface BulkAction {
   onClick: () => void;
   variant?: 'default' | 'danger';
   disabled?: boolean;
+  'data-testid'?: string;
 }
 
 export interface BulkActionBarProps {
@@ -43,6 +44,7 @@ export const BulkActionBar: FC<BulkActionBarProps> = ({
             className={`bulk-action-bar__btn bulk-action-bar__btn--${action.variant || 'default'}`}
             disabled={action.disabled}
             onClick={action.onClick}
+            data-testid={action['data-testid']}
           >
             {action.label}
           </button>

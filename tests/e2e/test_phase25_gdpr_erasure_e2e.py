@@ -46,8 +46,8 @@ class Phase25GDPRErasureE2ETest(TestCase):
 
         # Create tenant (subscription required for POST to request-erasure)
         self.tenant = Tenant.objects.create(
-            name="GDPR E2E Tenant",
-            slug="gdpr-e2e-tenant",
+            name=f"GDPR E2E Tenant {uuid.uuid4().hex[:8]}",
+            slug=f"gdpr-e2e-tenant-{uuid.uuid4().hex[:8]}",
             status=TenantStatus.ACTIVE,
         )
         from hub.apps.testing.billing_support import ensure_tenant_has_active_subscription
@@ -162,8 +162,8 @@ class Phase25GDPRErasureE2ETest(TestCase):
         """Test erasure request tenant isolation"""
         # Create another tenant and user
         tenant2 = Tenant.objects.create(
-            name="Other E2E Tenant",
-            slug="other-e2e-tenant",
+            name=f"Other E2E Tenant {uuid.uuid4().hex[:8]}",
+            slug=f"other-e2e-tenant-{uuid.uuid4().hex[:8]}",
             status=TenantStatus.ACTIVE,
         )
         user2 = User.objects.create_user(

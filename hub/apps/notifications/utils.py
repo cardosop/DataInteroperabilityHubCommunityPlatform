@@ -116,21 +116,25 @@ def create_user_notification(
 
         recipient_id = str(notification.user.id)
         recipient_tenant_id = str(notification.tenant.id)
+        event_data = {
+            "id": str(notification.id),
+            "user_id": recipient_id,
+            "category": notification.category,
+            "notification_type": notification.notification_type,
+            "title": notification.title,
+            "resource_id": (
+                str(notification.resource_id)
+                if notification.resource_id
+                else None
+            ),
+        }
+        # Only include resource_type when it has a string value to
+        # satisfy the event schema (resource_type: string, not nullable).
+        if notification.resource_type:
+            event_data["resource_type"] = notification.resource_type
         publish_event(
             event_type="notification.created",
-            data={
-                "id": str(notification.id),
-                "user_id": recipient_id,
-                "category": notification.category,
-                "notification_type": notification.notification_type,
-                "title": notification.title,
-                "resource_type": notification.resource_type,
-                "resource_id": (
-                    str(notification.resource_id)
-                    if notification.resource_id
-                    else None
-                ),
-            },
+            data=event_data,
             tenant_id=recipient_tenant_id,
             user_id=recipient_id,
             skip_deduplication=True,

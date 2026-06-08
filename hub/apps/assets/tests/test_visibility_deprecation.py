@@ -161,7 +161,7 @@ class VisibilityWriteIsDeprecationOnlyTest(TestCase):
         after = AuditEvent.objects.filter(
             action=audit_event_types.ASSET_VISIBILITY_WRITE_DEPRECATED,
             tenant=tenant,
-        ).order_by("-created_at")
+        ).order_by("-timestamp")
         assert after.count() - before == 1
         ev = after.first()
         assert ev.details_json["attempted_value"] == "PUBLIC"
@@ -224,8 +224,10 @@ class PatchEndpointIgnoresVisibilityTest(TestCase):
     def setUp(self):
         self.tenant, self.user = _seed()
         # Promote to a role allowed to PATCH assets.
-        self.user.roles = ["TENANT_ADMIN", "DATA_PROVIDER"]
-        self.user.save(update_fields=["roles"])
+        from hub.apps.testing.role_support import ensure_user_has_tenant_admin_role, ensure_user_has_data_provider_role
+        from hub.apps.contracts.models import Contract, ContractStatus, NormalizationStatus, OriginalFormat, OriginalSpecType, ValidationStatus
+        ensure_user_has_tenant_admin_role(self.user)
+        ensure_user_has_data_provider_role(self.user)
         self.client = APIClient()
         self.client.force_authenticate(user=self.user)
         self.asset = Asset.objects.create(
@@ -233,6 +235,23 @@ class PatchEndpointIgnoresVisibilityTest(TestCase):
             key=f"a-{uuid.uuid4().hex[:6]}",
             name="OriginalName",
             status=AssetStatus.ACTIVE,
+        )
+        # An ACTIVE asset requires a valid, normalized contract for
+        # `full_clean()` to pass.  The visibility PATCH tests don't
+        # exercise activation — they pin that the visibility key is
+        # silently ignored — so we plant a minimal contract to satisfy
+        # the model invariant.
+        Contract.objects.create(
+            tenant=self.tenant, asset=self.asset,
+            status=ContractStatus.ACTIVE,
+            validation_status=ValidationStatus.VALID,
+            normalization_status=NormalizationStatus.NORMALIZED_OK,
+            original_spec_type=OriginalSpecType.ODCS,
+            original_spec_version="3.0.0",
+            original_format=OriginalFormat.JSON,
+            original_raw='{"id":"test","schema":{"fields":[{"name":"id","type":"string"}]}}',
+            hub_contract_json={"schema":{"fields":[{"name":"id","type":"string"}]}},
+            created_by=self.user,
         )
 
     def test_patch_with_only_visibility_returns_200_and_doesnt_mutate_status(self):
@@ -289,8 +308,9 @@ class PostEndpointAcceptsVisibilityForBackcompatTest(TestCase):
 
     def setUp(self):
         self.tenant, self.user = _seed()
-        self.user.roles = ["TENANT_ADMIN", "DATA_PROVIDER"]
-        self.user.save(update_fields=["roles"])
+        from hub.apps.testing.role_support import ensure_user_has_tenant_admin_role, ensure_user_has_data_provider_role
+        ensure_user_has_tenant_admin_role(self.user)
+        ensure_user_has_data_provider_role(self.user)
         self.client = APIClient()
         self.client.force_authenticate(user=self.user)
 
@@ -333,8 +353,8 @@ class AssetEndpointDeprecationHeadersTest(TestCase):
 
     def setUp(self):
         self.tenant, self.user = _seed()
-        self.user.roles = ["TENANT_ADMIN"]
-        self.user.save(update_fields=["roles"])
+        from hub.apps.testing.role_support import ensure_user_has_tenant_admin_role
+        ensure_user_has_tenant_admin_role(self.user)
         self.client = APIClient()
         self.client.force_authenticate(user=self.user)
 

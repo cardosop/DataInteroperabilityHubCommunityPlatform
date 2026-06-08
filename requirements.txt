@@ -1,4 +1,3 @@
-django>=5.2,<6.0  # Phase 277.A.3 — explicit security pin per dependency audit
 # WSGI/ASGI Production Server
 # gunicorn manages worker processes; uvicorn.workers.UvicornWorker handles ASGI (HTTP + WebSocket).
 # uvicorn[standard] includes uvloop + httptools for best async performance.
@@ -71,9 +70,9 @@ pydantic>=2.10.1,<3.0
 # Data Quality Engines — in services/dq-service/requirements.txt only (Phase 55)
 
 # Data Processing
-pandas==2.3.3
+pandas>=2.2.0,<2.3.0   # <2.3.0 required by databricks-sql-connector
 numpy==1.26.4
-pyarrow==23.0.1  # Required for Parquet file format support
+pyarrow>=14.0.1,<15.0.0  # Required for Parquet file format support; <15.0 required by databricks-sql-connector
 
 # Phase 260.5.D — text-encoding detection with confidence floor.
 # charset-normalizer is MIT-licensed (license-clean alternative to
@@ -140,7 +139,7 @@ google-auth>=2.25.0,<3.0
 reportlab>=4.4.0,<5.0
 
 # Phase 232.4 — RoPA exports (Article 30 register). WeasyPrint needs Cairo+Pango+gdk-pixbuf in Docker.
-WeasyPrint>=62.3,<63.0
+WeasyPrint>=63.0,<70.0  # pydyf 0.12.1 compat; 62.3 uses deprecated transform()
 python-docx>=1.2.0,<2.0
 
 # Performance Testing

@@ -737,6 +737,20 @@ class WebhookDelivery(models.Model):
             models.Index(fields=["status", "next_retry_at"]),
         ]
 
+    @property
+    def retry_count(self) -> int:
+        """Number of retries attempted so far (alias for ``attempt_number``).
+
+        ``attempt_number`` is 0-indexed: 0 = first attempt, 1 = first retry, etc.
+        This property provides a more readable alias for tests and monitoring.
+        """
+        return self.attempt_number
+
+    @property
+    def attempts(self) -> int:
+        """Total attempts including the initial delivery (attempt_number + 1)."""
+        return self.attempt_number + 1
+
     def __str__(self):
         return f"{self.webhook.name} - {self.event_type} ({self.status})"
 

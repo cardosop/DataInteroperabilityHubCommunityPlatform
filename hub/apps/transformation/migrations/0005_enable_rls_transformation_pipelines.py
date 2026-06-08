@@ -9,7 +9,7 @@ from django.db import migrations
 
 class Migration(migrations.Migration):
     dependencies = [
-        ("transformation", "0004"),
+        ("transformation", "0004_enable_rls_preview_results"),
     ]
 
     operations = [

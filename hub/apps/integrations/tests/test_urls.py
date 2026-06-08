@@ -56,7 +56,8 @@ class MarketplaceIntegrationURLPatternResolutionTest(TestCase):
 
         uid = uuid.uuid4().hex[:8]
         self.tenant = Tenant.objects.create(
-            name=f"Test Tenant {uid}", slug=f"test-tenant-{uid}", kyc_status=KYCStatus.VERIFIED
+            name=f"Test Tenant {uid}", slug=f"test-tenant-{uid}", kyc_status=KYCStatus.VERIFIED,
+            marketplace_integrations_enabled=True,
         )
         self.user = User.objects.create_user(
             email=f"test-{uid}@example.com",
@@ -231,7 +232,8 @@ class MarketplaceIntegrationURLIntegrationTest(TestCase):
 
         uid = uuid.uuid4().hex[:8]
         self.tenant = Tenant.objects.create(
-            name=f"Test Tenant {uid}", slug=f"test-tenant-{uid}", kyc_status=KYCStatus.VERIFIED
+            name=f"Test Tenant {uid}", slug=f"test-tenant-{uid}", kyc_status=KYCStatus.VERIFIED,
+            marketplace_integrations_enabled=True,
         )
         # Active subscription required so TenantSuspensionMiddleware allows API writes
         ensure_tenant_has_active_subscription(self.tenant)

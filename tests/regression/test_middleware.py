@@ -37,8 +37,8 @@ class MiddlewareRegressionTest(TestCase):
         self.client = APIClient()
         self.factory = RequestFactory()
         self.tenant = Tenant.objects.create(
-            name="Middleware Test Tenant",
-            slug="middleware-test-tenant"
+            name=f"Middleware Test Tenant {uuid.uuid4().hex[:8]}",
+            slug=f"middleware-test-tenant-{uuid.uuid4().hex[:8]}"
         )
         self.user = User.objects.create_user(
             email=f"middleware-{uuid.uuid4().hex[:8]}@example.com",

@@ -76,7 +76,7 @@ class UserViewSetTest(TestCase):
             "display_name": "New User",
             "password": "testpass123",
             "tenant": str(self.tenant.id),
-            "status": "ACTIVE"
+            "send_invitation": False,  # G2.2: status derived from send_invitation
         }
 
         response = self.client.post("/api/v1/users/", data, format="json")
@@ -110,7 +110,6 @@ class UserViewSetTest(TestCase):
                 "email": self.regular_user.email,
                 "password": "testpass123",
                 "tenant": str(self.tenant.id),
-                "status": "ACTIVE",
             },
             format="json",
         )

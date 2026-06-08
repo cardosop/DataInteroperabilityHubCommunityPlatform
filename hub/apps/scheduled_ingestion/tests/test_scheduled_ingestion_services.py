@@ -10,6 +10,8 @@ errors when running with xdist/parallel or --reuse-db, and to avoid
 TransactionTestCase teardown flush timeouts.
 """
 
+import os
+import unittest
 import uuid
 
 import pytest
@@ -49,18 +51,53 @@ class IngestionServiceTest(TestCase):
         )
         self.service = IngestionService(tenant_id=str(self.tenant.id), user_id=str(self.user.id))
 
-        # Create scheduled ingestion
+        # Create a real S3 bucket in MinIO (available in Docker test environment)
+        # so the workflow can connect to a real source and process files.
+        self._ensure_test_bucket(unique)
+
+        # Create scheduled ingestion with proper MinIO credentials
         self.scheduled_ingestion = ScheduledIngestion.objects.create(
             tenant=self.tenant,
             name="Test Ingestion",
             source_type=SourceType.S3,
-            source_config={"bucket": "test-bucket"},
+            source_config={
+                "bucket": f"test-bucket-{unique}",
+                "access_key_id": os.environ.get("AWS_ACCESS_KEY_ID", "minio"),
+                "secret_access_key": os.environ.get("AWS_SECRET_ACCESS_KEY", "minio123"),
+                "endpoint_url": os.environ.get("AWS_S3_ENDPOINT_URL", "http://minio-test:9000"),
+                "region": "us-east-1",
+            },
             schedule_type=ScheduleType.DAILY,
             schedule_config={"time": "00:00"},
-            file_pattern=".*\\.csv",
+            file_pattern=r".*\.csv",
             status=ScheduledIngestionStatus.ACTIVE,
             created_by=self.user,
         )
+
+    def _ensure_test_bucket(self, unique_suffix: str):
+        """Create a test bucket in MinIO and upload a minimal CSV file."""
+        import boto3
+        from botocore.client import Config
+
+        bucket_name = f"test-bucket-{unique_suffix}"
+        endpoint = os.environ.get("AWS_S3_ENDPOINT_URL", "http://minio-test:9000")
+        access_key = os.environ.get("AWS_ACCESS_KEY_ID", "minio")
+        secret_key = os.environ.get("AWS_SECRET_ACCESS_KEY", "minio123")
+
+        s3 = boto3.client(
+            "s3",
+            aws_access_key_id=access_key,
+            aws_secret_access_key=secret_key,
+            endpoint_url=endpoint,
+            config=Config(signature_version="s3v4"),
+            region_name="us-east-1",
+        )
+        try:
+            s3.create_bucket(Bucket=bucket_name)
+        except s3.exceptions.BucketAlreadyOwnedByYou:
+            pass
+        # Upload a minimal CSV file so the workflow has something to process
+        s3.put_object(Bucket=bucket_name, Key="test.csv", Body=b"id,name\n1,test\n")
 
     def test_execute_ingestion_success(self):
         """
@@ -69,9 +106,9 @@ class IngestionServiceTest(TestCase):
         Uses real workflow execution to verify service integration.
         Note: This test may require workflow engine to be properly configured.
         """
-        # Execute ingestion using real workflow
-        # The workflow will attempt to discover files, which may fail if source connector
-        # is not available, but we test the service layer integration
+        # Execute ingestion using real workflow.  Catch only explicit
+        # infrastructure-absence exceptions; let everything else propagate
+        # so real code bugs are never silently swallowed.
         try:
             result = self.service.execute_ingestion(
                 scheduled_ingestion_id=str(self.scheduled_ingestion.id),
@@ -84,7 +121,6 @@ class IngestionServiceTest(TestCase):
             self.assertIn("files_failed", result)
             self.assertIn("datasets_created", result)
             self.assertIn("ingestion_state", result)
-            # Verify workflow instance ID is present
             self.assertIn("workflow_instance_id", result)
 
             # Verify workflow instance was created in DB
@@ -93,31 +129,32 @@ class IngestionServiceTest(TestCase):
             workflow_instance = WorkflowInstance.objects.get(id=result["workflow_instance_id"])
             self.assertIsNotNone(workflow_instance)
 
+        except (ImportError, ModuleNotFoundError, ConnectionError, OSError) as e:
+            # Infrastructure not available (Prefect, network, storage) —
+            # skip with a clear message rather than silently passing.
+            raise unittest.SkipTest(
+                f"Skipping execute_ingestion integration test — "
+                f"infrastructure unavailable: {e}"
+            ) from e
         except Exception as e:
-            # If workflow execution fails due to missing source connector, workflow env,
-            # or other external dependencies, verify the service method structure is correct.
-            # No mocks: we only relax the assertion when the failure is clearly external.
-            error_msg = str(e).lower()
-            external_keywords = (
-                "source",
-                "connector",
-                "connection",
-                "workflow",
-                "import",
-                "module",
-                "path",
-                "prefect",
-                "s3",
-                "bucket",
+            # The workflow may fail because external infrastructure
+            # (S3, Prefect, source connector) is not available in CI.
+            # Only skip when the error is clearly infrastructure-related;
+            # re-raise for anything that looks like a code bug.
+            error_msg = str(e)
+            infra_indicators = (
+                "Unable to connect to source",
+                "Connection test failed",
+                "Failed to connect",
+                "Workflow rolled back",
+                "connect_to_source",
             )
-            if any(kw in error_msg for kw in external_keywords):
-                # External dependency issue - verify service method exists and has correct signature
-                self.assertTrue(
-                    hasattr(self.service, "execute_ingestion"), f"Service method missing: {e}"
-                )
-            else:
-                # Re-raise unexpected errors (real application bugs)
-                raise
+            if any(indicator in error_msg for indicator in infra_indicators):
+                raise unittest.SkipTest(
+                    f"Skipping execute_ingestion integration test — "
+                    f"infrastructure unavailable: {error_msg[:120]}"
+                ) from e
+            raise
 
     def test_get_ingestion_status_success(self):
         """Test successful ingestion status retrieval."""

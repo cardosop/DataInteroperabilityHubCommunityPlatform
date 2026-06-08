@@ -95,8 +95,10 @@ class SyncServiceMixin:
                     connection = self.get_resource_or_raise(
                         MarketplaceConnection, connection_id, tenant_id=effective_tenant_id
                     )
-                except DjangoValidationError as e:
-                    # Django ValidationError for invalid UUID format should be treated as NotFoundError
+                except (DjangoValidationError, ValidationError) as e:
+                    # Django ValidationError (invalid UUID) or service-level
+                    # ValidationError (converted by get_resource_or_raise) should
+                    # be treated as NotFoundError for a cleaner API response.
                     raise NotFoundError(
                         f"Connection {connection_id} not found",
                         details={"connection_id": connection_id, "error": str(e)},
@@ -389,8 +391,10 @@ class SyncServiceMixin:
                     connection = self.get_resource_or_raise(
                         MarketplaceConnection, connection_id, tenant_id=effective_tenant_id
                     )
-                except DjangoValidationError as e:
-                    # Django ValidationError for invalid UUID format should be treated as NotFoundError
+                except (DjangoValidationError, ValidationError) as e:
+                    # Django ValidationError (invalid UUID) or service-level
+                    # ValidationError (converted by get_resource_or_raise) should
+                    # be treated as NotFoundError for a cleaner API response.
                     raise NotFoundError(
                         f"Connection {connection_id} not found",
                         details={"connection_id": connection_id, "error": str(e)},
@@ -1049,6 +1053,16 @@ class SyncServiceMixin:
             return sync_job
 
         try:
+            # Validate workflow_instance_id is a valid UUID before ORM query
+            import uuid as _uuid
+            try:
+                _uuid.UUID(str(workflow_instance_id))
+            except (ValueError, AttributeError):
+                logger.warning(
+                    f"Invalid workflow_instance_id {workflow_instance_id!r} for sync job {sync_job_id}"
+                )
+                return sync_job
+
             # Get workflow instance
             workflow_instance = WorkflowInstance.objects.get(
                 id=workflow_instance_id, tenant_id=effective_tenant_id
@@ -1125,10 +1139,15 @@ class SyncServiceMixin:
                         error_message = "Sync job failed"
                         error_details = {}
                         if sync_job.errors:
-                            error_message = (
+                            first_error = (
                                 sync_job.errors[0]
                                 if isinstance(sync_job.errors, list)
-                                else str(sync_job.errors)
+                                else sync_job.errors
+                            )
+                            error_message = (
+                                str(first_error)
+                                if not isinstance(first_error, str)
+                                else first_error
                             )
                             error_details = {"errors": sync_job.errors}
                         elif workflow_instance.error_message:

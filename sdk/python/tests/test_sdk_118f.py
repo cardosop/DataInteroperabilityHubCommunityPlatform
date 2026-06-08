@@ -3,6 +3,12 @@ Phase 118F — Python SDK New Modules Tests
 
 Tests all new modules are importable with correct class names
 and method signatures. Tests error class hierarchy.
+
+.. note::
+   These are **structural regression guards** — they verify API-surface
+   contracts (class existence, method names, async signatures, error-class
+   hierarchy). They do NOT validate runtime behavior. Behavioral tests
+   for these modules live in their respective integration test files.
 """
 
 import inspect

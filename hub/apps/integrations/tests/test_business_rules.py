@@ -544,7 +544,8 @@ class SyncValidationRulesTest(TestCase):
         result = self.rules.validate_sync_eligibility(connection=self.connection)
 
         self.assertIsInstance(result, ValidationResult)
-        # May have warnings if connector test fails, but should not have errors for active connection
+        self.assertTrue(result.is_valid, f"Expected valid but got errors: {result.errors}")
+        self.assertEqual(len(result.errors), 0, f"Expected no errors: {result.errors}")
         self.assertIn("connection_active", result.details)
         self.assertTrue(result.details["connection_active"])
 
@@ -670,7 +671,8 @@ class SyncValidationRulesTest(TestCase):
         )
 
         self.assertIsInstance(result, ValidationResult)
-        # May have warnings if listings don't exist, but structure should be valid
+        self.assertTrue(result.is_valid, f"Expected valid but got errors: {result.errors}")
+        self.assertEqual(len(result.errors), 0, f"Expected no errors: {result.errors}")
         self.assertIn("listing_ids_count", result.details)
         self.assertEqual(result.details["listing_ids_count"], 2)
 
@@ -723,7 +725,8 @@ class SyncValidationRulesTest(TestCase):
         result = self.rules.validate_sync_mapping(mapping=mapping)
 
         self.assertIsInstance(result, ValidationResult)
-        # May have warnings if listing doesn't exist via connector, but structure should be valid
+        self.assertTrue(result.is_valid, f"Expected valid but got errors: {result.errors}")
+        self.assertEqual(len(result.errors), 0, f"Expected no errors: {result.errors}")
         self.assertIn("mapping_id", result.details)
         self.assertEqual(result.details["mapping_id"], str(mapping.id))
 

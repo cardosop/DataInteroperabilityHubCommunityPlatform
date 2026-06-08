@@ -427,7 +427,9 @@ class TestAssetsActivate:
         assert result.exit_code == 0
         assert 'Asset activated successfully' in result.output
         assert 'ACTIVE' in result.output
-        mock_api_client.post.assert_called_once_with('assets/asset-1/activate/')
+        mock_api_client.post.assert_called_once_with(
+            'assets/asset-1/activate/', json_data={'version': mock_api_client.get.return_value.get.return_value}
+        )
     
     def test_activate_asset_json_output(self, runner, mock_api_client):
         """Test activating an asset with JSON output"""

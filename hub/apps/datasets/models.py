@@ -14,6 +14,21 @@ class DatasetKind(models.TextChoices):
     EXTERNAL_REF = "EXTERNAL_REF", "External reference dataset"
 
 
+class DatasetStatus(models.TextChoices):
+    """Dataset lifecycle status"""
+    ACTIVE = "ACTIVE", "Active"
+    RETIRED = "RETIRED", "Retired"
+    DRAFT = "DRAFT", "Draft"
+    PROCESSING = "PROCESSING", "Processing"
+
+
+class DatasetFileHandlePurpose(models.TextChoices):
+    """Purpose discriminator for (tenant, file) unique-when-primary constraint."""
+    PRIMARY = "PRIMARY", "Primary"
+    SAMPLE = "SAMPLE", "Sample"
+    SCHEMA_ONLY = "SCHEMA_ONLY", "Schema Only"
+
+
 class Dataset(models.Model):
     """
     Dataset model representing a data file with inferred schema.
@@ -61,6 +76,29 @@ class Dataset(models.Model):
         null=True,
         blank=True,
         help_text="Total number of rows in the dataset"
+    )
+    status = models.CharField(
+        max_length=20,
+        choices=DatasetStatus.choices,
+        default=DatasetStatus.ACTIVE,
+        help_text="Dataset lifecycle status"
+    )
+    kind = models.CharField(
+        max_length=20,
+        choices=DatasetKind.choices,
+        default=DatasetKind.FILE,
+        db_index=True,
+        help_text="Dataset kind: FILE or EXTERNAL_REF"
+    )
+    file_handle_purpose = models.CharField(
+        max_length=50,
+        choices=DatasetFileHandlePurpose.choices,
+        default=DatasetFileHandlePurpose.PRIMARY,
+        help_text="Purpose for which the file handle was stored (e.g. original, processed, sample)"
+    )
+    retired_at = models.DateTimeField(
+        null=True, blank=True,
+        help_text="When the dataset was retired"
     )
     format = models.CharField(
         max_length=20,
@@ -190,6 +228,10 @@ class SchemaVersion(models.Model):
     schema_json = models.JSONField(
         help_text="Complete schema JSON snapshot"
     )
+    status = models.CharField(
+        max_length=20, default="ACTIVE",
+        help_text="Schema version status"
+    )
     compatibility_level = models.CharField(
         max_length=20,
         help_text="Compatibility level: FULLY_COMPATIBLE, BACKWARD_COMPATIBLE, FORWARD_COMPATIBLE, INCOMPATIBLE"
@@ -217,6 +259,14 @@ class SchemaVersion(models.Model):
         return f"SchemaVersion for {self.dataset} ({self.compatibility_level})"
 
 
+class SnapshotType(models.TextChoices):
+    """Snapshot type enumeration for time-travel queries."""
+    FULL = "FULL", "Full"
+    SCHEMA_ONLY = "SCHEMA_ONLY", "Schema Only"
+    METADATA_ONLY = "METADATA_ONLY", "Metadata Only"
+    INCREMENTAL = "INCREMENTAL", "Incremental (post-MVP placeholder)"
+
+
 class DatasetSnapshot(models.Model):
     """
     Optional snapshot storage for time-travel queries.
@@ -235,8 +285,13 @@ class DatasetSnapshot(models.Model):
     )
     snapshot_type = models.CharField(
         max_length=20,
-        default="FULL",
+        choices=SnapshotType.choices,
+        default=SnapshotType.FULL,
         help_text="Snapshot type: FULL, SCHEMA_ONLY, METADATA_ONLY"
+    )
+    status = models.CharField(
+        max_length=20, default="ACTIVE",
+        help_text="Snapshot status: ACTIVE, ARCHIVED, EXPIRED"
     )
     created_at = models.DateTimeField(auto_now_add=True)
     

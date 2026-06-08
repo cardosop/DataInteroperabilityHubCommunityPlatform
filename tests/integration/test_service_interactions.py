@@ -14,6 +14,7 @@ from hub.apps.assets.models import Asset
 from hub.apps.tenants.models import Tenant
 from hub.apps.users.models import UserStatus
 from hub.apps.testing.billing_support import ensure_tenant_has_active_subscription
+from hub.apps.testing.role_support import ensure_user_has_data_provider_role
 from tests.factories import TenantFactory, UserFactory
 
 User = get_user_model()
@@ -29,6 +30,7 @@ class ServiceInteractionsIntegrationTest(TestCase):
         ensure_tenant_has_active_subscription(self.tenant)
         self.user = UserFactory.create_user(tenant=self.tenant, status=UserStatus.ACTIVE)
         self.client.force_authenticate(user=self.user)
+        ensure_user_has_data_provider_role(self.user)
         self.asset = Asset.objects.create(
             tenant=self.tenant,
             key="svc-test-asset",

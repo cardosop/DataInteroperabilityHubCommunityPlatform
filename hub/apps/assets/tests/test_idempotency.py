@@ -58,8 +58,20 @@ class AssetIdempotencyKeyTest(TestCase):
             r = get_redis_client()
             for k in r.scan_iter(match="idempotency:*"):
                 r.delete(k)
-        except Exception:
+        except ImportError:
+            # idempotency_utils (or redis) is not installed; tests will
+            # still validate core idempotency semantics.
             pass
+        except Exception as _exc:
+            # Re-raise anything that is NOT a Redis operational error
+            # (connection refused, timeout, etc.) — coding bugs must
+            # surface as test failures.
+            try:
+                import redis.exceptions as _redis_exc
+            except ImportError:
+                raise  # redis not even importable → let it bubble up
+            if not isinstance(_exc, _redis_exc.RedisError):
+                raise
         self.client = APIClient()
         uid = uuid.uuid4().hex[:8]
         self.tenant = Tenant.objects.create(
@@ -291,11 +303,7 @@ class AssetIdempotencyKeyTest(TestCase):
         # tenant. Both outcomes are valid; what's NOT valid is silently
         # creating a duplicate with a fresh id.
         if replay.status_code == status.HTTP_201_CREATED:
-            replay_id = (
-                replay.json()["id"]
-                if replay.get("Idempotency-Replayed") == "true"
-                else replay.data["id"]
-            )
+            replay_id = replay.json()["id"]
             self.assertEqual(replay_id, first.data["id"])
             self.assertEqual(replay.get("Idempotency-Replayed", ""), "true")
         else:

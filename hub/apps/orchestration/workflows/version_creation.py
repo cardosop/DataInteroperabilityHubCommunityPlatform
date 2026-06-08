@@ -530,29 +530,17 @@ class VersionCreationWorkflow:
             }
 
         from hub.apps.tenants.models import Tenant
+        from hub.apps.datasets.time_travel import TimeTravelQuery
 
         tenant_id = input_data.get("tenant_id") or instance.tenant_id
         tenant = Tenant.objects.get(id=tenant_id)
         dataset = Dataset.objects.get(id=dataset_id, tenant=tenant)
 
-        # Create snapshot data
-        snapshot_data = {
-            "dataset_id": str(dataset.id),
-            "version": dataset.version,
-            "semantic_version": dataset.semantic_version,
-            "schema_json": dataset.schema_json,
-            "sample_data_json": dataset.sample_data_json,
-            "row_count": dataset.row_count,
-            "format": dataset.format,
-            "snapshot_metadata": dataset.snapshot_metadata,
-            "version_tags": dataset.version_tags,
-            "created_at": dataset.created_at.isoformat(),
-            "created_by_id": str(dataset.created_by.id) if dataset.created_by else None,
-        }
-
-        # Create snapshot record
-        snapshot = DatasetSnapshot.objects.create(
-            dataset=dataset, snapshot_data=snapshot_data, snapshot_type=snapshot_type
+        # Route through TimeTravelQuery.create_snapshot so the
+        # workflow inherits the same validation surface (Phase 260.6.B.R1
+        # GAP-A): INCREMENTAL → NotImplementedError, unknown → ValueError.
+        snapshot = TimeTravelQuery.create_snapshot(
+            dataset, snapshot_type=snapshot_type
         )
 
         logger.info(

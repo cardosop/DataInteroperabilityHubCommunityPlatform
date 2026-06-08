@@ -26,6 +26,7 @@ class DQEngine(models.TextChoices):
     """DQ Engine enumeration"""
     GREAT_EXPECTATIONS = "GREAT_EXPECTATIONS", "Great Expectations"
     SODA = "SODA", "Soda"
+    WAREHOUSE_SQL = "WAREHOUSE_SQL", "Warehouse SQL"
 
 
 class DQAnomalySeverity(models.TextChoices):
@@ -213,6 +214,7 @@ class DQRun(models.Model):
     objects = SoftDeleteManager()
     all_objects = _AllObjectsManager()
 
+    warehouse_config = models.JSONField(default=dict, blank=True, help_text="Warehouse config for DQ warehouse integration")
     class Meta:
         db_table = "dq_runs"
         ordering = ["-created_at"]

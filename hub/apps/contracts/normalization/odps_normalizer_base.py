@@ -133,7 +133,7 @@ class ODPSNormalizerBase(ODPSNormalizer, ABC):
                     f"Use a version-specific normalizer for this version."
                 )
                 errors.append(error_msg)
-                logger.error(
+                logger.warning(
                     "odps_version_not_supported",
                     spec_version=spec_version,
                     normalizer_class=self.__class__.__name__,
@@ -224,7 +224,7 @@ class ODPSNormalizerBase(ODPSNormalizer, ABC):
         except ODPSNormalizationError as e:
             # Re-raise ODPSNormalizationError with full context
             errors.append(str(e))
-            logger.error(
+            logger.warning(
                 "odps_normalization_error",
                 error_code=e.error_code,
                 field_path=e.context.get("field_path") if e.context else None,

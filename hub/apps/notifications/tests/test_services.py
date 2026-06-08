@@ -135,7 +135,8 @@ class SendGridEmailServiceTest(EmailServiceTest):
             SENDGRID_FROM_EMAIL='noreply@example.com'
         ):
             service = SendGridEmailService()
-            with self.assertRaises(EmailServiceError) as cm:
+            with self.assertRaises(EmailServiceError) as cm, \
+                 self.assertLogs('hub.apps.notifications.services', level='ERROR'):
                 service.send_email(
                     to_email=self.to_email,
                     subject=self.subject,
@@ -211,7 +212,8 @@ class SESEmailServiceTest(EmailServiceTest):
             AWS_SES_FROM_EMAIL='noreply@example.com'
         ):
             service = SESEmailService()
-            with self.assertRaises(EmailServiceError) as cm:
+            with self.assertRaises(EmailServiceError) as cm, \
+                 self.assertLogs('hub.apps.notifications.services', level='ERROR'):
                 service.send_email(
                     to_email=self.to_email,
                     subject=self.subject,
@@ -269,7 +271,8 @@ class SMTPEmailServiceTest(EmailServiceTest):
             SMTP_FROM_EMAIL='noreply@example.com'
         ):
             service = SMTPEmailService()
-            with self.assertRaises(EmailServiceError) as cm:
+            with self.assertRaises(EmailServiceError) as cm, \
+                 self.assertLogs('hub.apps.notifications.services', level='ERROR'):
                 service.send_email(
                     to_email=self.to_email,
                     subject=self.subject,

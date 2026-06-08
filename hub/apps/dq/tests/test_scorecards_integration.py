@@ -147,4 +147,7 @@ class DQScorecardsIntegrationTest(TestCase):
         
         self.assertIn("metrics", drill_down)
         self.assertIn("run_history", drill_down)
+        # Validate content, not just key existence.
+        self.assertIsInstance(drill_down["run_history"], list)
+        self.assertGreaterEqual(len(drill_down["run_history"]), 10)
 

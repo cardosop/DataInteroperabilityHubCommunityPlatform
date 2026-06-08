@@ -363,18 +363,22 @@ def warm_tenant_cache(tenant_id: str) -> Dict[str, int]:
     logger.info(
         "cache_warming_completed",
         tenant_id=tenant_id,
-        assets_warmed=results['assets'],
-        contracts_warmed=results['contracts'],
-        marketplace_warmed=results['marketplace'],
+        assets_warmed=results.get('assets', 0),
+        contracts_warmed=results.get('contracts', 0),
+        marketplace_warmed=results.get('marketplace', 0),
         message="Cache warming completed for tenant"
     )
 
     return results
 
 
-def warm_all_tenants_cache() -> Dict[str, Any]:
+def warm_all_tenants_cache(*, max_tenants: int | None = None) -> Dict[str, Any]:
     """
     Warm caches for all tenants.
+
+    Args:
+        max_tenants: Optional cap on the number of tenants to warm
+                     (useful for testing or very large deployments).
 
     Returns:
         Dictionary with summary of cache warming results
@@ -385,6 +389,14 @@ def warm_all_tenants_cache() -> Dict[str, Any]:
 
     tenants = Tenant.objects.all()
     total_tenants = tenants.count()
+    if max_tenants is not None and max_tenants > 0:
+        tenants = tenants[:max_tenants]
+        logger.info(
+            "cache_warming_tenant_cap",
+            total=total_tenants,
+            capped=max_tenants,
+            message="Capping tenant warming",
+        )
     successful = 0
     failed = 0
     results_by_tenant = {}

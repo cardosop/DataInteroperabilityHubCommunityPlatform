@@ -387,19 +387,29 @@ class DQComplianceExecutionTest(DQAPITestBase):
 
         try:
             execute_dq_run(str(dq_run.id))
-        except Exception:
-            # If execution fails, verify error handling
+        except Exception as exc:
+            # If execution fails, verify it's a legitimate failure, not a
+            # spurious exception (e.g. AttributeError from a refactoring bug).
             dq_run.refresh_from_db()
             if dq_run.status == DQRunStatus.FAILED:
-                pass  # Expected behavior
+                pass  # Expected — run correctly recorded its own failure
+            else:
+                raise AssertionError(
+                    f"execute_dq_run raised {type(exc).__name__}: {exc} "
+                    f"but dq_run.status={dq_run.status}, not FAILED"
+                ) from exc
 
         try:
             execute_compliance_run(str(compliance_run.id))
-        except Exception:
-            # If execution fails, verify error handling
+        except Exception as exc:
             compliance_run.refresh_from_db()
             if compliance_run.status == ComplianceRunStatus.FAILED:
-                pass  # Expected behavior
+                pass  # Expected — run correctly recorded its own failure
+            else:
+                raise AssertionError(
+                    f"execute_compliance_run raised {type(exc).__name__}: {exc} "
+                    f"but compliance_run.status={compliance_run.status}, not FAILED"
+                ) from exc
 
         # Refresh and verify runs were updated
         dq_run.refresh_from_db()

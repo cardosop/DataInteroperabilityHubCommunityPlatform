@@ -113,6 +113,9 @@ code `MVP_FEATURE_GATED` plus structured fields (`feature`, `prefix`,
 | `social/`              | Social / Collaboration           | MVP_MODE  |
 | `scheduled-ingestions/`| Scheduled Ingestions             | MVP_MODE  |
 | `scheduled-exports/`   | Scheduled Exports                | MVP_MODE  |
+| `developer/`           | Developer Portal                 | MVP_MODE  |
+| `dpia/`                | Data Protection Impact Assessments | MVP_MODE  |
+| `ropa/`                | Record of Processing Activities  | MVP_MODE  |
 
 ### Programmatic detection
 

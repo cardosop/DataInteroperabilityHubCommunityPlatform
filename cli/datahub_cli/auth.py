@@ -3,6 +3,10 @@ Authentication management for DataHub CLI.
 
 Handles API key and JWT token authentication.
 """
+import json
+import base64
+import time
+
 import requests
 import click
 from typing import Optional, Dict, Any
@@ -13,6 +17,51 @@ from .config import config
 
 class AuthManager:
     """Manages authentication for CLI"""
+
+    # ------------------------------------------------------------------
+    # Token introspection helpers
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def _is_token_expired(token: str, buffer_seconds: int = 30) -> bool:
+        """Return True if *token* is a JWT that has expired.
+
+        Decodes the ``exp`` claim from a base64url-encoded JWT without
+        verifying the signature.  This is a client-side freshness check,
+        NOT a security boundary — the server always re-validates tokens.
+
+        Non-JWT (opaque) tokens cannot be inspected client-side; they are
+        assumed valid and the server will reject them if they are not.
+
+        Args:
+            token: Raw JWT access token string.
+            buffer_seconds: Extra seconds to subtract from the expiry
+                            window (useful for pre-emptive refresh).
+        Returns:
+            True if the token is a JWT and has expired.  False for
+            opaque tokens (non-JWT), JWTs with no ``exp`` claim, or
+            unparseable payloads — in all of those cases the server is
+            the authoritative rejection point.
+        """
+        # Only inspect JWT-format tokens (header.payload.signature).
+        if "." not in token:
+            return False
+
+        try:
+            # JWT: header.payload.signature — we want the payload.
+            payload_b64 = token.split(".")[1]
+            # Add padding if needed (base64url → base64)
+            payload_b64 += "=" * (4 - len(payload_b64) % 4)
+            payload_bytes = base64.urlsafe_b64decode(payload_b64)
+            payload = json.loads(payload_bytes)
+        except (IndexError, ValueError, base64.binascii.Error, json.JSONDecodeError):
+            return False  # unparseable → cannot determine expiry, assume valid
+
+        exp = payload.get("exp")
+        if exp is None:
+            return False  # no expiry claim → cannot determine expiry, assume valid
+
+        return time.time() >= (exp - buffer_seconds)
 
     def __init__(self, config_instance=None):
         """
@@ -46,11 +95,15 @@ class AuthManager:
             headers['Authorization'] = f'Bearer {access_token}'
             return headers
 
-        # Fall back to API key if no access token (for automation/CI scenarios)
+        # Fall back to API key / JWT token from env vars (for automation/CI).
         api_key = self.config.get_api_key()
         if api_key and api_key.strip():
-            # Backend expects "ApiKey <key>" format, not "Bearer <key>"
-            headers['Authorization'] = f'ApiKey {api_key}'
+            # JWTs contain '.' separators and must be sent as Bearer tokens.
+            # Plain API keys (no dots) are sent as ApiKey tokens.
+            if "." in api_key:
+                headers["Authorization"] = f"Bearer {api_key}"
+            else:
+                headers["Authorization"] = f"ApiKey {api_key}"
             return headers
 
         return headers
@@ -160,18 +213,26 @@ class AuthManager:
         access_token = self.config.get_access_token()
         api_key = self.config.get_api_key()
 
-        # Check if API key is set (not None and not empty string)
+        # API key takes precedence and never expires
         if api_key and api_key.strip():
-            return True  # API key doesn't expire
+            return True
 
         if not access_token:
-            # Try to refresh
+            # No token at all — try refresh (might have a refresh_token)
             if self.refresh_access_token():
                 return True
             return False
 
-        # TODO: Check if access token is expired (would need to decode JWT)
-        # For now, assume it's valid if present
+        # Check if the access token is expired (client-side JWT expiry check).
+        # The 30 s default buffer avoids using a token that will expire during
+        # an in-flight request.
+        if self._is_token_expired(access_token):
+            if self.refresh_access_token():
+                return True
+            # Refresh failed — token is expired and can't be renewed.
+            # Don't clear the token here; the caller may want to retry.
+            return False
+
         return True
 
 

@@ -1,4 +1,6 @@
 """
+
+import uuid
 10.5.6: ODPS Export Performance Tests
 
 Tests ODPS export performance for different sizes:

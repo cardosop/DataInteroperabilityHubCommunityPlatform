@@ -12,8 +12,10 @@ from django.utils import timezone
 from drf_spectacular.utils import OpenApiResponse, extend_schema, inline_serializer
 from rest_framework import permissions, serializers, status, viewsets
 from rest_framework.decorators import action
+from rest_framework.exceptions import NotFound, ValidationError as DRFValidationError
 from rest_framework.filters import OrderingFilter
 from rest_framework.response import Response
+from rest_framework.throttling import ScopedRateThrottle
 
 from hub.apps.assets.models import Asset
 from hub.apps.assets.models import ComplianceStatus as AssetComplianceStatus
@@ -48,6 +50,15 @@ class ComplianceRunViewSet(viewsets.ModelViewSet):
     filter_backends = [OrderingFilter]
     ordering_fields = ["created_at", "updated_at", "status", "completed_at"]
     ordering = ["-created_at"]  # Default ordering
+
+    def _resolve_tenant(self):
+        """Return the tenant ORM row for the current request, or None."""
+        from hub.apps.tenants.models import Tenant
+
+        tenant_id = get_request_tenant_id(self.request)
+        if not tenant_id:
+            return None
+        return Tenant.objects.filter(id=tenant_id).first()
 
     def check_auditor_permissions(self, request, view_action):
         """Check if AUDITOR role can perform the action (read-only)"""
@@ -330,6 +341,53 @@ class ComplianceRunViewSet(viewsets.ModelViewSet):
         """Delete compliance run"""
         self.check_auditor_permissions(request, "destroy")
         return super().destroy(request, *args, **kwargs)
+
+    @action(detail=False, methods=["post"], url_path="warehouse-scan",
+            throttle_classes=[ScopedRateThrottle])
+    def warehouse_scan(self, request):
+        """Run compliance PII/retention checks in the customer's warehouse.
+
+        POST /api/v1/compliance/warehouse-scan/
+        """
+        from hub.apps.compliance.services import ComplianceService
+        from hub.apps.datasets.models import Dataset
+        from hub.apps.tenants.models import Tenant
+
+        tenant = self._resolve_tenant(request)
+        warehouse_config = request.data.get("warehouse_config", {})
+        dataset_id = request.data.get("dataset_id")
+        regulations = request.data.get("regulations")
+
+        if not dataset_id:
+            raise DRFValidationError({"dataset_id": "This field is required."})
+        if not warehouse_config:
+            raise DRFValidationError({"warehouse_config": "This field is required."})
+
+        try:
+            dataset = Dataset.objects.get(id=dataset_id, tenant_id=str(tenant.id))
+        except Dataset.DoesNotExist:
+            raise NotFound("Dataset not found or not in your tenant.")
+
+        if not getattr(tenant, "warehouse_compliance_enabled", False):
+            return Response(
+                {"error": "WAREHOUSE_COMPLIANCE_DISABLED",
+                 "message": "Warehouse-native compliance is not enabled."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        run = ComplianceService.scan_inmemory_warehouse(
+            dataset=dataset,
+            tenant=tenant,
+            warehouse_config=warehouse_config,
+            regulations=regulations,
+            user=request.user,
+        )
+        return Response({
+            "id": str(run.id),
+            "status": run.status,
+            "overall_status": run.overall_status,
+            "risk_level": run.risk_level,
+        }, status=status.HTTP_200_OK)
 
     @action(detail=True, methods=["post"], url_path="cancel")
     def cancel(self, request, id=None):
@@ -769,7 +827,10 @@ def execute_compliance_run(compliance_run_id: str) -> None:
             )
 
     except Exception as e:
-        _logger.error(
+        # Compliance-run failures are operational (S3 NoSuchKey, service
+        # timeout, network error) — not application bugs.  Log at WARNING
+        # so real server faults are not buried under routine infra noise.
+        _logger.warning(
             "Compliance run %s failed: %s",
             compliance_run_id,
             e,

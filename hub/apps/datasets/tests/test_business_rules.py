@@ -1350,20 +1350,15 @@ class DatasetsBusinessRulesVersioningTest(DatasetsTestBase):
 
     # ========== ERROR HANDLING ==========
 
-    def test_validate_error_handling_database_error(self):
-        """Test error handling when database operations fail"""
+    def test_validate_persisted_dataset(self):
+        """Test that validate handles persisted datasets without raising."""
         dataset = DatasetFactory.create_dataset(
             tenant=self.tenant, file=self.file, format="CSV", version=1
         )
 
-        # Should handle errors gracefully
-        try:
-            result = self.rules.validate(dataset, validation_type="structure")
-            # Should return result
-            self.assertIsNotNone(result)
-        except Exception:
-            # If raises exception, that's a problem
-            self.fail("validate should handle database errors gracefully")
+        result = self.rules.validate(dataset, validation_type="structure")
+        self.assertIsNotNone(result,
+            "validate on a persisted dataset must return a ValidationResult")
 
     def test_validate_error_handling_invalid_dataset(self):
         """Test error handling with invalid dataset"""
@@ -1371,56 +1366,34 @@ class DatasetsBusinessRulesVersioningTest(DatasetsTestBase):
 
         fake_dataset = Dataset(id=uuid.uuid4(), tenant=self.tenant)
 
-        # Should handle invalid dataset gracefully
-        try:
-            result = self.rules.validate(fake_dataset, validation_type="structure")
-            # If succeeds, should return result or handle gracefully
-            # Result can be None or a ValidationResult object
-            if result is not None:
-                self.assertIsInstance(result, ValidationResult)
-        except Exception:
-            # If fails, that's acceptable for invalid dataset
-            pass
+        # Non-persisted Dataset must return a result with errors (not crash)
+        result = self.rules.validate(fake_dataset, validation_type="structure")
+        self.assertIsNotNone(result,
+            "Validate on non-persisted dataset must return a ValidationResult")
 
     def test_validate_error_handling_none_dataset(self):
         """Test error handling with None dataset"""
-        # Should handle None dataset gracefully
-        try:
-            result = self.rules.validate(None, validation_type="structure")
-            # If succeeds, should return result or handle gracefully
-            # Result can be None or a ValidationResult object
-            if result is not None:
-                self.assertIsInstance(result, ValidationResult)
-        except (AttributeError, TypeError):
-            # If fails, that's acceptable for None dataset
-            pass
+        # Validate(None) must return a result without crashing
+        result = self.rules.validate(None, validation_type="structure")
+        self.assertIsNotNone(result,
+            "validate(None) must return a ValidationResult (with errors)")
 
-    def test_validate_structure_error_handling(self):
-        """Test error handling in structure validation"""
+    def test_validate_structure_with_persisted_dataset(self):
+        """Test that structure validation handles persisted datasets without raising."""
         dataset = DatasetFactory.create_dataset(
             tenant=self.tenant, file=self.file, format="CSV", version=1
         )
 
-        # Should handle errors gracefully (use public API: validate with validation_type)
-        try:
-            result = self.rules.validate(dataset=dataset, validation_type="structure")
-            # Should return result
-            self.assertIsNotNone(result)
-        except Exception:
-            # If raises exception, that's a problem
-            self.fail("validate_structure should handle errors gracefully")
+        result = self.rules.validate(dataset=dataset, validation_type="structure")
+        self.assertIsNotNone(result,
+            "validate_structure on a persisted dataset must return a ValidationResult")
 
-    def test_validate_schema_error_handling(self):
-        """Test error handling in schema validation"""
+    def test_validate_schema_with_persisted_dataset(self):
+        """Test that schema validation handles persisted datasets without raising."""
         dataset = DatasetFactory.create_dataset(
             tenant=self.tenant, file=self.file, format="CSV", version=1
         )
 
-        # Should handle errors gracefully (use public API: validate_dataset_schema)
-        try:
-            result = self.rules.validate_dataset_schema(dataset)
-            # Should return result
-            self.assertIsNotNone(result)
-        except Exception:
-            # If raises exception, that's a problem
-            self.fail("validate_schema should handle errors gracefully")
+        result = self.rules.validate_dataset_schema(dataset)
+        self.assertIsNotNone(result,
+            "validate_dataset_schema on a persisted dataset must return a ValidationResult")

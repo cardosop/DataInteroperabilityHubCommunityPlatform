@@ -165,9 +165,9 @@ def handle_service_exception(exception: Exception) -> Response:
     elif isinstance(exception, PermissionError):
         return api_error_response(
             message=str(exception),
-            status_code=status.HTTP_403_FORBIDDEN,
-            code="PERMISSION_DENIED",
-            details={},
+            status_code=getattr(exception, "http_status", status.HTTP_403_FORBIDDEN),
+            code=getattr(exception, "code", "PERMISSION_DENIED"),
+            details=getattr(exception, "details", {}),
         )
     else:
         # Unknown exception - log and return generic error

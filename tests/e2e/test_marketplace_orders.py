@@ -43,8 +43,8 @@ class MarketplaceOrdersE2ETest(E2ETestBase):
         # Create provider tenant and consumer tenant (consumer needs subscription for order creation)
         self.provider_tenant = self.tenant
         self.consumer_tenant = Tenant.objects.create(
-            name='Consumer Tenant',
-            slug='consumer-tenant',
+            name=f"Consumer Tenant {uuid.uuid4().hex[:8]}",
+            slug=f"consumer-tenant-{uuid.uuid4().hex[:8]}",
             kyc_status=KYCStatus.VERIFIED
         )
         from hub.apps.testing.billing_support import ensure_e2e_tenant_ready

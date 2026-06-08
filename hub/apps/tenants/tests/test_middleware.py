@@ -245,3 +245,88 @@ class TenantSuspensionMiddlewareTest(TestCase):
             self.tenant,
         )
 
+
+class TenantSuspensionMiddlewareExtendedTests(TestCase):
+    """Additional middleware coverage: ALLOWED_PATHS, cache paths,
+    exception handling, and edge cases."""
+
+    def setUp(self):
+        super().setUp()
+        self.factory = RequestFactory()
+        self.middleware = TenantSuspensionMiddleware(lambda r: None)
+        uid = uuid.uuid4().hex[:8]
+        self.tenant = Tenant.objects.create(
+            name=f"Ext-Tenant {uid}",
+            slug=f"ext-tenant-{uid}",
+            status=TenantStatus.ACTIVE,
+        )
+
+    # ── ALLOWED_PATHS ────────────────────────────────────────────────
+
+    def test_platform_path_bypasses_middleware(self):
+        """Requests to /api/v1/platform/ are allowed through."""
+        request = self.factory.get("/api/v1/platform/some-endpoint/")
+        response = self.middleware.process_request(request)
+        self.assertIsNone(response)
+
+    def test_onboarding_path_bypasses_middleware(self):
+        """Requests to /api/v1/tenants/onboarding/ are allowed through."""
+        request = self.factory.post("/api/v1/tenants/onboarding/")
+        response = self.middleware.process_request(request)
+        self.assertIsNone(response)
+
+    # ── Tenant-not-found ──────────────────────────────────────────────
+
+    def test_nonexistent_tenant_returns_none(self):
+        """When the tenant ID is set but doesn't exist, middleware returns None."""
+        request = self.factory.post("/api/v1/assets/")
+        request.tenant_id = "00000000-0000-0000-0000-000000000000"
+        response = self.middleware.process_request(request)
+        # Middleware can't resolve the tenant → falls through to next
+        # middleware.  The view should return 404/403 on its own.
+        self.assertIsNone(response)
+
+    # ── Subscription cache hit ───────────────────────────────────────
+
+    def test_subscription_cache_hit_blocked_status(self):
+        """Cache hit with PAST_DUE status returns 403 without DB query."""
+        from hub.apps.testing.billing_support import (
+            ensure_tenant_has_active_subscription,
+        )
+        ensure_tenant_has_active_subscription(self.tenant)
+        # Prime the cache with a blocked status.
+        cache_key = f"tenant_sub_check:{self.tenant.id}"
+        from django.core.cache import cache as _cache
+        _cache.set(cache_key, "PAST_DUE", 30)
+
+        request = self.factory.post("/api/v1/assets/")
+        request.tenant_id = str(self.tenant.id)
+        response = self.middleware.process_request(request)
+        self.assertIsNotNone(response)
+        self.assertEqual(response.status_code, 403)
+
+    def test_subscription_cache_hit_active_allows_write(self):
+        """Cache hit with ACTIVE status allows the write."""
+        from hub.apps.testing.billing_support import (
+            ensure_tenant_has_active_subscription,
+        )
+        ensure_tenant_has_active_subscription(self.tenant)
+        cache_key = f"tenant_sub_check:{self.tenant.id}"
+        from django.core.cache import cache as _cache
+        _cache.set(cache_key, "ACTIVE", 30)
+
+        request = self.factory.post("/api/v1/assets/")
+        request.tenant_id = str(self.tenant.id)
+        response = self.middleware.process_request(request)
+        self.assertIsNone(response)
+
+    # ── Exception handling ────────────────────────────────────────────
+
+    def test_read_requests_allowed_without_subscription(self):
+        """GET requests pass through even when no subscription exists
+        (subscription check only gates write methods)."""
+        request = self.factory.get("/api/v1/assets/")
+        request.tenant_id = str(self.tenant.id)
+        response = self.middleware.process_request(request)
+        self.assertIsNone(response)
+

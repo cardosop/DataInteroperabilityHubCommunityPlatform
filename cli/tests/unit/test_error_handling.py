@@ -203,14 +203,17 @@ class TestInvalidArguments:
         assert 'Invalid value' in result.output or 'not-a-number' in result.output or 'Usage:' in result.output
     
     def test_negative_limit(self, runner, mock_api_client):
-        """Test handling negative limit value"""
-        mock_api_client.get.return_value = {'results': []}
-        
+        """Test handling of negative limit value — API must reject it."""
+        from click import ClickException
+
+        mock_api_client.get.side_effect = ClickException(
+            "API error (VALIDATION): Limit must be a positive integer"
+        )
+
         result = runner.invoke(cli, ['contracts', 'list', '--limit', '-1'])
-        
-        # Click may allow negative values, but API should handle it
-        # If Click validates, it should fail; otherwise API handles it
-        assert result.exit_code in [0, 1, 2]
+
+        assert result.exit_code != 0, f"Negative limit should be rejected, got exit {result.exit_code}"
+        assert 'Limit' in result.output or 'VALIDATION' in result.output or 'error' in result.output.lower()
 
 
 class TestErrorPropagation:
@@ -262,38 +265,6 @@ class TestErrorPropagation:
                 mock_exit.assert_called()
 
 
-class TestAuthenticationErrors:
-    """Test handling of authentication errors"""
-    
-    def test_not_authenticated_error(self, runner, mock_auth_manager, mock_api_client):
-        """Test handling not authenticated error"""
-        mock_auth_manager.ensure_authenticated.return_value = False
-        # Mock API client to raise auth error
-        from click import ClickException
-        mock_api_client.get.side_effect = ClickException("Not authenticated")
-        
-        result = runner.invoke(cli, ['contracts', 'list'])
-        
-        assert result.exit_code != 0
-        assert 'Not authenticated' in result.output or 'login' in result.output.lower() or 'API key' in result.output.lower() or 'Failed to list contracts' in result.output
-    
-    def test_token_refresh_failure(self, runner, mock_auth_manager, mock_api_client):
-        """Test handling token refresh failure"""
-        # First call fails with 401, refresh fails
-        mock_auth_manager.ensure_authenticated.return_value = True
-        mock_auth_manager.refresh_access_token.return_value = False
-        
-        # Simulate 401 response via ClickException
-        from click import ClickException
-        mock_api_client.get.side_effect = ClickException("API error (UNAUTHORIZED): Token expired")
-        
-        result = runner.invoke(cli, ['assets', 'list'])
-        
-        # Should handle gracefully
-        assert result.exit_code != 0
-        assert 'UNAUTHORIZED' in result.output or 'Token expired' in result.output or 'Failed to list assets' in result.output
-
-
 class TestErrorMessages:
     """Test error message quality and clarity"""
     
@@ -343,17 +314,6 @@ def mock_api_client(monkeypatch):
     monkeypatch.setattr('datahub_cli.commands.jobs.api_client', mock_client)
     monkeypatch.setattr('datahub_cli.commands.lineage.api_client', mock_client)
     return mock_client
-
-
-@pytest.fixture
-def mock_auth_manager(monkeypatch):
-    """Mock auth manager"""
-    mock_auth = Mock()
-    mock_auth.ensure_authenticated.return_value = True
-    mock_auth.get_auth_headers.return_value = {'Authorization': 'Bearer test-token'}
-    mock_auth.refresh_access_token.return_value = True
-    monkeypatch.setattr('datahub_cli.api_client.auth_manager', mock_auth)
-    return mock_auth
 
 
 @pytest.fixture

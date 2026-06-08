@@ -29,6 +29,7 @@ from hub.apps.files.models import File, FileStatus
 from hub.apps.files.storage import S3StorageClient
 from hub.apps.files.validators import validate_file_size, validate_file_type
 from hub.apps.testing.billing_support import ensure_tenant_has_active_subscription
+from hub.apps.testing.role_support import ensure_user_has_data_provider_role
 from tests.factories import TenantFactory
 
 User = get_user_model()
@@ -78,6 +79,7 @@ class FileUploadTest(TransactionTestCase):
         )
         ensure_tenant_has_active_subscription(self.tenant)
         self.client.force_authenticate(user=self.user)
+        ensure_user_has_data_provider_role(self.user)
         
         # Initialize storage client for real operations
         self.storage_client = S3StorageClient()
@@ -552,6 +554,7 @@ class FileDownloadTest(TransactionTestCase):
             tenant=self.tenant
         )
         self.client.force_authenticate(user=self.user)
+        ensure_user_has_data_provider_role(self.user)
         
         # Create a test file for download tests
         self.test_file_content = b"Test file content for download\n" * 100
@@ -749,6 +752,7 @@ class FileStorageTest(TransactionTestCase):
             tenant=self.tenant
         )
         self.client.force_authenticate(user=self.user)
+        ensure_user_has_data_provider_role(self.user)
         
         self.storage_client = S3StorageClient()
         try:
@@ -917,6 +921,7 @@ class FileValidationTest(TransactionTestCase):
             tenant=self.tenant
         )
         self.client.force_authenticate(user=self.user)
+        ensure_user_has_data_provider_role(self.user)
 
     def test_file_validation_format_csv(self):
         """Test file format validation - CSV"""
@@ -1041,6 +1046,7 @@ class FilesODPSIntegrationTest(TransactionTestCase):
                 )
                 ensure_tenant_has_active_subscription(self.tenant)
                 self.client.force_authenticate(user=self.user)
+                ensure_user_has_data_provider_role(self.user)
                 
                 # Create test asset for ODPS integration
                 self.asset = Asset.objects.create(

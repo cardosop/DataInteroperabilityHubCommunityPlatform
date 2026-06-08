@@ -123,7 +123,7 @@ class FileViewsEventPublishingE2ETest(FilesAPITestBase):
         self.assertIsNotNone(updated_event)
         self.assertEqual(updated_event.data["file_id"], file_id)
         self.assertIn("status", updated_event.data["changes"])
-        self.assertEqual(updated_event.data["new_status"], FileStatus.COMPLETED.value)
+        self.assertEqual(updated_event.data["new_status"], FileStatus.ACTIVE.value)
 
         # Step 4: Get download URL (should publish file.downloaded)
         downloaded_count_before = Event.objects.filter(event_type="file.downloaded").count()

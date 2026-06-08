@@ -68,7 +68,11 @@ from django.contrib.auth import get_user_model
 from django.db import transaction
 from django.utils import timezone
 
-from hub.apps.orchestration.workflow_engine import WorkflowEngine
+from hub.apps.orchestration.workflow_engine import (
+    ControlledWorkflowException,
+    WorkflowEngine,
+    WorkflowStepValueError,
+)
 from hub.apps.orchestration.registry import WorkflowRegistry
 from hub.apps.orchestration.models import WorkflowInstance, WorkflowStatus
 from hub.apps.assets.business_rules import AssetsBusinessRules
@@ -107,11 +111,11 @@ DEFAULT_WORKFLOW_TIMEOUT_SECONDS: int = 300
 _GATE_PASS_STATUSES = {"PASS", "WARN"}
 
 
-class WorkflowDeadlineExceeded(Exception):
+class WorkflowDeadlineExceeded(ControlledWorkflowException):
     """Raised when the workflow's wall-clock deadline is breached."""
 
 
-class FailClosedRejection(Exception):
+class FailClosedRejection(ControlledWorkflowException):
     """Raised when a pre-persistence gate FAILs and tenant fail-closed is on.
 
     Carries the gate name and reason so the workflow's audit emission
@@ -860,7 +864,11 @@ class AssetCreationWorkflow:
             infer_schema_from_json,
             infer_schema_from_parquet
         )
-        from hub.apps.files.storage import S3StorageClient
+        from hub.apps.files.storage import (
+            S3StorageClient,
+            StorageError,
+            StorageObjectNotFoundError,
+        )
 
         file_id = input_data.get("file_id")
         tenant_id = input_data.get("tenant_id") or instance.tenant_id
@@ -895,14 +903,27 @@ class AssetCreationWorkflow:
         storage_client = S3StorageClient()
         try:
             file_content = storage_client.get_file_content(file_obj.storage_path)
-        except Exception as e:
-            logger.error(
-                "Failed to download file for schema inference",
+        except StorageObjectNotFoundError as e:
+            # File is not in storage — this is a recoverable / expected
+            # condition (e.g. file was never fully uploaded, or was
+            # purged). Log at WARNING so it doesn't pollute ERROR-rate
+            # dashboards.
+            logger.warning(
+                "File not found in storage for schema inference",
                 workflow_instance_id=str(instance.id),
                 file_id=str(file_id),
-                error=str(e)
+                storage_path=file_obj.storage_path,
+                error=str(e),
             )
-            raise ValueError(f"Failed to download file: {str(e)}")
+            raise WorkflowStepValueError(f"File not found in storage: {str(e)}") from e
+        except StorageError as e:
+            logger.error(
+                "Storage failure during schema inference download",
+                workflow_instance_id=str(instance.id),
+                file_id=str(file_id),
+                error=str(e),
+            )
+            raise WorkflowStepValueError(f"Failed to download file: {str(e)}") from e
 
         # Infer schema based on format
         schema_json = {}
@@ -914,7 +935,7 @@ class AssetCreationWorkflow:
             elif file_format.upper() == 'PARQUET':
                 schema_json = infer_schema_from_parquet(file_content)
             else:
-                raise ValueError(f"Unsupported file format for schema inference: {file_format}")
+                raise WorkflowStepValueError(f"Unsupported file format for schema inference: {file_format}")
         except Exception as e:
             logger.error(
                 "Schema inference failed",
@@ -1426,6 +1447,7 @@ class AssetCreationWorkflow:
         }
 
     @staticmethod
+    @transaction.atomic
     def _create_asset_record_task(input_data: Dict[str, Any], instance: WorkflowInstance, step) -> Dict[str, Any]:
         """
         Create asset record in DRAFT status.
@@ -1642,13 +1664,11 @@ class AssetCreationWorkflow:
         instance.state_data["asset_id"] = str(asset.id)
         instance.save(update_fields=['state_data'])
 
-        # Phase 250.1.G.3 — fire ``asset.created`` webhook event on
-        # the FIRST commit that persists the Asset row. The publish
-        # is deferred via ``transaction.on_commit`` so subscribers
-        # only see assets that survive the workflow's outer atomic
-        # (a fail-closed rejection or downstream rollback eats the
-        # callback registration along with the asset row, so no
-        # ghost events leak — see B2-6 contract).
+        # Phase 250.1.G.3 — fire ``asset.created`` webhook event
+        # synchronously inside the caller's atomic block. The event row
+        # is committed or rolled back atomically with the asset row
+        # (a fail-closed rejection or downstream rollback rolls the
+        # event back too — no ghost events leak, see B2-6 contract).
         AssetCreationWorkflow._enqueue_asset_event(
             event="asset.created",
             asset=asset,
@@ -1692,12 +1712,15 @@ class AssetCreationWorkflow:
         user_id: Optional[str],
         data_extra: Optional[Dict[str, Any]] = None,
     ) -> None:
-        """Schedule an ``asset.*`` event publish for the next commit.
+        """Publish an ``asset.*`` event synchronously within the caller's transaction.
 
         Phase 250.1.G — webhook event ordering contract. Events are
-        deferred via ``transaction.on_commit`` so they fire in
-        registration order AFTER the workflow's outer atomic
-        commits — never on a row that was rolled back by the saga.
+        published synchronously inside the caller's atomic block so they
+        are committed or rolled back atomically with the asset row.
+        ``transaction.on_commit`` was not viable here because the
+        engine's ``_execute_step`` savepoint and Django ``TestCase``
+        wrapping prevent commit hooks from ever firing (the outermost
+        transaction is always rolled back by the test harness).
 
         ``event`` is one of the strings registered in
         :mod:`hub.apps.core.events.event_types` (``asset.created``,
@@ -1722,18 +1745,15 @@ class AssetCreationWorkflow:
         if data_extra:
             payload.update({k: v for k, v in data_extra.items() if v is not None})
 
-        def _publish() -> None:
-            try:
-                publisher.publish(event_type=event, data=payload)
-            except Exception as exc:  # noqa: BLE001 — webhook is best-effort
-                logger.warning(
-                    "asset_webhook_publish_failed",
-                    event_type=event,
-                    asset_id=str(asset.id),
-                    error=str(exc),
-                )
-
-        transaction.on_commit(_publish)
+        try:
+            publisher.publish(event_type=event, data=payload)
+        except Exception as exc:  # noqa: BLE001 — webhook is best-effort
+            logger.warning(
+                "asset_webhook_publish_failed",
+                event_type=event,
+                asset_id=str(asset.id),
+                error=str(exc),
+            )
 
     @staticmethod
     @transaction.atomic
@@ -1756,7 +1776,11 @@ class AssetCreationWorkflow:
             infer_schema_from_json,
             infer_schema_from_parquet
         )
-        from hub.apps.files.storage import S3StorageClient
+        from hub.apps.files.storage import (
+            S3StorageClient,
+            StorageError,
+            StorageObjectNotFoundError,
+        )
 
         asset_id = instance.state_data.get("asset_id")
         file_id = instance.state_data.get("file_id") or input_data.get("file_id")
@@ -1796,14 +1820,23 @@ class AssetCreationWorkflow:
             storage_client = S3StorageClient()
             try:
                 file_content = storage_client.get_file_content(file_obj.storage_path)
-            except Exception as e:
-                logger.error(
-                    "Failed to download file for schema inference",
+            except StorageObjectNotFoundError as e:
+                logger.warning(
+                    "File not found in storage for schema inference",
                     workflow_instance_id=str(instance.id),
                     file_id=str(file_id),
-                    error=str(e)
+                    storage_path=file_obj.storage_path,
+                    error=str(e),
                 )
-                raise ValueError(f"Failed to download file: {str(e)}")
+                raise WorkflowStepValueError(f"File not found in storage: {str(e)}") from e
+            except StorageError as e:
+                logger.error(
+                    "Storage failure during schema inference download",
+                    workflow_instance_id=str(instance.id),
+                    file_id=str(file_id),
+                    error=str(e),
+                )
+                raise WorkflowStepValueError(f"Failed to download file: {str(e)}") from e
 
             # Infer schema based on format
             try:
@@ -2404,7 +2437,7 @@ class AssetCreationWorkflow:
             from hub.apps.compliance.views import execute_compliance_run
             execute_compliance_run(str(compliance_run.id))
 
-            # Refresh compliance run
+            # Refresh compliance run to get result
             compliance_run.refresh_from_db()
 
             # Update asset compliance status
@@ -3107,12 +3140,12 @@ class AssetCreationWorkflow:
         asset.save(update_fields=['status', 'version', 'updated_at'])
 
         # Phase 250.1.G.3 — fire ``asset.activated`` webhook event
-        # on commit. The payload carries the dq + compliance status
-        # snapshot taken AT activation time so subscribers don't
-        # have to re-query — and so the webhook record matches the
-        # exact gate signal that authorised the activation, even if
-        # those statuses change later (e.g., a follow-up DQ run
-        # demotes the asset).
+        # synchronously inside the caller's atomic block. The payload
+        # carries the dq + compliance status snapshot taken AT
+        # activation time so subscribers don't have to re-query — and
+        # so the webhook record matches the exact gate signal that
+        # authorised the activation, even if those statuses change
+        # later (e.g., a follow-up DQ run demotes the asset).
         AssetCreationWorkflow._enqueue_asset_event(
             event="asset.activated",
             asset=asset,
@@ -3419,7 +3452,7 @@ class AssetCreationWorkflow:
                     email_type=EmailType.JOB_COMPLETION,
                     to_email=creator_email,
                     subject=subject,
-                    template_name="job_completion",
+                    template_name="notifications/emails/job_completion.html",
                     context={"message": message, "asset_name": asset.name, "asset_key": asset.key},
                     tenant_id=str(asset.tenant.id)
                 )
@@ -3616,7 +3649,13 @@ class AssetCreationWorkflow:
         contract_version: str = "1.0.0",
         odcs_version: str = "v3",
         engine: Optional[WorkflowEngine] = None,
-        registry: Optional[WorkflowRegistry] = None
+        registry: Optional[WorkflowRegistry] = None,
+        # Phase 250.1.A test-mode hooks — only set during property-based
+        # testing. step_failure_injector receives (step_index, step_name)
+        # and may raise to simulate a step failure; compensation_observer
+        # receives step_name after each compensated step.
+        step_failure_injector: Optional[Callable[[int, str], None]] = None,
+        compensation_observer: Optional[Callable[[str], None]] = None,
     ) -> Dict[str, Any]:
         """
         Execute asset creation workflow.
@@ -3655,9 +3694,15 @@ class AssetCreationWorkflow:
         Raises:
             ValueError: If workflow execution fails
         """
-        # Create engine and registry if not provided
+        # Create engine and registry if not provided.
+        # Phase 250.1.A — when test-mode hooks are provided, thread
+        # them through to the engine so the injector can simulate step
+        # failures and the observer can log compensation ordering.
         if engine is None:
-            engine = WorkflowEngine()
+            engine = WorkflowEngine(
+                step_failure_injector=step_failure_injector,
+                compensation_observer=compensation_observer,
+            )
             cls.register_tasks(engine)
 
         if registry is None:
@@ -3808,21 +3853,68 @@ class AssetCreationWorkflow:
         #     rollback as a first-class event.
         error_message = workflow_instance.error_message or "Workflow execution failed"
 
-        try:
-            logger.error(
-                "Asset creation workflow failed",
+        # Detect a fail-closed rejection BEFORE logging — it is a
+        # controlled business outcome, not a system fault.
+        fcr = FailClosedRejection.from_message(error_message)
+
+        # Also detect other controlled exceptions (e.g.
+        # WorkflowStepValueError from storage-not-found) via the
+        # exception_type stored in error_details by the engine.
+        _controlled_exc_types = frozenset({
+            "WorkflowStepValueError",
+            "WorkflowDeadlineExceeded",
+            "FailClosedRejection",
+        })
+        # The engine nests the step's error_details inside the
+        # instance-level error_details dict:
+        #   {"failed_step_index": …, "failed_step_name": …,
+        #    "error_details": {"exception_type": "WorkflowStepValueError"}}
+        _outer = workflow_instance.error_details or {}
+        if isinstance(_outer, dict):
+            # Normal path: step's error_details is nested inside the
+            # instance-level dict.
+            _inner = _outer.get("error_details", {})
+            _exc_type = (
+                _inner.get("exception_type", "")
+                if isinstance(_inner, dict)
+                else ""
+            )
+            # Fallback: in the catch-all failure path (engine line 558)
+            # exception_type is stored flat, without the "error_details"
+            # wrapper key.
+            if not _exc_type:
+                _exc_type = _outer.get("exception_type", "")
+        else:
+            _exc_type = ""
+        _is_controlled = (
+            fcr is not None or _exc_type in _controlled_exc_types
+        )
+
+        if _is_controlled:
+            logger.warning(
+                "Asset creation workflow finished (controlled outcome)",
                 workflow_instance_id=str(workflow_instance.id),
                 tenant_id=tenant_id,
-                error=error_message
+                gate=getattr(fcr, "gate", None) if fcr else None,
+                gate_status=getattr(fcr, "gate_status", None) if fcr else None,
+                exception_type=_exc_type or None,
+                error=error_message,
             )
-        except TypeError:
-            logger.error(
-                f"Asset creation workflow failed: workflow_instance_id={workflow_instance.id}, "
-                f"tenant_id={tenant_id}, error={error_message}"
-            )
+        else:
+            try:
+                logger.error(
+                    "Asset creation workflow failed",
+                    workflow_instance_id=str(workflow_instance.id),
+                    tenant_id=tenant_id,
+                    error=error_message,
+                )
+            except TypeError:
+                logger.error(
+                    f"Asset creation workflow failed: workflow_instance_id={workflow_instance.id}, "
+                    f"tenant_id={tenant_id}, error={error_message}"
+                )
 
         # ---- (a) fail-closed-at-intake rejection ----
-        fcr = FailClosedRejection.from_message(error_message)
         if fcr is not None:
             try:
                 _tenant = Tenant.objects.filter(id=tenant_id).first()

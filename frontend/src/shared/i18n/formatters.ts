@@ -90,3 +90,43 @@ export function formatNumber(
     return new Intl.NumberFormat(FALLBACK_LOCALE, options).format(value);
   }
 }
+
+/**
+ * Locale-aware currency formatting.
+ *
+ * Returns a formatted currency string (e.g. "$1,234.56") using the
+ * user's locale. When `currency` is omitted it defaults to "USD".
+ */
+export function formatCurrency(amount: number, currency: string = 'USD', locale?: string): string {
+  if (!Number.isFinite(amount)) return String(amount);
+  try {
+    return new Intl.NumberFormat(resolveLocale(locale), {
+      style: 'currency',
+      currency,
+    }).format(amount);
+  } catch {
+    return new Intl.NumberFormat(FALLBACK_LOCALE, {
+      style: 'currency',
+      currency,
+    }).format(amount);
+  }
+}
+
+/**
+ * Locale-aware date formatting. Returns a localized date string
+ * (long month + numeric day + numeric year by default, e.g.
+ * "June 4, 2026" for en-US).
+ */
+export function formatDate(date: string | Date, locale?: string): string {
+  const d = date instanceof Date ? date : new Date(date);
+  if (Number.isNaN(d.getTime())) return String(date);
+  try {
+    return new Intl.DateTimeFormat(resolveLocale(locale), {
+      dateStyle: 'long',
+    }).format(d);
+  } catch {
+    return new Intl.DateTimeFormat(FALLBACK_LOCALE, {
+      dateStyle: 'long',
+    }).format(d);
+  }
+}

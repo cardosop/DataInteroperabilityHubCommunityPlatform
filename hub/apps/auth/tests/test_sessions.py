@@ -245,12 +245,6 @@ class TestRevokeSession:
         resp = client.post(f"/api/v1/auth/sessions/{sid}/revoke/")
         assert resp.status_code == status.HTTP_404_NOT_FOUND
 
-    def test_database_error_handling(self):
-        client, _, user, _ = _make_test_data()
-        client.force_authenticate(user=user)
-        sid = str(uuid.uuid4())
-        resp = client.post(f"/api/v1/auth/sessions/{sid}/revoke/")
-        assert resp.status_code == status.HTTP_404_NOT_FOUND
 
 
 # ========== END ALL OTHER SESSIONS (Phase 277.B.068) ==========

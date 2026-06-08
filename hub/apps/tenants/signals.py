@@ -4,18 +4,37 @@ Tenant Signals
 Handles post-creation tasks like default role creation and KYC status audit (feat1 2.3).
 """
 import logging
+import os
+import sys
 import threading
 
 from django.db import transaction
-from django.db.models.signals import post_save, pre_save
+from django.db.models.signals import post_save, pre_delete, pre_save
 from django.dispatch import receiver
 
-from .models import Tenant
+from .models import Tenant, TenantPlan, TierProfile
 
 logger = logging.getLogger(__name__)
 
 # Thread-safe storage for previous kyc_status per tenant pk (feat1 2.3.2)
 _thread_local = threading.local()
+
+
+# ── Phase 285.13.8 — Public pricing cache invalidation ─────────────
+
+
+@receiver(post_save, sender=TenantPlan)
+def invalidate_public_pricing_cache_on_plan_save(sender, instance, **kwargs):
+    """Invalidate ``public_pricing:v1`` when a TenantPlan is saved."""
+    from django.core.cache import cache
+    cache.delete("public_pricing:v1")
+
+
+@receiver(post_save, sender=TierProfile)
+def invalidate_public_pricing_cache_on_tier_profile_save(sender, instance, **kwargs):
+    """Invalidate ``public_pricing:v1`` when a TierProfile is saved."""
+    from django.core.cache import cache
+    cache.delete("public_pricing:v1")
 
 
 @receiver(post_save, sender=Tenant)
@@ -538,7 +557,20 @@ def _register_onboarding_signal_handlers():
     keeps the cross-app references local — we don't add a
     top-level ``from hub.apps.users.models import UserRole`` which
     would create a hard import-time dependency on the users app.
+
+    In test environments, signal registration failures are re-raised
+    so that broken wiring is caught early rather than silently
+    degrading (onboarding completion would never fire).  In
+    production, failures are logged but do not crash the process —
+    the tenant suspender / admin dashboard provide fallback
+    visibility into stuck onboarding states.
     """
+    _in_test = bool(
+        os.environ.get("PYTEST_CURRENT_TEST")
+        or "pytest" in sys.modules
+        or any("manage.py test" in a for a in sys.argv)
+    )
+
     try:
         from hub.apps.users.models import UserRole
 
@@ -547,10 +579,18 @@ def _register_onboarding_signal_handlers():
             sender=UserRole,
             dispatch_uid="onboarding_check_user_role",
         )
+    except ImportError:
+        logger.exception(
+            "onboarding_user_role_signal_register_failed"
+        )
+        if _in_test:
+            raise
     except Exception:
         logger.exception(
             "onboarding_user_role_signal_register_failed"
         )
+        if _in_test:
+            raise
 
     try:
         from hub.apps.billing.models import Subscription
@@ -560,10 +600,54 @@ def _register_onboarding_signal_handlers():
             sender=Subscription,
             dispatch_uid="onboarding_check_subscription",
         )
+    except ImportError:
+        logger.exception(
+            "onboarding_subscription_signal_register_failed"
+        )
+        if _in_test:
+            raise
     except Exception:
         logger.exception(
             "onboarding_subscription_signal_register_failed"
         )
+        if _in_test:
+            raise
+
+
+# ── Phase 285.13 — per-file offboarding audit on hard delete ──────
+
+
+@receiver(pre_delete, sender=Tenant, dispatch_uid="emit_file_purge_audit_on_tenant_delete")
+def _emit_file_purge_audit_on_tenant_delete(sender, instance, **kwargs):
+    """Emit ``FILE_TENANT_OFFBOARD_PURGE_SCHEDULED`` per file before cascade delete."""
+    from hub.apps.audit.event_types import FILE_TENANT_OFFBOARD_PURGE_SCHEDULED
+    from hub.apps.audit.utils import create_audit_event
+    from hub.apps.files.models import File
+
+    tid = instance.pk
+    if tid is None:
+        return
+    tid_str = str(tid)
+    for f in File.objects.filter(tenant_id=tid):
+        try:
+            create_audit_event(
+                resource_type="FILE",
+                action=FILE_TENANT_OFFBOARD_PURGE_SCHEDULED,
+                actor_user=None,
+                tenant=instance,
+                resource_id=str(f.id),
+                details={
+                    "tenant_id": tid_str,
+                    "file_id": str(f.id),
+                    "name": f.name,
+                    "size": f.size if f.size else 0,
+                    "content_sha256": getattr(f, "content_sha256", "") or "",
+                    "storage_path": getattr(f, "storage_path", "") or "",
+                    "reason": "tenant_hard_delete",
+                },
+            )
+        except Exception:
+            logger.exception("file_purge_audit_event_create_failed")
 
 
 # Connect on module import — the tenants AppConfig already imports

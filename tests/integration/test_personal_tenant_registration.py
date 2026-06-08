@@ -153,7 +153,7 @@ class PersonalTenantRegistrationIntegrationTest(TestCase):
             )
 
             other_tenant = Tenant.objects.create(
-                name="Other Tenant",
+                name=f"Other Tenant {uuid.uuid4().hex[:8]}",
                 slug=f"other-{uuid.uuid4().hex[:8]}",
                 status="ACTIVE",
                 kyc_status="UNVERIFIED",
@@ -179,7 +179,7 @@ class PersonalTenantRegistrationIntegrationTest(TestCase):
     def test_register_with_tenant_id_still_works(self):
         """Register with tenant_id provided: user associated with that tenant (unchanged)."""
         other_tenant = Tenant.objects.create(
-            name="Provided Tenant",
+            name=f"Provided Tenant {uuid.uuid4().hex[:8]}",
             slug=f"provided-{uuid.uuid4().hex[:8]}",
             status="ACTIVE",
             kyc_status="UNVERIFIED",

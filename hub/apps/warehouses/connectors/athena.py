@@ -12,7 +12,7 @@ import logging
 import time
 from typing import Any, Dict, List, Optional
 
-from hub.apps.warehouses.connectors import (
+from hub.apps.warehouses.base import (
     QueryResult,
     SchemaColumn,
     WarehouseConnector,
@@ -68,6 +68,8 @@ class AthenaConnector(WarehouseConnector):
             self._glue_client = boto3.client(
                 "glue",
                 region_name=region,
+                aws_access_key_id=self._config.get("aws_access_key_id"),
+                aws_secret_access_key=self._config.get("aws_secret_access_key"),
             )
             self._connected = True
 
@@ -106,11 +108,15 @@ class AthenaConnector(WarehouseConnector):
                 sql = sql.replace(f":{k}", f"'{safe_val}'")
 
         started = time.monotonic()
-        response = self._client.start_query_execution(
-            QueryString=f"{sql} LIMIT {limit}" if limit and "LIMIT" not in sql.upper() else sql,
-            QueryExecutionContext={"Database": database},
-            WorkGroup=workgroup,
-        )
+        start_kwargs = {
+            "QueryString": f"{sql} LIMIT {limit}" if limit and "LIMIT" not in sql.upper() else sql,
+            "QueryExecutionContext": {"Database": database},
+            "WorkGroup": workgroup,
+        }
+        output_location = self._config.get("output_location", "")
+        if output_location:
+            start_kwargs["ResultConfiguration"] = {"OutputLocation": output_location}
+        response = self._client.start_query_execution(**start_kwargs)
         query_id = response["QueryExecutionId"]
 
         # ── Async result-set polling (canary for ABC fitness) ────────

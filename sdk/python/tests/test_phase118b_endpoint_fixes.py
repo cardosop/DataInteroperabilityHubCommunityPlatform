@@ -135,9 +135,12 @@ class TestContractsListSpecVersion:
 
         await api.list(spec_version="4.1")
 
-        call_args = client.get.call_args
-        params = call_args[1].get("params") or call_args[0][1] if len(call_args[0]) > 1 else call_args[1].get("params", {})
-        assert params.get("spec_version") == "4.1"
+        client.get.assert_called_once()
+        _, kwargs = client.get.call_args
+        params = kwargs["params"]
+        assert params["spec_version"] == "4.1"
+        assert params["page"] == 1
+        assert params["page_size"] == 50
 
 
 # ---------------------------------------------------------------------------
@@ -422,11 +425,9 @@ class TestVersioningEndpoints:
 
         await api.compare_versions("ds-1", "v1-uuid", "v2-uuid")
 
-        call_args = client.get.call_args
-        params = call_args[1].get("params") or call_args[0][1] if len(call_args[0]) > 1 else call_args[1].get("params", {})
-        # Backend expects 'version1' and 'version2', NOT 'version1_id' and 'version2_id'
-        assert "version1" in params, f"Expected 'version1' in params, got: {params}"
-        assert "version2" in params, f"Expected 'version2' in params, got: {params}"
+        client.get.assert_called_once()
+        _, kwargs = client.get.call_args
+        params = kwargs["params"]
         assert params["version1"] == "v1-uuid"
         assert params["version2"] == "v2-uuid"
 

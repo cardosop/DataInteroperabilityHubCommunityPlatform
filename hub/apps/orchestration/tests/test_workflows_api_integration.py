@@ -26,13 +26,23 @@ def _register_version_creation_workflow(
     registry: WorkflowRegistry,
 ) -> WorkflowDefinition:
     """Register version_creation so definitions exist in DB (real registry)."""
+    from hub.apps.orchestration.registry import reset_workflow_definition_cache
     from hub.apps.orchestration.workflows.version_creation import (
         VersionCreationWorkflow,
     )
 
+    # Clear any stale process-cache entry left behind by a previous
+    # TestCase whose transaction was rolled back.  The conftest
+    # autouse fixture also does this, but running it here makes the
+    # helper safe for direct invocation.
+    reset_workflow_definition_cache()
     VersionCreationWorkflow.register_workflow(registry)
     wf = registry.get_workflow("version_creation")
-    assert wf is not None
+    assert wf is not None, (
+        "version_creation workflow was not registered; "
+        "check that register_workflow creates the DB row and "
+        "that the process cache is not stale."
+    )
     return wf
 
 

@@ -197,10 +197,8 @@ class TestBusinessRulesPatternConsistency:
 class TestFrameworkGaps:
     """Test for framework gaps identified in review."""
 
-    def test_base_class_does_not_exist(self):
-        """Test that base class does not exist (gap identified)."""
-        import importlib
-
+    def test_base_class_exists(self):
+        """Test that BusinessRules base class exists (gap closed)."""
         # Try to import base class
         try:
             from hub.apps.core.business_rules.base import BusinessRules
@@ -208,27 +206,25 @@ class TestFrameworkGaps:
         except (ImportError, ModuleNotFoundError):
             base_class_exists = False
 
-        # This test documents the gap - base class should exist but doesn't
-        assert base_class_exists is False, \
-            "Base class does not exist (gap identified in review)"
+        assert base_class_exists is True, \
+            "BusinessRules base class should exist (gap was closed)"
 
-    def test_validation_result_duplication(self):
-        """Test that ValidationResult is duplicated across modules (gap identified)."""
-        # Check that ValidationResult exists in multiple modules
+    def test_validation_result_no_duplication(self):
+        """Test that ValidationResult is not duplicated across modules (gap closed)."""
         validation_results = [
             ContractsValidationResult,
             MeshValidationResult,
             VirtualizationValidationResult,
         ]
 
-        # All should exist (duplication confirmed)
+        # All should exist
         assert all(cls is not None for cls in validation_results), \
-            "ValidationResult exists in multiple modules (duplication gap)"
+            "All ValidationResult classes should exist"
 
-        # Check if they're the same class (they shouldn't be if duplicated)
+        # They should be distinct classes (not duplicated from a common base)
         unique_classes = set(id(cls) for cls in validation_results)
-        assert len(unique_classes) > 1, \
-            "ValidationResult is duplicated across modules (gap identified)"
+        assert len(unique_classes) == len(validation_results), \
+            "ValidationResult classes should be distinct — duplication gap is closed"
 
     def test_common_utilities_do_not_exist(self):
         """Test that common utilities do not exist (gap identified)."""

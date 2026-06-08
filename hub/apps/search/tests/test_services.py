@@ -27,24 +27,31 @@ class SearchServiceTest(TestCase):
         self.service = SearchService(tenant_id=str(self.tenant.id), user_id=str(self.user.id))
 
     def test_search_success(self):
-        """Test successful search"""
-        # Create search index entries with valid UUID
+        """Test successful search returns the indexed entry."""
+        from django.contrib.postgres.search import SearchVector
+
         resource_id = uuid.uuid4()
-        SearchIndex.objects.create(
+        index = SearchIndex.objects.create(
             tenant=self.tenant,
             resource_type="CONTRACT",
             resource_id=resource_id,
             title="Test Contract",
-            search_vector="test contract",
+        )
+        # Populate a real PostgreSQL tsvector so FTS can match it.
+        SearchIndex.objects.filter(pk=index.pk).update(
+            search_vector=SearchVector("title", weight="A"),
         )
 
-        # Use real SearchEngine implementation
-        results, total = self.service.search(tenant_id=str(self.tenant.id), query="test")
+        results, total = self.service.search(
+            tenant_id=str(self.tenant.id), query="Test",
+        )
 
-        # Should return results (may be empty if no matches, but should not error)
         self.assertIsInstance(results, list)
         self.assertIsInstance(total, int)
-        self.assertGreaterEqual(total, 0)
+        self.assertGreater(total, 0,
+            f"Search for 'Test' should return at least 1 result, got {total}")
+        self.assertEqual(results[0]["id"], str(resource_id),
+            f"First result should be the indexed contract; got {results[0].get('id')}")
 
     def test_search_empty_query_success(self):
         """Edge case: search with empty query returns filter_only results."""

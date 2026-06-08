@@ -69,6 +69,22 @@ def _make_response(status_code: int, body: str = "") -> mock.Mock:
 @pytest.mark.django_db(transaction=True)
 class TestSuccessfulDelivery(TransactionTestCase):
 
+    def setUp(self):
+        from django.db import connection
+        if not hasattr(connection.ensure_connection, '__self__'):
+            from types import MethodType
+            from django.db.backends.base.base import BaseDatabaseWrapper
+            connection.ensure_connection = MethodType(
+                BaseDatabaseWrapper.ensure_connection, connection,
+            )
+        # _fixture_teardown from a prior class (including skipped
+        # integration tests) may have closed connections or left dirty
+        # atomic-block state.  Reset everything and ensure a fresh one.
+        connection.close()
+        connection.savepoint_ids = []
+        connection.needs_rollback = False
+        connection.ensure_connection()
+
     def test_2xx_returns_delivered_with_no_dlq(self):
         from hub.apps.integrations.openlineage.adapter import (
             OpenLineageAdapter, DeliveryOutcome,
@@ -95,6 +111,22 @@ class TestSuccessfulDelivery(TransactionTestCase):
 class TestExponentialBackoffOnTransientFailures(TransactionTestCase):
     """5xx triggers retry with the canonical 1s/2s/4s/8s/16s
     backoff; the adapter performs up to 5 attempts before DLQ."""
+
+    def setUp(self):
+        from django.db import connection
+        if not hasattr(connection.ensure_connection, '__self__'):
+            from types import MethodType
+            from django.db.backends.base.base import BaseDatabaseWrapper
+            connection.ensure_connection = MethodType(
+                BaseDatabaseWrapper.ensure_connection, connection,
+            )
+        # _fixture_teardown from a prior class (including skipped
+        # integration tests) may have closed connections or left dirty
+        # atomic-block state.  Reset everything and ensure a fresh one.
+        connection.close()
+        connection.savepoint_ids = []
+        connection.needs_rollback = False
+        connection.ensure_connection()
 
     def test_succeeds_on_third_attempt_no_dlq(self):
         from hub.apps.integrations.openlineage.adapter import (
@@ -162,13 +194,32 @@ class TestExponentialBackoffOnTransientFailures(TransactionTestCase):
         row = rows.first()
         assert row.attempts == 5
         assert row.event_id == event["run"]["runId"]
-        assert "503" in row.failure_reason or "5" in row.failure_reason
+        assert "503" in row.failure_reason, (
+            f"failure_reason must contain the HTTP status code '503'; "
+            f"got {row.failure_reason!r}"
+        )
 
 
 @pytest.mark.django_db(transaction=True)
 class TestPermanentFailureGoesToDLQImmediately(TransactionTestCase):
     """4xx (other than 408 / 429 retryable) is permanent — no
     backoff retries, immediate DLQ."""
+
+    def setUp(self):
+        from django.db import connection
+        if not hasattr(connection.ensure_connection, '__self__'):
+            from types import MethodType
+            from django.db.backends.base.base import BaseDatabaseWrapper
+            connection.ensure_connection = MethodType(
+                BaseDatabaseWrapper.ensure_connection, connection,
+            )
+        # _fixture_teardown from a prior class (including skipped
+        # integration tests) may have closed connections or left dirty
+        # atomic-block state.  Reset everything and ensure a fresh one.
+        connection.close()
+        connection.savepoint_ids = []
+        connection.needs_rollback = False
+        connection.ensure_connection()
 
     def test_400_bad_request_dlqs_without_retry(self):
         from hub.apps.integrations.openlineage.adapter import (
@@ -208,6 +259,22 @@ class TestPermanentFailureGoesToDLQImmediately(TransactionTestCase):
 class TestDLQEncryptsPayload(TransactionTestCase):
     """REQ-LIN-F4-002 + 228.F4.10 — the DLQ row's
     ``event_payload_encrypted`` MUST NOT be the plaintext JSON."""
+
+    def setUp(self):
+        from django.db import connection
+        if not hasattr(connection.ensure_connection, '__self__'):
+            from types import MethodType
+            from django.db.backends.base.base import BaseDatabaseWrapper
+            connection.ensure_connection = MethodType(
+                BaseDatabaseWrapper.ensure_connection, connection,
+            )
+        # _fixture_teardown from a prior class (including skipped
+        # integration tests) may have closed connections or left dirty
+        # atomic-block state.  Reset everything and ensure a fresh one.
+        connection.close()
+        connection.savepoint_ids = []
+        connection.needs_rollback = False
+        connection.ensure_connection()
 
     def test_dlq_payload_is_encrypted(self):
         from hub.apps.integrations.openlineage.adapter import (
@@ -249,6 +316,22 @@ class TestRetryableStatusCodes(TransactionTestCase):
     """408 Request Timeout and 429 Too Many Requests are retryable
     (per RFC 7231 + REST best-practice); other 4xx are not."""
 
+    def setUp(self):
+        from django.db import connection
+        if not hasattr(connection.ensure_connection, '__self__'):
+            from types import MethodType
+            from django.db.backends.base.base import BaseDatabaseWrapper
+            connection.ensure_connection = MethodType(
+                BaseDatabaseWrapper.ensure_connection, connection,
+            )
+        # _fixture_teardown from a prior class (including skipped
+        # integration tests) may have closed connections or left dirty
+        # atomic-block state.  Reset everything and ensure a fresh one.
+        connection.close()
+        connection.savepoint_ids = []
+        connection.needs_rollback = False
+        connection.ensure_connection()
+
     def test_429_is_retryable(self):
         from hub.apps.integrations.openlineage.adapter import (
             OpenLineageAdapter, DeliveryOutcome,
@@ -277,6 +360,22 @@ class TestRetryableStatusCodes(TransactionTestCase):
 class TestNetworkExceptionIsTransient(TransactionTestCase):
     """A ``requests.ConnectionError`` (DNS / refused / timeout) is
     treated as transient — retried up to the limit, then DLQ."""
+
+    def setUp(self):
+        from django.db import connection
+        if not hasattr(connection.ensure_connection, '__self__'):
+            from types import MethodType
+            from django.db.backends.base.base import BaseDatabaseWrapper
+            connection.ensure_connection = MethodType(
+                BaseDatabaseWrapper.ensure_connection, connection,
+            )
+        # _fixture_teardown from a prior class (including skipped
+        # integration tests) may have closed connections or left dirty
+        # atomic-block state.  Reset everything and ensure a fresh one.
+        connection.close()
+        connection.savepoint_ids = []
+        connection.needs_rollback = False
+        connection.ensure_connection()
 
     def test_connection_error_retries_then_dlq(self):
         from hub.apps.integrations.openlineage.adapter import (

@@ -8,7 +8,7 @@ Tests verify:
 4. Error handling for invalid lifecycle data
 """
 
-from django.test import SimpleTestCase, TestCase
+from django.test import SimpleTestCase
 
 from hub.apps.contracts.odps_errors import ODPSExportError
 from hub.apps.contracts.odps_generator import generate_odps_from_hubcontract
@@ -592,15 +592,11 @@ class ODPSGeneratorLifecycleCombinedMappingTest(SimpleTestCase):
         # Verify product exists
         self.assertIn("product", result)
 
-        # Verify SLA section is not present (optional)
-        if "SLA" in result["product"]:
-            # If SLA exists, it should be empty or not have declarative
-            if "declarative" in result["product"]["SLA"]:
-                self.assertNotIn("dimensions", result["product"]["SLA"]["declarative"])
-
-        # Verify status is not present in details
-        if "details" in result["product"] and "en" in result["product"]["details"]:
-            self.assertNotIn("status", result["product"]["details"]["en"])
+        # SLA and status must be absent when lifecycle section is not provided.
+        self.assertNotIn("SLA", result["product"],
+            "SLA section must be absent when no lifecycle data is provided")
+        self.assertNotIn("status", result["product"]["details"]["en"],
+            "Status must be absent from product details when no lifecycle data is provided")
 
     def test_lifecycle_with_invalid_lifecycle_type(self):
         """
@@ -709,8 +705,9 @@ class ODPSGeneratorLifecycleIntegrationTest(SimpleTestCase):
         self.assertIn("product", result)
         self.assertIn("details", result["product"])
         self.assertIn("en", result["product"]["details"])
-        if "status" in result["product"]["details"]["en"]:
-            self.assertEqual(result["product"]["details"]["en"]["status"], "活跃")
+        self.assertIn("status", result["product"]["details"]["en"],
+            "Status must be present in product details for lifecycle generation")
+        self.assertEqual(result["product"]["details"]["en"]["status"], "活跃")
 
     def test_lifecycle_generation_handles_special_characters(self):
         """Test that lifecycle generation handles special characters correctly."""
@@ -733,17 +730,19 @@ class ODPSGeneratorLifecycleIntegrationTest(SimpleTestCase):
 
         result = generate_odps_from_hubcontract(hub_contract)
 
-        # Verify special characters are preserved
-        self.assertIn("product", result)
-        self.assertIn("SLA", result["product"])
-        if "SLA" in result["product"]:
-            sla = result["product"]["SLA"]
-            if "declarative" in sla and "dimensions" in sla["declarative"]:
-                dimensions = sla["declarative"]["dimensions"]
-                if "availability" in dimensions and "description" in dimensions["availability"]:
-                    self.assertEqual(
-                        dimensions["availability"]["description"], "High <availability> & more"
-                    )
+        # Verify special characters are preserved in SLA dimensions.
+        self.assertIn("SLA", result["product"],
+            "SLA section must be present for lifecycle special-char generation")
+        sla = result["product"]["SLA"]
+        self.assertIn("declarative", sla)
+        self.assertIn("dimensions", sla["declarative"])
+        dimensions = sla["declarative"]["dimensions"]
+        self.assertIn("availability", dimensions,
+            "Availability dimension must be present in SLA")
+        self.assertIn("description", dimensions["availability"])
+        self.assertEqual(
+            dimensions["availability"]["description"], "High <availability> & more"
+        )
 
     def test_lifecycle_generation_handles_very_large_documents(self):
         """Test that lifecycle generation handles very large documents correctly."""
@@ -765,16 +764,9 @@ class ODPSGeneratorLifecycleIntegrationTest(SimpleTestCase):
             },
         }
 
-        # Should handle large documents gracefully
-        try:
-            result = generate_odps_from_hubcontract(hub_contract)
-            # If generation succeeds, verify structure
-            self.assertIn("product", result)
-        except Exception as e:
-            # If generation fails, it should fail gracefully
-            self.assertIsInstance(
-                e, ODPSExportError, "Should raise ODPSExportError for very large documents"
-            )
+        # Valid data (large docs) must succeed
+        result = generate_odps_from_hubcontract(hub_contract)
+        self.assertIn("product", result)
 
     def test_lifecycle_generation_handles_none_values(self):
         """Test that lifecycle generation handles None values correctly."""
@@ -786,15 +778,9 @@ class ODPSGeneratorLifecycleIntegrationTest(SimpleTestCase):
         }
 
         # Should handle None values gracefully
-        try:
-            result = generate_odps_from_hubcontract(hub_contract)
-            # If generation succeeds, None values may be omitted or handled
-            self.assertIsNotNone(result)
-        except Exception as e:
-            # If generation fails, it should fail gracefully
-            self.assertIsInstance(
-                e, ODPSExportError, "Should raise ODPSExportError for None values"
-            )
+        result = generate_odps_from_hubcontract(hub_contract)
+        self.assertIsNotNone(result)
+        self.assertIn("product", result)
 
     def test_lifecycle_generation_handles_nested_structures(self):
         """Test that lifecycle generation handles nested structures correctly."""
@@ -820,16 +806,18 @@ class ODPSGeneratorLifecycleIntegrationTest(SimpleTestCase):
 
         result = generate_odps_from_hubcontract(hub_contract)
 
-        # Verify nested structure is preserved
-        self.assertIn("product", result)
-        self.assertIn("SLA", result["product"])
-        if "SLA" in result["product"]:
-            sla = result["product"]["SLA"]
-            if "declarative" in sla and "dimensions" in sla["declarative"]:
-                dimensions = sla["declarative"]["dimensions"]
-                if "availability" in dimensions and "nested" in dimensions["availability"]:
-                    self.assertIn(
-                        "level1",
-                        dimensions["availability"]["nested"],
-                        "Nested structures should be preserved",
-                    )
+        # Verify nested structure is preserved in SLA dimensions.
+        self.assertIn("SLA", result["product"],
+            "SLA section must be present for lifecycle nested-structure generation")
+        sla = result["product"]["SLA"]
+        self.assertIn("declarative", sla)
+        self.assertIn("dimensions", sla["declarative"])
+        dimensions = sla["declarative"]["dimensions"]
+        self.assertIn("availability", dimensions)
+        self.assertIn("nested", dimensions["availability"],
+            "nested data must be preserved in SLA dimensions")
+        self.assertIn(
+            "level1",
+            dimensions["availability"]["nested"],
+            "Nested structures should be preserved",
+        )

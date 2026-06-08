@@ -657,7 +657,8 @@ class PlanLimitService(BaseService):
         self.user_id = user_id
 
     def check_limit(
-        self, tenant_id: str, limit_key: str, delta: int = 1
+        self, tenant_id: str, limit_key: str, delta: int = 1,
+        emit_warning: bool = True,
     ) -> Dict[str, Any]:
         """
         Check if tenant has exceeded plan limit for a specific limit key.
@@ -666,16 +667,22 @@ class PlanLimitService(BaseService):
         concurrent limit checks. The current usage count is queried internally
         from the resource counter registry — callers must NOT pass their own count.
 
-        Must be called inside a transaction.atomic() block.
+        The internal ``_check()`` closure is automatically wrapped in
+        ``transaction.atomic()`` via ``execute_with_transaction``, so callers
+        do NOT need to provide their own transaction context.
 
         Args:
             tenant_id: Tenant ID
             limit_key: Limit key (e.g., 'max_assets', 'max_api_calls_per_month')
             delta: Number of resources being created (default: 1)
+            emit_warning: When True (default) and usage >= 80% of max,
+                includes ``warning`` and ``warning_percent`` keys in result.
 
         Returns:
             Dictionary with 'allowed' (bool), 'current' (int), 'max' (int or None),
-            'remaining' (int or None), 'limit_key' (str)
+            'remaining' (int or None), 'limit_key' (str), plus optional
+            'warning' and 'warning_percent' when emit_warning=True and
+            usage >= 80%.
 
         Raises:
             ValidationError: If limit exceeded (with code 'plan_limit_exceeded')
@@ -783,7 +790,7 @@ class PlanLimitService(BaseService):
             # Calculate remaining
             remaining = max_limit - new_usage
 
-            return {
+            result = {
                 "allowed": True,
                 "current": current_usage,
                 "max": max_limit,
@@ -792,6 +799,20 @@ class PlanLimitService(BaseService):
                 "plan_slug": plan_slug,
                 "plan_tier": plan_tier,
             }
+
+            # Phase 277.B.113 — soft-limit warnings when usage >= 80%
+            if emit_warning and max_limit is not None and max_limit > 0:
+                usage_pct = round(
+                    (current_usage_for_comparison + delta_for_comparison) / max_limit * 100, 1
+                )
+                if usage_pct >= 80.0 and usage_pct < 100.0:
+                    result["warning"] = "approaching_limit"
+                    result["warning_percent"] = usage_pct
+                elif usage_pct >= 100.0:
+                    result["warning"] = "at_or_exceeding_limit"
+                    result["warning_percent"] = usage_pct
+
+            return result
 
         return self.execute_with_transaction(operation="check_limit", tenant_id=tenant_id, func=_check)
 
@@ -940,6 +961,12 @@ class TenantUsageService(BaseService):
             usage_summary.scheduled_export_runs_count = scheduled_export_runs_count
             usage_summary.storage_bytes = storage_bytes
             usage_summary.ingestion_cost = ingestion_cost
+            # Phase 285.13.9.4 — snapshot the tenant's current notification
+            # opt-out configuration at calculation time so the summary
+            # reflects the state that was in effect during the period.
+            usage_summary.notification_opt_outs = getattr(
+                tenant, "notification_opt_outs", {},
+            )
             usage_summary.save()
 
             return usage_summary

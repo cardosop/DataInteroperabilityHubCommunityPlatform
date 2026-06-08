@@ -96,12 +96,6 @@ class ProcessFileIntegrationsTest(TestCase):
     def _fixture_teardown(cls):
         pass
 
-    def tearDown(self):
-        """Ensure DB connection is usable before teardown (avoids hang)."""
-        from django.db import connection
-        connection.ensure_connection()
-        super().tearDown()
-
     def setUp(self):
         # Detect MinIO availability so storage-dependent tests can skip when unavailable
         self._storage_available = False
@@ -254,5 +248,6 @@ class ProcessFileIntegrationsTest(TestCase):
             resource_id=dataset.id,
             tenant=self.tenant,
         ).first()
-        if semantic is not None:
-            self.assertEqual(semantic.resource_id, dataset.id)
+        self.assertIsNotNone(semantic,
+            "SemanticResource must be created for the dataset")
+        self.assertEqual(semantic.resource_id, dataset.id)

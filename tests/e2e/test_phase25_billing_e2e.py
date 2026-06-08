@@ -43,8 +43,8 @@ class Phase25BillingE2ETest(TestCase):
 
         # Create tenant
         self.tenant = Tenant.objects.create(
-            name="Billing E2E Tenant",
-            slug="billing-e2e-tenant",
+            name=f"Billing E2E Tenant {uuid.uuid4().hex[:8]}",
+            slug=f"billing-e2e-tenant-{uuid.uuid4().hex[:8]}",
             status=TenantStatus.ACTIVE,
         )
 

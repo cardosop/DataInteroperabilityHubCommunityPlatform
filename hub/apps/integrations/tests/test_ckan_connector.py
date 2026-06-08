@@ -1279,6 +1279,9 @@ class TestCKANConnectorCircuitBreaker(TestCase):
 
     def setUp(self):
         """Set up test fixtures"""
+        # Reset circuit breaker so prior test failures don't leave it OPEN
+        from hub.apps.core.resilience.circuit_breaker import reset_circuit_breaker_by_name
+        reset_circuit_breaker_by_name("ckan-connector")
         self.connector = CKANConnector(base_url="https://data.gov")
 
     @patch("hub.apps.integrations.connectors.ckan_connector.CKANConnector._request_with_retry")
@@ -1414,12 +1417,14 @@ class TestCKANConnectorIntegration(TestCase):
         # First, get a list of packages
         listings = self.connector.list_listings(limit=1)
 
-        if listings:
-            package_id = listings[0].marketplace_id
-            listing = self.connector.get_listing(package_id)
+        if not listings:
+            self.skipTest("CKAN instance has no listings — cannot test get_listing")
 
-            self.assertIsInstance(listing, MarketplaceListing)
-            self.assertEqual(listing.marketplace_id, package_id)
+        package_id = listings[0].marketplace_id
+        listing = self.connector.get_listing(package_id)
+
+        self.assertIsInstance(listing, MarketplaceListing)
+        self.assertEqual(listing.marketplace_id, package_id)
 
     def test_integration_list_resources(self):
         """Integration test for listing resources"""
@@ -1427,14 +1432,16 @@ class TestCKANConnectorIntegration(TestCase):
         # First, get a list of packages
         listings = self.connector.list_listings(limit=1)
 
-        if listings:
-            package_id = listings[0].marketplace_id
-            resources = self.connector.list_resources(package_id)
+        if not listings:
+            self.skipTest("CKAN instance has no listings — cannot test list_resources")
 
-            self.assertIsInstance(resources, list)
-            # Verify all resources are MarketplaceResource objects
-            for resource in resources:
-                self.assertIsInstance(resource, MarketplaceResource)
+        package_id = listings[0].marketplace_id
+        resources = self.connector.list_resources(package_id)
+
+        self.assertIsInstance(resources, list)
+        # Verify all resources are MarketplaceResource objects
+        for resource in resources:
+            self.assertIsInstance(resource, MarketplaceResource)
 
 
 # ============================================================================

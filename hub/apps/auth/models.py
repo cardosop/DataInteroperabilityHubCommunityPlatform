@@ -102,6 +102,8 @@ class APIKey(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
     
+
+    last_rotation_reminder_at = models.DateTimeField(null=True, blank=True, help_text="Last rotation reminder timestamp")
     class Meta:
         db_table = "api_keys"
         ordering = ["-created_at"]
@@ -198,6 +200,7 @@ class RefreshToken(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
+    tenant_id = models.UUIDField(null=True, blank=True, help_text="Tenant ID associated with this refresh token")
     class Meta:
         db_table = "refresh_tokens"
         ordering = ["-created_at"]

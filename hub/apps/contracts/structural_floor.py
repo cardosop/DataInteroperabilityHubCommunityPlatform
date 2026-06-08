@@ -370,4 +370,10 @@ def collect_structural_floor_errors(
         return []
 
     subcode = result.details.get("subcode", SUBCODE_GENERIC)
-    return [{"code": ERROR_CODE, "message": result.errors[0] if result.errors else "", "subcode": subcode}]
+    remediation_url = _resolve_remediation_url(contract_id or None)
+    return [{
+        "code": ERROR_CODE,
+        "message": result.errors[0] if result.errors else "",
+        "subcode": subcode,
+        "remediation_url": remediation_url,
+    }]

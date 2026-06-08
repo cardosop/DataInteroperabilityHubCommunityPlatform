@@ -86,6 +86,7 @@ class DataQualityCheckWorkflowUnitTest(TestCase):
         mock_job = MagicMock(id="job-123")
         mock_create_job.return_value = mock_job
         mock_audit.return_value = MagicMock(id="audit-123")
+        mock_dq_client.return_value.health_check.return_value = (True, "healthy")
         
         input_data = {
             "tenant_id": str(self.tenant.id),

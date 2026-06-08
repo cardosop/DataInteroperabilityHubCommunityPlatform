@@ -45,6 +45,7 @@ from hub.apps.testing.role_support import (
     ensure_user_has_tenant_admin_role,
 )
 from hub.apps.users.models import UserStatus
+from rest_framework import status
 
 
 pytestmark = pytest.mark.django_db(transaction=True)
@@ -79,18 +80,18 @@ class FeatureFlagsGetTest(TestCase):
         client = APIClient()
         client.force_authenticate(user=user)
         resp = client.get("/api/v1/tenants/me/feature-flags/")
-        assert resp.status_code == 200, resp.content
+        self.assertEqual(resp.status_code, status.HTTP_200_OK, resp.content)
         body = resp.json()
         # Each flag entry carries its current value + a description
         # so the SPA can render a self-describing settings page.
-        assert "flags" in body
+        self.assertIn('flags', body)
         flags = {f["name"]: f for f in body["flags"]}
         # Anchor on a few flags from prior phases — these are the
         # canonical per-tenant capability flags the admin surface
         # exposes:
-        assert "asset_creation_enabled" in flags  # Phase 250.6.A
-        assert "federated_import_enabled" in flags  # Phase 250.5.A
-        assert "asset_auto_activate_on_gate_pass" in flags  # 250.2.A
+        self.assertIn('asset_creation_enabled', flags)
+        self.assertIn('federated_import_enabled', flags)
+        self.assertIn('asset_auto_activate_on_gate_pass', flags)
         # Each flag has the contract shape we render against.
         for f in body["flags"]:
             assert "name" in f
@@ -106,7 +107,7 @@ class FeatureFlagsGetTest(TestCase):
         client = APIClient()
         client.force_authenticate(user=user)
         resp = client.get("/api/v1/tenants/me/feature-flags/")
-        assert resp.status_code == 403, resp.content
+        self.assertEqual(resp.status_code, status.HTTP_403_FORBIDDEN, resp.content)
 
 
 class FeatureFlagsPatchTest(TestCase):
@@ -118,7 +119,7 @@ class FeatureFlagsPatchTest(TestCase):
         # Pre-condition: federated_import_enabled defaults to False
         # (per Phase 250.5.A.2) — flipping to True is the canonical
         # flow that exercises the audit emission.
-        assert tenant.federated_import_enabled is False
+        self.assertFalse(tenant.federated_import_enabled)
 
         client = APIClient()
         client.force_authenticate(user=user)
@@ -131,22 +132,22 @@ class FeatureFlagsPatchTest(TestCase):
             data={"federated_import_enabled": True},
             format="json",
         )
-        assert resp.status_code == 200, resp.content
+        self.assertEqual(resp.status_code, status.HTTP_200_OK, resp.content)
         # Tenant row updated.
         tenant.refresh_from_db()
-        assert tenant.federated_import_enabled is True
+        self.assertTrue(tenant.federated_import_enabled)
         # Audit row emitted with before/after values for forensic
         # replay (the audit-log panel renders these as "User X
         # changed federated_import_enabled from False to True").
         after = AuditEvent.objects.filter(
             action=audit_event_types.TENANT_FEATURE_FLAG_UPDATED,
             tenant=tenant,
-        ).order_by("-created_at")
-        assert after.count() - before == 1
+        ).order_by("-timestamp")
+        self.assertEqual(after.count() - before, 1)
         ev = after.first()
-        assert ev.details_json["flag_name"] == "federated_import_enabled"
-        assert ev.details_json["previous_value"] is False
-        assert ev.details_json["new_value"] is True
+        self.assertEqual(ev.details_json['flag_name'], 'federated_import_enabled')
+        self.assertFalse(ev.details_json['previous_value'])
+        self.assertTrue(ev.details_json['new_value'])
 
     def test_non_admin_patch_gets_403_no_side_effects(self):
         tenant, user = _seed_tenant()
@@ -163,18 +164,18 @@ class FeatureFlagsPatchTest(TestCase):
             data={"federated_import_enabled": True},
             format="json",
         )
-        assert resp.status_code == 403, resp.content
+        self.assertEqual(resp.status_code, status.HTTP_403_FORBIDDEN, resp.content)
         # No side-effects on the tenant row (refusal is structurally
         # side-effect-free — gate runs BEFORE the model write).
         tenant.refresh_from_db()
-        assert tenant.federated_import_enabled is False
+        self.assertFalse(tenant.federated_import_enabled)
         # No audit row emitted (the gate refused before the audit
         # emission would have fired).
         after_audit = AuditEvent.objects.filter(
             action=audit_event_types.TENANT_FEATURE_FLAG_UPDATED,
             tenant=tenant,
         ).count()
-        assert after_audit == before_audit
+        self.assertEqual(after_audit, before_audit)
 
     def test_unknown_flag_returns_400(self):
         tenant, user = _seed_tenant()
@@ -187,9 +188,9 @@ class FeatureFlagsPatchTest(TestCase):
             data={"never_heard_of_this_flag": True},
             format="json",
         )
-        assert resp.status_code == 400, resp.content
+        self.assertEqual(resp.status_code, status.HTTP_400_BAD_REQUEST, resp.content)
         body = resp.json()
-        assert body.get("code") == "UNKNOWN_FLAG"
+        self.assertEqual(body.get('code'), 'UNKNOWN_FLAG')
 
 
 class FeatureFlagHistoryTest(TestCase):
@@ -212,13 +213,13 @@ class FeatureFlagHistoryTest(TestCase):
         )
 
         resp = client.get("/api/v1/tenants/me/feature-flag-history/")
-        assert resp.status_code == 200, resp.content
+        self.assertEqual(resp.status_code, status.HTTP_200_OK, resp.content)
         body = resp.json()
-        assert "events" in body
-        assert len(body["events"]) >= 1
+        self.assertIn('events', body)
+        self.assertGreaterEqual(len(body['events']), 1)
         ev = body["events"][0]
-        assert ev["action"] == "TENANT_FEATURE_FLAG_UPDATED"
-        assert ev["details_json"]["flag_name"] == "federated_import_enabled"
+        self.assertEqual(ev['action'], 'TENANT_FEATURE_FLAG_UPDATED')
+        self.assertEqual(ev['details_json']['flag_name'], 'federated_import_enabled')
 
     def test_non_admin_history_gets_403(self):
         tenant, user = _seed_tenant()
@@ -227,4 +228,4 @@ class FeatureFlagHistoryTest(TestCase):
         client = APIClient()
         client.force_authenticate(user=user)
         resp = client.get("/api/v1/tenants/me/feature-flag-history/")
-        assert resp.status_code == 403, resp.content
+        self.assertEqual(resp.status_code, status.HTTP_403_FORBIDDEN, resp.content)

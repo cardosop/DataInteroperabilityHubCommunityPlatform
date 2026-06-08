@@ -63,3 +63,24 @@ export function useDeleteFile() {
     },
   });
 }
+
+export function useRenameFile() {
+  const queryClient = useQueryClient();
+  return useMutationWithNotification({
+    mutationFn: ({ id, name }: { id: string; name: string }) =>
+      fileService.rename(id, name),
+    successMessage: 'File renamed',
+    errorMessage: 'Failed to rename file',
+    onSuccess: (_data, variables) => {
+      queryClient.invalidateQueries({ queryKey: ['files', 'detail', variables.id] });
+      queryClient.invalidateQueries({ queryKey: ['files'] });
+    },
+  });
+}
+
+export function useFileStorageQuota() {
+  return useQuery({
+    queryKey: ['files', 'storage-quota'],
+    queryFn: () => fileService.getStorageQuota(),
+  });
+}

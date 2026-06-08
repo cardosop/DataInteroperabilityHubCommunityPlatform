@@ -126,11 +126,11 @@ class RootCauseAnalyzerTest(TestCase):
         analysis = RootCauseAnalyzer.analyze_root_cause(dq_run)
         
         self.assertIn("root_causes", analysis)
-        self.assertGreater(len(analysis["root_causes"]), 0)
-        
-        # Should have check failure root cause
+        self.assertGreaterEqual(len(analysis["root_causes"]), 1)
+
+        # Should have exactly 1 check failure root cause (1 FAIL check created).
         check_failures = [c for c in analysis["root_causes"] if c["type"] == "CHECK_FAILURE"]
-        self.assertGreater(len(check_failures), 0)
+        self.assertEqual(len(check_failures), 1)
         self.assertEqual(check_failures[0]["details"]["check_name"], "expect_column_values_to_not_be_null")
     
     def test_analyze_root_cause_schema_change(self):
@@ -193,7 +193,12 @@ class RootCauseAnalyzerTest(TestCase):
         
         # Should detect schema change
         schema_changes = [c for c in analysis["root_causes"] if c["type"] == "SCHEMA_CHANGE"]
-        self.assertGreater(len(schema_changes), 0)
+        self.assertGreaterEqual(len(schema_changes), 1)
+        details = schema_changes[0]["details"]
+        self.assertEqual(details["added_fields"], ["col2"],
+            "col2 was added in the child schema")
+        self.assertTrue(details["has_changes"],
+            "schema difference must set has_changes=True")
     
     def test_analyze_root_cause_volume_change(self):
         """Test root cause analysis for volume changes"""
@@ -261,7 +266,15 @@ class RootCauseAnalyzerTest(TestCase):
         
         # Should detect volume change
         volume_changes = [c for c in analysis["root_causes"] if c["type"] == "VOLUME_CHANGE"]
-        self.assertGreater(len(volume_changes), 0)
+        self.assertGreaterEqual(len(volume_changes), 1)
+        details = volume_changes[0]["details"]
+        self.assertEqual(details["current_count"], 5000,
+            "current row_count must be the updated 5000")
+        self.assertEqual(details["average_count"], 1000,
+            "historical average must be 1000 (all historical datasets have 1000 rows)")
+        # H10: 1000→5000 is a 400% increase — assert exact value, not just >100.
+        self.assertEqual(details["change_percent"], 400,
+            f"1000→5000 is a 400%% increase, got {details['change_percent']}")
     
     def test_analyze_root_cause_anomaly_correlation(self):
         """Test root cause analysis for anomaly correlation"""
@@ -289,7 +302,12 @@ class RootCauseAnalyzerTest(TestCase):
         
         # Should detect anomaly correlation
         anomaly_correlations = [c for c in analysis["root_causes"] if c["type"] == "ANOMALY_CORRELATION"]
-        self.assertGreater(len(anomaly_correlations), 0)
+        self.assertGreaterEqual(len(anomaly_correlations), 1)
+        details = anomaly_correlations[0]["details"]
+        self.assertEqual(details["anomaly_count"], 3,
+            "must report all 3 created anomalies")
+        self.assertEqual(details["high_severity_count"], 3,
+            "all 3 anomalies have HIGH severity")
     
     def test_analyze_root_cause_confidence_scores(self):
         """Test confidence score calculation"""
@@ -335,7 +353,11 @@ class RootCauseAnalyzerTest(TestCase):
         analysis = RootCauseAnalyzer.analyze_root_cause(dq_run)
         
         self.assertIn("recommendations", analysis)
-        self.assertGreater(len(analysis["recommendations"]), 0)
+        self.assertGreaterEqual(len(analysis["recommendations"]), 1)
+        # At least one recommendation must name the failing check
+        self.assertTrue(
+            any("expect_column_values_to_not_be_null" in r for r in analysis["recommendations"]),
+            f"Recommendations must reference the failing check; got {analysis['recommendations']}")
     
     def test_generate_root_cause_report(self):
         """Test root cause report generation"""

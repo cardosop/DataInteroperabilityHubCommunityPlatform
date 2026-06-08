@@ -486,6 +486,12 @@ WEBHOOK_KEY_RETIRED: str = "WEBHOOK_KEY_RETIRED"
 #: per-minute budget (REQ-WH-RL-004).
 WEBHOOK_RATE_LIMIT_EXCEEDED: str = "WEBHOOK_RATE_LIMIT_EXCEEDED"
 
+#: Webhook subscription created.
+WEBHOOK_CREATED: str = "WEBHOOK_CREATED"
+
+#: Webhook subscription updated (URL, event_types, secret, etc.).
+WEBHOOK_UPDATED: str = "WEBHOOK_UPDATED"
+
 #: Phase 231.8 — user or API client exported compliance run data (CSV/JSON).
 COMPLIANCE_EXPORT: str = "COMPLIANCE_EXPORT"
 
@@ -1226,6 +1232,21 @@ WAREHOUSE_CONNECTION_TEST_FAILED: str = "WAREHOUSE_CONNECTION_TEST_FAILED"
 WAREHOUSE_CACHE_REFRESHED: str = "WAREHOUSE_CACHE_REFRESHED"
 
 # ---------------------------------------------------------------------------
+# Phase 285.13.9 — Plan lifecycle audit events
+# ---------------------------------------------------------------------------
+
+MARKETPLACE_TAKE_RATE_APPLIED: str = "MARKETPLACE_TAKE_RATE_APPLIED"
+PLAN_CREATED: str = "PLAN_CREATED"
+PLAN_DELETED: str = "PLAN_DELETED"
+PLAN_LIMITS_BACKFILLED: str = "PLAN_LIMITS_BACKFILLED"
+PLAN_PRICE_CHANGED: str = "PLAN_PRICE_CHANGED"
+PLAN_PRICING_VALIDATION_FAILED: str = "PLAN_PRICING_VALIDATION_FAILED"
+PLAN_UPDATED: str = "PLAN_UPDATED"
+TENANT_PLAN_DOWNGRADED: str = "TENANT_PLAN_DOWNGRADED"
+TENANT_PLAN_UPGRADE_FAILED: str = "TENANT_PLAN_UPGRADE_FAILED"
+TENANT_PLAN_UPGRADED: str = "TENANT_PLAN_UPGRADED"
+
+# ---------------------------------------------------------------------------
 # Phase 277.B.080 — Webhook key rotation drill
 # ---------------------------------------------------------------------------
 
@@ -1361,6 +1382,8 @@ __all__ = [
     "WEBHOOK_KEY_ROTATED",
     "WEBHOOK_KEY_RETIRED",
     "WEBHOOK_RATE_LIMIT_EXCEEDED",
+    "WEBHOOK_CREATED",
+    "WEBHOOK_UPDATED",
     "ACCESS_REQUEST_AUTO_APPROVED",
     "ORDER_REFUNDED",
     "LISTING_CONTRACT_DRIFT",
@@ -1415,4 +1438,15 @@ __all__ = [
     "ABAC_POLICY_DENIED",
     # Phase 277.B.031 — Billing cost overview
     "COST_OVERVIEW_ACCESSED",
+    # Phase 285.13.9 — Plan lifecycle audit events
+    "MARKETPLACE_TAKE_RATE_APPLIED",
+    "PLAN_CREATED",
+    "PLAN_DELETED",
+    "PLAN_LIMITS_BACKFILLED",
+    "PLAN_PRICE_CHANGED",
+    "PLAN_PRICING_VALIDATION_FAILED",
+    "PLAN_UPDATED",
+    "TENANT_PLAN_DOWNGRADED",
+    "TENANT_PLAN_UPGRADE_FAILED",
+    "TENANT_PLAN_UPGRADED",
 ]

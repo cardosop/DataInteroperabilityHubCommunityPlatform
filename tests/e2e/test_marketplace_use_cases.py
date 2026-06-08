@@ -42,8 +42,8 @@ class MarketplacePublicationUseCasesTest(E2ETestBase):
 
         # Create provider tenant with verified KYC and active subscription
         self.provider_tenant = Tenant.objects.create(
-            name="Provider Tenant",
-            slug="provider-tenant",
+            name=f"Provider Tenant {uuid.uuid4().hex[:8]}",
+            slug=f"provider-tenant-{uuid.uuid4().hex[:8]}",
             kyc_status=KYCStatus.VERIFIED
         )
         ensure_e2e_tenant_ready(self.provider_tenant)
@@ -271,8 +271,8 @@ class MarketplacePurchaseUseCasesTest(E2ETestBase):
 
         # Provider tenant (seller) - needs subscription for listing/order operations
         self.provider_tenant = Tenant.objects.create(
-            name="Provider Tenant",
-            slug="provider-tenant",
+            name=f"Provider Tenant {uuid.uuid4().hex[:8]}",
+            slug=f"provider-tenant-{uuid.uuid4().hex[:8]}",
             kyc_status=KYCStatus.VERIFIED
         )
         ensure_e2e_tenant_ready(self.provider_tenant)
@@ -288,8 +288,8 @@ class MarketplacePurchaseUseCasesTest(E2ETestBase):
         
         # Consumer tenant (buyer) - needs subscription for order creation
         self.consumer_tenant = Tenant.objects.create(
-            name="Consumer Tenant",
-            slug="consumer-tenant",
+            name=f"Consumer Tenant {uuid.uuid4().hex[:8]}",
+            slug=f"consumer-tenant-{uuid.uuid4().hex[:8]}",
             kyc_status=KYCStatus.VERIFIED
         )
         ensure_e2e_tenant_ready(self.consumer_tenant)
@@ -509,8 +509,8 @@ class MarketplaceEntitlementUseCasesTest(E2ETestBase):
 
         # Provider tenant (seller) - needs subscription for order approval
         self.provider_tenant = Tenant.objects.create(
-            name="Provider Tenant",
-            slug="provider-tenant",
+            name=f"Provider Tenant {uuid.uuid4().hex[:8]}",
+            slug=f"provider-tenant-{uuid.uuid4().hex[:8]}",
             kyc_status=KYCStatus.VERIFIED
         )
         ensure_e2e_tenant_ready(self.provider_tenant)
@@ -526,8 +526,8 @@ class MarketplaceEntitlementUseCasesTest(E2ETestBase):
         
         # Consumer tenant (buyer) - needs subscription for order creation
         self.consumer_tenant = Tenant.objects.create(
-            name="Consumer Tenant",
-            slug="consumer-tenant",
+            name=f"Consumer Tenant {uuid.uuid4().hex[:8]}",
+            slug=f"consumer-tenant-{uuid.uuid4().hex[:8]}",
             kyc_status=KYCStatus.VERIFIED
         )
         ensure_e2e_tenant_ready(self.consumer_tenant)

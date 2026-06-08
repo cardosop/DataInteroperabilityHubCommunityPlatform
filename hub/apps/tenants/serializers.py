@@ -50,6 +50,11 @@ class TenantSerializer(serializers.ModelSerializer):
             # of the start dialog.
             "impersonation_allowed",
             "impersonation_default_max_minutes",
+            # Feature flags gating optional capabilities per tenant
+            # (BaaS, marketplace integrations, ML / ODH).
+            "baas_enabled",
+            "marketplace_integrations_enabled",
+            "ml_enabled",
             "created_at",
             "updated_at",
         ]
@@ -411,3 +416,17 @@ class TenantUsageSerializer(serializers.Serializer):
     plan_slug = serializers.CharField(read_only=True, allow_null=True)
     plan_tier = serializers.CharField(read_only=True, allow_null=True)
     plan_compliance_pro_pack = serializers.BooleanField(read_only=True)
+
+    def to_representation(self, instance):
+        """Include all instance data, including dynamic ``*_usage`` keys
+        derived from RESOURCE_COUNTERS (Phase 277.B.106).  DRF Serializer
+        only outputs declared fields by default; we pass through any
+        extra keys so that callers see ``asset_usage``, ``users_usage``,
+        etc. alongside the declared envelope fields.
+        """
+        ret = super().to_representation(instance)
+        if isinstance(instance, dict):
+            for key, value in instance.items():
+                if key not in ret:
+                    ret[key] = value
+        return ret

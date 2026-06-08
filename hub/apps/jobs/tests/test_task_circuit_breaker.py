@@ -1,7 +1,7 @@
 """
 Phase 277.B.072 — RQ task circuit breaker tests.
 """
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 import pytest
 
@@ -35,15 +35,13 @@ class TestCircuitBreakerGuard:
         breaker = CircuitBreaker(
             "test_open_service", failure_threshold=1, timeout_seconds=999
         )
+        # Manually open the circuit via internal state mutation
+        breaker._set_state(CircuitBreakerState.OPEN)
 
         with patch(
             "hub.apps.jobs.task_circuit_breaker._get_breaker",
             return_value=breaker,
         ):
-            # Trip the breaker
-            breaker.failure()
-            assert breaker.state == CircuitBreakerState.OPEN
-
             call_count = 0
 
             @circuit_breaker_guard("test_open_service")
@@ -56,7 +54,7 @@ class TestCircuitBreakerGuard:
             assert call_count == 0  # Never executed
 
     def test_guard_reports_failure_and_re_raises(self):
-        """Exception in task → breaker.failure() called → exception re-raised."""
+        """Exception in task → breaker records failure → exception re-raised."""
         breaker = CircuitBreaker(
             "test_fail_service", failure_threshold=3, timeout_seconds=10
         )
@@ -72,10 +70,10 @@ class TestCircuitBreakerGuard:
             with pytest.raises(ValueError, match="downstream error"):
                 failing_task()
 
-            assert breaker.failure_count == 1
+            assert breaker._get_failure_count() == 1
 
     def test_guard_reports_success(self):
-        """Successful execution → breaker.success() called."""
+        """Successful execution → breaker stays CLOSED with zero failures."""
         breaker = CircuitBreaker(
             "test_success_service", failure_threshold=3, timeout_seconds=10
         )
@@ -89,7 +87,10 @@ class TestCircuitBreakerGuard:
                 return "fine"
 
             ok_task()
-            assert breaker.success_count == 1
+            # In CLOSED state, success resets failure count (stays 0).
+            # Success count is only tracked in HALF_OPEN state.
+            assert breaker._get_failure_count() == 0
+            assert breaker.get_state() == CircuitBreakerState.CLOSED
 
     def test_guard_opens_after_threshold_failures(self):
         """Repeated failures trip the circuit open."""
@@ -111,7 +112,7 @@ class TestCircuitBreakerGuard:
                 except RuntimeError:
                     pass
 
-            assert breaker.state == CircuitBreakerState.OPEN
+            assert breaker.get_state() == CircuitBreakerState.OPEN
 
             # Third call should skip
             result = flaky_task()
@@ -139,21 +140,23 @@ class TestCircuitBreakerGuard:
             def task():
                 return "recovered"
 
-            # Trip the breaker
-            breaker.failure()
-            assert breaker.state == CircuitBreakerState.OPEN
+            # Trip the breaker by calling with a failing function
+            with pytest.raises(ValueError):
+                breaker.call(lambda: (_ for _ in ()).throw(ValueError("trip")))
+
+            assert breaker.get_state() == CircuitBreakerState.OPEN
 
             # Manually set to half-open (simulates timeout expiry)
-            breaker.state = CircuitBreakerState.HALF_OPEN
-            breaker.success_count = 0
+            breaker._set_state(CircuitBreakerState.HALF_OPEN)
+            breaker._reset_success_count()
 
             # First success after timeout: still half-open (need 2)
             task()
-            assert breaker.state == CircuitBreakerState.HALF_OPEN
+            assert breaker.get_state() == CircuitBreakerState.HALF_OPEN
 
             # Second success: back to closed
             task()
-            assert breaker.state == CircuitBreakerState.CLOSED
+            assert breaker.get_state() == CircuitBreakerState.CLOSED
 
     def test_guard_preserves_function_metadata(self):
         """Decorator preserves __name__, __doc__, __module__."""

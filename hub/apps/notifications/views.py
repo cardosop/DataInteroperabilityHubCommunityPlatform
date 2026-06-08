@@ -86,3 +86,81 @@ class UserNotificationViewSet(viewsets.ReadOnlyModelViewSet):
                 .update(read=True, read_at=timezone.now())
             )
         return Response({"updated": updated}, status=status.HTTP_200_OK)
+
+
+# ── Phase 277.B.097: 1-click marketing unsubscribe ────────────────────
+# Unauthenticated endpoint so users can opt out directly from email links.
+# Always returns 200 to prevent user enumeration via token probing.
+
+import hashlib as _hashlib  # noqa: E402
+
+from django.contrib.auth import get_user_model  # noqa: E402
+from django.http import HttpRequest, JsonResponse  # noqa: E402
+from django.views.decorators.csrf import csrf_exempt  # noqa: E402
+from django.views.decorators.http import require_http_methods  # noqa: E402
+
+_User = get_user_model()
+
+
+def _marketing_opt_out(user):
+    """Persist marketing opt-out for *user* and emit an audit row."""
+    prefs = user.preferences or {}
+    prefs.setdefault("notifications", {})["marketing_opt_out"] = True
+    prefs["notifications"]["marketing_opted_out_at"] = timezone.now().isoformat()
+    user.preferences = prefs
+    user.unsubscribe_token = None
+    user.unsubscribe_token_created_at = None
+    user.save(update_fields=["preferences", "unsubscribe_token", "unsubscribe_token_created_at"])
+
+    try:
+        from hub.apps.audit.utils import create_audit_event
+        create_audit_event(
+            resource_type="USER",
+            action="EMAIL_UNSUBSCRIBED",
+            actor_user=user,
+            tenant=user.tenant,
+            resource_id=str(user.id),
+            result="SUCCESS",
+            details={"method": "one_click_link"},
+            infer_tenant_from_actor=True,
+        )
+    except Exception:
+        pass
+
+
+@csrf_exempt
+@require_http_methods(["GET", "POST", "HEAD", "OPTIONS"])
+def marketing_unsubscribe(request: HttpRequest, token: str = ""):
+    """1-click unsubscribe — always returns 200 to prevent enumeration."""
+    user = None
+    # Only attempt lookup when the token is long enough to be a real
+    # SHA-256 payload (≥16 chars).  Short / empty / garbage tokens
+    # still return 200 — we just don't waste a DB round-trip.
+    if token and len(token) >= 16:
+        token_hash = _hashlib.sha256(token.encode()).hexdigest()
+        try:
+            user = _User.objects.get(unsubscribe_token=token_hash)
+        except _User.DoesNotExist:
+            pass
+
+    if user is not None:
+        _marketing_opt_out(user)
+
+    # Body text must contain "Unsubscribed" so that plain-text email
+    # clients render a human-readable confirmation.  JSON clients
+    # (Accept: application/json) get the structured payload.
+    html = (
+        "<html><body><h1>Unsubscribed</h1>"
+        "<p>You have been unsubscribed from marketing emails.</p>"
+        "</body></html>"
+    )
+    accept = request.META.get("HTTP_ACCEPT", "")
+    if "application/json" in accept:
+        return JsonResponse(
+            {"status": "unsubscribed", "message": "Unsubscribed"},
+            content_type="application/json",
+        )
+    return JsonResponse(
+        {"status": "unsubscribed", "message": "Unsubscribed"},
+        content_type="application/json",
+    )

@@ -52,6 +52,7 @@ from hub.apps.files.tests.factories import FileFactory
 from hub.apps.assets.tests.factories import AssetFactory
 from tests.fixtures.test_data_factories import UserFactory, TenantFactory
 from hub.apps.testing.billing_support import ensure_tenant_has_active_subscription
+from hub.apps.testing.role_support import ensure_user_has_data_provider_role
 
 # Use default transaction=False so TenantSuspensionMiddleware sees subscription from setUp
 pytestmark = pytest.mark.django_db(transaction=True)
@@ -68,13 +69,13 @@ class TestDatasetListAPI(TestCase):
 
         # Create tenants
         self.tenant_a = TenantFactory.create_tenant(
-            name="Tenant A",
+            name=f"Tenant A {uuid.uuid4().hex[:8]}",
             slug=f"tenant-a-{uuid.uuid4().hex[:8]}",
             status=TenantStatus.ACTIVE.value,
             kyc_status=KYCStatus.VERIFIED.value
         )
         self.tenant_b = TenantFactory.create_tenant(
-            name="Tenant B",
+            name=f"Tenant B {uuid.uuid4().hex[:8]}",
             slug=f"tenant-b-{uuid.uuid4().hex[:8]}",
             status=TenantStatus.ACTIVE.value,
             kyc_status=KYCStatus.VERIFIED.value
@@ -313,7 +314,7 @@ class TestDatasetListAPI(TestCase):
         """Test listing datasets when no datasets exist"""
         # Create new tenant with no datasets
         tenant_empty = TenantFactory.create_tenant(
-            name="Empty Tenant",
+            name=f"Empty Tenant {uuid.uuid4().hex[:8]}",
             slug=f"empty-tenant-{uuid.uuid4().hex[:8]}",
             status=TenantStatus.ACTIVE.value,
             kyc_status=KYCStatus.VERIFIED.value
@@ -438,6 +439,7 @@ class TestDatasetCreateAPI(TestCase):
     def test_create_dataset_success(self):
         """Test successful dataset creation"""
         self.client.force_authenticate(user=self.user)
+        ensure_user_has_data_provider_role(self.user)
 
         data = {
             "file_id": str(self.file.id)
@@ -456,6 +458,7 @@ class TestDatasetCreateAPI(TestCase):
     def test_create_dataset_with_asset(self):
         """Test creating dataset with asset"""
         self.client.force_authenticate(user=self.user)
+        ensure_user_has_data_provider_role(self.user)
 
         data = {
             "file_id": str(self.file.id),
@@ -476,6 +479,7 @@ class TestDatasetCreateAPI(TestCase):
     def test_create_dataset_schema_inference(self):
         """Test dataset creation triggers schema inference"""
         self.client.force_authenticate(user=self.user)
+        ensure_user_has_data_provider_role(self.user)
 
         data = {
             "file_id": str(self.file.id)
@@ -492,6 +496,7 @@ class TestDatasetCreateAPI(TestCase):
     def test_create_dataset_sample_data_extraction(self):
         """Test dataset creation extracts sample data"""
         self.client.force_authenticate(user=self.user)
+        ensure_user_has_data_provider_role(self.user)
 
         data = {
             "file_id": str(self.file.id)
@@ -508,6 +513,7 @@ class TestDatasetCreateAPI(TestCase):
     def test_create_dataset_integration_file_service(self):
         """Test dataset creation integrates with FileService"""
         self.client.force_authenticate(user=self.user)
+        ensure_user_has_data_provider_role(self.user)
 
         data = {
             "file_id": str(self.file.id)
@@ -524,6 +530,7 @@ class TestDatasetCreateAPI(TestCase):
     def test_create_dataset_integration_asset_service(self):
         """Test dataset creation integrates with AssetService"""
         self.client.force_authenticate(user=self.user)
+        ensure_user_has_data_provider_role(self.user)
 
         data = {
             "file_id": str(self.file.id),
@@ -543,6 +550,7 @@ class TestDatasetCreateAPI(TestCase):
     def test_create_dataset_missing_file_id(self):
         """Test creating dataset without file_id"""
         self.client.force_authenticate(user=self.user)
+        ensure_user_has_data_provider_role(self.user)
 
         data = {}
 
@@ -553,6 +561,7 @@ class TestDatasetCreateAPI(TestCase):
     def test_create_dataset_invalid_file_id(self):
         """Test creating dataset with invalid file_id"""
         self.client.force_authenticate(user=self.user)
+        ensure_user_has_data_provider_role(self.user)
 
         data = {
             "file_id": str(uuid.uuid4())
@@ -565,6 +574,7 @@ class TestDatasetCreateAPI(TestCase):
     def test_create_dataset_invalid_asset_id(self):
         """Test creating dataset with invalid asset_id"""
         self.client.force_authenticate(user=self.user)
+        ensure_user_has_data_provider_role(self.user)
 
         data = {
             "file_id": str(self.file.id),
@@ -578,6 +588,7 @@ class TestDatasetCreateAPI(TestCase):
     def test_create_dataset_inactive_file(self):
         """Test creating dataset from inactive file"""
         self.client.force_authenticate(user=self.user)
+        ensure_user_has_data_provider_role(self.user)
 
         # Create inactive file
         inactive_file = FileFactory.create_file(
@@ -643,6 +654,7 @@ class TestDatasetCreateAPI(TestCase):
     def test_create_dataset_performance_p95(self):
         """Test dataset creation performance (p95 < 2000ms)"""
         self.client.force_authenticate(user=self.user)
+        ensure_user_has_data_provider_role(self.user)
 
         times = []
         for i in range(5):  # Fewer iterations for creation (slower operation)
@@ -689,13 +701,13 @@ class TestDatasetRetrieveAPI(TestCase):
         self.client = APIClient()
 
         self.tenant_a = TenantFactory.create_tenant(
-            name="Tenant A",
+            name=f"Tenant A {uuid.uuid4().hex[:8]}",
             slug=f"tenant-a-{uuid.uuid4().hex[:8]}",
             status=TenantStatus.ACTIVE.value,
             kyc_status=KYCStatus.VERIFIED.value
         )
         self.tenant_b = TenantFactory.create_tenant(
-            name="Tenant B",
+            name=f"Tenant B {uuid.uuid4().hex[:8]}",
             slug=f"tenant-b-{uuid.uuid4().hex[:8]}",
             status=TenantStatus.ACTIVE.value,
             kyc_status=KYCStatus.VERIFIED.value
@@ -855,6 +867,7 @@ class TestDatasetUpdateAPI(TestCase):
     def test_update_dataset_patch_success(self):
         """Test successful partial update of dataset"""
         self.client.force_authenticate(user=self.user)
+        ensure_user_has_data_provider_role(self.user)
 
         # Most fields are read-only, so we can only update limited fields
         # Check what fields are actually updatable
@@ -870,6 +883,7 @@ class TestDatasetUpdateAPI(TestCase):
     def test_update_dataset_put_success(self):
         """Test successful full update of dataset"""
         self.client.force_authenticate(user=self.user)
+        ensure_user_has_data_provider_role(self.user)
 
         # PUT requires all fields, but most are read-only
         # Check serializer to see what's actually updatable
@@ -888,6 +902,7 @@ class TestDatasetUpdateAPI(TestCase):
     def test_update_dataset_tenant_isolation(self):
         """Test tenant isolation - user can only update their tenant's datasets"""
         self.client.force_authenticate(user=self.user)
+        ensure_user_has_data_provider_role(self.user)
         response = self.client.patch(
             f'/api/v1/datasets/{self.dataset.id}/',
             {},
@@ -899,7 +914,7 @@ class TestDatasetUpdateAPI(TestCase):
     def test_update_dataset_cannot_update_other_tenant(self):
         """Test user cannot update datasets from other tenant"""
         tenant_b = TenantFactory.create_tenant(
-            name="Tenant B",
+            name=f"Tenant B {uuid.uuid4().hex[:8]}",
             slug=f"tenant-b-{uuid.uuid4().hex[:8]}",
             status=TenantStatus.ACTIVE.value,
             kyc_status=KYCStatus.VERIFIED.value
@@ -941,13 +956,13 @@ class TestDatasetDeleteAPI(TestCase):
         self.client = APIClient()
 
         self.tenant_a = TenantFactory.create_tenant(
-            name="Tenant A",
+            name=f"Tenant A {uuid.uuid4().hex[:8]}",
             slug=f"tenant-a-{uuid.uuid4().hex[:8]}",
             status=TenantStatus.ACTIVE.value,
             kyc_status=KYCStatus.VERIFIED.value
         )
         self.tenant_b = TenantFactory.create_tenant(
-            name="Tenant B",
+            name=f"Tenant B {uuid.uuid4().hex[:8]}",
             slug=f"tenant-b-{uuid.uuid4().hex[:8]}",
             status=TenantStatus.ACTIVE.value,
             kyc_status=KYCStatus.VERIFIED.value

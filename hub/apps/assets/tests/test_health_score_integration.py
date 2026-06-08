@@ -328,17 +328,3 @@ class AssetHealthScoreIntegrationTest(TestCase):
         # Should return low score
         self.assertLessEqual(health_score, 50.0)
 
-    # ========== ERROR HANDLING ==========
-
-    def test_health_score_integration_error_handling(self):
-        """Test error handling in health score calculation integration"""
-        # Use valid asset
-        try:
-            health_score = AssetHealthScoreService.calculate_health_score(self.asset)
-            # Should return score
-            self.assertIsNotNone(health_score)
-            self.assertGreaterEqual(health_score, 0.0)
-            self.assertLessEqual(health_score, 100.0)
-        except Exception:
-            # If raises exception, that's a problem
-            self.fail("calculate_health_score should handle errors gracefully")

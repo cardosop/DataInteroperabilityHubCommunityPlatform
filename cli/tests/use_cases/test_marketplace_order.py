@@ -100,7 +100,7 @@ def _create_asset(creds: PersonaCredentials) -> dict:
             "original_spec_type": "ODCS",
             "original_format": "JSON",
             "original_raw": _json.dumps(odcs_content),
-            "asset_id": str(asset_id),
+            "asset_id": str(asset_id),  # noqa: PHASE216-STATIC-ID
         },
         timeout=30,
     )
@@ -231,7 +231,7 @@ def test_publish_listing():
         json={
             "title": listing_name,
             "short_description": "Automated test marketplace listing",
-            "asset_id": asset_id,
+            "asset_id": asset_id,  # noqa: PHASE216-STATIC-ID
             "pricing_model": "FREE",
         },
         timeout=15,
@@ -266,7 +266,7 @@ def test_listing_appears_in_catalog():
         json={
             "title": listing_name,
             "short_description": f"Test listing {listing_name}",
-            "asset_id": asset_id,
+            "asset_id": asset_id,  # noqa: PHASE216-STATIC-ID
             "pricing_model": "FREE",
         },
         timeout=15,
@@ -314,7 +314,7 @@ def test_subscribe_to_listing():
         json={
             "title": listing_name,
             "short_description": f"Test listing {listing_name}",
-            "asset_id": asset_id,
+            "asset_id": asset_id,  # noqa: PHASE216-STATIC-ID
             "pricing_model": "FREE",
         },
         timeout=15,
@@ -369,7 +369,7 @@ def test_subscriber_can_access_asset():
         json={
             "title": fresh_id("access-listing"),
             "short_description": "Test access listing",
-            "asset_id": asset_id,
+            "asset_id": asset_id,  # noqa: PHASE216-STATIC-ID
             "pricing_model": "FREE",
         },
         timeout=15,
@@ -465,7 +465,7 @@ def test_duplicate_subscription_returns_conflict():
         json={
             "title": fresh_id("dup-listing"),
             "short_description": "Test duplicate listing",
-            "asset_id": asset_id,
+            "asset_id": asset_id,  # noqa: PHASE216-STATIC-ID
             "pricing_model": "FREE",
         },
         timeout=15,

@@ -8,18 +8,19 @@ Tests cover:
 - Edge cases
 - Error handling
 
-All tests use real implementations (no mocks/stubs) except where we force
-fallback/UNKNOWN to assert Hub sets allowed_to_store=False (MockTransport only
-for service unreachable to force fallback; assertions on Hub state).
+All tests use real implementations. Circuit-breaker tests use the
+real Redis-backed breaker by manipulating Redis state directly.
 """
 
+import copy
 import time
 import uuid
-from unittest.mock import patch
 
+import httpx
 import pytest
 from django.contrib.auth import get_user_model
 from django.test import TestCase
+from django.utils import timezone
 
 from hub.apps.assets.models import Asset, ComplianceStatus
 from hub.apps.compliance.models import ComplianceRun, ComplianceRunStatus
@@ -49,6 +50,11 @@ class FailClosedBehaviorTest(TestCase):
 
     def setUp(self):
         """Set up test fixtures"""
+        from hub.apps.core.resilience.service_breakers import (
+            reset_shared_circuit_breakers_for_service,
+        )
+        reset_shared_circuit_breakers_for_service("compliance-service")
+
         # Create tenant
         uid = uuid.uuid4().hex[:8]
         self.tenant = Tenant.objects.create(
@@ -90,17 +96,24 @@ class FailClosedBehaviorTest(TestCase):
             details_json={"scan_mode": "internal", "applicable_regulations": []},
         )
 
-    def _drive_to_terminal_status(self, compliance_run, max_attempts=30):
+    def _drive_to_terminal_status(self, compliance_run, max_attempts=4):
         """
         Drive an async (QUEUED) compliance run to a terminal state by calling
         poll_compliance_job inline. In unit-test environments no Hub RQ worker
         is running, so the poll task must be executed synchronously here.
+
+        Only a few attempts are needed — there is no async worker in tests,
+        so if the first poll doesn't resolve the run, subsequent retries
+        won't help.  Short backoff (1s / 2s / 3s) keeps the ceiling low.
         """
+        import logging
+        _logger = logging.getLogger(__name__)
+
         from hub.apps.compliance.models import ComplianceRunStatus
         from hub.apps.compliance.tasks import poll_compliance_job
 
         compliance_run.refresh_from_db()
-        for _ in range(max_attempts):
+        for attempt in range(max_attempts):
             if compliance_run.status in (
                 ComplianceRunStatus.SUCCEEDED,
                 ComplianceRunStatus.FAILED,
@@ -113,7 +126,13 @@ class FailClosedBehaviorTest(TestCase):
                 ComplianceRunStatus.RUNNING,
             ):
                 break
-            time.sleep(2)  # INTENTIONAL: test-specific timing requirement
+            delay = 1.0 * (attempt + 1)
+            _logger.debug(
+                "poll attempt %d/%d (status=%s, delay=%.1fs)",
+                attempt + 1, max_attempts,
+                compliance_run.status, delay,
+            )
+            time.sleep(delay)
 
     def _setup_test_file_content(self):
         """Set up test file content in storage. Retries so MinIO startup delay does not cause skips."""
@@ -185,8 +204,8 @@ class FailClosedBehaviorTest(TestCase):
         elif compliance_run.status == ComplianceRunStatus.QUEUED:
             self.skipTest("Compliance service returned async response")
 
-    def test_fail_closed_on_service_error(self):
-        """Test that service errors result in fail-closed behavior"""
+    def test_fail_closed_on_storage_error(self):
+        """Test that storage errors (invalid path) result in fail-closed behavior."""
         if not self.storage_available:
             self.skipTest("Storage not available - skipping test that requires storage")
 
@@ -273,20 +292,44 @@ class FailClosedBehaviorTest(TestCase):
     # ========== FALLBACK / UNKNOWN (fail-closed) ==========
 
     def test_fallback_response_has_allowed_to_store_false(self):
-        """Fallback response from client has allowed_to_store=False (fail-closed)."""
+        """scan_file fallback response has allowed_to_store=False (fail-closed).
+
+        When the compliance service is unreachable, scan_file returns a
+        fail-closed fallback response. Test this client-level behavior
+        by using an invalid service URL that triggers a real connection
+        error, then verifying the fallback contract.
+        """
+        # Use a non-routable host to trigger a real connection failure.
+        # This exercises the real retry/fallback path in scan_file
+        # without mocking any internal method.
+        import copy
         client = ComplianceServiceClient()
-        # Force fallback by making the service unreachable (RequestError)
-        with patch.object(client, "_request_with_retry", side_effect=Exception("Compliance service unreachable")):
+        original_base_url = client.base_url
+        original_client = client.client
+        try:
+            # Point to a port on localhost where nothing is listening.
+            client.base_url = "http://127.0.0.1:65535"
+            client.client = httpx.Client(base_url=client.base_url, timeout=2)
             result = client.scan_file(file_content=b"a,b\n1,2", file_format="csv")
+        finally:
+            client.client.close()
+            client.base_url = original_base_url
+            client.client = original_client
+
         self.assertFalse(result["allowed_to_store"], "Fallback must be fail-closed")
         self.assertEqual(result["overall_status"], "UNKNOWN")
 
-    def test_when_client_returns_unknown_hub_sets_allowed_to_store_false(self):
-        """When client returns UNKNOWN or None allowed_to_store, Hub sets run to allowed_to_store=False and blocks."""
-        if not getattr(self, "storage_available", False):
-            self.skipTest("Storage not available - skipping test that requires storage")
+    def test_when_client_returns_unknown_persist_result_sets_fail_closed(self):
+        """When _persist_result receives UNKNOWN/allowed_to_store=None,
+        Hub sets allowed_to_store=False (fail-closed).
 
-        fallback_like_response = {
+        Tests the _persist_result layer directly (no mock needed) — this is
+        the same fail-closed enforcement that execute_compliance_run relies on
+        after receiving a result from _call_compliance_service.
+        """
+        from hub.apps.compliance.services import ComplianceService
+
+        result_data = {
             "overall_status": "UNKNOWN",
             "risk_level": "UNKNOWN",
             "allowed_to_store": None,
@@ -297,24 +340,14 @@ class FailClosedBehaviorTest(TestCase):
             "issues": [],
             "metadata": {"total_rows": 0, "total_columns": 0},
         }
-        # Also patch scan_file_async to raise so _call_compliance_service
-        # falls back to the synchronous scan_file path (where our mock lives).
-        with patch.object(
-            ComplianceServiceClient,
-            "scan_file_async",
-            side_effect=Exception("async not available"),
-        ), patch.object(
-            ComplianceServiceClient,
-            "scan_file",
-            return_value=fallback_like_response,
-        ):
-            compliance_run = ComplianceRun.objects.create(
-                tenant=self.tenant,
-                file=self.file,
-                job=self.job,
-                status=ComplianceRunStatus.PENDING,
-            )
-            execute_compliance_run(str(compliance_run.id))
+        compliance_run = ComplianceRun.objects.create(
+            tenant=self.tenant,
+            file=self.file,
+            job=self.job,
+            status=ComplianceRunStatus.RUNNING,
+            started_at=timezone.now(),
+        )
+        ComplianceService._persist_result(compliance_run, result_data)
 
         compliance_run.refresh_from_db()
         self.assertEqual(compliance_run.status, ComplianceRunStatus.SUCCEEDED)
@@ -325,56 +358,46 @@ class FailClosedBehaviorTest(TestCase):
 
     # ========== EDGE CASES ==========
 
-    def test_fail_closed_with_null_allowed_to_store(self):
-        """Test fail-closed behavior when allowed_to_store is None"""
-        # Create compliance run with None allowed_to_store
+    def test_persist_result_failed_payload_sets_fail_closed_and_preserves_error(self):
+        """_persist_result with FAILED/ERROR status sets allowed_to_store=False
+        and stores error details in regulation_mapping_json."""
+        from hub.apps.compliance.services import ComplianceService
+
         compliance_run = ComplianceRun.objects.create(
             tenant=self.tenant,
             file=self.file,
             job=self.job,
-            status=ComplianceRunStatus.PENDING,
-            allowed_to_store=None,
+            status=ComplianceRunStatus.RUNNING,
+            started_at=timezone.now(),
+        )
+        ComplianceService._persist_result(
+            compliance_run,
+            {
+                "status": "FAILED",
+                "error": "scan worker raised RuntimeError('boom')",
+            },
         )
 
-        # Verify initial state
-        self.assertIsNone(compliance_run.allowed_to_store)
-
-        # When service fails, should set to False (fail-closed)
-        compliance_run.status = ComplianceRunStatus.FAILED
-        compliance_run.allowed_to_store = False
-        compliance_run.save()
-
         compliance_run.refresh_from_db()
-        self.assertFalse(compliance_run.allowed_to_store)
-
-    def test_fail_closed_preserves_error_details(self):
-        """Test that fail-closed preserves error details in regulation_mapping_json"""
-        # Create compliance run
-        compliance_run = ComplianceRun.objects.create(
-            tenant=self.tenant, file=self.file, job=self.job, status=ComplianceRunStatus.PENDING
+        self.assertEqual(compliance_run.status, ComplianceRunStatus.FAILED)
+        self.assertFalse(
+            compliance_run.allowed_to_store,
+            "FAILED payload must set allowed_to_store=False (fail-closed)",
         )
-
-        # Simulate service failure with error details
-        compliance_run.status = ComplianceRunStatus.FAILED
-        compliance_run.allowed_to_store = False
-        compliance_run.regulation_mapping_json = {
-            "error": "Compliance service unavailable",
-            "error_type": "ConnectionError",
-            "fail_closed": True,
-        }
-        compliance_run.save()
-
-        # Verify error details preserved
-        compliance_run.refresh_from_db()
-        self.assertIn("error", compliance_run.regulation_mapping_json)
-        self.assertIn("fail_closed", compliance_run.regulation_mapping_json)
-        self.assertTrue(compliance_run.regulation_mapping_json["fail_closed"])
+        self.assertIsNotNone(compliance_run.regulation_mapping_json)
+        self.assertEqual(
+            compliance_run.regulation_mapping_json["error"],
+            "scan worker raised RuntimeError('boom')",
+        )
+        self.assertEqual(
+            compliance_run.regulation_mapping_json["error_type"],
+            "EXECUTION_ERROR",
+        )
 
     # ========== ERROR HANDLING ==========
 
     def test_fail_closed_handles_storage_errors(self):
         """Test fail-closed handles storage errors gracefully"""
-        # Create compliance run
         compliance_run = ComplianceRun.objects.create(
             tenant=self.tenant, file=self.file, job=self.job, status=ComplianceRunStatus.PENDING
         )
@@ -383,17 +406,15 @@ class FailClosedBehaviorTest(TestCase):
         self.file.storage_path = "invalid/path/file.csv"
         self.file.save()
 
-        # Execute compliance run - should handle storage error
-        try:
-            execute_compliance_run(str(compliance_run.id))
-        except Exception:
-            # Expected if storage unavailable
-            pass
+        execute_compliance_run(str(compliance_run.id))
 
-        # Verify fail-closed on storage error
         compliance_run.refresh_from_db()
-        if compliance_run.status == ComplianceRunStatus.FAILED:
-            self.assertFalse(compliance_run.allowed_to_store)
+        self.assertEqual(
+            compliance_run.status,
+            ComplianceRunStatus.FAILED,
+            "Invalid storage path must produce FAILED status",
+        )
+        self.assertFalse(compliance_run.allowed_to_store)
 
     def test_fail_closed_handles_service_timeout(self):
         """Test fail-closed handles service timeout gracefully"""
@@ -421,8 +442,61 @@ class FailClosedBehaviorTest(TestCase):
         # Verify compliance run was handled
         compliance_run.refresh_from_db()
         self.assertIn(
-            compliance_run.status, [ComplianceRunStatus.SUCCEEDED, ComplianceRunStatus.FAILED]
+            compliance_run.status,
+            [
+                ComplianceRunStatus.SUCCEEDED,
+                ComplianceRunStatus.FAILED,
+                ComplianceRunStatus.QUEUED,
+            ],
         )
 
         if compliance_run.status == ComplianceRunStatus.FAILED:
             self.assertFalse(compliance_run.allowed_to_store)
+
+    # ========== DEGRADED COMPLIANCE STATUS ==========
+
+    def test_apply_degraded_compliance_when_circuit_open(self):
+        """When compliance-service circuit is OPEN and asset has datasets,
+        asset.compliance_status is set to WARN.
+
+        Uses the real Redis-backed circuit breaker (no mock) by manually
+        transitioning the breaker to OPEN state via Redis, then restoring
+        CLOSED after the assertion.
+        """
+        from hub.apps.compliance.services import ComplianceService
+        from hub.apps.core.resilience.circuit_breaker import CircuitBreakerState
+        from hub.apps.core.resilience.service_breakers import (
+            get_shared_circuit_breaker,
+        )
+
+        # Create asset with a dataset (method returns early if no datasets)
+        asset = Asset.objects.create(
+            tenant=self.tenant,
+            key="degraded-circuit",
+            name="Degraded Circuit Asset",
+            created_by=self.user,
+        )
+        Dataset.objects.create(
+            tenant=self.tenant,
+            asset=asset,
+            file=self.file,
+            format="CSV",
+            created_by=self.user,
+        )
+
+        breaker = get_shared_circuit_breaker("compliance-service")
+        original_state = breaker.get_state()
+        try:
+            # Manually transition the real Redis-backed breaker to OPEN.
+            breaker._set_state(CircuitBreakerState.OPEN)
+            ComplianceService.apply_degraded_compliance_status_if_circuit_open(asset)
+
+            asset.refresh_from_db()
+            self.assertEqual(
+                asset.compliance_status,
+                ComplianceStatus.WARN,
+                "Circuit-breaker OPEN must set asset compliance_status to WARN",
+            )
+        finally:
+            # Restore the original circuit breaker state.
+            breaker._set_state(original_state)

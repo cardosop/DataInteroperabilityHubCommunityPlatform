@@ -9,16 +9,16 @@ from rest_framework import serializers
 from .models import ScheduledIngestionRun, ScheduledIngestionRunStatus
 
 
-class InternalCreateRunSerializer(serializers.Serializer):
-    """Request body for POST .../internal/runs/"""
+class InternalCreateIngestionRunSerializer(serializers.Serializer):
+    """Request body for POST .../internal/runs/ (scheduled ingestion)."""
 
     scheduled_ingestion_id = serializers.UUIDField(required=True)
     prefect_flow_run_id = serializers.CharField(required=False, allow_blank=True, max_length=255)
     idempotency_key = serializers.CharField(required=False, allow_blank=True, max_length=255)
 
 
-class InternalUpdateRunSerializer(serializers.Serializer):
-    """Request body for PATCH .../internal/runs/{run_id}/"""
+class InternalUpdateIngestionRunSerializer(serializers.Serializer):
+    """Request body for PATCH .../internal/runs/{run_id}/ (scheduled ingestion)."""
 
     status = serializers.ChoiceField(
         choices=[s[0] for s in ScheduledIngestionRunStatus.choices],

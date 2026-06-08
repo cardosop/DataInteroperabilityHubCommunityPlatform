@@ -112,10 +112,20 @@ class AnomalyDetectorTest(TestCase):
         
         # Detect anomalies
         anomalies = AnomalyDetector.detect_anomalies(anomalous_run)
-        
-        self.assertGreater(len(anomalies), 0)
+
+        self.assertGreaterEqual(len(anomalies), 1)
         z_score_anomalies = [a for a in anomalies if a.anomaly_type == "z_score_outlier"]
-        self.assertGreater(len(z_score_anomalies), 0)
+        self.assertGreaterEqual(len(z_score_anomalies), 1)
+
+        # Assert computed values, not just presence
+        anomaly = z_score_anomalies[0]
+        self.assertEqual(anomaly.actual_value, 50.0)
+        self.assertAlmostEqual(anomaly.expected_value, 92.25, places=2)
+        self.assertAlmostEqual(anomaly.deviation, -42.25, places=2)
+        self.assertEqual(anomaly.severity, DQAnomalySeverity.CRITICAL,
+            f"z-score of ~27.9 must be CRITICAL, got {anomaly.severity}")
+        self.assertEqual(anomaly.dq_run, anomalous_run,
+            "Anomaly must reference the DQ run that triggered it")
     
     def test_detect_iqr_anomaly(self):
         """Test IQR-based anomaly detection"""
@@ -134,10 +144,20 @@ class AnomalyDetectorTest(TestCase):
         
         # Detect anomalies
         anomalies = AnomalyDetector.detect_anomalies(outlier_run)
-        
-        self.assertGreater(len(anomalies), 0)
+
+        self.assertGreaterEqual(len(anomalies), 1)
         iqr_anomalies = [a for a in anomalies if a.anomaly_type == "iqr_outlier"]
-        self.assertGreater(len(iqr_anomalies), 0)
+        self.assertGreaterEqual(len(iqr_anomalies), 1)
+
+        # Assert computed values, not just presence
+        anomaly = iqr_anomalies[0]
+        self.assertEqual(anomaly.actual_value, 30.0)
+        self.assertAlmostEqual(anomaly.expected_value, 89.5, places=2)
+        self.assertAlmostEqual(anomaly.deviation, -59.5, places=2)
+        self.assertEqual(anomaly.severity, DQAnomalySeverity.CRITICAL,
+            f"IQR outlier with z-equiv ~19.6 must be CRITICAL, got {anomaly.severity}")
+        self.assertEqual(anomaly.dq_run, outlier_run,
+            "Anomaly must reference the DQ run that triggered it")
     
     def test_detect_sudden_drop(self):
         """Test sudden drop detection"""
@@ -157,9 +177,21 @@ class AnomalyDetectorTest(TestCase):
         # Detect anomalies
         anomalies = AnomalyDetector.detect_anomalies(drop_run)
         
-        self.assertGreater(len(anomalies), 0)
+        # With zero-variance baseline, only sudden_drop fires
+        # (z_score and IQR checks bail out when std_dev==0 / iqr==0)
+        self.assertEqual(len(anomalies), 1,
+            "Zero-variance baseline: only sudden_drop should be detected")
         drop_anomalies = [a for a in anomalies if a.anomaly_type == "sudden_drop"]
-        self.assertGreater(len(drop_anomalies), 0)
+        self.assertEqual(len(drop_anomalies), 1)
+
+        anomaly = drop_anomalies[0]
+        self.assertEqual(anomaly.actual_value, 70.0)
+        self.assertEqual(anomaly.expected_value, 95.0)
+        self.assertEqual(anomaly.deviation, -25.0)
+        self.assertEqual(anomaly.severity, DQAnomalySeverity.HIGH,
+            f"26.3% drop severity must be HIGH, got {anomaly.severity}")
+        self.assertEqual(anomaly.dq_run, drop_run,
+            "Anomaly must reference the DQ run that triggered it")
     
     def test_anomaly_severity_calculation(self):
         """Test anomaly severity calculation"""
@@ -177,10 +209,15 @@ class AnomalyDetectorTest(TestCase):
         )
         
         anomalies = AnomalyDetector.detect_anomalies(critical_run)
-        
-        # Should have at least one high or critical severity
-        high_severity = [a for a in anomalies if a.severity in [DQAnomalySeverity.HIGH, DQAnomalySeverity.CRITICAL]]
-        self.assertGreater(len(high_severity), 0)
+
+        # Flat baseline → only sudden_drop fires (z-score / IQR bail on zero variance)
+        self.assertEqual(len(anomalies), 1,
+            "Zero-variance baseline: only sudden_drop should fire")
+        # 77.8% drop → severity HIGH (20% threshold). Not CRITICAL because
+        # sudden_drop never assigns CRITICAL (that code path only fires in
+        # _check_z_score/_check_iqr which are skipped here).
+        self.assertEqual(anomalies[0].severity, DQAnomalySeverity.HIGH,
+            f"77.8% sudden drop must be HIGH, got {anomalies[0].severity}")
     
     def test_detect_anomalies_for_asset(self):
         """Test anomaly detection for asset"""
@@ -203,8 +240,12 @@ class AnomalyDetectorTest(TestCase):
             str(self.tenant.id)
         )
         
-        self.assertGreater(len(anomalies), 0)
-    
+        self.assertGreaterEqual(len(anomalies), 1)
+        # Every anomaly must reference this asset
+        for anomaly in anomalies:
+            self.assertEqual(anomaly.asset_id, self.asset.id,
+                f"Anomaly {anomaly.anomaly_type} must belong to asset {self.asset.id}")
+
     def test_detect_anomalies_for_dataset(self):
         """Test anomaly detection for dataset"""
         # Create baseline runs
@@ -226,8 +267,12 @@ class AnomalyDetectorTest(TestCase):
             str(self.tenant.id)
         )
         
-        self.assertGreater(len(anomalies), 0)
-    
+        self.assertGreaterEqual(len(anomalies), 1)
+        # Every anomaly must reference this dataset
+        for anomaly in anomalies:
+            self.assertEqual(anomaly.dataset_id, self.dataset.id,
+                f"Anomaly {anomaly.anomaly_type} must belong to dataset {self.dataset.id}")
+
     def test_no_anomalies_with_insufficient_data(self):
         """Test that no anomalies are detected with insufficient data"""
         # Create only 2 runs (not enough for baseline)

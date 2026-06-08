@@ -58,6 +58,26 @@ def invalidate_dataset_cache_on_delete(sender, instance, **kwargs):
         )
 
 
+@receiver(post_delete, sender="datasets.Dataset")
+def schedule_orphan_file_check_on_dataset_delete(sender, instance, **kwargs):
+    """Phase 260.1.B — enqueue orphan-file soft-delete eligibility check."""
+    try:
+        from hub.apps.datasets.orphan_file_reconcile import (
+            schedule_orphan_file_check_after_dataset_delete,
+        )
+        schedule_orphan_file_check_after_dataset_delete(
+            tenant_id=instance.tenant_id,
+            file_id=instance.file_id,
+            dataset_asset_id=instance.asset_id,
+        )
+    except Exception as exc:
+        logger.warning(
+            "orphan_file_schedule_failed dataset_id=%s error=%s",
+            instance.pk,
+            exc,
+        )
+
+
 # ---------------------------------------------------------------------------
 # Phase 230.3.7 (REQ-SEM-TOMBSTONE-001) — Dataset archive → semantic tombstone
 # ---------------------------------------------------------------------------

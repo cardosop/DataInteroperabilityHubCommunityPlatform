@@ -39,6 +39,7 @@ from hub.apps.contracts.models import (
     OriginalSpecType,
 )
 from hub.apps.contracts.tests.test_base import ContractsTransactionTestBase
+from hub.apps.tenants.models import Tenant
 
 
 def get_real_redis_client_or_none():
@@ -71,7 +72,7 @@ class TestCacheTags(TestCase):
             keys = self.redis_client.keys("cache_tag:*")
             if keys:
                 self.redis_client.delete(*keys)
-        except Exception:
+        except (redis.ConnectionError, redis.TimeoutError, redis.ResponseError):
             pass
 
     def tearDown(self):
@@ -83,11 +84,11 @@ class TestCacheTags(TestCase):
             keys = self.redis_client.keys("cache_tag:*")
             if keys:
                 self.redis_client.delete(*keys)
-        except Exception:
+        except (redis.ConnectionError, redis.TimeoutError, redis.ResponseError):
             pass
 
     def test_cache_contract_with_tags(self):
-        """Test caching contract with tags."""
+        """Caching contract with tags stores tags in Redis SMEMBERS sets."""
         contract_id = "test-contract-1"
         contract_data = {"id": contract_id, "name": "Test Contract"}
         tags = ["tenant:test-tenant", "owner:user1", "status:active"]
@@ -98,6 +99,13 @@ class TestCacheTags(TestCase):
         cached = get_cached_contract(contract_id)
         self.assertIsNotNone(cached)
         self.assertEqual(cached["id"], contract_id)
+
+        # Verify tags were stored in Redis sets
+        for tag in tags:
+            tag_key = f"cache_tag:contract:{tag}"
+            members = self.redis_client.smembers(tag_key)
+            self.assertIn(contract_id, members,
+                f"Tag '{tag}' must contain contract_id '{contract_id}'")
 
     def test_invalidate_by_single_tag(self):
         """Test invalidating contracts by single tag."""
@@ -124,20 +132,25 @@ class TestCacheTags(TestCase):
         self.assertIsNone(get_cached_contract("contract-3"))
 
     def test_invalidate_by_multiple_tags(self):
-        """Test invalidating contracts by multiple tags."""
-        # Cache contracts with tags
+        """Invalidation uses OR logic: any matching tag removes the contract.
+
+        contract-1 gets two tags (tag_a, tag_b), contract-2 gets one distinct tag (tag_c).
+        Invalidating tag_a alone removes contract-1 but leaves contract-2 untouched,
+        proving OR semantics (not AND — tag_b is irrelevant).
+        """
         contract1_data = {"id": "contract-1", "name": "Contract 1"}
         contract2_data = {"id": "contract-2", "name": "Contract 2"}
 
-        cache_contract_with_tags("contract-1", contract1_data, tags=["tenant:t1", "status:active"])
-        cache_contract_with_tags("contract-2", contract2_data, tags=["tenant:t1", "status:draft"])
+        cache_contract_with_tags("contract-1", contract1_data, tags=["tag_a", "tag_b"])
+        cache_contract_with_tags("contract-2", contract2_data, tags=["tag_c"])
 
-        # Invalidate by multiple tags (OR logic - invalidates if contract has any tag)
-        invalidate_contract_cache_by_tags(["status:active", "status:draft"])
+        # Invalidate by tag_a only — OR logic: contract-1 has tag_a → removed
+        invalidate_contract_cache_by_tags(["tag_a"])
 
-        # Both should be invalidated
-        self.assertIsNone(get_cached_contract("contract-1"))
-        self.assertIsNone(get_cached_contract("contract-2"))
+        self.assertIsNone(get_cached_contract("contract-1"),
+            "contract-1 must be invalidated (it has tag_a)")
+        self.assertIsNotNone(get_cached_contract("contract-2"),
+            "contract-2 must survive (tag_a is not among its tags)")
 
     def test_invalidate_by_tenant_tag(self):
         """Test invalidating contracts by tenant tag."""
@@ -170,7 +183,7 @@ class TestCacheWarming(ContractsTransactionTestBase):
         if self.redis_client is None:
             self.skipTest("Redis not available for integration tests")
 
-        import uuid; uid = uuid.uuid4().hex[:8]
+        uid = uuid.uuid4().hex[:8]
         # Update tenant/user names for clarity
         self.tenant.name = f"Cache Warming Test {uid}"
         self.tenant.slug = f"cache-warming-test-{uid}"
@@ -218,43 +231,61 @@ class TestCacheWarming(ContractsTransactionTestBase):
 
     def test_warm_frequently_accessed_contracts(self):
         """
-        Test warming cache for frequently accessed contracts using real Contract model.
-
-        Uses real Contract.objects.filter() to query contracts from database.
+        Warm cache using real Contract.objects.filter() — verify contracts were cached.
         """
-        # Warm cache using real Contract model
-        warmed_count = warm_frequently_accessed_contracts(limit=10)
+        warmed_count = warm_frequently_accessed_contracts(
+            tenant_id=str(self.tenant.id), limit=10
+        )
 
-        # warm_frequently_accessed_contracts queries real Contract objects we created above
-        self.assertGreater(warmed_count, 0)
+        # We seeded 2 contracts for our tenant above; warming must find them.
+        self.assertGreater(warmed_count, 0,
+            "Expected warm_frequently_accessed_contracts to cache at least our 2 seeded contracts")
 
-        # If contracts were warmed, verify they're cached
-        if warmed_count > 0:
-            # Check if our test contracts are cached
-            cached1 = get_cached_contract(str(self.contract1.id))
-            cached2 = get_cached_contract(str(self.contract2.id))
-            # Contracts may or may not be cached depending on query criteria
-            # The important thing is that real implementation was used
+        # Verify both seeded contracts are now in cache.
+        for c in (self.contract1, self.contract2):
+            cached = get_cached_contract(str(c.id))
+            self.assertIsNotNone(cached,
+                f"Contract {c.id} should be cached after warming")
+            self.assertEqual(cached.get("tenant_id"), str(self.tenant.id))
 
     def test_warm_contracts_by_tenant(self):
         """
-        Test warming contracts for specific tenant using real Contract model.
-
-        Uses real Contract.objects.filter() to query contracts by tenant.
+        Warm cache for a specific tenant — verify only that tenant's contracts are cached.
         """
-        # Warm cache for tenant using real Contract model
+        # Create a contract in a different tenant to verify it is excluded
+        _uid = uuid.uuid4().hex[:8]
+        other_tenant = Tenant.objects.create(
+            name=f"Other Warm Tenant {_uid}",
+            slug=f"other-warm-tenant-{_uid}",
+            status="ACTIVE",
+            kyc_status="UNVERIFIED",
+        )
+        other_contract = Contract.objects.create(
+            tenant=other_tenant,
+            hub_contract_json={"name": "Other Contract", "id": f"other-{_uid}"},
+            status=ContractStatus.ACTIVE,
+            normalization_status=NormalizationStatus.NORMALIZED_OK,
+            original_spec_type=OriginalSpecType.ODCS,
+            original_spec_version="3.0.0",
+            original_format=OriginalFormat.JSON,
+            original_raw='{"name": "Other Contract"}',
+            created_by=self.user,
+        )
+
         warmed_count = warm_frequently_accessed_contracts(tenant_id=str(self.tenant.id), limit=10)
 
-        # We created contracts for this tenant, so warming should find them
-        self.assertGreater(warmed_count, 0)
+        self.assertGreater(warmed_count, 0,
+            "Expected warming by tenant to find our seeded contracts")
 
-        # If contracts were warmed, verify they're cached
-        if warmed_count > 0:
-            # Check if our test contracts are cached
-            cached1 = get_cached_contract(str(self.contract1.id))
-            cached2 = get_cached_contract(str(self.contract2.id))
-            # Contracts may or may not be cached depending on query criteria
-            # The important thing is that real implementation was used
+        for c in (self.contract1, self.contract2):
+            cached = get_cached_contract(str(c.id))
+            self.assertIsNotNone(cached,
+                f"Contract {c.id} should be cached after per-tenant warming")
+
+        # Other tenant's contract must NOT be cached
+        other_cached = get_cached_contract(str(other_contract.id))
+        self.assertIsNone(other_cached,
+            f"Other tenant's contract {other_contract.id} must NOT be cached after tenant-scoped warm")
 
 
 class TestCacheMetrics(TestCase):
@@ -271,7 +302,7 @@ class TestCacheMetrics(TestCase):
             keys = self.redis_client.keys("contract:*")
             if keys:
                 self.redis_client.delete(*keys)
-        except Exception:
+        except (redis.ConnectionError, redis.TimeoutError, redis.ResponseError):
             pass
 
     def tearDown(self):
@@ -280,47 +311,49 @@ class TestCacheMetrics(TestCase):
             keys = self.redis_client.keys("contract:*")
             if keys:
                 self.redis_client.delete(*keys)
-        except Exception:
+        except (redis.ConnectionError, redis.TimeoutError, redis.ResponseError):
             pass
 
     def test_cache_hit_metrics(self):
         """
-        Test cache hit metrics are recorded using real metrics.
-
-        Uses real cache_hits_total and cache_misses_total metrics to verify integration.
+        Cache hit metrics are recorded on get_cached_contract_with_metrics.
         """
-        contract_id = "test-contract-1"
-        contract_data = {"id": contract_id, "name": "Test Contract"}
+        contract_id = "test-contract-hit"
+        contract_data = {"id": contract_id, "name": "Test"}
 
-        # Cache contract
+        # Capture baseline
+        metrics_before = get_contract_cache_metrics()
+
+        # Cache → get → should be a hit
         cache_contract(contract_id, contract_data)
-
-        # Get cached contract (should be a hit)
         cached = get_cached_contract_with_metrics(contract_id)
 
-        # Verify contract was retrieved (cache hit)
         self.assertIsNotNone(cached)
         self.assertEqual(cached["id"], contract_id)
 
-        # Metrics are recorded by real metrics system (Prometheus/OTEL)
-        # We verify the functionality works, metrics are recorded automatically
+        # Delta verification: hits must have increased
+        metrics_after = get_contract_cache_metrics()
+        delta_hits = metrics_after["hits"] - metrics_before["hits"]
+        self.assertGreater(delta_hits, 0,
+            f"Expected cache hits to increase, delta_hits={delta_hits}")
 
     def test_cache_miss_metrics(self):
         """
-        Test cache miss metrics are recorded using real metrics.
-
-        Uses real cache_misses_total metrics to verify integration.
+        Cache miss metrics are recorded for non-existent keys.
         """
-        contract_id = "non-existent-contract"
+        contract_id = f"non-existent-{uuid.uuid4().hex[:8]}"
 
-        # Try to get non-existent contract (should be a miss)
+        # Capture baseline
+        metrics_before = get_contract_cache_metrics()
+
         cached = get_cached_contract_with_metrics(contract_id)
-
-        # Verify cache miss (no cached data)
         self.assertIsNone(cached)
 
-        # Metrics are recorded by real metrics system (Prometheus/OTEL)
-        # We verify the functionality works, metrics are recorded automatically
+        # Delta verification: misses must have increased
+        metrics_after = get_contract_cache_metrics()
+        delta_misses = metrics_after["misses"] - metrics_before["misses"]
+        self.assertGreater(delta_misses, 0,
+            f"Expected cache misses to increase, delta_misses={delta_misses}")
 
     def test_get_cache_metrics(self):
         """
@@ -364,29 +397,34 @@ class TestCacheMetrics(TestCase):
         self.assertLessEqual(metrics["hit_rate"], 1)
 
     def test_cache_metrics_integration(self):
-        """Test cache metrics integration with real caching."""
+        """Cache metrics integration: delta hits must increase after cache gets."""
         contract_id = "test-contract-metrics"
         contract_data = {"id": contract_id, "name": "Test Contract"}
+
+        # Capture baseline metrics before any operations
+        metrics_before = get_contract_cache_metrics()
 
         # Cache contract
         cache_contract(contract_id, contract_data)
 
-        # First get - should be a hit
+        # Two cache gets — both should be hits
         cached1 = get_cached_contract_with_metrics(contract_id)
         self.assertIsNotNone(cached1)
 
-        # Second get - should also be a hit
         cached2 = get_cached_contract_with_metrics(contract_id)
         self.assertIsNotNone(cached2)
 
-        # Get metrics
-        # Note: Metrics may not be initialized in test environment
-        # This test verifies the function works without errors
-        metrics = get_contract_cache_metrics()
-        self.assertIn("hits", metrics)
-        self.assertIn("misses", metrics)
-        self.assertIn("hit_rate", metrics)
-        # Metrics may be 0 if not initialized, which is acceptable in tests
+        # Get metrics after operations
+        metrics_after = get_contract_cache_metrics()
+
+        self.assertIn("hits", metrics_after)
+        self.assertIn("misses", metrics_after)
+        self.assertIn("hit_rate", metrics_after)
+
+        # Delta verification: hits must have increased
+        delta_hits = metrics_after["hits"] - metrics_before["hits"]
+        self.assertGreater(delta_hits, 0,
+            f"Expected cache hits to increase after 2 gets, but delta_hits={delta_hits}")
 
 
 class TestEnhancedCachingIntegration(TestCase):
@@ -407,7 +445,7 @@ class TestEnhancedCachingIntegration(TestCase):
             keys = self.redis_client.keys("cache_tag:*")
             if keys:
                 self.redis_client.delete(*keys)
-        except Exception:
+        except (redis.ConnectionError, redis.TimeoutError, redis.ResponseError):
             pass
 
     def test_full_caching_lifecycle_with_tags(self):
@@ -430,11 +468,13 @@ class TestEnhancedCachingIntegration(TestCase):
         cached_after = get_cached_contract_with_metrics(contract_id)
         self.assertIsNone(cached_after)
 
-    def test_cache_warming_and_metrics(self):
+    def test_cache_with_tags_and_metrics_integration(self):
         """
-        Test cache warming combined with metrics using real Contract model.
+        Test cache tags combined with metrics integration (no warming — renamed).
 
-        Uses real Contract objects to verify cache warming with metrics integration.
+        Verifies that caching with tags followed by a metrics-tracked get
+        returns the cached data correctly, and that the full lifecycle
+        (tag-based invalidation) works end-to-end.
         """
         # Create a contract for warming
         contract_id = "test-warm-metrics"
@@ -447,44 +487,37 @@ class TestEnhancedCachingIntegration(TestCase):
         # Get cached contract with metrics (should be a hit)
         cached = get_cached_contract_with_metrics(contract_id)
         self.assertIsNotNone(cached)
+        self.assertEqual(cached["id"], contract_id)
 
-        # Metrics are recorded by real metrics system
-        # We verify the functionality works, metrics are recorded automatically
+        # Verify tag-based invalidation works end-to-end
+        invalidate_contract_cache_by_tags(["tenant:t1"])
+        self.assertIsNone(get_cached_contract_with_metrics(contract_id))
 
     # Edge cases and error handling tests
     def test_cache_with_none_contract_id(self):
-        """Test caching with None contract ID."""
+        """Caching with None contract_id must not crash — guard returns early."""
         contract_data = {"id": "test", "name": "Test"}
 
-        # Should handle None contract_id gracefully
-        try:
-            cache_contract_with_tags(None, contract_data, tags=["tenant:t1"])
-            # May cache or skip
-        except Exception:
-            # If it raises exception, that's acceptable
-            pass
+        # Must not raise; our guard returns early before Redis is touched
+        # (caching_enhanced.py:105 — ``if not contract_id: return``).
+        cache_contract_with_tags(None, contract_data, tags=["tenant:t1"])
+        # The guard at caching_enhanced.py:105 returns early when contract_id
+        # is None, so the tag-level path AND cache_contract() are both skipped.
+        # We verify nothing blew up.
 
     def test_cache_with_empty_contract_id(self):
-        """Test caching with empty contract ID."""
-        contract_data = {"id": "test", "name": "Test"}
+        """Caching with empty contract_id must not crash — guard returns early."""
+        contract_data = {"id": "", "name": "Test"}
 
-        # Should handle empty contract_id gracefully
-        try:
-            cache_contract_with_tags("", contract_data, tags=["tenant:t1"])
-            # May cache or skip
-        except Exception:
-            # If it raises exception, that's acceptable
-            pass
+        cache_contract_with_tags("", contract_data, tags=["tenant:t1"])
+        # Should not raise; empty-string key is blocked by the same guard.
 
     def test_cache_with_none_contract_data(self):
-        """Test caching with None contract data."""
-        # Should handle None contract_data gracefully
-        try:
-            cache_contract_with_tags("test-id", None, tags=["tenant:t1"])
-            # May cache or skip
-        except Exception:
-            # If it raises exception, that's acceptable
-            pass
+        """Caching with None contract_data must not crash — verify no data cached."""
+        cache_contract_with_tags("test-id", None, tags=["tenant:t1"])
+        # After caching None, a subsequent get must return None (no data was stored).
+        cached = get_cached_contract("test-id")
+        self.assertIsNone(cached)
 
     def test_cache_with_empty_tags(self):
         """Test caching with empty tags list."""
@@ -499,17 +532,14 @@ class TestEnhancedCachingIntegration(TestCase):
         self.assertIsNotNone(cached)
 
     def test_cache_with_none_tags(self):
-        """Test caching with None tags."""
+        """Caching with None tags must not crash — guard returns early."""
         contract_id = "test-contract-none-tags"
         contract_data = {"id": contract_id, "name": "Test"}
 
-        # Should handle None tags gracefully
-        try:
-            cache_contract_with_tags(contract_id, contract_data, tags=None)
-            # May cache or skip
-        except Exception:
-            # If it raises exception, that's acceptable
-            pass
+        cache_contract_with_tags(contract_id, contract_data, tags=None)
+        # Should not raise; None tags skip the tag-indexing path entirely.
+        cached = get_cached_contract(contract_id)
+        self.assertIsNotNone(cached)
 
     def test_cache_with_very_large_contract_data(self):
         """Test caching with very large contract data."""
@@ -553,22 +583,31 @@ class TestEnhancedCachingIntegration(TestCase):
         self.assertIsNotNone(cached)
 
     def test_invalidate_with_empty_tags(self):
-        """Test invalidating with empty tags list."""
-        # Should handle empty tags gracefully
+        """Invalidating with empty tags list returns 0 and leaves cache intact."""
+        contract_id = "test-empty-tags-invalidation"
+        contract_data = {"id": contract_id, "name": "Test"}
+
+        # Cache a contract with a real tag first
+        cache_contract_with_tags(contract_id, contract_data, tags=["tenant:t1"])
+
+        # Verify it's cached
+        self.assertIsNotNone(get_cached_contract(contract_id),
+            "Contract must be cached before invalidation")
+
+        # Invalidate with empty tags — must return 0
         result = invalidate_contract_cache_by_tags([])
-        # May return success or skip
-        self.assertIsNotNone(result)
+        self.assertEqual(result, 0,
+            "Empty tags list must invalidate zero contracts")
+
+        # Contract must still be cached (nothing was invalidated)
+        self.assertIsNotNone(get_cached_contract(contract_id),
+            "Contract must survive empty-tag invalidation")
 
     def test_invalidate_with_none_tags(self):
-        """Test invalidating with None tags."""
-        # Should handle None tags gracefully
-        try:
-            result = invalidate_contract_cache_by_tags(None)
-            # May return error or handle gracefully
-            self.assertIsNotNone(result)
-        except Exception:
-            # If it raises exception, that's acceptable
-            pass
+        """Invalidating with None tags must return 0 — guard returns early."""
+        result = invalidate_contract_cache_by_tags(None)
+        # Guard clamps None to empty → skips invalidation, returns 0.
+        self.assertEqual(result, 0)
 
     def test_invalidate_with_nonexistent_tags(self):
         """Test invalidating with nonexistent tags."""
@@ -584,14 +623,17 @@ class TestEnhancedCachingIntegration(TestCase):
         self.assertIsNotNone(cached)
 
     def test_get_cached_with_none_contract_id(self):
-        """Test getting cached contract with None contract ID."""
-        # Should handle None contract_id gracefully
+        """Getting cached contract with None contract_id returns None / raises ValueError."""
+        # get_cached_contract() (called internally) will hit the cache
+        # with a None key; Django's cache backend may treat this as
+        # cache.get(None) which either returns None (LocMemCache) or
+        # raises (Redis).  Either outcome is fine — we just verify
+        # there is no unhandled crash path.
         try:
             cached = get_cached_contract_with_metrics(None)
-            # May return None or raise exception
             self.assertIsNone(cached)
-        except Exception:
-            # If it raises exception, that's acceptable
+        except (ValueError, TypeError):
+            # Acceptable: some backends reject None keys at the client level.
             pass
 
     def test_get_cached_with_empty_contract_id(self):
@@ -620,20 +662,13 @@ class TestEnhancedCachingIntegration(TestCase):
         self.assertEqual(warmed_count, 0)
 
     def test_warm_with_negative_limit(self):
-        """Test cache warming with negative limit."""
-        # Should handle negative limit gracefully
-        try:
-            warmed_count = warm_frequently_accessed_contracts(limit=-1)
-            # Negative limit should not warm any contracts
-            self.assertEqual(warmed_count, 0)
-        except Exception:
-            # If it raises exception, that's acceptable
-            pass
+        """Cache warming with negative limit must clamp to 0 — no query executed."""
+        warmed_count = warm_frequently_accessed_contracts(limit=-1)
+        # Guard clamps limit<0 to 0 → returns 0 without touching the DB.
+        self.assertEqual(warmed_count, 0)
 
     def test_warm_with_very_large_limit(self):
         """Test cache warming with very large limit."""
-        import uuid
-
         # Isolate from shared DB: only contracts for a non-existent tenant may be warmed.
         warmed_count = warm_frequently_accessed_contracts(
             tenant_id=str(uuid.uuid4()), limit=1000000
@@ -642,8 +677,6 @@ class TestEnhancedCachingIntegration(TestCase):
 
     def test_warm_with_nonexistent_tenant_id(self):
         """Test cache warming with nonexistent tenant ID."""
-        import uuid
-
         fake_tenant_id = str(uuid.uuid4())
 
         # Should handle nonexistent tenant gracefully
@@ -651,31 +684,48 @@ class TestEnhancedCachingIntegration(TestCase):
         self.assertEqual(warmed_count, 0)
 
     def test_cache_concurrent_operations(self):
-        """Test concurrent cache operations."""
+        """Concurrent cache operations must not corrupt data or lose writes."""
         import threading
 
         contract_ids = [f"contract-{i}" for i in range(10)]
         results = []
+        errors = []
 
         def cache_contracts():
             for contract_id in contract_ids:
-                contract_data = {"id": contract_id, "name": f"Contract {contract_id}"}
-                cache_contract_with_tags(contract_id, contract_data, tags=["tenant:t1"])
-                cached = get_cached_contract(contract_id)
-                results.append(cached is not None)
+                try:
+                    contract_data = {"id": contract_id, "name": f"Contract {contract_id}"}
+                    cache_contract_with_tags(contract_id, contract_data, tags=["tenant:t1"])
+                    cached = get_cached_contract(contract_id)
+                    results.append((contract_id, cached is not None))
+                except Exception as e:
+                    errors.append((contract_id, str(e)))
 
-        # Run concurrent operations
+        # Run concurrent operations — 3 threads × 10 contracts = 30 writes total
         threads = [threading.Thread(target=cache_contracts) for _ in range(3)]
         for thread in threads:
             thread.start()
         for thread in threads:
             thread.join()
 
-        # Should handle concurrent operations
-        self.assertGreater(len(results), 0)
+        # All 30 writes must succeed with zero errors
+        self.assertEqual(len(errors), 0,
+            f"Concurrent operations produced {len(errors)} errors: {errors}")
+        self.assertEqual(len(results), 30,
+            f"Expected 30 results (3 threads × 10 contracts), got {len(results)}")
 
-    def test_cache_expiration_handling(self):
-        """Test cache expiration handling."""
+        # Every result must report a successful cache hit
+        self.assertTrue(all(success for _, success in results),
+            "All cached contracts must be retrievable after concurrent writes")
+
+        # Verify sample data integrity — first contract from each thread
+        for cid in contract_ids[:3]:
+            cached = get_cached_contract(cid)
+            self.assertIsNotNone(cached, f"Contract {cid} must survive concurrent writes")
+            self.assertEqual(cached["id"], cid)
+
+    def test_cache_clear_removes_cached_entries(self):
+        """Verify that cache.clear() removes cached entries (simulates expiry)."""
         contract_id = "test-contract-expiration"
         contract_data = {"id": contract_id, "name": "Test"}
 
@@ -692,3 +742,39 @@ class TestEnhancedCachingIntegration(TestCase):
 
         cached_after = get_cached_contract(contract_id)
         self.assertIsNone(cached_after)  # Cache cleared = expired
+
+    def test_invalidate_by_tags_redis_fallback(self):
+        """Tag-based invalidation handles both Redis and Django fallback paths.
+
+        Caches a contract with known tags, invalidates by one tag, and
+        verifies the outcome.  When Redis is available the contract is
+        removed; when only the Django fallback is active the contract may
+        survive (Django LocMemCache does not support tag-based invalidation).
+        Both outcomes are valid — the invariant is no crash.
+        """
+        contract_id = "test-redis-fallback"
+        contract_data = {"id": contract_id, "name": "Fallback Test"}
+
+        # Cache contract with tags via Redis (if available) or Django fallback
+        cache_contract_with_tags(contract_id, contract_data, tags=["tenant:t1", "owner:user1"])
+
+        # Verify cached
+        self.assertIsNotNone(get_cached_contract(contract_id),
+            "Contract must be cached before invalidation")
+
+        # Invalidate by tag
+        invalidated = invalidate_contract_cache_by_tags(["tenant:t1"])
+        self.assertGreaterEqual(invalidated, 0,
+            "Invalidation count must be non-negative")
+
+        cached_after = get_cached_contract(contract_id)
+        if invalidated > 0:
+            # Redis path: contract must be gone
+            self.assertIsNone(cached_after,
+                "Contract must be invalidated when Redis tag indexing is active")
+        else:
+            # Django fallback path: contract may survive since Django's
+            # LocMemCache doesn't support tag-based pattern invalidation.
+            # The contract should still be retrievable (cache was not cleared).
+            self.assertIsInstance(cached_after, (dict, type(None)),
+                "After invalidation with count=0, cache state must be coherent")

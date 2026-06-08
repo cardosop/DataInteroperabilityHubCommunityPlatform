@@ -43,17 +43,19 @@ class TestCKANConnectorPullOperations(TestCase):
     @classmethod
     def setUpClass(cls):
         """Set up test class with real CKAN instance."""
-        super().setUpClass()
-
-        # Use centralized test utilities
+        # Check skip conditions BEFORE super().setUpClass() so that if we
+        # raise SkipTest, no class-level atomics are opened and the PG
+        # connection is not left in a stale transaction for the next class.
         if not marketplace_available():
             raise unittest.SkipTest("No CKAN instance available for testing")
 
-        # Create connector using centralized utility
+        # Also create the connector before super() since it only makes HTTP
+        # requests — no DB access needed.
         cls.connector = create_test_connector(verify_connection=True)
-
         if not cls.connector:
             raise unittest.SkipTest("Cannot create or connect to CKAN instance for testing")
+
+        super().setUpClass()
 
         # Type narrowing for type checker
         assert cls.connector is not None
@@ -61,11 +63,16 @@ class TestCKANConnectorPullOperations(TestCase):
         # Cache connector URL for backward compatibility
         cls.ckan_url = cls.connector.base_url
 
-        # Test connection (already verified by create_test_connector, but keep for compatibility)
+        # Test connection (already verified by create_test_connector, but keep for
+        # compatibility).  Wrap in try/except with explicit atomics rollback so a
+        # failed connection doesn't leak a PG transaction to subsequent classes.
         try:
             cls.connector.test_connection()
         except Exception as e:
-            raise unittest.SkipTest(f"Cannot connect to CKAN instance at {cls.ckan_url}: {e}")
+            cls._rollback_atomics(cls.cls_atomics)
+            raise unittest.SkipTest(
+                f"Cannot connect to CKAN instance at {cls.ckan_url}: {e}"
+            )
 
         # Find a test resource with a downloadable URL
         # Try multiple resources until we find one that's actually downloadable

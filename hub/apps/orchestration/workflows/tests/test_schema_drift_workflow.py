@@ -216,7 +216,7 @@ class SchemaDriftWorkflowMismatchTest(TestCase):
         after_audit = AuditEvent.objects.filter(
             action=audit_event_types.ASSET_SCHEMA_DRIFT_DETECTED,
             tenant=tenant,
-        ).order_by("-created_at")
+        ).order_by("-timestamp")
         assert after_audit.count() - before_audit == 1
         ev = after_audit.first()
         assert ev.details_json["severity"] == "FAIL"

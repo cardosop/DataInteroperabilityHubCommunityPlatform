@@ -292,6 +292,60 @@ class ScheduledExportViewSetTest(TestCase):
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
         self.assertIn("not active", response.data.get("error", "").lower())
 
+    def test_trigger_export_success(self):
+        """Test successful trigger creates a run and returns flow_run_id."""
+        from unittest.mock import patch
+
+        export = ScheduledExport.objects.create(
+            **_scheduled_export_kwargs(self.tenant, name="Trigger Success Export")
+        )
+        with patch(
+            "hub.apps.scheduled_export.views._trigger_deployment_via_prefect_integration_service",
+            return_value=(True, "flow-run-abc-123", None),
+        ):
+            response = self.client.post(
+                f"/api/v1/scheduled-exports/{export.id}/trigger/",
+                {"parameters": {}},
+                format="json",
+            )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["status"], "success")
+        self.assertEqual(response.data["flow_run_id"], "flow-run-abc-123")
+        self.assertIn("run_id", response.data)
+        # Verify a run record was created
+        self.assertEqual(
+            ScheduledExportRun.objects.filter(scheduled_export=export).count(), 1
+        )
+
+    def test_sync_not_configured_returns_400(self):
+        """POST /{id}/sync/ returns 400 when PREFECT_INTEGRATION_SERVICE_URL not set."""
+        from unittest.mock import patch
+
+        export = ScheduledExport.objects.create(
+            **_scheduled_export_kwargs(self.tenant, name="Sync Export")
+        )
+        # The test container may have PREFECT_INTEGRATION_SERVICE_URL set —
+        # simulate an unconfigured environment by clearing it.
+        import os
+        with patch.dict(os.environ, {"PREFECT_INTEGRATION_SERVICE_URL": ""}):
+            response = self.client.post(
+                f"/api/v1/scheduled-exports/{export.id}/sync/"
+            )
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("PREFECT_INTEGRATION_SERVICE_URL", response.data.get("error", ""))
+
+    def test_sync_unauthorized_returns_401(self):
+        """POST /{id}/sync/ returns 401 for unauthenticated requests."""
+        export = ScheduledExport.objects.create(
+            **_scheduled_export_kwargs(self.tenant, name="Sync Export")
+        )
+        unauth_client = APIClient()
+        response = unauth_client.post(
+            f"/api/v1/scheduled-exports/{export.id}/sync/"
+        )
+        self.assertIn(response.status_code, (status.HTTP_401_UNAUTHORIZED, status.HTTP_403_FORBIDDEN))
+
     def test_tenant_isolation(self):
         """Test that tenants can only see their own scheduled exports"""
         _uid = uuid.uuid4().hex[:8]
@@ -443,7 +497,7 @@ class ScheduledExportViewSetTest(TestCase):
         self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
 
     def test_trigger_with_malformed_body_returns_400(self):
-        """Trigger with invalid JSON body returns 400."""
+        """Trigger with invalid JSON body returns 400 (DRF parser rejects it)."""
         export = ScheduledExport.objects.create(
             **_scheduled_export_kwargs(self.tenant, name="Trigger Export")
         )
@@ -452,6 +506,8 @@ class ScheduledExportViewSetTest(TestCase):
             "not json",
             content_type="text/plain",
         )
+        # DRF JSONParser rejects non-JSON content with 400 (ParseError)
+        # Some DRF versions return 415 (UnsupportedMediaType) instead
         self.assertIn(
             response.status_code,
             (status.HTTP_400_BAD_REQUEST, status.HTTP_415_UNSUPPORTED_MEDIA_TYPE),

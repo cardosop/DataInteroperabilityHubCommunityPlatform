@@ -6,6 +6,7 @@ DataContractCLIClient uses real client with graceful handling when CLI service u
 """
 import uuid
 
+import httpx
 import pytest
 from rest_framework import status
 
@@ -27,12 +28,16 @@ pytestmark = pytest.mark.django_db(transaction=True)
 
 
 def check_datacontract_cli_available():
-    """Check if DataContract CLI service is available"""
+    """Check if DataContract CLI service is available.
+
+    Only catches connection/transport exceptions so that import errors
+    and other programming errors bubble up instead of being silently masked.
+    """
     try:
         client = DataContractCLIClient()
         health = client.health_check()
         return isinstance(health, dict) and health.get("status") == "healthy"
-    except Exception:
+    except (httpx.ConnectError, httpx.TimeoutException, ConnectionError, TimeoutError, OSError):
         return False
 
 
@@ -80,24 +85,19 @@ class ContractValidationViewTest(ContractsAPITransactionTestBase):
             f"/api/v1/contracts/{self.contract.id}/validate/", {"async": False}, format="json"
         )
 
-        # Response may be 200 OK (success) or 500/503 (service error)
-        # The important thing is that real DataContractCLIClient was used
-        self.assertIn(
-            response.status_code,
-            [
-                status.HTTP_200_OK,
-                status.HTTP_500_INTERNAL_SERVER_ERROR,
-                status.HTTP_503_SERVICE_UNAVAILABLE,
-            ],
-        )
+        # When CLI is available, the response must be 200 OK.
+        self.assertEqual(response.status_code, status.HTTP_200_OK,
+            "Synchronous validation must return 200 when CLI service is available")
 
-        if response.status_code == status.HTTP_200_OK:
-            # Verify contract was updated
-            self.contract.refresh_from_db()
-            self.assertIn(
-                self.contract.validation_status,
-                [ValidationStatus.VALID, ValidationStatus.INVALID, ValidationStatus.WARNING_ONLY, ValidationStatus.SKIPPED],
-            )
+        # Verify contract was updated to a non-error status.
+        # A structurally-valid contract must be VALID (or SKIPPED when the CLI
+        # cannot validate the spec type/version).  It must never be INVALID.
+        self.contract.refresh_from_db()
+        self.assertIn(
+            self.contract.validation_status,
+            [ValidationStatus.VALID, ValidationStatus.SKIPPED],
+            f"Expected VALID or SKIPPED for a well-formed contract, got {self.contract.validation_status}",
+        )
 
     def test_validate_contract_asynchronous(self):
         """
@@ -112,14 +112,12 @@ class ContractValidationViewTest(ContractsAPITransactionTestBase):
             f"/api/v1/contracts/{self.contract.id}/validate/", {"async": True}, format="json"
         )
 
-        # Response should be 202 ACCEPTED (job created), 200 (sync fallback), or error
+        # Response must be 202 ACCEPTED (job created) or 200 (sync fallback)
         self.assertIn(
             response.status_code,
             [
                 status.HTTP_200_OK,  # Sync fallback when async job creation fails
                 status.HTTP_202_ACCEPTED,
-                status.HTTP_500_INTERNAL_SERVER_ERROR,
-                status.HTTP_503_SERVICE_UNAVAILABLE,
             ],
         )
 
@@ -165,75 +163,81 @@ class ContractValidationViewTest(ContractsAPITransactionTestBase):
             f"/api/v1/contracts/{invalid_contract.id}/validate/", {"async": False}, format="json"
         )
 
-        # Response may be 200 OK (with errors) or 500/503 (service error)
-        self.assertIn(
-            response.status_code,
-            [
-                status.HTTP_200_OK,
-                status.HTTP_500_INTERNAL_SERVER_ERROR,
-                status.HTTP_503_SERVICE_UNAVAILABLE,
-            ],
-        )
+        # When CLI is available, the response must be 200 OK (with errors).
+        self.assertEqual(response.status_code, status.HTTP_200_OK,
+            "Validation of contract with errors must return 200 when CLI is available")
 
-        if response.status_code == status.HTTP_200_OK:
-            # Verify response structure
-            self.assertIn("validation_status", response.data)
-            # Contract may have errors or warnings depending on CLI validation
-            invalid_contract.refresh_from_db()
-            self.assertIn(
-                invalid_contract.validation_status,
-                [ValidationStatus.VALID, ValidationStatus.INVALID, ValidationStatus.WARNING_ONLY, ValidationStatus.SKIPPED],
-            )
+        # Verify response structure
+        self.assertIn("validation_status", response.data)
+        # An invalid contract (missing required fields) must be rejected or warned.
+        # SKIPPED is also valid when the CLI cannot validate the spec type.
+        # VALID would mean the CLI accepted a broken contract — never acceptable.
+        invalid_contract.refresh_from_db()
+        self.assertIn(
+            invalid_contract.validation_status,
+            [ValidationStatus.INVALID, ValidationStatus.WARNING_ONLY, ValidationStatus.SKIPPED],
+            f"Expected INVALID, WARNING_ONLY, or SKIPPED for a broken contract, got {invalid_contract.validation_status}",
+        )
 
     def test_validate_contract_with_warnings(self):
         """
-        Test contract validation with warnings using real DataContractCLIClient.
+        Test contract validation produces warning-triggering contract that differs from sync test.
 
-        Uses real CLI client to verify warning handling functionality.
+        Uses a contract with a known-warning-inducing structure to differentiate from
+        test_validate_contract_synchronous.
         """
         # Skip if CLI service not available
         if not check_datacontract_cli_available():
             self.skipTest("DataContract CLI service not available in test environment")
 
+        # Create a contract designed to trigger warnings (e.g., missing optional fields)
+        warning_contract = Contract.objects.create(
+            tenant=self.tenant,
+            version=1,
+            status=ContractStatus.DRAFT,
+            original_spec_type=OriginalSpecType.ODCS,
+            original_spec_version="3.0.0",
+            original_format=OriginalFormat.JSON,
+            original_raw='{"id": "warning-test", "name": "Warning Contract", "info": {"owner": "unknown"}}',
+            hub_contract_version="1.0.0",
+            hub_contract_json={"hub_contract_version": "1.0.0", "id": "warning-test", "info": {"owner": "unknown"}},
+            validation_status=ValidationStatus.ERROR,
+        )
+
         self.client.force_authenticate(user=self.user)
 
-        # Use APIClient to make actual HTTP request with real DataContractCLIClient
         response = self.client.post(
-            f"/api/v1/contracts/{self.contract.id}/validate/", {"async": False}, format="json"
+            f"/api/v1/contracts/{warning_contract.id}/validate/", {"async": False}, format="json"
         )
 
-        # Response may be 200 OK (with warnings) or 500/503 (service error)
+        # When CLI is available, the response must be 200 OK.
+        self.assertEqual(response.status_code, status.HTTP_200_OK,
+            "Validation of warning-triggering contract must return 200 when CLI is available")
+
+        # Verify response structure includes warnings
+        self.assertIn("validation_status", response.data)
+        self.assertIn("warnings", response.data)
+        warning_contract.refresh_from_db()
         self.assertIn(
-            response.status_code,
-            [
-                status.HTTP_200_OK,
-                status.HTTP_500_INTERNAL_SERVER_ERROR,
-                status.HTTP_503_SERVICE_UNAVAILABLE,
-            ],
+            warning_contract.validation_status,
+            [ValidationStatus.WARNING_ONLY, ValidationStatus.SKIPPED],
+            f"Expected WARNING_ONLY or SKIPPED for a warning-triggering contract, got {warning_contract.validation_status}",
         )
 
-        if response.status_code == status.HTTP_200_OK:
-            # Verify response structure
-            self.assertIn("validation_status", response.data)
-            # Contract may have warnings depending on CLI validation
-            self.contract.refresh_from_db()
-            self.assertIn(
-                self.contract.validation_status,
-                [ValidationStatus.VALID, ValidationStatus.INVALID, ValidationStatus.WARNING_ONLY, ValidationStatus.SKIPPED],
-            )
-
-    def test_validate_contract_service_error(self):
+    def test_validate_contract_service_response(self):
         """
-        Test contract validation with service error using real DataContractCLIClient.
+        Validate contract service response structure regardless of CLI availability.
 
-        Uses real CLI client to verify error handling when service unavailable.
+        When the CLI service IS available, the response must be 200 with
+        ``validation_status`` in the body.  When the CLI service is UNAVAILABLE
+        (500 or 503), the response must contain an ``error`` key.
+
+        This test validates service-level response structure rather than a
+        specific CLI error path, because we cannot control external service
+        availability from an integration test.
         """
-        # This test verifies error handling when CLI service is unavailable
-        # If service is available, we can't easily test this path
-
         self.client.force_authenticate(user=self.user)
 
-        # Use APIClient to make actual HTTP request with real DataContractCLIClient
         response = self.client.post(
             f"/api/v1/contracts/{self.contract.id}/validate/", {"async": False}, format="json"
         )
@@ -248,12 +252,16 @@ class ContractValidationViewTest(ContractsAPITransactionTestBase):
             ],
         )
 
-        if response.status_code in [
-            status.HTTP_500_INTERNAL_SERVER_ERROR,
-            status.HTTP_503_SERVICE_UNAVAILABLE,
-        ]:
-            # Verify error response structure
-            self.assertIn("error", response.data)
+        if response.status_code == status.HTTP_200_OK:
+            # Happy path: verify the response contains expected validation fields
+            self.assertIn("validation_status", response.data,
+                "200 response must include validation_status")
+            self.assertIn("valid", response.data,
+                "200 response must include valid flag")
+        else:
+            # Error path: verify structured error response
+            self.assertIn("error", response.data,
+                "Error response must include error key")
 
     def test_validate_contract_enhanced_response(self):
         """
@@ -363,8 +371,13 @@ class ContractValidationViewTest(ContractsAPITransactionTestBase):
             f"/api/v1/contracts/{self.contract.id}/validate/", {"async": False}, format="json"
         )
 
-        # Should return 401 Unauthorized
+        # Should return 401 Unauthorized with structured error
         self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
+        self.assertIn("error", response.data,
+            "401 response must include structured error")
+        error_code = response.data.get("error", {}).get("code", "")
+        self.assertIn("AUTH", error_code,
+            f"401 error code must indicate authentication failure, got: {error_code}")
 
     def test_validate_contract_not_found(self):
         """Test validation endpoint with non-existent contract"""
@@ -378,11 +391,13 @@ class ContractValidationViewTest(ContractsAPITransactionTestBase):
             f"/api/v1/contracts/{fake_id}/validate/", {"async": False}, format="json"
         )
 
-        # Should return 404 Not Found (or 200 if view handles gracefully)
-        self.assertIn(
-            response.status_code,
-            [status.HTTP_404_NOT_FOUND, status.HTTP_200_OK],
-        )
+        # Must return 404 Not Found for a non-existent contract
+        self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
+        self.assertIn("error", response.data,
+            "404 response must include structured error")
+        error_code = response.data.get("error", {}).get("code", "")
+        self.assertIn("NOT_FOUND", error_code,
+            f"404 error code must be NOT_FOUND, got: {error_code}")
 
     def test_validate_contract_cross_tenant(self):
         """Test validation endpoint respects tenant isolation"""
@@ -418,6 +433,11 @@ class ContractValidationViewTest(ContractsAPITransactionTestBase):
 
         # Should return 404 Not Found (invalid UUID format)
         self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
+        self.assertIn("error", response.data,
+            "404 response for invalid ID format must include structured error")
+        error_code = response.data.get("error", {}).get("code", "")
+        self.assertIn("NOT_FOUND", error_code,
+            f"404 error code must be NOT_FOUND, got: {error_code}")
 
     def test_validate_contract_empty_request_body(self):
         """Test validation endpoint with empty request body (should use defaults)"""
@@ -428,35 +448,39 @@ class ContractValidationViewTest(ContractsAPITransactionTestBase):
             f"/api/v1/contracts/{self.contract.id}/validate/", {}, format="json"
         )
 
-        # Should accept empty body and use defaults (async=False)
+        # Should accept empty body and use defaults (async=False → 200 OK)
         self.assertIn(
             response.status_code,
             [
                 status.HTTP_200_OK,
                 status.HTTP_202_ACCEPTED,
-                status.HTTP_500_INTERNAL_SERVER_ERROR,
-                status.HTTP_503_SERVICE_UNAVAILABLE,
             ],
         )
 
     def test_validate_contract_invalid_request_body(self):
-        """Test validation endpoint with invalid request body"""
+        """Validation endpoint treats truthy non-boolean ``async`` as async mode.
+
+        ``request.data.get("async", False)`` evaluates any truthy value
+        (including the string ``"not-a-boolean"``) as async=True, so the
+        endpoint attempts async job creation → 202 Accepted (or 200 sync
+        fallback if job creation fails)."""
         self.client.force_authenticate(user=self.user)
 
-        # Invalid body (async should be boolean)
         response = self.client.post(
             f"/api/v1/contracts/{self.contract.id}/validate/",
             {"async": "not-a-boolean"},
             format="json",
         )
 
-        # Should return 400 Bad Request or handle gracefully
+        # Truthy → async path.  May return 202 (job created), 200
+        # (sync fallback when job creation fails), or 400 if the
+        # endpoint later adds strict boolean type-checking.
         self.assertIn(
             response.status_code,
             [
-                status.HTTP_200_OK,  # If gracefully handled
-                status.HTTP_400_BAD_REQUEST,  # If validation enforced
-                status.HTTP_500_INTERNAL_SERVER_ERROR,
+                status.HTTP_202_ACCEPTED,
+                status.HTTP_200_OK,
+                status.HTTP_400_BAD_REQUEST,
             ],
         )
 
@@ -489,14 +513,12 @@ class ContractValidationViewTest(ContractsAPITransactionTestBase):
             f"/api/v1/contracts/{large_contract.id}/validate/", {"async": False}, format="json"
         )
 
-        # Should return 202 ACCEPTED (auto-switched to async) or handle gracefully
+        # Should return 202 ACCEPTED (auto-switched to async) or 200 (sync fallback)
         self.assertIn(
             response.status_code,
             [
                 status.HTTP_202_ACCEPTED,  # Auto-switched to async
                 status.HTTP_200_OK,  # If sync still works
-                status.HTTP_500_INTERNAL_SERVER_ERROR,
-                status.HTTP_503_SERVICE_UNAVAILABLE,
             ],
         )
 
@@ -546,14 +568,12 @@ class ContractValidationViewTest(ContractsAPITransactionTestBase):
             f"/api/v1/contracts/{self.contract.id}/validate/", {"async": True}, format="json"
         )
 
-        # Should return 202 (job created) or 200 (fallback to sync) or error
+        # Should return 202 (job created) or 200 (fallback to sync)
         self.assertIn(
             response.status_code,
             [
                 status.HTTP_202_ACCEPTED,  # Job created successfully
                 status.HTTP_200_OK,  # Fallback to sync validation
-                status.HTTP_500_INTERNAL_SERVER_ERROR,
-                status.HTTP_503_SERVICE_UNAVAILABLE,
             ],
         )
 
